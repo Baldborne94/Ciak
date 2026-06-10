@@ -3,19 +3,16 @@ import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { getTrending, isTmdbConfigured } from '../lib/tmdb'
+import { useAuth } from '../lib/auth'
+import { getStats, type UserStats } from '../lib/userTitles'
 import type { MediaItem } from '../lib/types'
 
-const STATS = [
-  { label: 'Titoli visti', value: '—', icon: '🎬' },
-  { label: 'Ore di visione', value: '—', icon: '⏱️' },
-  { label: 'Genere top', value: '—', icon: '🎭' },
-  { label: 'Preferiti', value: '—', icon: '❤️' },
-]
-
 export default function Dashboard() {
+  const { user } = useAuth()
   const [trending, setTrending] = useState<MediaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [stats, setStats] = useState<UserStats | null>(null)
 
   useEffect(() => {
     if (!isTmdbConfigured) {
@@ -29,6 +26,23 @@ export default function Dashboard() {
       .finally(() => setLoading(false))
   }, [])
 
+  useEffect(() => {
+    if (!user) {
+      setStats(null)
+      return
+    }
+    getStats(user.id)
+      .then(setStats)
+      .catch(() => setStats(null))
+  }, [user])
+
+  const cards = [
+    { label: 'Titoli visti', value: stats?.watched, icon: '🎬' },
+    { label: 'Da vedere', value: stats?.toWatch, icon: '🎟️' },
+    { label: 'In corso', value: stats?.inProgress, icon: '▶️' },
+    { label: 'Preferiti', value: stats?.favorites, icon: '❤️' },
+  ]
+
   return (
     <div>
       <PageHeader
@@ -37,16 +51,16 @@ export default function Dashboard() {
         subtitle="Le tue statistiche e i titoli che stanno spopolando oggi."
       />
 
-      {/* Personal stats — wired to Supabase in a later phase. */}
+      {/* Personal stats from Supabase (— when not signed in). */}
       <div className="mb-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {STATS.map((stat) => (
+        {cards.map((stat) => (
           <div
             key={stat.label}
             className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-4"
           >
             <div className="text-2xl">{stat.icon}</div>
             <div className="mt-2 font-display text-3xl tracking-wide text-projector">
-              {stat.value}
+              {user && stat.value !== undefined ? stat.value : '—'}
             </div>
             <div className="text-xs text-zinc-500">{stat.label}</div>
           </div>

@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
+import { useAuth } from '../lib/auth'
 
 const links = [
   { to: '/', label: 'Sala', end: true },
@@ -11,6 +12,14 @@ const links = [
 ]
 
 export default function Navbar() {
+  const { user, signOut } = useAuth()
+  const navigate = useNavigate()
+
+  async function onSignOut() {
+    await signOut()
+    navigate('/')
+  }
+
   return (
     <header className="sticky top-0 z-30 border-b border-theatre-800/80 bg-theatre-950/80 backdrop-blur">
       <nav className="container-cine flex h-16 items-center justify-between gap-4">
@@ -43,10 +52,25 @@ export default function Navbar() {
           ))}
         </ul>
 
-        <NavLink to="/settings" className="btn-ghost px-3 py-2">
-          <span className="hidden sm:inline">Impostazioni</span>
-          <span className="sm:hidden">⚙️</span>
-        </NavLink>
+        <div className="flex items-center gap-2">
+          {user ? (
+            <>
+              <span
+                className="hidden max-w-[12rem] truncate text-sm text-zinc-400 sm:inline"
+                title={user.email ?? undefined}
+              >
+                {user.email}
+              </span>
+              <button onClick={onSignOut} className="btn-ghost px-3 py-2">
+                Esci
+              </button>
+            </>
+          ) : (
+            <NavLink to="/login" className="btn-primary px-3 py-2">
+              🎟️ Accedi
+            </NavLink>
+          )}
+        </div>
       </nav>
 
       {/* Compact nav for small/medium screens */}
