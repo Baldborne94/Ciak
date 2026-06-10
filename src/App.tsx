@@ -7,9 +7,11 @@ import TitleDetail from './pages/TitleDetail'
 import ListPage from './pages/ListPage'
 import Favorites from './pages/Favorites'
 import Recommendations from './pages/Recommendations'
+import CatalogPage from './pages/CatalogPage'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
+import { getAnime, getCartoons } from './lib/tmdb'
 
 export default function App() {
   return (
@@ -49,6 +51,28 @@ export default function App() {
             <RequireAuth>
               <Favorites />
             </RequireAuth>
+          }
+        />
+        <Route
+          path="anime"
+          element={
+            <CatalogPage
+              eyebrow="Catalogo"
+              title="Anime"
+              subtitle="Le serie animate giapponesi più popolari del momento."
+              fetcher={getAnime}
+            />
+          }
+        />
+        <Route
+          path="cartoons"
+          element={
+            <CatalogPage
+              eyebrow="Catalogo"
+              title="Cartoni animati"
+              subtitle="Film d'animazione da tutto il mondo: Disney, Pixar, DreamWorks e oltre."
+              fetcher={getCartoons}
+            />
           }
         />
         <Route path="recommendations" element={<Recommendations />} />

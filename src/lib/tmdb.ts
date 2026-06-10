@@ -133,6 +133,31 @@ interface RawDetail extends RawMedia {
   recommendations?: { results: RawMedia[] }
 }
 
+export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
+  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/tv', {
+    with_genres: '16',
+    with_original_language: 'ja',
+    sort_by: 'popularity.desc',
+    page: String(page),
+  })
+  return {
+    items: data.results.map((r) => normalise(r, 'tv')),
+    totalPages: data.total_pages,
+  }
+}
+
+export async function getCartoons(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
+  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/movie', {
+    with_genres: '16',
+    sort_by: 'popularity.desc',
+    page: String(page),
+  })
+  return {
+    items: data.results.map((r) => normalise(r, 'movie')),
+    totalPages: data.total_pages,
+  }
+}
+
 export async function getDetail(
   type: TmdbType,
   id: number,

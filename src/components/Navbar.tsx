@@ -4,6 +4,8 @@ import { useAuth } from '../lib/auth'
 const links = [
   { to: '/', label: 'Sala', end: true },
   { to: '/search', label: 'Cerca' },
+  { to: '/anime', label: 'Anime' },
+  { to: '/cartoons', label: 'Cartoni' },
   { to: '/lists/watchlist', label: 'Da vedere' },
   { to: '/lists/watched', label: 'Visti' },
   { to: '/lists/in-progress', label: 'In corso' },
