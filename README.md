@@ -14,13 +14,15 @@ Estetica da sala cinematografica: tema scuro, oro proiettore, rosso sipario, cia
 | Raccomandazioni AI | [Anthropic API](https://www.anthropic.com) (lato server) |
 | Deploy | [Vercel](https://vercel.com) |
 
-## Funzionalità (Fase 1 — base)
+## Funzionalità
 
-- 🎞️ **Dashboard "Sala"** con i titoli trending da TMDB e spazio per le statistiche personali
+- 🎞️ **Dashboard "Sala"** con trending TMDB e **statistiche personali reali** (visti, da vedere, in corso, preferiti)
 - 🔍 **Ricerca** con filtri combinabili (tipo, voto minimo)
 - 🎭 **Scheda dettaglio** con backdrop, locandina, generi, durata, cast e raccomandazioni
-- 📋 **Liste** (Visti / Da vedere / In corso) e **Preferiti** — scaffold pronti per Supabase
-- ✨ **Raccomandazioni AI** — serverless function `/api/recommendations` con chiave Anthropic mai esposta al browser
+- 🔐 **Autenticazione Supabase** (email/password + Google OAuth)
+- 📋 **Liste personali** (Visti / Da vedere / In corso) salvate su Supabase — assegna lo stato dalla scheda titolo
+- ❤️ **Preferiti** con **voto (1–5 ★)** e **note** modificabili, ordinabili per voto/data/titolo
+- ✨ **Raccomandazioni AI** che leggono i tuoi preferiti e visti — serverless `/api/recommendations`, chiave Anthropic mai esposta al browser
 - ⚙️ **Impostazioni** con stato delle integrazioni
 
 > Le schede titolo mostrano i dati TMDB in tempo reale: nessuna copia locale del catalogo. Solo i dati personali (stato, voto, note, preferiti) finiscono su Supabase.
@@ -66,21 +68,28 @@ api/                  Serverless function (raccomandazioni Anthropic, lato serve
 public/ciak.svg       Favicon ciak
 supabase/schema.sql   Schema DB con RLS
 src/
-  components/         Layout, Navbar, MediaCard/Grid, PageHeader, stati
-  lib/                Client TMDB, client Supabase, tipi condivisi
+  components/         Layout, Navbar, MediaCard/Grid, SavedTitleCard,
+                      TitleActions, RequireAuth, PageHeader, stati
+  lib/                TMDB, Supabase, auth (context), userTitles (CRUD), tipi
   pages/              Dashboard, Search, TitleDetail, ListPage, Favorites,
-                      Recommendations, Settings, NotFound
+                      Recommendations, Settings, Login, NotFound
 ```
+
+### Autenticazione e dati
+
+L'accesso usa **Supabase Auth** (email/password o Google OAuth). Tutte le query a `user_titles` passano per le policy **RLS**: ogni utente legge e scrive solo le proprie righe. Le rotte `/lists/*` e `/favorites` richiedono il login; le schede titolo e la ricerca restano pubbliche.
+
+> Per Google OAuth, abilita il provider in Supabase → Authentication → Providers e aggiungi l'URL dell'app tra i redirect consentiti.
 
 ## Roadmap
 
-1. ✅ Setup progetto (questa fase)
-2. Ricerca e scheda dettaglio (live su TMDB) ✅
-3. Sistema liste su Supabase + Auth
-4. Preferiti con voto e note
-5. Dashboard con statistiche reali
-6. Raccomandazioni AI collegate ai dati utente
-7. Preferenze utente e filtri avanzati
+1. ✅ Setup progetto
+2. ✅ Ricerca e scheda dettaglio (live su TMDB)
+3. ✅ Sistema liste su Supabase + Auth
+4. ✅ Preferiti con voto e note
+5. ✅ Dashboard con statistiche reali
+6. ✅ Raccomandazioni AI collegate ai dati utente
+7. Preferenze utente (`user_preferences`) e filtri avanzati (anime/cartoni, anno, genere, lingua)
 
 ## Deploy su Vercel
 

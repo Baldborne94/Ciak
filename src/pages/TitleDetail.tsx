@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ErrorState, Loader } from '../components/States'
 import MediaGrid from '../components/MediaGrid'
+import TitleActions from '../components/TitleActions'
 import {
   backdropUrl,
   getDetail,
@@ -9,14 +10,7 @@ import {
   posterUrl,
   profileUrl,
 } from '../lib/tmdb'
-import { STATUS_LABELS, type MediaDetail, type TitleStatus, type TmdbType } from '../lib/types'
-
-const STATUS_ORDER: TitleStatus[] = [
-  'to_watch',
-  'watched',
-  'in_progress',
-  'abandoned',
-]
+import type { MediaDetail, TmdbType } from '../lib/types'
 
 export default function TitleDetail() {
   const { mediaType, id } = useParams<{ mediaType: TmdbType; id: string }>()
@@ -108,21 +102,15 @@ export default function TitleDetail() {
               {detail.overview || 'Nessuna trama disponibile.'}
             </p>
 
-            {/* Personal actions — persisted to Supabase in a later phase. */}
-            <div className="mt-6 flex flex-wrap gap-2">
-              {STATUS_ORDER.map((status) => (
-                <button
-                  key={status}
-                  className="btn-ghost"
-                  title="Disponibile dopo il login (fase liste)"
-                >
-                  {STATUS_LABELS[status]}
-                </button>
-              ))}
-              <button className="btn-primary" title="Disponibile dopo il login">
-                ❤️ Preferito
-              </button>
-            </div>
+            {/* Personal actions — persisted to Supabase (user_titles). */}
+            <TitleActions
+              titleRef={{
+                tmdbId: detail.id,
+                mediaType: detail.mediaType,
+                title: detail.title,
+                posterPath: detail.posterPath,
+              }}
+            />
           </div>
         </div>
       </div>

@@ -1,13 +1,21 @@
 import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
+import { useAuth } from '../lib/auth'
+import { listByStatus, listFavorites } from '../lib/userTitles'
+import type { UserTitle } from '../lib/types'
 
 interface Suggestion {
   title: string
   reason: string
 }
 
+function toSummary(record: UserTitle) {
+  return { title: record.title, mediaType: record.media_type }
+}
+
 export default function Recommendations() {
+  const { user } = useAuth()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null)
@@ -16,10 +24,18 @@ export default function Recommendations() {
     setLoading(true)
     setError(null)
     try {
+      // Feed the AI the user's actual tastes when signed in.
+      const [favorites, watched] = user
+        ? await Promise.all([listFavorites(user.id), listByStatus(user.id, 'watched')])
+        : [[], []]
+
       const res = await fetch('/api/recommendations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ favorites: [], watched: [] }),
+        body: JSON.stringify({
+          favorites: favorites.map(toSummary),
+          watched: watched.map(toSummary),
+        }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
