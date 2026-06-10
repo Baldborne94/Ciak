@@ -119,13 +119,34 @@ export async function getTrendingTV(): Promise<MediaItem[]> {
 
 export async function searchMulti(query: string): Promise<MediaItem[]> {
   if (!query.trim()) return []
-  const data = await tmdbFetch<{ results: RawMedia[] }>('/search/multi', {
-    query,
-    include_adult: 'false',
-  })
-  return data.results
-    .filter((r) => r.media_type === 'movie' || r.media_type === 'tv')
-    .map((r) => normalise(r))
+
+  // TMDB indexes titles differently per language: an Italian title may match
+  // only with language=it-IT, an English one only with en-US. Query both and
+  // merge so the user finds a title regardless of the language they type.
+  const [itData, enData] = await Promise.all([
+    tmdbFetch<{ results: RawMedia[] }>('/search/multi', {
+      query,
+      include_adult: 'false',
+      language: 'it-IT',
+    }),
+    tmdbFetch<{ results: RawMedia[] }>('/search/multi', {
+      query,
+      include_adult: 'false',
+      language: 'en-US',
+    }),
+  ])
+
+  // Italian first (preferred for display + relevance), then English-only
+  // matches appended in their own relevance order. Insertion order preserves
+  // each list's TMDB ranking; the Map de-duplicates across the two.
+  const merged = new Map<string, MediaItem>()
+  for (const raw of [...itData.results, ...enData.results]) {
+    if (raw.media_type !== 'movie' && raw.media_type !== 'tv') continue
+    const key = `${raw.media_type}-${raw.id}`
+    if (!merged.has(key)) merged.set(key, normalise(raw))
+  }
+
+  return [...merged.values()]
 }
 
 export async function getGenres(type: TmdbType): Promise<Genre[]> {
