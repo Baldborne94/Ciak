@@ -1,15 +1,35 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
-import MediaGrid from '../components/MediaGrid'
-import { EmptyState, ErrorState, Loader } from '../components/States'
-import { getTrending, isTmdbConfigured } from '../lib/tmdb'
+import MediaCard from '../components/MediaCard'
+import { ErrorState, Loader } from '../components/States'
+import { getTrendingMovies, getTrendingTV, getAnime, getCartoons, isTmdbConfigured } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { getStats, type UserStats } from '../lib/userTitles'
 import type { MediaItem } from '../lib/types'
 
+interface Section {
+  label: string
+  icon: string
+  href?: string
+  items: MediaItem[]
+}
+
+function MediaRow({ items }: { items: MediaItem[] }) {
+  return (
+    <div className="flex gap-3 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {items.map((item) => (
+        <div key={`${item.mediaType}-${item.id}`} className="w-36 shrink-0 sm:w-44">
+          <MediaCard item={item} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { user } = useAuth()
-  const [trending, setTrending] = useState<MediaItem[]>([])
+  const [sections, setSections] = useState<Section[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState<UserStats | null>(null)
@@ -20,23 +40,30 @@ export default function Dashboard() {
       setLoading(false)
       return
     }
-    getTrending()
-      .then(setTrending)
+    Promise.all([
+      getTrendingMovies(),
+      getTrendingTV(),
+      getAnime(1),
+      getCartoons(1),
+    ])
+      .then(([movies, tv, animeRes, cartoonsRes]) => {
+        setSections([
+          { label: 'Film', icon: '🎬', items: movies },
+          { label: 'Serie TV', icon: '📺', items: tv },
+          { label: 'Anime', icon: '⛩️', href: '/anime', items: animeRes.items },
+          { label: 'Cartoni animati', icon: '🎨', href: '/cartoons', items: cartoonsRes.items },
+        ])
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
-    if (!user) {
-      setStats(null)
-      return
-    }
-    getStats(user.id)
-      .then(setStats)
-      .catch(() => setStats(null))
+    if (!user) { setStats(null); return }
+    getStats(user.id).then(setStats).catch(() => setStats(null))
   }, [user])
 
-  const cards = [
+  const statCards = [
     { label: 'Titoli visti', value: stats?.watched, icon: '🎬' },
     { label: 'Da vedere', value: stats?.toWatch, icon: '🎟️' },
     { label: 'In corso', value: stats?.inProgress, icon: '▶️' },
@@ -51,9 +78,8 @@ export default function Dashboard() {
         subtitle="Le tue statistiche e i titoli che stanno spopolando oggi."
       />
 
-      {/* Personal stats from Supabase (— when not signed in). */}
       <div className="mb-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {cards.map((stat) => (
+        {statCards.map((stat) => (
           <div
             key={stat.label}
             className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-4"
@@ -67,24 +93,31 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="mb-5 flex items-center gap-3">
-        <h2 className="font-display text-2xl tracking-wide text-zinc-100">
-          🍿 Scopri oggi
-        </h2>
-        <span className="text-sm text-zinc-500">Trending della settimana</span>
-      </div>
-
       {loading ? (
         <Loader label="Accendo il proiettore…" />
       ) : error ? (
         <ErrorState title="Niente proiezione" message={error} />
-      ) : trending.length === 0 ? (
-        <EmptyState
-          title="Nessun titolo di tendenza"
-          message="Riprova più tardi."
-        />
       ) : (
-        <MediaGrid items={trending} />
+        <div className="space-y-10">
+          {sections.map((section) => (
+            <div key={section.label}>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="font-display text-2xl tracking-wide text-zinc-100">
+                  {section.icon} {section.label}
+                </h2>
+                {section.href && (
+                  <Link
+                    to={section.href}
+                    className="text-sm text-projector/70 transition hover:text-projector"
+                  >
+                    Vedi tutti →
+                  </Link>
+                )}
+              </div>
+              <MediaRow items={section.items} />
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

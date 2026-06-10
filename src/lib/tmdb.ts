@@ -99,6 +99,16 @@ export async function getTrending(): Promise<MediaItem[]> {
     .map((r) => normalise(r))
 }
 
+export async function getTrendingMovies(): Promise<MediaItem[]> {
+  const data = await tmdbFetch<{ results: RawMedia[] }>('/trending/movie/week')
+  return data.results.map((r) => normalise(r, 'movie'))
+}
+
+export async function getTrendingTV(): Promise<MediaItem[]> {
+  const data = await tmdbFetch<{ results: RawMedia[] }>('/trending/tv/week')
+  return data.results.map((r) => normalise(r, 'tv'))
+}
+
 export async function searchMulti(query: string): Promise<MediaItem[]> {
   if (!query.trim()) return []
   const data = await tmdbFetch<{ results: RawMedia[] }>('/search/multi', {
