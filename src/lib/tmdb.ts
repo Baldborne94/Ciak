@@ -200,6 +200,58 @@ export async function getCartoons(page = 1): Promise<{ items: MediaItem[]; total
   }
 }
 
+// ── Latest releases ────────────────────────────────────────────────────────
+// Sorted by real release date (newest first), with a small vote floor to keep
+// out junk uploads while still surfacing fresh mainstream titles.
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+export async function getLatestMovies(page = 1): Promise<MediaItem[]> {
+  const data = await tmdbFetch<{ results: RawMedia[] }>('/discover/movie', {
+    sort_by: 'primary_release_date.desc',
+    'primary_release_date.lte': today(),
+    'vote_count.gte': '5',
+    with_release_type: '2|3',
+    page: String(page),
+  })
+  return data.results.map((r) => normalise(r, 'movie'))
+}
+
+export async function getLatestTV(page = 1): Promise<MediaItem[]> {
+  const data = await tmdbFetch<{ results: RawMedia[] }>('/discover/tv', {
+    sort_by: 'first_air_date.desc',
+    'first_air_date.lte': today(),
+    'vote_count.gte': '5',
+    page: String(page),
+  })
+  return data.results.map((r) => normalise(r, 'tv'))
+}
+
+export async function getLatestAnime(page = 1): Promise<MediaItem[]> {
+  const data = await tmdbFetch<{ results: RawMedia[] }>('/discover/tv', {
+    with_genres: '16',
+    with_original_language: 'ja',
+    sort_by: 'first_air_date.desc',
+    'first_air_date.lte': today(),
+    'vote_count.gte': '3',
+    page: String(page),
+  })
+  return data.results.map((r) => normalise(r, 'tv'))
+}
+
+export async function getLatestCartoons(page = 1): Promise<MediaItem[]> {
+  const data = await tmdbFetch<{ results: RawMedia[] }>('/discover/movie', {
+    with_genres: '16',
+    sort_by: 'primary_release_date.desc',
+    'primary_release_date.lte': today(),
+    'vote_count.gte': '3',
+    page: String(page),
+  })
+  return data.results.map((r) => normalise(r, 'movie'))
+}
+
 export async function getDetail(
   type: TmdbType,
   id: number,

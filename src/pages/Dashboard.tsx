@@ -3,7 +3,17 @@ import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaCard from '../components/MediaCard'
 import { ErrorState, Loader } from '../components/States'
-import { getTrendingMovies, getTrendingTV, getAnime, getCartoons, isTmdbConfigured } from '../lib/tmdb'
+import {
+  getTrendingMovies,
+  getTrendingTV,
+  getAnime,
+  getCartoons,
+  getLatestMovies,
+  getLatestTV,
+  getLatestAnime,
+  getLatestCartoons,
+  isTmdbConfigured,
+} from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { getStats, type UserStats } from '../lib/userTitles'
 import type { MediaItem } from '../lib/types'
@@ -30,6 +40,7 @@ function MediaRow({ items }: { items: MediaItem[] }) {
 export default function Dashboard() {
   const { user } = useAuth()
   const [sections, setSections] = useState<Section[]>([])
+  const [latest, setLatest] = useState<Section[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [stats, setStats] = useState<UserStats | null>(null)
@@ -45,13 +56,23 @@ export default function Dashboard() {
       getTrendingTV(),
       getAnime(1),
       getCartoons(1),
+      getLatestMovies(),
+      getLatestTV(),
+      getLatestAnime(),
+      getLatestCartoons(),
     ])
-      .then(([movies, tv, animeRes, cartoonsRes]) => {
+      .then(([movies, tv, animeRes, cartoonsRes, latMovies, latTv, latAnime, latCartoons]) => {
         setSections([
           { label: 'Film', icon: '🎬', items: movies },
           { label: 'Serie TV', icon: '📺', items: tv },
           { label: 'Anime', icon: '⛩️', href: '/anime', items: animeRes.items },
           { label: 'Cartoni animati', icon: '🎨', href: '/cartoons', items: cartoonsRes.items },
+        ])
+        setLatest([
+          { label: 'Film', icon: '🎬', items: latMovies },
+          { label: 'Serie TV', icon: '📺', items: latTv },
+          { label: 'Anime', icon: '⛩️', items: latAnime },
+          { label: 'Cartoni animati', icon: '🎨', items: latCartoons },
         ])
       })
       .catch((e: Error) => setError(e.message))
@@ -98,26 +119,60 @@ export default function Dashboard() {
       ) : error ? (
         <ErrorState title="Niente proiezione" message={error} />
       ) : (
-        <div className="space-y-10">
-          {sections.map((section) => (
-            <div key={section.label}>
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="font-display text-2xl tracking-wide text-zinc-100">
-                  {section.icon} {section.label}
-                </h2>
-                {section.href && (
-                  <Link
-                    to={section.href}
-                    className="text-sm text-projector/70 transition hover:text-projector"
-                  >
-                    Vedi tutti →
-                  </Link>
-                )}
-              </div>
-              <MediaRow items={section.items} />
+        <div className="space-y-12">
+          <div>
+            <div className="mb-6 flex items-center gap-3">
+              <h2 className="font-display text-3xl tracking-wide text-projector">
+                🔥 Di tendenza
+              </h2>
+              <span className="text-sm text-zinc-500">Questa settimana</span>
             </div>
-          ))}
+            <div className="space-y-10">
+              {sections.map((section) => (
+                <SectionRow key={section.label} section={section} />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="mb-6 flex items-center gap-3">
+              <h2 className="font-display text-3xl tracking-wide text-projector">
+                🆕 Ultime uscite
+              </h2>
+              <span className="text-sm text-zinc-500">Le novità più recenti</span>
+            </div>
+            <div className="space-y-10">
+              {latest.map((section) => (
+                <SectionRow key={section.label} section={section} />
+              ))}
+            </div>
+          </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+function SectionRow({ section }: { section: Section }) {
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="font-display text-2xl tracking-wide text-zinc-100">
+          {section.icon} {section.label}
+        </h3>
+        {section.href && (
+          <Link
+            to={section.href}
+            className="text-sm text-projector/70 transition hover:text-projector"
+          >
+            Vedi tutti →
+          </Link>
+        )}
+      </div>
+      {section.items.length > 0 ? (
+        <MediaRow items={section.items} />
+      ) : (
+        <p className="text-sm text-zinc-600">Nessun titolo disponibile.</p>
       )}
     </div>
   )
