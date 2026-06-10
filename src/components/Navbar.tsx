@@ -5,6 +5,7 @@ import { useAchievementsCtx, achievementById } from '../lib/achievementsContext'
 const links = [
   { to: '/', label: 'Sala', end: true },
   { to: '/search', label: 'Cerca' },
+  { to: '/explore', label: 'Esplora' },
   { to: '/anime', label: 'Anime' },
   { to: '/cartoons', label: 'Cartoni' },
   { to: '/lists/watchlist', label: 'Da vedere' },

@@ -1,8 +1,12 @@
 import type {
   CastMember,
+  Company,
+  CrewMember,
   Genre,
   MediaDetail,
   MediaItem,
+  Person,
+  PersonDetail,
   TmdbType,
 } from './types'
 
@@ -29,6 +33,10 @@ export function backdropUrl(
 
 export function profileUrl(path: string | null): string | null {
   return path ? `${IMG_BASE}/w185${path}` : null
+}
+
+export function logoUrl(path: string | null): string | null {
+  return path ? `${IMG_BASE}/w154${path}` : null
 }
 
 async function tmdbFetch<T>(
@@ -132,6 +140,18 @@ interface RawCredits {
     character?: string
     profile_path?: string | null
   }[]
+  crew?: {
+    id: number
+    name: string
+    job?: string
+    profile_path?: string | null
+  }[]
+}
+
+interface RawCompany {
+  id: number
+  name: string
+  logo_path?: string | null
 }
 
 interface RawDetail extends RawMedia {
@@ -141,6 +161,18 @@ interface RawDetail extends RawMedia {
   tagline?: string
   credits?: RawCredits
   recommendations?: { results: RawMedia[] }
+  original_title?: string
+  original_name?: string
+  original_language?: string
+  status?: string
+  production_companies?: RawCompany[]
+  production_countries?: { iso_3166_1: string; name: string }[]
+  budget?: number
+  revenue?: number
+  homepage?: string
+  number_of_seasons?: number
+  number_of_episodes?: number
+  created_by?: { id: number; name: string }[]
 }
 
 export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
@@ -184,6 +216,26 @@ export async function getDetail(
     profilePath: c.profile_path ?? null,
   }))
 
+  const crewRaw = raw.credits?.crew ?? []
+  const crew: CrewMember[] = crewRaw.map((c) => ({
+    id: c.id,
+    name: c.name,
+    job: c.job ?? '',
+    profilePath: c.profile_path ?? null,
+  }))
+
+  // Directors for movies; creators for TV
+  const directors =
+    type === 'tv'
+      ? (raw.created_by ?? []).map((c) => c.name)
+      : crewRaw.filter((c) => c.job === 'Director').map((c) => c.name)
+
+  const productionCompanies: Company[] = (raw.production_companies ?? []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    logoPath: c.logo_path ?? null,
+  }))
+
   const recommendations = (raw.recommendations?.results ?? [])
     .slice(0, 12)
     .map((r) => normalise(r, type))
@@ -194,6 +246,137 @@ export async function getDetail(
     runtime: raw.runtime ?? raw.episode_run_time?.[0] ?? null,
     tagline: raw.tagline ?? null,
     cast,
+    crew,
     recommendations,
+    originalTitle: raw.original_title ?? raw.original_name ?? null,
+    originalLanguage: raw.original_language ?? null,
+    status: raw.status ?? null,
+    productionCompanies,
+    productionCountries: (raw.production_countries ?? []).map((c) => c.name),
+    budget: raw.budget ?? null,
+    revenue: raw.revenue ?? null,
+    homepage: raw.homepage ?? null,
+    numberOfSeasons: raw.number_of_seasons ?? null,
+    numberOfEpisodes: raw.number_of_episodes ?? null,
+    directors: [...new Set(directors)],
+  }
+}
+
+// ── Discover / browse ─────────────────────────────────────────────────────
+
+export async function discoverByGenre(
+  type: TmdbType,
+  genreId: number,
+  page = 1,
+  sortBy = 'popularity.desc',
+): Promise<{ items: MediaItem[]; totalPages: number }> {
+  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>(
+    `/discover/${type}`,
+    {
+      with_genres: String(genreId),
+      sort_by: sortBy,
+      page: String(page),
+      'vote_count.gte': sortBy.startsWith('vote_average') ? '200' : '0',
+    },
+  )
+  return {
+    items: data.results.map((r) => normalise(r, type)),
+    totalPages: data.total_pages,
+  }
+}
+
+// ── People (actors / directors) ────────────────────────────────────────────
+
+interface RawPerson {
+  id: number
+  name: string
+  profile_path?: string | null
+  known_for_department?: string
+  known_for?: RawMedia[]
+  biography?: string
+  birthday?: string | null
+  place_of_birth?: string | null
+}
+
+export async function searchPerson(query: string): Promise<Person[]> {
+  if (!query.trim()) return []
+  const data = await tmdbFetch<{ results: RawPerson[] }>('/search/person', {
+    query,
+    include_adult: 'false',
+  })
+  return data.results.map((p) => ({
+    id: p.id,
+    name: p.name,
+    profilePath: p.profile_path ?? null,
+    knownFor: (p.known_for ?? [])
+      .map((m) => m.title ?? m.name)
+      .filter(Boolean)
+      .slice(0, 3)
+      .join(', ') || null,
+  }))
+}
+
+export async function getPersonDetail(id: number): Promise<PersonDetail> {
+  const raw = await tmdbFetch<
+    RawPerson & { combined_credits?: { cast?: RawMedia[] } }
+  >(`/person/${id}`, { append_to_response: 'combined_credits' })
+
+  const credits = (raw.combined_credits?.cast ?? [])
+    .filter((m) => m.media_type === 'movie' || m.media_type === 'tv')
+    .filter((m) => m.poster_path)
+    .map((m) => normalise(m))
+    // Most popular first
+    .sort((a, b) => b.voteAverage - a.voteAverage)
+
+  // De-duplicate by id+type
+  const seen = new Set<string>()
+  const uniqueCredits = credits.filter((m) => {
+    const key = `${m.mediaType}-${m.id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  return {
+    id: raw.id,
+    name: raw.name,
+    profilePath: raw.profile_path ?? null,
+    knownFor: raw.known_for_department ?? null,
+    biography: raw.biography || null,
+    birthday: raw.birthday ?? null,
+    placeOfBirth: raw.place_of_birth ?? null,
+    credits: uniqueCredits,
+  }
+}
+
+// ── Production companies / studios ─────────────────────────────────────────
+
+export async function searchCompany(query: string): Promise<Company[]> {
+  if (!query.trim()) return []
+  const data = await tmdbFetch<{ results: RawCompany[] }>('/search/company', {
+    query,
+  })
+  return data.results.map((c) => ({
+    id: c.id,
+    name: c.name,
+    logoPath: c.logo_path ?? null,
+  }))
+}
+
+export async function discoverByCompany(
+  companyId: number,
+  page = 1,
+): Promise<{ items: MediaItem[]; totalPages: number }> {
+  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>(
+    '/discover/movie',
+    {
+      with_companies: String(companyId),
+      sort_by: 'popularity.desc',
+      page: String(page),
+    },
+  )
+  return {
+    items: data.results.map((r) => normalise(r, 'movie')),
+    totalPages: data.total_pages,
   }
 }
