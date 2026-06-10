@@ -209,68 +209,46 @@ export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPag
   }
 }
 
+// Western animated TV series (Scooby-Doo, Tom & Jerry, …): genre Animation,
+// English original language to exclude Japanese anime.
 export async function getCartoons(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
-  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/movie', {
+  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/tv', {
     with_genres: '16',
+    with_original_language: 'en',
     sort_by: 'popularity.desc',
+    'vote_count.gte': '20',
     page: String(page),
   })
   return {
-    items: data.results.map((r) => normalise(r, 'movie')),
+    items: data.results.map((r) => normalise(r, 'tv')),
     totalPages: data.total_pages,
   }
 }
 
-// ── Latest releases ────────────────────────────────────────────────────────
-// Sorted by real release date (newest first), with a small vote floor to keep
-// out junk uploads while still surfacing fresh mainstream titles.
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
-export async function getLatestMovies(page = 1): Promise<MediaItem[]> {
-  const data = await tmdbFetch<{ results: RawMedia[] }>('/discover/movie', {
-    sort_by: 'primary_release_date.desc',
-    'primary_release_date.lte': today(),
-    'vote_count.gte': '5',
-    with_release_type: '2|3',
-    page: String(page),
-  })
-  return data.results.map((r) => normalise(r, 'movie'))
-}
-
-export async function getLatestTV(page = 1): Promise<MediaItem[]> {
-  const data = await tmdbFetch<{ results: RawMedia[] }>('/discover/tv', {
-    sort_by: 'first_air_date.desc',
-    'first_air_date.lte': today(),
-    'vote_count.gte': '5',
-    page: String(page),
-  })
-  return data.results.map((r) => normalise(r, 'tv'))
-}
-
-export async function getLatestAnime(page = 1): Promise<MediaItem[]> {
-  const data = await tmdbFetch<{ results: RawMedia[] }>('/discover/tv', {
-    with_genres: '16',
-    with_original_language: 'ja',
-    sort_by: 'first_air_date.desc',
-    'first_air_date.lte': today(),
-    'vote_count.gte': '3',
-    page: String(page),
-  })
-  return data.results.map((r) => normalise(r, 'tv'))
-}
-
-export async function getLatestCartoons(page = 1): Promise<MediaItem[]> {
-  const data = await tmdbFetch<{ results: RawMedia[] }>('/discover/movie', {
-    with_genres: '16',
-    sort_by: 'primary_release_date.desc',
-    'primary_release_date.lte': today(),
-    'vote_count.gte': '3',
-    page: String(page),
-  })
-  return data.results.map((r) => normalise(r, 'movie'))
+// Resolve AI text suggestions ({title}) to real TMDB items with posters.
+export async function resolveSuggestions(
+  titles: string[],
+): Promise<MediaItem[]> {
+  const found = await Promise.all(
+    titles.map(async (t) => {
+      try {
+        const results = await searchMulti(t)
+        return results[0] ?? null
+      } catch {
+        return null
+      }
+    }),
+  )
+  const seen = new Set<string>()
+  const items: MediaItem[] = []
+  for (const item of found) {
+    if (!item) continue
+    const key = `${item.mediaType}-${item.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    items.push(item)
+  }
+  return items
 }
 
 export async function getDetail(

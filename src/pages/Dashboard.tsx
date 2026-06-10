@@ -1,87 +1,128 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
-import MediaCard from '../components/MediaCard'
+import SavedTitleCard from '../components/SavedTitleCard'
+import { MediaRow, ScrollRow } from '../components/MediaRow'
 import { ErrorState, Loader } from '../components/States'
-import {
-  getTrendingMovies,
-  getTrendingTV,
-  getAnime,
-  getCartoons,
-  getLatestMovies,
-  getLatestTV,
-  getLatestAnime,
-  getLatestCartoons,
-  isTmdbConfigured,
-} from '../lib/tmdb'
+import { getTrending, resolveSuggestions, isTmdbConfigured } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
-import { getStats, type UserStats } from '../lib/userTitles'
-import type { MediaItem } from '../lib/types'
+import { getStats, listByStatus, listFavorites, type UserStats } from '../lib/userTitles'
+import type { MediaItem, UserTitle } from '../lib/types'
 
-interface Section {
-  label: string
-  icon: string
-  href?: string
-  items: MediaItem[]
+interface Suggestion {
+  title: string
+  reason: string
 }
 
-function MediaRow({ items }: { items: MediaItem[] }) {
+function SectionTitle({ icon, title, action }: { icon: string; title: string; action?: React.ReactNode }) {
   return (
-    <div className="flex gap-3 overflow-x-auto pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {items.map((item) => (
-        <div key={`${item.mediaType}-${item.id}`} className="w-36 shrink-0 sm:w-44">
-          <MediaCard item={item} />
-        </div>
-      ))}
+    <div className="mb-4 flex items-center justify-between">
+      <h2 className="font-display text-2xl tracking-wide text-zinc-100">
+        {icon} {title}
+      </h2>
+      {action}
     </div>
+  )
+}
+
+function AiSuggestions({ user }: { user: ReturnType<typeof useAuth>['user'] }) {
+  const [loading, setLoading] = useState(false)
+  const [items, setItems] = useState<MediaItem[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function generate() {
+    setLoading(true)
+    setError(null)
+    try {
+      const [favorites, watched] = user
+        ? await Promise.all([listFavorites(user.id), listByStatus(user.id, 'watched')])
+        : [[], []]
+
+      const res = await fetch('/api/recommendations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          favorites: favorites.map((f) => ({ title: f.title, mediaType: f.media_type })),
+          watched: watched.map((w) => ({ title: w.title, mediaType: w.media_type })),
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body.error ?? 'Servizio AI non disponibile.')
+      }
+      const data = (await res.json()) as { suggestions: Suggestion[] }
+      const resolved = await resolveSuggestions((data.suggestions ?? []).map((s) => s.title))
+      setItems(resolved)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <section>
+      <SectionTitle
+        icon="✨"
+        title="Suggeriti per te"
+        action={
+          <button onClick={generate} disabled={loading} className="btn-ghost px-3 py-1.5 text-sm">
+            {loading ? 'Genero…' : items ? '↻ Rigenera' : 'Genera con l’AI'}
+          </button>
+        }
+      />
+      {error ? (
+        <p className="text-sm text-curtain-light">{error}</p>
+      ) : loading ? (
+        <Loader label="L’AI sta scegliendo per te…" />
+      ) : items === null ? (
+        <p className="text-sm text-zinc-500">
+          Premi «Genera con l’AI»: analizza i tuoi preferiti e i visti per proporti il prossimo titolo.
+        </p>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-zinc-500">
+          Servono più dati: aggiungi qualche titolo ai preferiti e ai visti, poi rigenera.
+        </p>
+      ) : (
+        <MediaRow items={items} />
+      )}
+    </section>
   )
 }
 
 export default function Dashboard() {
   const { user } = useAuth()
-  const [sections, setSections] = useState<Section[]>([])
-  const [latest, setLatest] = useState<Section[]>([])
+  const [stats, setStats] = useState<UserStats | null>(null)
+  const [watchlist, setWatchlist] = useState<UserTitle[]>([])
+  const [inProgress, setInProgress] = useState<UserTitle[]>([])
+  const [trending, setTrending] = useState<MediaItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [stats, setStats] = useState<UserStats | null>(null)
 
+  // Trending — public, always shown (one compact row).
   useEffect(() => {
     if (!isTmdbConfigured) {
       setError('Configura VITE_TMDB_API_KEY per scoprire i titoli del momento.')
       setLoading(false)
       return
     }
-    Promise.all([
-      getTrendingMovies(),
-      getTrendingTV(),
-      getAnime(1),
-      getCartoons(1),
-      getLatestMovies(),
-      getLatestTV(),
-      getLatestAnime(),
-      getLatestCartoons(),
-    ])
-      .then(([movies, tv, animeRes, cartoonsRes, latMovies, latTv, latAnime, latCartoons]) => {
-        setSections([
-          { label: 'Film', icon: '🎬', items: movies },
-          { label: 'Serie TV', icon: '📺', items: tv },
-          { label: 'Anime', icon: '⛩️', href: '/anime', items: animeRes.items },
-          { label: 'Cartoni animati', icon: '🎨', href: '/cartoons', items: cartoonsRes.items },
-        ])
-        setLatest([
-          { label: 'Film', icon: '🎬', items: latMovies },
-          { label: 'Serie TV', icon: '📺', items: latTv },
-          { label: 'Anime', icon: '⛩️', items: latAnime },
-          { label: 'Cartoni animati', icon: '🎨', items: latCartoons },
-        ])
-      })
+    getTrending()
+      .then(setTrending)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [])
 
+  // Personal lists from Supabase.
   useEffect(() => {
-    if (!user) { setStats(null); return }
+    if (!user) {
+      setStats(null)
+      setWatchlist([])
+      setInProgress([])
+      return
+    }
     getStats(user.id).then(setStats).catch(() => setStats(null))
+    listByStatus(user.id, 'to_watch').then(setWatchlist).catch(() => setWatchlist([]))
+    listByStatus(user.id, 'in_progress').then(setInProgress).catch(() => setInProgress([]))
   }, [user])
 
   const statCards = [
@@ -96,7 +137,7 @@ export default function Dashboard() {
       <PageHeader
         eyebrow="La tua sala"
         title="Bentornato al cinema"
-        subtitle="Le tue statistiche e i titoli che stanno spopolando oggi."
+        subtitle="I tuoi titoli, i suggerimenti su misura e cosa sta spopolando."
       />
 
       <div className="mb-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -114,66 +155,83 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {loading ? (
-        <Loader label="Accendo il proiettore…" />
-      ) : error ? (
-        <ErrorState title="Niente proiezione" message={error} />
-      ) : (
-        <div className="space-y-12">
-          <div>
-            <div className="mb-6 flex items-center gap-3">
-              <h2 className="font-display text-3xl tracking-wide text-projector">
-                🔥 Di tendenza
-              </h2>
-              <span className="text-sm text-zinc-500">Questa settimana</span>
-            </div>
-            <div className="space-y-10">
-              {sections.map((section) => (
-                <SectionRow key={section.label} section={section} />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-6 flex items-center gap-3">
-              <h2 className="font-display text-3xl tracking-wide text-projector">
-                🆕 Ultime uscite
-              </h2>
-              <span className="text-sm text-zinc-500">Le novità più recenti</span>
-            </div>
-            <div className="space-y-10">
-              {latest.map((section) => (
-                <SectionRow key={section.label} section={section} />
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SectionRow({ section }: { section: Section }) {
-  return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-display text-2xl tracking-wide text-zinc-100">
-          {section.icon} {section.label}
-        </h3>
-        {section.href && (
-          <Link
-            to={section.href}
-            className="text-sm text-projector/70 transition hover:text-projector"
-          >
-            Vedi tutti →
-          </Link>
+      <div className="space-y-12">
+        {/* Continue watching */}
+        {user && inProgress.length > 0 && (
+          <section>
+            <SectionTitle
+              icon="▶️"
+              title="Continua a guardare"
+              action={
+                <Link to="/lists/in-progress" className="text-sm text-projector/70 hover:text-projector">
+                  Vedi tutti →
+                </Link>
+              }
+            />
+            <ScrollRow>
+              {inProgress.map((r) => <SavedTitleCard key={r.id} record={r} />)}
+            </ScrollRow>
+          </section>
         )}
+
+        {/* Watchlist */}
+        {user && watchlist.length > 0 && (
+          <section>
+            <SectionTitle
+              icon="🎟️"
+              title="Da vedere"
+              action={
+                <Link to="/lists/watchlist" className="text-sm text-projector/70 hover:text-projector">
+                  Vedi tutti →
+                </Link>
+              }
+            />
+            <ScrollRow>
+              {watchlist.map((r) => <SavedTitleCard key={r.id} record={r} />)}
+            </ScrollRow>
+          </section>
+        )}
+
+        {/* AI suggestions */}
+        {user && <AiSuggestions user={user} />}
+
+        {/* Empty state for signed-in users with nothing yet */}
+        {user && watchlist.length === 0 && inProgress.length === 0 && (
+          <section className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
+            <p className="text-zinc-300">
+              La tua sala è ancora vuota. Esplora il catalogo e aggiungi i titoli che vuoi vedere.
+            </p>
+            <div className="mt-4 flex justify-center gap-3">
+              <Link to="/explore" className="btn-primary">🔍 Esplora</Link>
+              <Link to="/search" className="btn-ghost">Cerca un titolo</Link>
+            </div>
+          </section>
+        )}
+
+        {/* Login prompt for guests */}
+        {!user && (
+          <section className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
+            <p className="text-zinc-300">
+              Accedi per creare le tue liste, salvare i preferiti e ricevere suggerimenti AI su misura.
+            </p>
+            <Link to="/login" className="btn-primary mt-4 inline-flex">🎟️ Accedi</Link>
+          </section>
+        )}
+
+        {/* Trending — one compact row */}
+        <section>
+          <SectionTitle icon="🔥" title="Di tendenza" action={
+            <span className="text-sm text-zinc-500">Questa settimana</span>
+          } />
+          {loading ? (
+            <Loader label="Accendo il proiettore…" />
+          ) : error ? (
+            <ErrorState title="Niente proiezione" message={error} />
+          ) : (
+            <MediaRow items={trending} />
+          )}
+        </section>
       </div>
-      {section.items.length > 0 ? (
-        <MediaRow items={section.items} />
-      ) : (
-        <p className="text-sm text-zinc-600">Nessun titolo disponibile.</p>
-      )}
     </div>
   )
 }
