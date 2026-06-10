@@ -79,7 +79,7 @@ export default function App() {
             <CatalogPage
               eyebrow="Catalogo"
               title="Cartoni animati"
-              subtitle="Film d'animazione da tutto il mondo: Disney, Pixar, DreamWorks e oltre."
+              subtitle="Le serie animate occidentali: Scooby-Doo, Tom & Jerry e altri classici."
               fetcher={getCartoons}
             />
           }
