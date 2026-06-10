@@ -32,7 +32,21 @@ export interface MediaDetail extends MediaItem {
   runtime: number | null
   tagline: string | null
   cast: CastMember[]
+  crew: CrewMember[]
   recommendations: MediaItem[]
+  originalTitle: string | null
+  originalLanguage: string | null
+  status: string | null
+  productionCompanies: Company[]
+  productionCountries: string[]
+  budget: number | null
+  revenue: number | null
+  homepage: string | null
+  // TV-specific
+  numberOfSeasons: number | null
+  numberOfEpisodes: number | null
+  // Directors / creators, derived from crew
+  directors: string[]
 }
 
 export interface CastMember {
@@ -40,6 +54,34 @@ export interface CastMember {
   name: string
   character: string
   profilePath: string | null
+}
+
+export interface CrewMember {
+  id: number
+  name: string
+  job: string
+  profilePath: string | null
+}
+
+export interface Company {
+  id: number
+  name: string
+  logoPath: string | null
+}
+
+// A person (actor / director) from TMDB.
+export interface Person {
+  id: number
+  name: string
+  profilePath: string | null
+  knownFor: string | null
+}
+
+export interface PersonDetail extends Person {
+  biography: string | null
+  birthday: string | null
+  placeOfBirth: string | null
+  credits: MediaItem[]
 }
 
 export interface Genre {
@@ -62,7 +104,23 @@ export interface UserTitle {
   personal_rating: number | null
   notes: string | null
   watched_at: string | null
+  genre_ids: number[]
   created_at: string
+  updated_at: string
+}
+
+// `user_achievements` — trophies unlocked by the user.
+export interface UserAchievement {
+  id: string
+  user_id: string
+  achievement_id: string
+  unlocked_at: string
+}
+
+// `user_profile` — active badge chosen by the user.
+export interface UserProfile {
+  user_id: string
+  active_achievement_id: string | null
   updated_at: string
 }
 

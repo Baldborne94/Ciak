@@ -7,10 +7,30 @@ import {
   backdropUrl,
   getDetail,
   isTmdbConfigured,
+  logoUrl,
   posterUrl,
   profileUrl,
 } from '../lib/tmdb'
 import type { MediaDetail, TmdbType } from '../lib/types'
+
+const LANG_NAMES: Record<string, string> = {
+  en: 'Inglese', it: 'Italiano', ja: 'Giapponese', fr: 'Francese',
+  es: 'Spagnolo', de: 'Tedesco', ko: 'Coreano', zh: 'Cinese',
+  hi: 'Hindi', ru: 'Russo', pt: 'Portoghese', sv: 'Svedese',
+  da: 'Danese', no: 'Norvegese', nl: 'Olandese', tr: 'Turco',
+}
+
+const STATUS_NAMES: Record<string, string> = {
+  Released: 'Uscito', 'Post Production': 'Post-produzione',
+  'In Production': 'In produzione', Planned: 'Pianificato',
+  'Returning Series': 'In corso', Ended: 'Conclusa', Canceled: 'Cancellata',
+}
+
+function formatMoney(n: number): string {
+  return new Intl.NumberFormat('it-IT', {
+    style: 'currency', currency: 'USD', maximumFractionDigits: 0,
+  }).format(n)
+}
 
 export default function TitleDetail() {
   const { mediaType, id } = useParams<{ mediaType: TmdbType; id: string }>()
@@ -98,6 +118,15 @@ export default function TitleDetail() {
               ))}
             </div>
 
+            {detail.directors.length > 0 && (
+              <p className="mt-4 text-sm text-zinc-400">
+                <span className="text-zinc-500">
+                  {detail.mediaType === 'tv' ? 'Creata da: ' : 'Regia: '}
+                </span>
+                <span className="text-zinc-200">{detail.directors.join(', ')}</span>
+              </p>
+            )}
+
             <p className="mt-5 max-w-2xl text-zinc-300">
               {detail.overview || 'Nessuna trama disponibile.'}
             </p>
@@ -109,11 +138,89 @@ export default function TitleDetail() {
                 mediaType: detail.mediaType,
                 title: detail.title,
                 posterPath: detail.posterPath,
+                genreIds: detail.genreIds,
               }}
             />
           </div>
         </div>
       </div>
+
+      {/* Technical details */}
+      <section>
+        <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
+          📋 Scheda tecnica
+        </h2>
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+          {detail.originalTitle && detail.originalTitle !== detail.title && (
+            <Info label="Titolo originale" value={detail.originalTitle} />
+          )}
+          {detail.originalLanguage && (
+            <Info
+              label="Lingua originale"
+              value={LANG_NAMES[detail.originalLanguage] ?? detail.originalLanguage.toUpperCase()}
+            />
+          )}
+          {detail.status && (
+            <Info label="Stato" value={STATUS_NAMES[detail.status] ?? detail.status} />
+          )}
+          {detail.productionCountries.length > 0 && (
+            <Info label="Paese" value={detail.productionCountries.join(', ')} />
+          )}
+          {detail.numberOfSeasons != null && (
+            <Info label="Stagioni" value={String(detail.numberOfSeasons)} />
+          )}
+          {detail.numberOfEpisodes != null && (
+            <Info label="Episodi" value={String(detail.numberOfEpisodes)} />
+          )}
+          {detail.runtime != null && (
+            <Info label="Durata" value={`${detail.runtime} min`} />
+          )}
+          {detail.budget != null && detail.budget > 0 && (
+            <Info label="Budget" value={formatMoney(detail.budget)} />
+          )}
+          {detail.revenue != null && detail.revenue > 0 && (
+            <Info label="Incassi" value={formatMoney(detail.revenue)} />
+          )}
+        </dl>
+
+        {detail.productionCompanies.length > 0 && (
+          <div className="mt-6">
+            <p className="mb-3 text-xs uppercase tracking-wider text-zinc-500">
+              Studi di produzione
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {detail.productionCompanies.map((c) => {
+                const logo = logoUrl(c.logoPath)
+                return (
+                  <Link
+                    key={c.id}
+                    to={`/studio/${c.id}`}
+                    className="flex items-center gap-2 rounded-lg border border-theatre-700 bg-theatre-900/60 px-3 py-2 text-sm text-zinc-300 transition hover:border-projector/40 hover:text-projector"
+                  >
+                    {logo ? (
+                      <img src={logo} alt={c.name} className="max-h-6 bg-white/90 px-1" />
+                    ) : (
+                      <span>🏛️</span>
+                    )}
+                    {c.name}
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {detail.homepage && (
+          <a
+            href={detail.homepage}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-6 inline-block text-sm text-projector/80 hover:text-projector"
+          >
+            🔗 Sito ufficiale
+          </a>
+        )}
+      </section>
 
       {/* Cast */}
       {detail.cast.length > 0 && (
@@ -125,14 +232,18 @@ export default function TitleDetail() {
             {detail.cast.map((member) => {
               const photo = profileUrl(member.profilePath)
               return (
-                <div key={member.id} className="text-center">
-                  <div className="aspect-square overflow-hidden rounded-full border border-theatre-700 bg-theatre-800">
+                <Link
+                  to={`/person/${member.id}`}
+                  key={member.id}
+                  className="group text-center"
+                >
+                  <div className="aspect-square overflow-hidden rounded-full border border-theatre-700 bg-theatre-800 transition group-hover:border-projector/50">
                     {photo ? (
                       <img
                         src={photo}
                         alt={member.name}
                         loading="lazy"
-                        className="h-full w-full object-cover"
+                        className="h-full w-full object-cover transition group-hover:scale-105"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-2xl opacity-30">
@@ -140,13 +251,13 @@ export default function TitleDetail() {
                       </div>
                     )}
                   </div>
-                  <p className="mt-2 line-clamp-1 text-sm font-medium text-zinc-200">
+                  <p className="mt-2 line-clamp-1 text-sm font-medium text-zinc-200 group-hover:text-projector">
                     {member.name}
                   </p>
                   <p className="line-clamp-1 text-xs text-zinc-500">
                     {member.character}
                   </p>
-                </div>
+                </Link>
               )
             })}
           </div>
@@ -166,6 +277,15 @@ export default function TitleDetail() {
       <Link to="/search" className="inline-block text-sm text-projector/80 hover:text-projector">
         ← Torna alla ricerca
       </Link>
+    </div>
+  )
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-theatre-800 bg-theatre-900/40 p-3">
+      <dt className="text-xs uppercase tracking-wider text-zinc-500">{label}</dt>
+      <dd className="mt-1 text-sm font-medium text-zinc-200">{value}</dd>
     </div>
   )
 }

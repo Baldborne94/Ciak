@@ -2,18 +2,127 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    color-scheme: dark;
-  }
+/* ── Default cinema theme ── */
+:root {
+  color-scheme: dark;
 
+  --colour-theatre-950: 10 10 15;
+  --colour-theatre-900: 18 18 24;
+  --colour-theatre-800: 28 28 38;
+  --colour-theatre-700: 42 42 56;
+
+  /* Gold projector + dark red curtain */
+  --colour-projector:       232 185 35;
+  --colour-projector-light: 245 209 97;
+  --colour-projector-dark:  184 144 26;
+  --colour-curtain:         155 28 28;
+  --colour-curtain-light:   198 40 40;
+  --colour-curtain-dark:    109 20 20;
+}
+
+/* ── Theme overrides ─────────────────────────────────────────────── */
+
+[data-theme="horror"] {
+  --colour-projector:       239 68 68;
+  --colour-projector-light: 252 165 165;
+  --colour-projector-dark:  185 28 28;
+  --colour-curtain:         127 29 29;
+  --colour-curtain-light:   185 28 28;
+  --colour-curtain-dark:    69 10 10;
+}
+
+[data-theme="scifi"] {
+  --colour-projector:       6 182 212;
+  --colour-projector-light: 103 232 249;
+  --colour-projector-dark:  8 145 178;
+  --colour-curtain:         7 89 133;
+  --colour-curtain-light:   14 116 144;
+  --colour-curtain-dark:    7 55 99;
+}
+
+[data-theme="fantasy"] {
+  --colour-projector:       167 139 250;
+  --colour-projector-light: 196 181 253;
+  --colour-projector-dark:  124 58 237;
+  --colour-curtain:         91 33 182;
+  --colour-curtain-light:   109 40 217;
+  --colour-curtain-dark:    55 13 136;
+}
+
+[data-theme="anime"] {
+  --colour-projector:       244 114 182;
+  --colour-projector-light: 251 182 206;
+  --colour-projector-dark:  219 39 119;
+  --colour-curtain:         168 85 247;
+  --colour-curtain-light:   192 132 252;
+  --colour-curtain-dark:    126 34 206;
+}
+
+[data-theme="romance"] {
+  --colour-projector:       251 113 133;
+  --colour-projector-light: 253 164 175;
+  --colour-projector-dark:  225 29 72;
+  --colour-curtain:         190 18 60;
+  --colour-curtain-light:   225 29 72;
+  --colour-curtain-dark:    136 19 55;
+}
+
+[data-theme="action"] {
+  --colour-projector:       249 115 22;
+  --colour-projector-light: 253 186 116;
+  --colour-projector-dark:  194 65 12;
+  --colour-curtain:         154 52 18;
+  --colour-curtain-light:   194 65 12;
+  --colour-curtain-dark:    120 40 14;
+}
+
+[data-theme="gold"] {
+  --colour-projector:       251 191 36;
+  --colour-projector-light: 253 224 71;
+  --colour-projector-dark:  217 119 6;
+  --colour-curtain:         180 83 9;
+  --colour-curtain-light:   217 119 6;
+  --colour-curtain-dark:    120 53 15;
+}
+
+[data-theme="platinum"] {
+  --colour-projector:       203 213 225;
+  --colour-projector-light: 226 232 240;
+  --colour-projector-dark:  148 163 184;
+  --colour-curtain:         99 102 241;
+  --colour-curtain-light:   129 140 248;
+  --colour-curtain-dark:    67 56 202;
+}
+
+[data-theme="western"] {
+  --colour-projector:       217 119 6;
+  --colour-projector-light: 245 158 11;
+  --colour-projector-dark:  180 83 9;
+  --colour-curtain:         120 53 15;
+  --colour-curtain-light:   154 52 18;
+  --colour-curtain-dark:    92 40 11;
+}
+
+[data-theme="crime"] {
+  --colour-projector:       163 163 163;
+  --colour-projector-light: 212 212 212;
+  --colour-projector-dark:  115 115 115;
+  --colour-curtain:         51 65 85;
+  --colour-curtain-light:   71 85 105;
+  --colour-curtain-dark:    30 41 59;
+}
+
+/* ── Base styles ─────────────────────────────────────────────────── */
+
+@layer base {
   body {
     @apply bg-theatre-950 text-zinc-100 antialiased;
     background-image:
-      radial-gradient(circle at 50% -10%, rgba(232, 185, 35, 0.08), transparent 55%),
-      radial-gradient(circle at 100% 100%, rgba(155, 28, 28, 0.06), transparent 50%);
+      radial-gradient(circle at 50% -10%,  rgb(var(--colour-projector) / 0.08), transparent 55%),
+      radial-gradient(circle at 100% 100%, rgb(var(--colour-curtain)   / 0.06), transparent 50%);
     background-attachment: fixed;
     min-height: 100vh;
+    transition: background-image 0.6s ease;
   }
 }
 

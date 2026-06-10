@@ -7,9 +7,16 @@ import TitleDetail from './pages/TitleDetail'
 import ListPage from './pages/ListPage'
 import Favorites from './pages/Favorites'
 import Recommendations from './pages/Recommendations'
+import CatalogPage from './pages/CatalogPage'
+import TrophiesPage from './pages/TrophiesPage'
+import Explore from './pages/Explore'
+import GenrePage from './pages/GenrePage'
+import PersonPage from './pages/PersonPage'
+import StudioPage from './pages/StudioPage'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
+import { getAnime, getCartoons } from './lib/tmdb'
 
 export default function App() {
   return (
@@ -17,6 +24,10 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="search" element={<Search />} />
+        <Route path="explore" element={<Explore />} />
+        <Route path="genre/:type/:genreId" element={<GenrePage />} />
+        <Route path="person/:id" element={<PersonPage />} />
+        <Route path="studio/:id" element={<StudioPage />} />
         <Route path="title/:mediaType/:id" element={<TitleDetail />} />
         <Route path="login" element={<Login />} />
         <Route
@@ -51,7 +62,30 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route
+          path="anime"
+          element={
+            <CatalogPage
+              eyebrow="Catalogo"
+              title="Anime"
+              subtitle="Le serie animate giapponesi più popolari del momento."
+              fetcher={getAnime}
+            />
+          }
+        />
+        <Route
+          path="cartoons"
+          element={
+            <CatalogPage
+              eyebrow="Catalogo"
+              title="Cartoni animati"
+              subtitle="Film d'animazione da tutto il mondo: Disney, Pixar, DreamWorks e oltre."
+              fetcher={getCartoons}
+            />
+          }
+        />
         <Route path="recommendations" element={<Recommendations />} />
+        <Route path="trophies" element={<TrophiesPage />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />
       </Route>
