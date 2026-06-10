@@ -4,8 +4,10 @@ import { useAuth } from '../lib/auth'
 import {
   getUserTitle,
   upsertUserTitle,
+  checkAndUnlockAchievements,
   type TitleRef,
 } from '../lib/userTitles'
+import { useAchievementsCtx } from '../lib/achievementsContext'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
 const STATUS_ORDER: TitleStatus[] = [
@@ -17,6 +19,7 @@ const STATUS_ORDER: TitleStatus[] = [
 
 export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
   const { user } = useAuth()
+  const { notify } = useAchievementsCtx()
   const [record, setRecord] = useState<UserTitle | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -55,6 +58,10 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
     try {
       const next = await upsertUserTitle(user.id, titleRef, patch)
       setRecord(next)
+      // Check for newly unlocked trophies after every save
+      checkAndUnlockAchievements(user.id).then((newOnes) => {
+        if (newOnes.length > 0) notify(newOnes)
+      })
     } catch (e) {
       setError((e as Error).message)
     } finally {

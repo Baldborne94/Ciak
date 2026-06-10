@@ -62,7 +62,23 @@ export interface UserTitle {
   personal_rating: number | null
   notes: string | null
   watched_at: string | null
+  genre_ids: number[]
   created_at: string
+  updated_at: string
+}
+
+// `user_achievements` — trophies unlocked by the user.
+export interface UserAchievement {
+  id: string
+  user_id: string
+  achievement_id: string
+  unlocked_at: string
+}
+
+// `user_profile` — active badge chosen by the user.
+export interface UserProfile {
+  user_id: string
+  active_achievement_id: string | null
   updated_at: string
 }
 

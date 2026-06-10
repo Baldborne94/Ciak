@@ -1,4 +1,10 @@
 import { supabase } from './supabase'
+import {
+  computeAchievementData,
+  getEarnedIds,
+  ACHIEVEMENTS,
+  type Achievement,
+} from './achievements'
 import type {
   MediaItem,
   TitleStatus,
@@ -21,6 +27,7 @@ export interface TitleRef {
   mediaType: TmdbType
   title: string
   posterPath: string | null
+  genreIds: number[]
 }
 
 export function refFromMedia(item: MediaItem): TitleRef {
@@ -29,6 +36,7 @@ export function refFromMedia(item: MediaItem): TitleRef {
     mediaType: item.mediaType,
     title: item.title,
     posterPath: item.posterPath,
+    genreIds: item.genreIds,
   }
 }
 
@@ -64,6 +72,8 @@ export async function upsertUserTitle(
     media_type: ref.mediaType,
     title: ref.title,
     poster_path: ref.posterPath,
+    // Only update genre_ids if we have real data; preserve existing on pure metadata updates
+    genre_ids: ref.genreIds.length > 0 ? ref.genreIds : (existing?.genre_ids ?? []),
     status: patch.status ?? existing?.status ?? 'to_watch',
     is_favorite: patch.is_favorite ?? existing?.is_favorite ?? false,
     personal_rating:
@@ -140,4 +150,66 @@ export async function getStats(userId: string): Promise<UserStats> {
     toWatch: rows.filter((r) => r.status === 'to_watch').length,
     inProgress: rows.filter((r) => r.status === 'in_progress').length,
   }
+}
+
+// ── Achievements ──────────────────────────────────────────────────────────────
+
+export async function checkAndUnlockAchievements(
+  userId: string,
+): Promise<Achievement[]> {
+  const db = client()
+
+  const { data: titles } = await db
+    .from(TABLE)
+    .select('status, is_favorite, personal_rating, notes, genre_ids')
+    .eq('user_id', userId)
+
+  if (!titles) return []
+
+  const data = computeAchievementData(titles)
+  const earnedIds = getEarnedIds(data)
+
+  const { data: already } = await db
+    .from('user_achievements')
+    .select('achievement_id')
+    .eq('user_id', userId)
+
+  const alreadySet = new Set((already ?? []).map((r: { achievement_id: string }) => r.achievement_id))
+  const newIds = earnedIds.filter((id) => !alreadySet.has(id))
+
+  if (newIds.length > 0) {
+    await db.from('user_achievements').upsert(
+      newIds.map((achievement_id) => ({ user_id: userId, achievement_id })),
+      { onConflict: 'user_id,achievement_id', ignoreDuplicates: true },
+    )
+  }
+
+  return newIds.map((id) => ACHIEVEMENTS.find((a) => a.id === id)!).filter(Boolean)
+}
+
+export async function getUnlockedAchievementIds(userId: string): Promise<string[]> {
+  const { data } = await client()
+    .from('user_achievements')
+    .select('achievement_id')
+    .eq('user_id', userId)
+  return (data ?? []).map((r: { achievement_id: string }) => r.achievement_id)
+}
+
+export async function getActiveAchievementId(userId: string): Promise<string | null> {
+  const { data } = await client()
+    .from('user_profile')
+    .select('active_achievement_id')
+    .eq('user_id', userId)
+    .maybeSingle()
+  return (data as { active_achievement_id: string | null } | null)?.active_achievement_id ?? null
+}
+
+export async function setActiveAchievement(
+  userId: string,
+  achievementId: string,
+): Promise<void> {
+  const { error } = await client()
+    .from('user_profile')
+    .upsert({ user_id: userId, active_achievement_id: achievementId })
+  if (error) throw new Error(error.message)
 }

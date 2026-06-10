@@ -62,7 +62,7 @@ function FavoriteEditor({
           backdropPath: null,
           releaseDate: null,
           voteAverage: 0,
-          genreIds: [],
+          genreIds: record.genre_ids ?? [],
         }),
         patch,
       )

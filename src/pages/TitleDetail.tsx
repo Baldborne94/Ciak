@@ -109,6 +109,7 @@ export default function TitleDetail() {
                 mediaType: detail.mediaType,
                 title: detail.title,
                 posterPath: detail.posterPath,
+                genreIds: detail.genreIds,
               }}
             />
           </div>

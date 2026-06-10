@@ -4,22 +4,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Cinema-themed palette: dark theatre, projector gold, curtain red
+        // Cinema-themed palette — powered by CSS variables for dynamic theming
         theatre: {
-          950: '#0a0a0f',
-          900: '#121218',
-          800: '#1c1c26',
-          700: '#2a2a38',
+          950: 'rgb(var(--colour-theatre-950) / <alpha-value>)',
+          900: 'rgb(var(--colour-theatre-900) / <alpha-value>)',
+          800: 'rgb(var(--colour-theatre-800) / <alpha-value>)',
+          700: 'rgb(var(--colour-theatre-700) / <alpha-value>)',
         },
         projector: {
-          DEFAULT: '#e8b923',
-          light: '#f5d161',
-          dark: '#b8901a',
+          DEFAULT: 'rgb(var(--colour-projector) / <alpha-value>)',
+          light:   'rgb(var(--colour-projector-light) / <alpha-value>)',
+          dark:    'rgb(var(--colour-projector-dark) / <alpha-value>)',
         },
         curtain: {
-          DEFAULT: '#9b1c1c',
-          light: '#c62828',
-          dark: '#6d1414',
+          DEFAULT: 'rgb(var(--colour-curtain) / <alpha-value>)',
+          light:   'rgb(var(--colour-curtain-light) / <alpha-value>)',
+          dark:    'rgb(var(--colour-curtain-dark) / <alpha-value>)',
         },
       },
       fontFamily: {

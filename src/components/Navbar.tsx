@@ -1,5 +1,6 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { useAchievementsCtx, achievementById } from '../lib/achievementsContext'
 
 const links = [
   { to: '/', label: 'Sala', end: true },
@@ -11,11 +12,14 @@ const links = [
   { to: '/lists/in-progress', label: 'In corso' },
   { to: '/favorites', label: 'Preferiti' },
   { to: '/recommendations', label: 'Per te' },
+  { to: '/trophies', label: '🏆 Trofei' },
 ]
 
 export default function Navbar() {
   const { user, signOut } = useAuth()
   const navigate = useNavigate()
+  const { activeAchievementId } = useAchievementsCtx()
+  const activeAchievement = activeAchievementId ? achievementById(activeAchievementId) : undefined
 
   async function onSignOut() {
     await signOut()
@@ -57,12 +61,16 @@ export default function Navbar() {
         <div className="flex items-center gap-2">
           {user ? (
             <>
-              <span
-                className="hidden max-w-[12rem] truncate text-sm text-zinc-400 sm:inline"
-                title={user.email ?? undefined}
+              <NavLink
+                to="/trophies"
+                className="hidden items-center gap-1.5 sm:flex"
+                title={activeAchievement?.title ?? 'Trofei'}
               >
-                {user.email}
-              </span>
+                <span className="text-xl">{activeAchievement?.emoji ?? '🎬'}</span>
+                <span className="max-w-[8rem] truncate text-sm text-zinc-400">
+                  {activeAchievement?.title ?? user.email}
+                </span>
+              </NavLink>
               <button onClick={onSignOut} className="btn-ghost px-3 py-2">
                 Esci
               </button>

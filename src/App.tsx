@@ -8,6 +8,7 @@ import ListPage from './pages/ListPage'
 import Favorites from './pages/Favorites'
 import Recommendations from './pages/Recommendations'
 import CatalogPage from './pages/CatalogPage'
+import TrophiesPage from './pages/TrophiesPage'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
@@ -76,6 +77,7 @@ export default function App() {
           }
         />
         <Route path="recommendations" element={<Recommendations />} />
+        <Route path="trophies" element={<TrophiesPage />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />
       </Route>
