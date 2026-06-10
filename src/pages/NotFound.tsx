@@ -1,19 +1,16 @@
 import { Link } from 'react-router-dom'
+import EmptyState from '@/components/EmptyState'
 
 export default function NotFound() {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 py-24 text-center">
-      <span className="text-6xl">🎬</span>
-      <h1 className="font-display text-5xl tracking-wide text-projector">
-        Scena non trovata
-      </h1>
-      <p className="max-w-md text-zinc-400">
-        Questa pagina è finita sul pavimento della sala di montaggio. Torniamo in
-        sala?
-      </p>
-      <Link to="/" className="btn-primary">
-        ← Torna alla Dashboard
+    <EmptyState
+      icon="🎬"
+      title="Scena tagliata al montaggio"
+      message="La pagina che cerchi non esiste o è finita sul pavimento della sala montaggio."
+    >
+      <Link to="/" className="btn-gold mt-2">
+        ← Torna in sala
       </Link>
-    </div>
+    </EmptyState>
   )
 }

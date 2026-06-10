@@ -1,124 +1,53 @@
-import Anthropic from '@anthropic-ai/sdk'
+// ════════════════════════════════════════════════════════════════════
+//  Serverless function (Vercel) — Raccomandazioni AI
+//  Gira SERVER-SIDE: qui la ANTHROPIC_API_KEY non è mai esposta al browser.
+//
+//  Stato: stub per la Fase 6. La logica completa leggerà i titoli
+//  preferiti/visti (passati dal client o letti via Supabase service role),
+//  costruirà un prompt e chiamerà Anthropic per generare suggerimenti
+//  con spiegazione personalizzata.
+// ════════════════════════════════════════════════════════════════════
 
-// Vercel serverless function (Node runtime).
-// The Anthropic key lives ONLY on the server — never prefixed with VITE_, so it
-// is never bundled into the browser. The browser POSTs the user's favorite and
-// watched titles; we ask Claude for personalised picks with an explanation each.
+export const config = { runtime: 'edge' }
 
-interface TitleSummary {
-  title: string
-  mediaType?: string
-  year?: string | number
-  genres?: string[]
-}
-
-interface RequestBody {
-  favorites?: TitleSummary[]
-  watched?: TitleSummary[]
-  excludedGenres?: string[]
-}
-
-const SYSTEM_PROMPT = `Sei il curatore cinematografico di CineVault, un cinefilo appassionato.
-Analizzi i titoli preferiti e già visti dall'utente per individuare pattern — generi
-ricorrenti, registi amati, temi narrativi, periodi storici — e proponi nuovi titoli.
-Per ogni suggerimento scrivi una spiegazione personalizzata e calorosa in italiano,
-del tipo "Te lo consiglio perché ami X e Y, e questo titolo condivide…".
-Suggerisci titoli reali ed esistenti. Non ripetere titoli già visti o già preferiti.`
-
-const OUTPUT_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    suggestions: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          title: { type: 'string' },
-          reason: { type: 'string' },
-        },
-        required: ['title', 'reason'],
-      },
-    },
-  },
-  required: ['suggestions'],
-} as const
-
-function describe(titles: TitleSummary[] = []): string {
-  if (titles.length === 0) return '(nessuno)'
-  return titles
-    .map((t) => {
-      const parts = [t.title]
-      if (t.year) parts.push(`(${t.year})`)
-      if (t.genres?.length) parts.push(`— ${t.genres.join(', ')}`)
-      return parts.join(' ')
-    })
-    .join('\n')
-}
-
-// Minimal Vercel-style handler signature, kept framework-agnostic.
-interface ApiRequest {
-  method?: string
-  body?: RequestBody | string
-}
-interface ApiResponse {
-  status: (code: number) => ApiResponse
-  json: (body: unknown) => void
-}
-
-export default async function handler(req: ApiRequest, res: ApiResponse) {
+export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Metodo non consentito. Usa POST.' })
-    return
+    return json({ error: 'Metodo non consentito' }, 405)
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    res.status(503).json({
-      error:
-        'Le raccomandazioni AI non sono ancora configurate (manca ANTHROPIC_API_KEY lato server).',
-    })
-    return
+    return json(
+      { error: 'ANTHROPIC_API_KEY non configurata sul server.' },
+      500,
+    )
   }
 
-  const body: RequestBody =
-    typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
+  // TODO (Fase 6): leggere preferiti/visti + preferenze, costruire il prompt
+  // e chiamare l'API Anthropic (modello consigliato: claude-sonnet-4-6).
+  // Esempio di flusso previsto:
+  //
+  //   import Anthropic from '@anthropic-ai/sdk'
+  //   const client = new Anthropic({ apiKey })
+  //   const msg = await client.messages.create({
+  //     model: 'claude-sonnet-4-6',
+  //     max_tokens: 1024,
+  //     messages: [{ role: 'user', content: buildPrompt(payload) }],
+  //   })
+  //
+  return json(
+    {
+      status: 'not_implemented',
+      message:
+        'Raccomandazioni AI in arrivo nella Fase 6. La function è pronta e la chiave è server-side.',
+    },
+    501,
+  )
+}
 
-  const { favorites = [], watched = [], excludedGenres = [] } = body
-
-  if (favorites.length === 0 && watched.length === 0) {
-    res.status(200).json({ suggestions: [] })
-    return
-  }
-
-  const client = new Anthropic({ apiKey })
-
-  const userPrompt = [
-    `Titoli PREFERITI dell'utente:\n${describe(favorites)}`,
-    `\nTitoli GIÀ VISTI:\n${describe(watched)}`,
-    excludedGenres.length
-      ? `\nGeneri da ESCLUDERE dai suggerimenti: ${excludedGenres.join(', ')}`
-      : '',
-    `\nProponi da 5 a 8 titoli nuovi, ciascuno con una spiegazione personalizzata.`,
-  ].join('\n')
-
-  try {
-    const message = await client.messages.create({
-      model: 'claude-opus-4-8',
-      max_tokens: 2048,
-      thinking: { type: 'adaptive' },
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userPrompt }],
-      output_config: { format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
-    })
-
-    const textBlock = message.content.find((b) => b.type === 'text')
-    const parsed = textBlock && 'text' in textBlock ? JSON.parse(textBlock.text) : { suggestions: [] }
-    res.status(200).json(parsed)
-  } catch (err) {
-    res.status(502).json({
-      error: `Errore nel generare le raccomandazioni: ${(err as Error).message}`,
-    })
-  }
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  })
 }

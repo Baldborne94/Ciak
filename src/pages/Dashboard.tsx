@@ -1,77 +1,67 @@
-import { useEffect, useState } from 'react'
-import PageHeader from '../components/PageHeader'
-import MediaGrid from '../components/MediaGrid'
-import { EmptyState, ErrorState, Loader } from '../components/States'
-import { getTrending, isTmdbConfigured } from '../lib/tmdb'
-import type { MediaItem } from '../lib/types'
+import { useQuery } from '@tanstack/react-query'
+import { getTrending } from '@/lib/tmdb'
+import PageHeader from '@/components/PageHeader'
+import TitleGrid from '@/components/TitleGrid'
+import Spinner from '@/components/Spinner'
+import EmptyState from '@/components/EmptyState'
 
+// Statistiche personali: placeholder finché non colleghiamo Supabase (Fase 5).
 const STATS = [
-  { label: 'Titoli visti', value: '—', icon: '🎬' },
+  { label: 'Titoli visti', value: '—', icon: '🎟️' },
   { label: 'Ore di visione', value: '—', icon: '⏱️' },
   { label: 'Genere top', value: '—', icon: '🎭' },
-  { label: 'Preferiti', value: '—', icon: '❤️' },
+  { label: 'Preferiti', value: '—', icon: '⭐' },
 ]
 
 export default function Dashboard() {
-  const [trending, setTrending] = useState<MediaItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!isTmdbConfigured) {
-      setError('Configura VITE_TMDB_API_KEY per scoprire i titoli del momento.')
-      setLoading(false)
-      return
-    }
-    getTrending()
-      .then(setTrending)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['trending'],
+    queryFn: getTrending,
+  })
 
   return (
     <div>
       <PageHeader
-        eyebrow="La tua sala"
-        title="Bentornato al cinema"
-        subtitle="Le tue statistiche e i titoli che stanno spopolando oggi."
+        eyebrow="Benvenuto in sala"
+        title="Cosa si proietta oggi"
+        subtitle="I titoli del momento da tutto il mondo, più il riepilogo del tuo caveau personale."
       />
 
-      {/* Personal stats — wired to Supabase in a later phase. */}
-      <div className="mb-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {STATS.map((stat) => (
-          <div
-            key={stat.label}
-            className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-4"
-          >
-            <div className="text-2xl">{stat.icon}</div>
-            <div className="mt-2 font-display text-3xl tracking-wide text-projector">
-              {stat.value}
+      {/* Statistiche personali */}
+      <section className="mb-10 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {STATS.map((s) => (
+          <div key={s.label} className="panel flex items-center gap-3 px-4 py-4">
+            <span className="text-2xl" aria-hidden>{s.icon}</span>
+            <div>
+              <div className="title-display text-2xl text-gold">{s.value}</div>
+              <div className="text-xs uppercase tracking-wide text-zinc-500">{s.label}</div>
             </div>
-            <div className="text-xs text-zinc-500">{stat.label}</div>
           </div>
         ))}
-      </div>
+      </section>
 
-      <div className="mb-5 flex items-center gap-3">
-        <h2 className="font-display text-2xl tracking-wide text-zinc-100">
-          🍿 Scopri oggi
+      {/* Scopri oggi: trending TMDB */}
+      <section>
+        <h2 className="title-display mb-4 flex items-center gap-2 text-2xl text-white">
+          <span aria-hidden>🔥</span> Scopri oggi
         </h2>
-        <span className="text-sm text-zinc-500">Trending della settimana</span>
-      </div>
 
-      {loading ? (
-        <Loader label="Accendo il proiettore…" />
-      ) : error ? (
-        <ErrorState title="Niente proiezione" message={error} />
-      ) : trending.length === 0 ? (
-        <EmptyState
-          title="Nessun titolo di tendenza"
-          message="Riprova più tardi."
-        />
-      ) : (
-        <MediaGrid items={trending} />
-      )}
+        {isLoading && <Spinner />}
+
+        {isError && (
+          <EmptyState
+            icon="🎬"
+            title="Proiezione interrotta"
+            message={
+              error instanceof Error
+                ? error.message
+                : 'Impossibile recuperare i titoli di tendenza da TMDB.'
+            }
+          />
+        )}
+
+        {data && data.length > 0 && <TitleGrid titles={data} />}
+      </section>
     </div>
   )
 }

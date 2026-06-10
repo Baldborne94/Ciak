@@ -1,12 +1,20 @@
 import { createClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-// We don't throw at import time so the app still boots without credentials —
-// the relevant screens surface a themed error instead.
-export const isSupabaseConfigured = Boolean(url && anonKey)
+if (!supabaseUrl || !supabaseAnonKey) {
+  // Avviso esplicito in dev: senza queste variabili l'app non parla col DB.
+  console.warn(
+    '[CineVault] Variabili Supabase mancanti. Compila VITE_SUPABASE_URL e ' +
+      'VITE_SUPABASE_ANON_KEY nel file .env (vedi .env.example).',
+  )
+}
 
-export const supabase = isSupabaseConfigured
-  ? createClient(url, anonKey)
-  : null
+export const supabase = createClient(supabaseUrl ?? '', supabaseAnonKey ?? '', {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+})

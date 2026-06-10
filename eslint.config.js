@@ -26,7 +26,7 @@ export default tseslint.config(
     },
   },
   {
-    // Serverless functions run on Node, not the browser.
+    // Serverless functions: girano su Node/Edge, non nel browser.
     files: ['api/**/*.ts'],
     languageOptions: {
       globals: globals.node,

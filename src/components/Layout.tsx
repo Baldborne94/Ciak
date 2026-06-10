@@ -3,29 +3,22 @@ import Navbar from './Navbar'
 
 export default function Layout() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-full flex-col">
       <Navbar />
-      <main className="container-cine flex-1 py-8">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8">
         <Outlet />
       </main>
-      <footer className="border-t border-theatre-800/80 py-6">
-        <div className="container-cine flex flex-col items-center justify-between gap-2 text-sm text-zinc-500 sm:flex-row">
-          <p>
-            🎬 <span className="font-display tracking-wide">CineVault</span> — il
-            tuo archivio personale di cinema.
-          </p>
-          <p>
-            Dati forniti da{' '}
-            <a
-              href="https://www.themoviedb.org"
-              target="_blank"
-              rel="noreferrer"
-              className="text-projector/80 hover:text-projector"
-            >
-              TMDB
-            </a>
-          </p>
-        </div>
+      <footer className="border-t border-cinema-border py-6 text-center text-xs text-zinc-600">
+        <div className="film-strip mx-auto mb-3 h-1 w-32 opacity-40" />
+        CineVault · il tuo caveau cinefilo · dati da{' '}
+        <a
+          href="https://www.themoviedb.org"
+          target="_blank"
+          rel="noreferrer"
+          className="text-gold/70 hover:text-gold"
+        >
+          TMDB
+        </a>
       </footer>
     </div>
   )

@@ -1,146 +1,118 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import PageHeader from '../components/PageHeader'
-import MediaGrid from '../components/MediaGrid'
-import { EmptyState, ErrorState, Loader } from '../components/States'
-import { isTmdbConfigured, searchMulti } from '../lib/tmdb'
-import type { MediaItem, TmdbType } from '../lib/types'
+import { useQuery } from '@tanstack/react-query'
+import { searchMulti } from '@/lib/tmdb'
+import PageHeader from '@/components/PageHeader'
+import TitleGrid from '@/components/TitleGrid'
+import Spinner from '@/components/Spinner'
+import EmptyState from '@/components/EmptyState'
 
-type TypeFilter = 'all' | TmdbType
+type TypeFilter = 'all' | 'movie' | 'tv'
 
 const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
-  { value: 'all', label: 'Tutti' },
+  { value: 'all', label: 'Tutto' },
   { value: 'movie', label: 'Film' },
   { value: 'tv', label: 'Serie TV' },
 ]
 
 export default function Search() {
-  const [params, setParams] = useSearchParams()
-  const query = params.get('q') ?? ''
-
-  const [input, setInput] = useState(query)
-  const [results, setResults] = useState<MediaItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialQuery = searchParams.get('q') ?? ''
+  const [input, setInput] = useState(initialQuery)
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
-  const [minRating, setMinRating] = useState(0)
 
+  // Sincronizza l'input quando arriva un ?q= dalla navbar.
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([])
-      return
-    }
-    if (!isTmdbConfigured) {
-      setError('Configura VITE_TMDB_API_KEY per cercare nel catalogo.')
-      return
-    }
-    setLoading(true)
-    setError(null)
-    searchMulti(query)
-      .then(setResults)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [query])
+    setInput(initialQuery)
+  }, [initialQuery])
 
-  const filtered = useMemo(
-    () =>
-      results.filter((r) => {
-        if (typeFilter !== 'all' && r.mediaType !== typeFilter) return false
-        if (r.voteAverage < minRating) return false
-        return true
-      }),
-    [results, typeFilter, minRating],
-  )
+  const query = searchParams.get('q') ?? ''
+
+  const { data, isLoading, isError, error, isFetched } = useQuery({
+    queryKey: ['search', query],
+    queryFn: () => searchMulti(query),
+    enabled: query.trim().length > 0,
+  })
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const next = new URLSearchParams(params)
-    if (input.trim()) next.set('q', input.trim())
-    else next.delete('q')
-    setParams(next)
+    const q = input.trim()
+    if (q) setSearchParams({ q })
   }
+
+  const results =
+    data?.results.filter((r) => typeFilter === 'all' || r.media_type === typeFilter) ?? []
 
   return (
     <div>
       <PageHeader
-        eyebrow="Catalogo"
-        title="Cerca un titolo"
-        subtitle="Film, serie TV, anime e cartoni — sempre aggiornati da TMDB."
+        eyebrow="Catalogo globale"
+        title="Cerca nel buio della sala"
+        subtitle="Film, serie TV, anime e cartoni. Cerca per titolo e affina con i filtri."
       />
 
-      <form onSubmit={onSubmit} className="mb-6 flex gap-2">
+      <form onSubmit={onSubmit} className="mb-6 flex flex-wrap items-center gap-3">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Cerca per titolo, attore, regista…"
-          className="input-cine"
+          placeholder="Titolo del film o della serie…"
           autoFocus
+          className="min-w-[16rem] flex-1 rounded-lg border border-cinema-border bg-cinema-panel/60
+            px-4 py-2.5 text-zinc-200 placeholder:text-zinc-500 focus:border-gold/60
+            focus:outline-none focus:ring-1 focus:ring-gold/40"
         />
-        <button type="submit" className="btn-primary whitespace-nowrap">
-          🔍 Cerca
+        <button type="submit" className="btn-gold">
+          Cerca
         </button>
       </form>
 
-      {/* Combinable filters */}
-      <div className="mb-8 flex flex-wrap items-center gap-4 rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
-        <div className="flex items-center gap-2">
-          <span className="text-xs uppercase tracking-wider text-zinc-500">
-            Tipo
-          </span>
-          <div className="flex gap-1">
-            {TYPE_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => setTypeFilter(f.value)}
-                className={`rounded-md px-3 py-1.5 text-sm transition ${
-                  typeFilter === f.value
-                    ? 'bg-projector text-theatre-950'
-                    : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-xs uppercase tracking-wider text-zinc-500">
-            Voto minimo
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={9}
-            step={1}
-            value={minRating}
-            onChange={(e) => setMinRating(Number(e.target.value))}
-            className="accent-projector"
-          />
-          <span className="w-8 text-sm font-semibold text-projector">
-            {minRating > 0 ? `${minRating}+` : '—'}
-          </span>
-        </div>
+      {/* Filtri tipo */}
+      <div className="mb-8 flex flex-wrap gap-2">
+        {TYPE_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setTypeFilter(f.value)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${
+              typeFilter === f.value
+                ? 'bg-gold text-cinema-black'
+                : 'border border-cinema-border text-zinc-400 hover:border-gold/50 hover:text-gold'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+        <span className="ml-auto self-center text-xs text-zinc-600">
+          Filtri avanzati (genere, anno, paese, rating) in arrivo nella Fase 7
+        </span>
       </div>
 
-      {loading ? (
-        <Loader label="Sfoglio la pellicola…" />
-      ) : error ? (
-        <ErrorState title="Ricerca non riuscita" message={error} />
-      ) : !query.trim() ? (
+      {!query && (
         <EmptyState
-          title="Inizia una ricerca"
-          message="Digita il titolo di un film o di una serie per esplorare il catalogo."
-          icon="🎞️"
+          icon="🔍"
+          title="Inizia la ricerca"
+          message="Scrivi il titolo di un film o di una serie per esplorare il catalogo TMDB."
         />
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          title="Nessun risultato"
-          message={`Nessun titolo trovato per "${query}" con i filtri attuali.`}
-        />
-      ) : (
-        <MediaGrid items={filtered} />
       )}
+
+      {isLoading && <Spinner label="Cerco tra i titoli…" />}
+
+      {isError && (
+        <EmptyState
+          icon="🎬"
+          title="Ricerca fallita"
+          message={error instanceof Error ? error.message : 'Errore TMDB.'}
+        />
+      )}
+
+      {query && isFetched && results.length === 0 && !isLoading && (
+        <EmptyState
+          icon="🍿"
+          title="Nessun risultato"
+          message={`Nessun titolo trovato per "${query}". Prova con un altro termine.`}
+        />
+      )}
+
+      {results.length > 0 && <TitleGrid titles={results} />}
     </div>
   )
 }

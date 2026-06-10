@@ -1,59 +1,46 @@
-import PageHeader from '../components/PageHeader'
-import { isSupabaseConfigured } from '../lib/supabase'
-import { isTmdbConfigured } from '../lib/tmdb'
-
-function StatusRow({ label, ok }: { label: string; ok: boolean }) {
-  return (
-    <div className="flex items-center justify-between border-b border-theatre-800 py-3 last:border-0">
-      <span className="text-sm text-zinc-300">{label}</span>
-      <span
-        className={`rounded-md px-2 py-1 text-xs font-semibold ${
-          ok
-            ? 'bg-green-500/15 text-green-400'
-            : 'bg-curtain/20 text-curtain-light'
-        }`}
-      >
-        {ok ? 'Connesso' : 'Non configurato'}
-      </span>
-    </div>
-  )
-}
+import PageHeader from '@/components/PageHeader'
 
 export default function Settings() {
   return (
     <div>
       <PageHeader
-        eyebrow="Il tuo profilo"
+        eyebrow="Regia personale"
         title="Impostazioni"
-        subtitle="Preferenze di raccomandazione e stato delle integrazioni."
+        subtitle="Calibra l'esperienza: generi preferiti, generi da escludere dai suggerimenti e lingue."
       />
 
       <div className="grid gap-6 md:grid-cols-2">
-        <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
-          <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">
-            🔌 Integrazioni
-          </h2>
-          <StatusRow label="TMDB (catalogo)" ok={isTmdbConfigured} />
-          <StatusRow label="Supabase (dati personali)" ok={isSupabaseConfigured} />
-          <p className="mt-3 text-xs text-zinc-500">
-            Imposta le chiavi nel file <code className="text-projector/80">.env</code>{' '}
-            (vedi <code className="text-projector/80">.env.example</code>).
+        <div className="panel p-6">
+          <h2 className="title-display mb-1 text-xl text-gold">Account</h2>
+          <p className="text-sm text-zinc-500">
+            Login con email o Google via Supabase Auth — in arrivo. Per ora l'app gira in
+            modalità anonima.
           </p>
-        </section>
+        </div>
 
-        <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
-          <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">
-            🎯 Preferenze AI
-          </h2>
-          <p className="text-sm text-zinc-400">
-            Generi preferiti, generi da escludere e lingue: queste preferenze
-            calibrano i suggerimenti dell'AI.
+        <div className="panel p-6">
+          <h2 className="title-display mb-1 text-xl text-gold">Preferenze AI</h2>
+          <p className="text-sm text-zinc-500">
+            Generi preferiti, generi esclusi e lingue. Salvati su Supabase nella tabella
+            <code className="mx-1 rounded bg-cinema-black px-1 text-gold/80">user_preferences</code>
+            (Fase 7).
           </p>
-          <p className="mt-3 text-xs text-zinc-500">
-            Disponibili nella fase «preferenze utente», salvate nella tabella{' '}
-            <code className="text-projector/80">user_preferences</code> su Supabase.
+        </div>
+
+        <div className="panel p-6">
+          <h2 className="title-display mb-1 text-xl text-gold">Lingua del catalogo</h2>
+          <p className="text-sm text-zinc-500">
+            Italiano / Inglese per titoli e trame. Attualmente impostata su Italiano (it-IT).
           </p>
-        </section>
+        </div>
+
+        <div className="panel p-6">
+          <h2 className="title-display mb-1 text-xl text-gold">Tema</h2>
+          <p className="text-sm text-zinc-500">
+            Sala buia, accenti oro proiettore e rosso sipario. 🎬 (l'unico tema che un vero
+            cinefilo possa volere)
+          </p>
+        </div>
       </div>
     </div>
   )
