@@ -7,32 +7,31 @@ interface RequestBody {
   song?: string
 }
 
-const SYSTEM_PROMPT = `Sei un esperto di musica nel cinema. Data una canzone, elenca i FILM
+const SYSTEM_PROMPT = `Sei un esperto di musica nel cinema. Data una canzone, individua i FILM
 (reali ed esistenti) in cui è stata usata in modo memorabile: needle-drop, scena chiave,
-tema, sigla o nei titoli di coda. Per ciascuno indica una breve descrizione dell'uso nel
-film (la scena o il contesto). Includi l'anno del film quando lo conosci. Non inventare film.
-Se la canzone è ambigua, considera la più famosa con quel titolo.`
+tema, sigla o nei titoli di coda. USA LA RICERCA WEB per verificare gli utilizzi reali
+(fonti come Tunefind, WhatSong, IMDb soundtracks) invece di affidarti solo alla memoria.
+Per ciascun film indica una breve descrizione dell'uso (la scena o il contesto) e l'anno
+se lo conosci. Non inventare film: includi solo utilizzi che puoi confermare.
 
-const OUTPUT_SCHEMA = {
-  type: 'object',
-  additionalProperties: false,
-  properties: {
-    films: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          title: { type: 'string' },
-          year: { type: 'string' },
-          scene: { type: 'string' },
-        },
-        required: ['title', 'scene'],
-      },
-    },
-  },
-  required: ['films'],
-} as const
+Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza testo prima o dopo, nella forma:
+{"films":[{"title":"Titolo","year":"2005","scene":"descrizione dell'uso"}]}
+Se non trovi utilizzi affidabili, rispondi {"films":[]}.`
+
+// Best-effort JSON extraction from a free-form model answer (web search adds
+// citation text around the JSON, so we can't use strict structured outputs).
+function extractFilms(text: string): unknown {
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/)
+  const candidate = fence ? fence[1] : text
+  const start = candidate.indexOf('{')
+  const end = candidate.lastIndexOf('}')
+  if (start === -1 || end === -1) return { films: [] }
+  try {
+    return JSON.parse(candidate.slice(start, end + 1))
+  } catch {
+    return { films: [] }
+  }
+}
 
 interface ApiRequest {
   method?: string
@@ -67,19 +66,42 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const client = new Anthropic({ apiKey })
 
   try {
-    const message = await client.messages.create({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const messages: any[] = [
+      {
+        role: 'user',
+        content: `Canzone: "${song}"\nIn quali film è stata usata? Verifica con la ricerca web e rispondi solo col JSON.`,
+      },
+    ]
+
+    // Web search is a server-side tool; the API may pause after several rounds.
+    // Re-send the assistant turn to let it finish (bounded loop).
+    let message = await client.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: 2048,
       thinking: { type: 'adaptive' },
       system: SYSTEM_PROMPT,
-      messages: [
-        { role: 'user', content: `Canzone: "${song}"\nIn quali film è stata usata? Elencali con la scena/contesto.` },
-      ],
-      output_config: { format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
+      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }],
+      messages,
     })
-    const textBlock = message.content.find((b) => b.type === 'text')
-    const parsed = textBlock && 'text' in textBlock ? JSON.parse(textBlock.text) : { films: [] }
-    res.status(200).json(parsed)
+    let guard = 0
+    while (message.stop_reason === 'pause_turn' && guard++ < 4) {
+      messages.push({ role: 'assistant', content: message.content })
+      message = await client.messages.create({
+        model: 'claude-opus-4-8',
+        max_tokens: 2048,
+        thinking: { type: 'adaptive' },
+        system: SYSTEM_PROMPT,
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }],
+        messages,
+      })
+    }
+
+    const text = message.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n')
+    res.status(200).json(extractFilms(text))
   } catch (err) {
     res.status(502).json({ error: `Errore nella ricerca per canzone: ${(err as Error).message}` })
   }
