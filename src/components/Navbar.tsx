@@ -15,6 +15,7 @@ const lists = [
   { to: '/lists/watched', label: 'Visti' },
   { to: '/favorites', label: 'Preferiti' },
   { to: '/liste', label: 'Liste personali' },
+  { to: '/diario', label: 'Diario' },
 ]
 
 const trailing = [
