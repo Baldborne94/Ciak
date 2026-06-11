@@ -78,6 +78,8 @@ interface RawMedia {
   release_date?: string
   first_air_date?: string
   vote_average?: number
+  vote_count?: number
+  popularity?: number
   genre_ids?: number[]
 }
 
@@ -370,26 +372,38 @@ export async function searchPerson(query: string): Promise<Person[]> {
   }))
 }
 
+// Genres that aren't real filmography: documentaries about the person,
+// concerts, "making of", talk shows, news, reality.
+const NON_FILMOGRAPHY_GENRES = new Set([99, 10402, 10767, 10763, 10764])
+
 export async function getPersonDetail(id: number): Promise<PersonDetail> {
   const raw = await tmdbFetch<
-    RawPerson & { combined_credits?: { cast?: RawMedia[] } }
+    RawPerson & { combined_credits?: { cast?: RawMedia[]; crew?: RawMedia[] } }
   >(`/person/${id}`, { append_to_response: 'combined_credits' })
 
-  const credits = (raw.combined_credits?.cast ?? [])
-    .filter((m) => m.media_type === 'movie' || m.media_type === 'tv')
-    .filter((m) => m.poster_path)
-    .map((m) => normalise(m))
-    // Most popular first
-    .sort((a, b) => b.voteAverage - a.voteAverage)
+  // Real work lives in cast (actors) AND crew (directors, composers, writers…).
+  const all = [
+    ...(raw.combined_credits?.cast ?? []),
+    ...(raw.combined_credits?.crew ?? []),
+  ]
 
-  // De-duplicate by id+type
-  const seen = new Set<string>()
-  const uniqueCredits = credits.filter((m) => {
-    const key = `${m.mediaType}-${m.id}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+  // De-duplicate by title, keeping the most popular instance.
+  const byKey = new Map<string, RawMedia>()
+  for (const m of all) {
+    if (m.media_type !== 'movie' && m.media_type !== 'tv') continue
+    if (!m.poster_path) continue
+    if ((m.genre_ids ?? []).some((g) => NON_FILMOGRAPHY_GENRES.has(g))) continue
+    if ((m.vote_count ?? 0) < 10) continue // drop obscure entries
+    const key = `${m.media_type}-${m.id}`
+    const existing = byKey.get(key)
+    if (!existing || (m.popularity ?? 0) > (existing.popularity ?? 0)) {
+      byKey.set(key, m)
+    }
+  }
+
+  const uniqueCredits = [...byKey.values()]
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+    .map((m) => normalise(m))
 
   return {
     id: raw.id,
