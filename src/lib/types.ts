@@ -159,6 +159,43 @@ export interface UserTitle {
   updated_at: string
 }
 
+// `user_lists` — custom themed lists created by the user.
+export interface UserList {
+  id: string
+  user_id: string
+  name: string
+  description: string | null
+  created_at: string
+  updated_at: string
+  item_count?: number
+}
+
+// `user_list_items` — titles inside a custom list.
+export interface UserListItem {
+  id: string
+  list_id: string
+  user_id: string
+  tmdb_id: number
+  media_type: MediaType
+  title: string
+  poster_path: string | null
+  added_at: string
+}
+
+// `user_diary` — viewing log entries.
+export interface DiaryEntry {
+  id: string
+  user_id: string
+  tmdb_id: number
+  media_type: MediaType
+  title: string
+  poster_path: string | null
+  watched_on: string
+  rating: number | null
+  note: string | null
+  created_at: string
+}
+
 // `user_achievements` — trophies unlocked by the user.
 export interface UserAchievement {
   id: string

@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { ErrorState, Loader } from '../components/States'
 import MediaGrid from '../components/MediaGrid'
 import TitleActions from '../components/TitleActions'
+import AddToListButton from '../components/AddToListButton'
 import {
   backdropUrl,
   displayTitle,
@@ -148,6 +149,16 @@ export default function TitleDetail() {
                 genreIds: detail.genreIds,
               }}
             />
+            <div className="mt-3">
+              <AddToListButton
+                item={{
+                  tmdbId: detail.id,
+                  mediaType: detail.mediaType,
+                  title: detail.title,
+                  posterPath: detail.posterPath,
+                }}
+              />
+            </div>
           </div>
         </div>
       </div>

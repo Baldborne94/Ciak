@@ -14,6 +14,7 @@ const lists = [
   { to: '/lists/in-progress', label: 'In corso' },
   { to: '/lists/watched', label: 'Visti' },
   { to: '/favorites', label: 'Preferiti' },
+  { to: '/liste', label: 'Liste personali' },
 ]
 
 const trailing = [

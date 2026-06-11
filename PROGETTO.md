@@ -261,9 +261,16 @@ Il tema attivo persiste in `localStorage`.
 7. ✅ Trofei, badge e temi dinamici
 8. ✅ Esplora per genere / attore / studio
 9. ✅ Ricerca bilingue
-10. ⏳ Preferenze utente (`user_preferences`) e filtri avanzati (anno, lingua, paese)
-11. ⏳ Suggerimenti AI automatici con caching
-12. ⏳ Sincronizzazione del badge/tema su Supabase (oltre localStorage)
+10. ✅ Dove guardarlo (streaming IT) + trailer nella scheda
+11. ✅ Profilo di gusto (statistiche personali)
+12. ✅ Liste personali tematiche
+13. ⏳ Diario di visione (timeline con date e rivisioni)
+14. ⏳ Preferenze utente (`user_preferences`) e filtri avanzati (anno, lingua, paese)
+15. ⏳ Suggerimenti AI automatici con caching
+
+### Idee in coda (da valutare)
+- 💿 **Ricerca film per canzone** — "questa canzone in quali film è stata usata?" (via AI, TMDB non ha dati colonne sonore)
+- 🎬 **Ordine di visione delle saghe** — numerazione "ordine consigliato" + eventuale ordine cronologico-storia (via AI dove differisce dall'uscita)
 
 ---
 
