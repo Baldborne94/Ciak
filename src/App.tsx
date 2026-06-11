@@ -1,24 +1,28 @@
+import { lazy } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import RequireAuth from './components/RequireAuth'
-import Dashboard from './pages/Dashboard'
-import Search from './pages/Search'
-import TitleDetail from './pages/TitleDetail'
-import ListPage from './pages/ListPage'
-import Favorites from './pages/Favorites'
-import Recommendations from './pages/Recommendations'
-import TrophiesPage from './pages/TrophiesPage'
-import TasteProfile from './pages/TasteProfile'
-import ListsPage from './pages/ListsPage'
-import CustomListPage from './pages/CustomListPage'
-import DiaryPage from './pages/DiaryPage'
-import GenrePage from './pages/GenrePage'
-import PersonPage from './pages/PersonPage'
-import StudioPage from './pages/StudioPage'
-import CollectionPage from './pages/CollectionPage'
-import Settings from './pages/Settings'
-import Login from './pages/Login'
-import NotFound from './pages/NotFound'
+
+// Pages are code-split: each is fetched only when its route is visited,
+// keeping the initial bundle small. The shell (Layout/RequireAuth) stays eager.
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Search = lazy(() => import('./pages/Search'))
+const TitleDetail = lazy(() => import('./pages/TitleDetail'))
+const ListPage = lazy(() => import('./pages/ListPage'))
+const Favorites = lazy(() => import('./pages/Favorites'))
+const Recommendations = lazy(() => import('./pages/Recommendations'))
+const TrophiesPage = lazy(() => import('./pages/TrophiesPage'))
+const TasteProfile = lazy(() => import('./pages/TasteProfile'))
+const ListsPage = lazy(() => import('./pages/ListsPage'))
+const CustomListPage = lazy(() => import('./pages/CustomListPage'))
+const DiaryPage = lazy(() => import('./pages/DiaryPage'))
+const GenrePage = lazy(() => import('./pages/GenrePage'))
+const PersonPage = lazy(() => import('./pages/PersonPage'))
+const StudioPage = lazy(() => import('./pages/StudioPage'))
+const CollectionPage = lazy(() => import('./pages/CollectionPage'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Login = lazy(() => import('./pages/Login'))
+const NotFound = lazy(() => import('./pages/NotFound'))
 
 export default function App() {
   return (
