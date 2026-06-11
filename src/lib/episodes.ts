@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getDetail, displayTitle } from './tmdb'
 
 function client() {
   if (!supabase) {
@@ -85,4 +86,72 @@ export async function unmarkSeason(
     .eq('tv_id', tvId)
     .eq('season_number', season)
   if (error) throw new Error(error.message)
+}
+
+export interface ContinueItem {
+  tvId: number
+  title: string
+  posterPath: string | null
+  season: number
+  episode: number
+  watchedCount: number
+  totalEpisodes: number
+}
+
+// Series the user is watching → the next unwatched episode for each, most
+// recently watched first. Used by the homepage "Riprendi a guardare" row.
+export async function getContinueWatching(userId: string, limit = 8): Promise<ContinueItem[]> {
+  const { data, error } = await client()
+    .from('user_episodes')
+    .select('tv_id, season_number, episode_number, watched_at')
+    .eq('user_id', userId)
+    .order('watched_at', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  const rows = (data ?? []) as { tv_id: number; season_number: number; episode_number: number }[]
+  const order: number[] = []
+  const watchedByTv = new Map<number, Set<string>>()
+  for (const r of rows) {
+    if (!watchedByTv.has(r.tv_id)) {
+      watchedByTv.set(r.tv_id, new Set())
+      order.push(r.tv_id)
+    }
+    watchedByTv.get(r.tv_id)!.add(epKey(r.season_number, r.episode_number))
+  }
+
+  const results = await Promise.all(
+    order.slice(0, limit).map(async (tvId): Promise<ContinueItem | null> => {
+      try {
+        const detail = await getDetail('tv', tvId)
+        const watched = watchedByTv.get(tvId)!
+        const seasons = detail.seasons.filter((s) => s.seasonNumber > 0)
+        let total = 0
+        let next: { season: number; episode: number } | null = null
+        for (const s of seasons) {
+          total += s.episodeCount
+          if (!next) {
+            for (let e = 1; e <= s.episodeCount; e++) {
+              if (!watched.has(epKey(s.seasonNumber, e))) {
+                next = { season: s.seasonNumber, episode: e }
+                break
+              }
+            }
+          }
+        }
+        if (!next) return null // serie completata
+        return {
+          tvId,
+          title: displayTitle(detail),
+          posterPath: detail.posterPath,
+          season: next.season,
+          episode: next.episode,
+          watchedCount: watched.size,
+          totalEpisodes: total,
+        }
+      } catch {
+        return null
+      }
+    }),
+  )
+  return results.filter((x): x is ContinueItem => x !== null)
 }
