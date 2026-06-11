@@ -361,6 +361,29 @@ export async function discoverByGenre(
   }
 }
 
+// Resolve a curated list of names to real TMDB entities (with logos/photos),
+// taking the top match for each. Used for the idle "famous" previews.
+export async function resolveStudios(names: string[]): Promise<Company[]> {
+  const found = await Promise.all(
+    names.map((n) => searchCompany(n).then((r) => r[0] ?? null).catch(() => null)),
+  )
+  return found.filter((c): c is Company => c !== null)
+}
+
+export async function resolveSagas(names: string[]): Promise<Collection[]> {
+  const found = await Promise.all(
+    names.map((n) => searchCollection(n).then((r) => r[0] ?? null).catch(() => null)),
+  )
+  return found.filter((c): c is Collection => c !== null)
+}
+
+export async function resolvePeople(names: string[]): Promise<Person[]> {
+  const found = await Promise.all(
+    names.map((n) => searchPerson(n).then((r) => r[0] ?? null).catch(() => null)),
+  )
+  return found.filter((p): p is Person => p !== null)
+}
+
 // ── People (actors / directors) ────────────────────────────────────────────
 
 interface RawPerson {
