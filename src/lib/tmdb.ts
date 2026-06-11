@@ -81,6 +81,7 @@ interface RawMedia {
   vote_count?: number
   popularity?: number
   genre_ids?: number[]
+  original_language?: string
 }
 
 function normalise(raw: RawMedia, fallbackType?: TmdbType): MediaItem {
@@ -99,6 +100,7 @@ function normalise(raw: RawMedia, fallbackType?: TmdbType): MediaItem {
     releaseDate: raw.release_date ?? raw.first_air_date ?? null,
     voteAverage: raw.vote_average ?? 0,
     genreIds: raw.genre_ids ?? [],
+    originalLanguage: raw.original_language ?? null,
   }
 }
 
