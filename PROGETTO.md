@@ -44,42 +44,48 @@ Il tuo archivio personale di cinema: traccia **film, serie TV, anime e cartoni**
 - **🔥 Di tendenza** — una riga compatta dei titoli del momento
 - Stati vuoti dedicati per ospiti e utenti senza titoli
 
-### 🔍 Ricerca
-- Ricerca **bilingue** (italiano + inglese in parallelo, risultati uniti e de-duplicati)
-- Filtri combinabili: tipo (film/serie), voto minimo
+### 🔍 Cerca & Esplora (hub unico)
+Una sola pagina con schede:
+- **Titoli** — ricerca **bilingue** (IT + EN in parallelo, uniti e de-duplicati), ordinati per popolarità; a campo vuoto "Di tendenza ora" + sfoglia per genere; filtri tipo/voto
+- **Anime** — animazione giapponese (sezione **😏 Pervertito** a parte per ecchi/hentai)
+- **Cartoni** — serie animate occidentali (Scooby-Doo, Tom & Jerry…)
+- **Persone** — attori / registi / compositori / sceneggiatori (filtro per ruolo); a campo vuoto "Attori celebri"
+- **Studi** — studi di produzione con logo; a campo vuoto "Studi celebri"
+- **Saghe** — collezioni/franchise; a campo vuoto "Saghe celebri" (con poster reali)
+- **🎵 Canzone → film** — l'AI trova i film che usano una canzone, con la scena
 
-### 🧭 Esplora
-- **Generi**: sfoglia film/serie per genere, ordina per popolarità / voto / data / incassi, con paginazione
-- **Attori**: cerca una persona → profilo con bio, età, luogo di nascita e filmografia completa
-- **Studi**: cerca uno studio di produzione → tutti i suoi film
+> Anime e Cartoni si possono anche **cercare** per nome IT/EN. I titoli appaiono in **lingua originale** (più facili da cercare sui siti di streaming); gli anime restano leggibili (IT/EN, non in giapponese).
 
 ### 🎞️ Scheda titolo dettagliata
-- Backdrop, locandina, trama, generi, voto
-- **Scheda tecnica**: regista/creatore, titolo e lingua originale, stato, paese, stagioni/episodi, durata, budget e incassi
-- **Studi di produzione** cliccabili (con logo) → pagina studio
-- **Cast** cliccabile → profilo persona e filmografia
-- Raccomandazioni TMDB ("se ti è piaciuto, guarda anche")
-- Link al sito ufficiale
+- Backdrop, locandina, trama, generi, voto; **titolo originale** + 🇮🇹 italiano se diverso
+- **📺 Dove guardarlo** (streaming Italia): piattaforme in abbonamento / noleggio / acquisto + link JustWatch
+- **🎬 Trailer** YouTube integrato
+- **📺 Stagioni ed episodi** (serie/anime): selettore stagione + episodi in ordine (titolo, data, durata, voto, trama)
+- **Scheda tecnica**: regista/creatore, lingua originale, stato, paese, stagioni/episodi, durata, budget e incassi
+- **Studi** e **cast** cliccabili; raccomandazioni TMDB; link sito ufficiale
 
-### 📺 Cataloghi dedicati
-- **Anime**: animazione giapponese
-- **Cartoni**: serie animate occidentali (Scooby-Doo, Tom & Jerry, …)
+### 🎬 Ordine di visione delle saghe
+- Film **numerati** con toggle **📅 Di uscita** ↔ **🤖 Secondo la storia** (ordine-trama via AI)
 
 ### 🔐 Autenticazione
 - Supabase Auth: email/password + Google OAuth (opzionale)
-- Rotte `/lists/*`, `/favorites` e `/trophies` protette da login
+- Rotte personali protette da login
 
-### 📋 Liste personali
-- Stati: **Visto**, **Da vedere**, **In corso**, **Abbandonato**
-- Assegnabili dalla scheda titolo, salvati su Supabase con RLS
+### 📋 Liste e raccolte
+- Liste fisse: **Visto**, **Da vedere**, **In corso**, **Abbandonato** (dalla scheda titolo)
+- **🗂️ Liste personali tematiche** create da te ("Neo-noir", "Da vedere con lei"…) — "Aggiungi a lista" dalla scheda
+- **📖 Diario di visione** — registra cosa guardi e quando (data, voto, nota, rivisioni)
 
-### ❤️ Preferiti
-- Voto personale **1–5 ★** e **note** modificabili
-- Ordinabili per voto / data / titolo
+### ❤️ Preferiti (a sezioni)
+- **Titoli** con voto **1–5 ★** e **note** modificabili, ordinabili
+- **Persone** e **Studi** preferiti → ritrovi al volo filmografie e produzioni
+
+### 📊 Profilo di gusto
+- Generi preferiti, distribuzione voti, cosa guardi (film/serie/anime/cartoni), voto medio, top titoli
 
 ### ✨ Raccomandazioni AI
 - Serverless `/api/recommendations` — chiave Anthropic **mai esposta al browser**
-- Legge i tuoi preferiti e i titoli visti per suggerire il prossimo film
+- Legge preferiti e visti per suggerire il prossimo titolo
 
 ### 🏆 Trofei e gamification
 - 20 trofei con rarità (bronzo / argento / oro / platino)
@@ -91,50 +97,46 @@ Il tuo archivio personale di cinema: traccia **film, serie TV, anime e cartoni**
 ## 🗂️ Architettura e struttura
 
 ```
-api/
-  recommendations.ts        Serverless Anthropic (lato server, chiave protetta)
+api/                        Serverless Anthropic (lato server, chiave protetta)
+  recommendations.ts        Raccomandazioni personalizzate
+  saga-order.ts             Ordine-trama di una saga
+  song-films.ts             Film che usano una canzone
 public/
   ciak.svg                  Favicon ciak
 supabase/
-  schema.sql                Schema base: user_titles, user_preferences + RLS
+  schema.sql                Base: user_titles, user_preferences + RLS
   schema_v2_achievements.sql Trofei: user_achievements, user_profile + genre_ids
+  schema_v3_entities.sql    Preferiti persone/studi: user_entities
+  schema_v4_lists_diary.sql Liste tematiche + diario: user_lists, user_list_items, user_diary
 src/
   components/
-    Layout.tsx              Shell con Navbar, footer, toast trofei
-    Navbar.tsx              Navigazione + badge attivo
-    MediaCard.tsx           Card di un risultato TMDB
-    MediaGrid.tsx           Griglia di MediaCard
-    MediaRow.tsx            Riga orizzontale (MediaRow / ScrollRow) — layout condiviso
-    SavedTitleCard.tsx      Card di una riga salvata (Supabase)
-    TitleActions.tsx        Bottoni stato + preferito, trigger trofei
-    AchievementToast.tsx    Notifica trofeo sbloccato
-    RequireAuth.tsx         Guardia rotte protette
-    PageHeader.tsx          Intestazione pagina
-    States.tsx              Loader / EmptyState / ErrorState
+    Layout, Navbar, MediaCard/Grid, MediaRow (caroselli con frecce),
+    SavedTitleCard, TitleActions, RequireAuth, PageHeader, States,
+    AchievementToast, Modal (popup centrato),
+    EntityFavoriteButton (cuore persone/studi),
+    AddToListButton, LogDiaryButton, SeasonsSection (stagioni/episodi)
   lib/
-    tmdb.ts                 Client TMDB (trending, search, discover, persone, studi, dettaglio)
+    tmdb.ts                 Client TMDB (trending, search bilingue, discover,
+                            persone, studi, saghe, stagioni, provider, trailer,
+                            displayTitle)
     supabase.ts             Client Supabase
     auth.tsx                AuthProvider + useAuth
-    userTitles.ts           CRUD liste/preferiti, stats, trofei
-    achievements.ts         Definizione 20 trofei + logica condizioni
-    achievementsContext.tsx Context trofei: toast, badge attivo, tema
+    userTitles.ts           CRUD liste/preferiti, stats, trofei, listAll
+    entities.ts             CRUD preferiti persone/studi
+    lists.ts                CRUD liste personali
+    diary.ts                CRUD diario
+    achievements.ts / achievementsContext.tsx  Trofei + temi
     types.ts                Tipi condivisi
   pages/
     Dashboard.tsx           Homepage personale
-    Search.tsx              Ricerca bilingue
-    Explore.tsx             Esplora (generi / attori / studi)
-    GenrePage.tsx           Risultati per genere con ordinamento
-    PersonPage.tsx          Profilo persona + filmografia
-    StudioPage.tsx          Film di uno studio
-    CatalogPage.tsx         Catalogo generico (anime / cartoni)
-    TitleDetail.tsx         Scheda titolo dettagliata
-    ListPage.tsx            Lista per stato
-    Favorites.tsx           Preferiti con voto e note
-    Recommendations.tsx     Raccomandazioni AI
-    TrophiesPage.tsx        Trofei e badge profilo
-    Settings.tsx            Stato integrazioni
-    Login.tsx               Accesso / registrazione
-    NotFound.tsx            404
+    Search.tsx              Cerca & Esplora (hub: titoli/anime/cartoni/
+                            persone/studi/saghe/canzone)
+    GenrePage / PersonPage / StudioPage / CollectionPage
+    CatalogPage.tsx         Catalogo anime / cartoni
+    TitleDetail.tsx         Scheda titolo (provider, trailer, stagioni…)
+    ListPage / Favorites / ListsPage / CustomListPage / DiaryPage
+    TasteProfile.tsx        Profilo di gusto (statistiche)
+    Recommendations / TrophiesPage / Settings / Login / NotFound
   App.tsx                   Rotte
   main.tsx                  Provider (Auth + Achievements) + Router
 ```
@@ -153,12 +155,17 @@ src/
 - **RLS**: ogni utente vede e modifica solo le proprie righe.
 
 ### `schema_v2_achievements.sql` — trofei
-- Aggiunge `genre_ids integer[]` a `user_titles` (per i trofei per genere).
-- **`user_achievements`** — trofei sbloccati `(user_id, achievement_id)`.
-- **`user_profile`** — badge attivo scelto dall'utente.
-- RLS su entrambe.
+- Aggiunge `genre_ids integer[]` a `user_titles`.
+- **`user_achievements`** (trofei sbloccati) + **`user_profile`** (badge attivo).
 
-> ⚠️ Vanno eseguiti **entrambi** gli script nel SQL Editor di Supabase, nell'ordine: prima `schema.sql`, poi `schema_v2_achievements.sql`.
+### `schema_v3_entities.sql` — preferiti persone/studi
+- **`user_entities`** — persone e studi salvati tra i preferiti.
+
+### `schema_v4_lists_diary.sql` — liste tematiche + diario
+- **`user_lists`** + **`user_list_items`** — liste personali e i loro titoli.
+- **`user_diary`** — registro di visione (data, voto, nota).
+
+> ⚠️ Esegui **tutti e 4** gli script nel SQL Editor di Supabase, in ordine (v1 → v2 → v3 → v4). Ogni tabella ha la propria **RLS**.
 
 ---
 
@@ -179,9 +186,8 @@ src/
 
 ### 1. Supabase
 1. Crea un progetto (piano free = 2 progetti per account).
-2. SQL Editor → esegui `supabase/schema.sql`.
-3. SQL Editor → esegui `supabase/schema_v2_achievements.sql`.
-4. Project Settings → API → copia **Project URL** e **Legacy anon key**.
+2. SQL Editor → esegui **in ordine**: `schema.sql`, `schema_v2_achievements.sql`, `schema_v3_entities.sql`, `schema_v4_lists_diary.sql`.
+3. Project Settings → API → copia **Project URL** e **Legacy anon key**.
 5. (Opzionale) Authentication → URL Configuration → **Site URL** = `https://ciak.vercel.app` e Additional Redirect URLs = `https://ciak.vercel.app/**`.
 6. (Opzionale) Google OAuth: Authentication → Providers → Google (richiede Client ID/Secret da Google Cloud Console).
 
@@ -259,18 +265,24 @@ Il tema attivo persiste in `localStorage`.
 5. ✅ Dashboard con statistiche reali
 6. ✅ Raccomandazioni AI collegate ai dati utente
 7. ✅ Trofei, badge e temi dinamici
-8. ✅ Esplora per genere / attore / studio
-9. ✅ Ricerca bilingue
-10. ✅ Dove guardarlo (streaming IT) + trailer nella scheda
+8. ✅ Cerca & Esplora (hub: titoli/anime/cartoni/persone/studi/saghe)
+9. ✅ Ricerca bilingue + titoli in lingua originale
+10. ✅ Dove guardarlo (streaming IT) + trailer
 11. ✅ Profilo di gusto (statistiche personali)
 12. ✅ Liste personali tematiche
-13. ⏳ Diario di visione (timeline con date e rivisioni)
-14. ⏳ Preferenze utente (`user_preferences`) e filtri avanzati (anno, lingua, paese)
-15. ⏳ Suggerimenti AI automatici con caching
+13. ✅ Diario di visione (date, voti, rivisioni)
+14. ✅ Preferiti per persone e studi
+15. ✅ Ordine di visione delle saghe (uscita + storia via AI)
+16. ✅ Ricerca "Canzone → film" (via AI)
+17. ✅ Stagioni ed episodi per serie/anime
 
 ### Idee in coda (da valutare)
-- 💿 **Ricerca film per canzone** — "questa canzone in quali film è stata usata?" (via AI, TMDB non ha dati colonne sonore)
-- 🎬 **Ordine di visione delle saghe** — numerazione "ordine consigliato" + eventuale ordine cronologico-storia (via AI dove differisce dall'uscita)
+- ✅ ~~Stagioni/episodi in ordine~~ → fatto
+- ⏳ **Tracking episodi** — segna i singoli episodi come visti
+- ⏳ **Preferenze utente** (`user_preferences`) e filtri avanzati (anno, lingua, paese)
+- ⏳ **Suggerimenti AI automatici** con caching
+- ⏳ **Lazy-loading delle rotte** per alleggerire il bundle
+- ⏳ **Onboarding** + **command palette (Cmd+K)**
 
 ---
 
