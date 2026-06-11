@@ -205,12 +205,32 @@ export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPag
     with_genres: '16',
     with_original_language: 'ja',
     sort_by: 'popularity.desc',
+    include_adult: 'false',
+    without_keywords: '198385', // escludi hentai
+    'vote_count.gte': '10',
     page: String(page),
   })
   return {
     items: data.results.map((r) => normalise(r, 'tv')),
     totalPages: data.total_pages,
   }
+}
+
+// Most popular people right now — for the idle "Personaggi del momento" preview.
+export async function getPopularPeople(): Promise<Person[]> {
+  const data = await tmdbFetch<{ results: RawPerson[] }>('/person/popular')
+  return data.results.slice(0, 12).map((p) => ({
+    id: p.id,
+    name: p.name,
+    profilePath: p.profile_path ?? null,
+    department: p.known_for_department ?? null,
+    knownFor:
+      (p.known_for ?? [])
+        .map((m) => m.title ?? m.name)
+        .filter(Boolean)
+        .slice(0, 3)
+        .join(', ') || null,
+  }))
 }
 
 // Western animated TV series (Scooby-Doo, Tom & Jerry, …): genre Animation,
