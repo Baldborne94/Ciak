@@ -1,13 +1,17 @@
+import { Suspense } from 'react'
 import { Outlet } from 'react-router-dom'
 import Navbar from './Navbar'
 import AchievementToast from './AchievementToast'
+import { Loader } from './States'
 
 export default function Layout() {
   return (
     <div className="flex min-h-screen flex-col">
       <Navbar />
       <main className="container-cine flex-1 py-8">
-        <Outlet />
+        <Suspense fallback={<Loader label="Carico…" />}>
+          <Outlet />
+        </Suspense>
       </main>
       <AchievementToast />
       <footer className="border-t border-theatre-800/80 py-6">
