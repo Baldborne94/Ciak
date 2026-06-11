@@ -376,20 +376,12 @@ export async function searchPerson(query: string): Promise<Person[]> {
 // concerts, "making of", talk shows, news, reality.
 const NON_FILMOGRAPHY_GENRES = new Set([99, 10402, 10767, 10763, 10764])
 
-export async function getPersonDetail(id: number): Promise<PersonDetail> {
-  const raw = await tmdbFetch<
-    RawPerson & { combined_credits?: { cast?: RawMedia[]; crew?: RawMedia[] } }
-  >(`/person/${id}`, { append_to_response: 'combined_credits' })
+type RawCredit = RawMedia & { department?: string; job?: string }
 
-  // Real work lives in cast (actors) AND crew (directors, composers, writers…).
-  const all = [
-    ...(raw.combined_credits?.cast ?? []),
-    ...(raw.combined_credits?.crew ?? []),
-  ]
-
-  // De-duplicate by title, keeping the most popular instance.
-  const byKey = new Map<string, RawMedia>()
-  for (const m of all) {
+// Keep only the credits relevant to the person's primary role.
+function dedupeAndClean(pool: RawCredit[]): MediaItem[] {
+  const byKey = new Map<string, RawCredit>()
+  for (const m of pool) {
     if (m.media_type !== 'movie' && m.media_type !== 'tv') continue
     if (!m.poster_path) continue
     if ((m.genre_ids ?? []).some((g) => NON_FILMOGRAPHY_GENRES.has(g))) continue
@@ -400,10 +392,30 @@ export async function getPersonDetail(id: number): Promise<PersonDetail> {
       byKey.set(key, m)
     }
   }
-
-  const uniqueCredits = [...byKey.values()]
+  return [...byKey.values()]
     .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
     .map((m) => normalise(m))
+}
+
+export async function getPersonDetail(id: number): Promise<PersonDetail> {
+  const raw = await tmdbFetch<
+    RawPerson & { combined_credits?: { cast?: RawCredit[]; crew?: RawCredit[] } }
+  >(`/person/${id}`, { append_to_response: 'combined_credits' })
+
+  const dept = raw.known_for_department ?? 'Acting'
+  const cast = raw.combined_credits?.cast ?? []
+  const crew = raw.combined_credits?.crew ?? []
+
+  // Actors → where they acted (cast). Others → crew work in their department
+  // (director → directed, composer → scored, writer → wrote).
+  const pool =
+    dept === 'Acting' ? cast : crew.filter((m) => m.department === dept)
+
+  // Fallback to everything if the role-specific pool is empty.
+  let uniqueCredits = dedupeAndClean(pool)
+  if (uniqueCredits.length === 0) {
+    uniqueCredits = dedupeAndClean([...cast, ...crew])
+  }
 
   return {
     id: raw.id,
