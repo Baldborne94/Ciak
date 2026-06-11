@@ -517,11 +517,15 @@ export default function Search() {
         ) : !query.trim() ? (
           <EmptyState
             title="In quali film c'è una canzone?"
-            message="Scrivi il titolo di una canzone (es. «Mrs. Robinson», «Singin' in the Rain»): l'AI trova i film che la usano in scene memorabili."
+            message="Scrivi il titolo di una canzone — meglio con l'artista (es. «Stuck in the Middle with You - Stealers Wheel»). L'AI trova i film che la usano in scene memorabili. Funziona meglio con brani celebri usati in film noti."
             icon="🎵"
           />
         ) : songFilms.length === 0 ? (
-          <EmptyState title="Nessun film trovato" message={`Non ho trovato film noti che usano "${query}".`} />
+          <EmptyState
+            title="Nessun film trovato"
+            message={`Non ho trovato film noti che usano "${query}". Prova ad aggiungere l'artista (es. «${query} - nome artista») o un brano più celebre — es. Layla, Bohemian Rhapsody, In the Air Tonight.`}
+            icon="🎵"
+          />
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {songFilms.map(({ item, note }) => (
