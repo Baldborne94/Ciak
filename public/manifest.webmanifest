@@ -1,0 +1,20 @@
+{
+  "name": "CineVault",
+  "short_name": "CineVault",
+  "description": "Il tuo archivio personale di cinema: film, serie TV, anime e cartoni con watchlist, diario e suggerimenti AI.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0f",
+  "theme_color": "#0a0a0f",
+  "lang": "it",
+  "icons": [
+    {
+      "src": "/ciak.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
