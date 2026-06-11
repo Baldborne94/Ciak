@@ -140,17 +140,18 @@ export async function searchMulti(query: string): Promise<MediaItem[]> {
     }),
   ])
 
-  // Italian first (preferred for display + relevance), then English-only
-  // matches appended in their own relevance order. Insertion order preserves
-  // each list's TMDB ranking; the Map de-duplicates across the two.
-  const merged = new Map<string, MediaItem>()
+  // Merge IT + EN, de-duplicate, then surface the most prominent titles first
+  // (TMDB popularity) so well-known results lead instead of obscure namesakes.
+  const merged = new Map<string, { item: MediaItem; pop: number }>()
   for (const raw of [...itData.results, ...enData.results]) {
     if (raw.media_type !== 'movie' && raw.media_type !== 'tv') continue
     const key = `${raw.media_type}-${raw.id}`
-    if (!merged.has(key)) merged.set(key, normalise(raw))
+    if (!merged.has(key)) merged.set(key, { item: normalise(raw), pop: raw.popularity ?? 0 })
   }
 
   return [...merged.values()]
+    .sort((a, b) => b.pop - a.pop)
+    .map((e) => e.item)
 }
 
 export async function getGenres(type: TmdbType): Promise<Genre[]> {
@@ -368,6 +369,7 @@ interface RawPerson {
   profile_path?: string | null
   known_for_department?: string
   known_for?: RawMedia[]
+  popularity?: number
   biography?: string
   birthday?: string | null
   place_of_birth?: string | null
@@ -379,7 +381,10 @@ export async function searchPerson(query: string): Promise<Person[]> {
     query,
     include_adult: 'false',
   })
-  return data.results.map((p) => ({
+  return data.results
+    .slice()
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+    .map((p) => ({
     id: p.id,
     name: p.name,
     profilePath: p.profile_path ?? null,
