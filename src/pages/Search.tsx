@@ -24,6 +24,7 @@ import {
   isTmdbConfigured,
 } from '../lib/tmdb'
 import { MediaRow } from '../components/MediaRow'
+import { LANGUAGES, YEARS } from '../lib/filters'
 import type {
   MediaItem,
   Person,
@@ -268,6 +269,8 @@ export default function Search() {
     rawMode === 'anime' || rawMode === 'cartoons' ? rawMode : 'all',
   )
   const [minRating, setMinRating] = useState(0)
+  const [titleYear, setTitleYear] = useState('')
+  const [titleLang, setTitleLang] = useState('')
   const [role, setRole] = useState('all')
 
   const [genreType, setGenreType] = useState<TmdbType>('movie')
@@ -332,9 +335,11 @@ export default function Search() {
     return base.filter((r) => {
       if ((kind === 'movie' || kind === 'tv') && r.mediaType !== kind) return false
       if (r.voteAverage < minRating) return false
+      if (titleYear && r.releaseDate?.slice(0, 4) !== titleYear) return false
+      if (titleLang && r.originalLanguage !== titleLang) return false
       return true
     })
-  }, [titles, kind, isAnimationKind, minRating])
+  }, [titles, kind, isAnimationKind, minRating, titleYear, titleLang])
 
   const filteredPeople = useMemo(() => {
     const dept = ROLES.find((r) => r.value === role)?.dept
@@ -469,17 +474,35 @@ export default function Search() {
             </div>
           </div>
           {query.trim() && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs uppercase tracking-wider text-zinc-500">Voto minimo</span>
-              <input
-                type="range" min={0} max={9} step={1} value={minRating}
-                onChange={(e) => setMinRating(Number(e.target.value))}
-                className="accent-projector"
-              />
-              <span className="w-8 text-sm font-semibold text-projector">
-                {minRating > 0 ? `${minRating}+` : '—'}
-              </span>
-            </div>
+            <>
+              <div className="flex items-center gap-2">
+                <span className="text-xs uppercase tracking-wider text-zinc-500">Voto minimo</span>
+                <input
+                  type="range" min={0} max={9} step={1} value={minRating}
+                  onChange={(e) => setMinRating(Number(e.target.value))}
+                  className="accent-projector"
+                />
+                <span className="w-8 text-sm font-semibold text-projector">
+                  {minRating > 0 ? `${minRating}+` : '—'}
+                </span>
+              </div>
+              <select
+                value={titleYear}
+                onChange={(e) => setTitleYear(e.target.value)}
+                className="input-cine w-auto py-1.5 text-sm"
+              >
+                <option value="">Anno: qualsiasi</option>
+                {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <select
+                value={titleLang}
+                onChange={(e) => setTitleLang(e.target.value)}
+                className="input-cine w-auto py-1.5 text-sm"
+              >
+                <option value="">Lingua: qualsiasi</option>
+                {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </select>
+            </>
           )}
         </div>
       )}

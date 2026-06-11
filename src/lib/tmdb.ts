@@ -505,20 +505,34 @@ export async function getSeason(tvId: number, seasonNumber: number): Promise<Epi
 
 // ── Discover / browse ─────────────────────────────────────────────────────
 
+export interface DiscoverFilters {
+  year?: string
+  language?: string
+  country?: string
+}
+
 export async function discoverByGenre(
   type: TmdbType,
   genreId: number,
   page = 1,
   sortBy = 'popularity.desc',
+  filters: DiscoverFilters = {},
 ): Promise<{ items: MediaItem[]; totalPages: number }> {
+  const params: Record<string, string> = {
+    with_genres: String(genreId),
+    sort_by: sortBy,
+    page: String(page),
+    'vote_count.gte': sortBy.startsWith('vote_average') ? '200' : '0',
+  }
+  if (filters.year) {
+    params[type === 'tv' ? 'first_air_date_year' : 'primary_release_year'] = filters.year
+  }
+  if (filters.language) params.with_original_language = filters.language
+  if (filters.country) params.with_origin_country = filters.country
+
   const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>(
     `/discover/${type}`,
-    {
-      with_genres: String(genreId),
-      sort_by: sortBy,
-      page: String(page),
-      'vote_count.gte': sortBy.startsWith('vote_average') ? '200' : '0',
-    },
+    params,
   )
   return {
     items: data.results.map((r) => normalise(r, type)),
