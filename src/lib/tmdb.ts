@@ -78,6 +78,8 @@ interface RawMedia {
   release_date?: string
   first_air_date?: string
   vote_average?: number
+  vote_count?: number
+  popularity?: number
   genre_ids?: number[]
 }
 
@@ -370,26 +372,50 @@ export async function searchPerson(query: string): Promise<Person[]> {
   }))
 }
 
+// Genres that aren't real filmography: documentaries about the person,
+// concerts, "making of", talk shows, news, reality.
+const NON_FILMOGRAPHY_GENRES = new Set([99, 10402, 10767, 10763, 10764])
+
+type RawCredit = RawMedia & { department?: string; job?: string }
+
+// Keep only the credits relevant to the person's primary role.
+function dedupeAndClean(pool: RawCredit[]): MediaItem[] {
+  const byKey = new Map<string, RawCredit>()
+  for (const m of pool) {
+    if (m.media_type !== 'movie' && m.media_type !== 'tv') continue
+    if (!m.poster_path) continue
+    if ((m.genre_ids ?? []).some((g) => NON_FILMOGRAPHY_GENRES.has(g))) continue
+    if ((m.vote_count ?? 0) < 10) continue // drop obscure entries
+    const key = `${m.media_type}-${m.id}`
+    const existing = byKey.get(key)
+    if (!existing || (m.popularity ?? 0) > (existing.popularity ?? 0)) {
+      byKey.set(key, m)
+    }
+  }
+  return [...byKey.values()]
+    .sort((a, b) => (b.popularity ?? 0) - (a.popularity ?? 0))
+    .map((m) => normalise(m))
+}
+
 export async function getPersonDetail(id: number): Promise<PersonDetail> {
   const raw = await tmdbFetch<
-    RawPerson & { combined_credits?: { cast?: RawMedia[] } }
+    RawPerson & { combined_credits?: { cast?: RawCredit[]; crew?: RawCredit[] } }
   >(`/person/${id}`, { append_to_response: 'combined_credits' })
 
-  const credits = (raw.combined_credits?.cast ?? [])
-    .filter((m) => m.media_type === 'movie' || m.media_type === 'tv')
-    .filter((m) => m.poster_path)
-    .map((m) => normalise(m))
-    // Most popular first
-    .sort((a, b) => b.voteAverage - a.voteAverage)
+  const dept = raw.known_for_department ?? 'Acting'
+  const cast = raw.combined_credits?.cast ?? []
+  const crew = raw.combined_credits?.crew ?? []
 
-  // De-duplicate by id+type
-  const seen = new Set<string>()
-  const uniqueCredits = credits.filter((m) => {
-    const key = `${m.mediaType}-${m.id}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+  // Actors → where they acted (cast). Others → crew work in their department
+  // (director → directed, composer → scored, writer → wrote).
+  const pool =
+    dept === 'Acting' ? cast : crew.filter((m) => m.department === dept)
+
+  // Fallback to everything if the role-specific pool is empty.
+  let uniqueCredits = dedupeAndClean(pool)
+  if (uniqueCredits.length === 0) {
+    uniqueCredits = dedupeAndClean([...cast, ...crew])
+  }
 
   return {
     id: raw.id,
