@@ -12,7 +12,7 @@ import {
   posterUrl,
   profileUrl,
 } from '../lib/tmdb'
-import type { MediaDetail, TmdbType } from '../lib/types'
+import type { MediaDetail, Provider, TmdbType } from '../lib/types'
 
 const LANG_NAMES: Record<string, string> = {
   en: 'Inglese', it: 'Italiano', ja: 'Giapponese', fr: 'Francese',
@@ -38,6 +38,7 @@ export default function TitleDetail() {
   const [detail, setDetail] = useState<MediaDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showTrailer, setShowTrailer] = useState(false)
 
   useEffect(() => {
     if (!mediaType || !id) return
@@ -150,6 +151,70 @@ export default function TitleDetail() {
           </div>
         </div>
       </div>
+
+      {/* Where to watch (Italy) */}
+      {detail.watchProviders &&
+        (detail.watchProviders.flatrate.length > 0 ||
+          detail.watchProviders.rent.length > 0 ||
+          detail.watchProviders.buy.length > 0) && (
+          <section>
+            <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
+              📺 Dove guardarlo{' '}
+              <span className="text-sm font-normal text-zinc-500">in Italia</span>
+            </h2>
+            <div className="space-y-4">
+              <ProvidersGroup label="In abbonamento" items={detail.watchProviders.flatrate} />
+              <ProvidersGroup label="Noleggio" items={detail.watchProviders.rent} />
+              <ProvidersGroup label="Acquisto" items={detail.watchProviders.buy} />
+            </div>
+            {detail.watchProviders.link && (
+              <a
+                href={detail.watchProviders.link}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-block text-sm text-projector/80 hover:text-projector"
+              >
+                Dettagli e link su JustWatch →
+              </a>
+            )}
+          </section>
+        )}
+
+      {/* Trailer */}
+      {detail.trailerKey && (
+        <section>
+          <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
+            🎬 Trailer
+          </h2>
+          {showTrailer ? (
+            <div className="aspect-video w-full overflow-hidden rounded-xl border border-theatre-800">
+              <iframe
+                src={`https://www.youtube.com/embed/${detail.trailerKey}?autoplay=1`}
+                title="Trailer"
+                className="h-full w-full"
+                allow="autoplay; encrypted-media; fullscreen"
+                allowFullScreen
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowTrailer(true)}
+              className="group relative block aspect-video w-full overflow-hidden rounded-xl border border-theatre-800"
+            >
+              <img
+                src={`https://img.youtube.com/vi/${detail.trailerKey}/hqdefault.jpg`}
+                alt="Trailer"
+                className="h-full w-full object-cover opacity-70 transition group-hover:opacity-90"
+              />
+              <span className="absolute inset-0 flex items-center justify-center">
+                <span className="flex h-16 w-16 items-center justify-center rounded-full bg-curtain/90 text-2xl text-white shadow-reel transition group-hover:scale-110">
+                  ▶
+                </span>
+              </span>
+            </button>
+          )}
+        </section>
+      )}
 
       {/* Technical details */}
       <section>
@@ -292,6 +357,31 @@ function Info({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-theatre-800 bg-theatre-900/40 p-3">
       <dt className="text-xs uppercase tracking-wider text-zinc-500">{label}</dt>
       <dd className="mt-1 text-sm font-medium text-zinc-200">{value}</dd>
+    </div>
+  )
+}
+
+function ProvidersGroup({ label, items }: { label: string; items: Provider[] }) {
+  if (items.length === 0) return null
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <span className="w-28 text-xs uppercase tracking-wider text-zinc-500">{label}</span>
+      {items.map((p) => {
+        const logo = logoUrl(p.logoPath)
+        return logo ? (
+          <img
+            key={p.id}
+            src={logo}
+            alt={p.name}
+            title={p.name}
+            className="h-10 w-10 rounded-lg border border-theatre-700 object-cover"
+          />
+        ) : (
+          <span key={p.id} className="rounded-lg bg-theatre-800 px-2 py-1 text-xs text-zinc-300">
+            {p.name}
+          </span>
+        )
+      })}
     </div>
   )
 }
