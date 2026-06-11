@@ -11,11 +11,14 @@ import {
   getGenres,
   getAnime,
   getCartoons,
+  getTrending,
+  getPopularPeople,
   profileUrl,
   logoUrl,
   posterUrl,
   isTmdbConfigured,
 } from '../lib/tmdb'
+import { MediaRow } from '../components/MediaRow'
 import type {
   MediaItem,
   Person,
@@ -60,6 +63,10 @@ const ROLE_LABEL: Record<string, string> = {
   Production: 'Produttore',
   Camera: 'Direttore della fotografia',
 }
+
+// Quick suggestions for the idle state (clicking runs the search).
+const FAMOUS_STUDIOS = ['Pixar', 'Studio Ghibli', 'A24', 'Marvel Studios', 'Warner Bros.', 'DreamWorks', 'Universal', 'Walt Disney']
+const FAMOUS_SAGAS = ['Harry Potter', 'Star Wars', 'Il Signore degli Anelli', 'Marvel', 'Jurassic Park', 'Fast & Furious', 'James Bond', 'Pirati dei Caraibi']
 
 // Paginated browse list for anime / cartoons.
 function BrowseList({
@@ -141,6 +148,10 @@ export default function Search() {
   const [genreType, setGenreType] = useState<TmdbType>('movie')
   const [genres, setGenres] = useState<Genre[]>([])
 
+  // Idle previews
+  const [previewTitles, setPreviewTitles] = useState<MediaItem[]>([])
+  const [popularPeople, setPopularPeople] = useState<Person[]>([])
+
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
   const usesSearch = mode === 'titles' || mode === 'people' || mode === 'studios' || mode === 'collections'
 
@@ -167,6 +178,17 @@ export default function Search() {
     if (mode !== 'titles' || !isTmdbConfigured) return
     getGenres(genreType).then(setGenres).catch(() => setGenres([]))
   }, [genreType, mode])
+
+  // Idle previews — loaded lazily only for the active tab, once.
+  useEffect(() => {
+    if (!isTmdbConfigured || query.trim()) return
+    if (mode === 'titles' && previewTitles.length === 0) {
+      getTrending().then(setPreviewTitles).catch(() => {})
+    }
+    if (mode === 'people' && popularPeople.length === 0) {
+      getPopularPeople().then(setPopularPeople).catch(() => {})
+    }
+  }, [mode, query])
 
   const filteredTitles = useMemo(
     () =>
@@ -196,6 +218,15 @@ export default function Search() {
   function switchMode(m: Mode) {
     const next = new URLSearchParams(params)
     next.set('mode', m)
+    setParams(next)
+  }
+
+  // Run a search from a quick-suggestion chip.
+  function runQuery(text: string) {
+    setInput(text)
+    const next = new URLSearchParams(params)
+    next.set('q', text)
+    next.set('mode', mode)
     setParams(next)
   }
 
@@ -307,45 +338,96 @@ export default function Search() {
           <ErrorState title="Ricerca non riuscita" message={error} />
         ) : !query.trim() ? (
           mode === 'titles' ? (
-            <div>
-              <div className="mb-4 flex items-center gap-2">
-                <span className="font-display text-xl tracking-wide text-zinc-100">
-                  🎭 Sfoglia per genere
-                </span>
-                <div className="ml-auto flex gap-1">
-                  {(['movie', 'tv'] as TmdbType[]).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setGenreType(t)}
-                      className={`rounded-md px-3 py-1.5 text-sm transition ${
-                        genreType === t
-                          ? 'bg-projector text-theatre-950'
-                          : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
-                      }`}
+            <div className="space-y-10">
+              {previewTitles.length > 0 && (
+                <div>
+                  <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
+                    🔥 Di tendenza ora
+                  </h2>
+                  <MediaRow items={previewTitles} />
+                </div>
+              )}
+              <div>
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="font-display text-xl tracking-wide text-zinc-100">
+                    🎭 Sfoglia per genere
+                  </span>
+                  <div className="ml-auto flex gap-1">
+                    {(['movie', 'tv'] as TmdbType[]).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setGenreType(t)}
+                        className={`rounded-md px-3 py-1.5 text-sm transition ${
+                          genreType === t
+                            ? 'bg-projector text-theatre-950'
+                            : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
+                        }`}
+                      >
+                        {t === 'movie' ? 'Film' : 'Serie TV'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  {genres.map((g) => (
+                    <Link
+                      key={g.id}
+                      to={`/genre/${genreType}/${g.id}`}
+                      className="rounded-xl border border-theatre-700 bg-theatre-900/60 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:-translate-y-0.5 hover:border-projector/40 hover:text-projector"
                     >
-                      {t === 'movie' ? 'Film' : 'Serie TV'}
-                    </button>
+                      {g.name}
+                    </Link>
                   ))}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-3">
-                {genres.map((g) => (
-                  <Link
-                    key={g.id}
-                    to={`/genre/${genreType}/${g.id}`}
-                    className="rounded-xl border border-theatre-700 bg-theatre-900/60 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:-translate-y-0.5 hover:border-projector/40 hover:text-projector"
-                  >
-                    {g.name}
-                  </Link>
-                ))}
+            </div>
+          ) : mode === 'people' ? (
+            <div>
+              <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
+                🔥 Personaggi del momento
+              </h2>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {popularPeople.map((p) => {
+                  const photo = profileUrl(p.profilePath)
+                  return (
+                    <Link
+                      key={p.id}
+                      to={`/person/${p.id}`}
+                      className="group rounded-xl border border-theatre-800 bg-theatre-900 p-3 text-center transition hover:-translate-y-1 hover:border-projector/40"
+                    >
+                      <div className="mx-auto aspect-square w-full overflow-hidden rounded-full border border-theatre-700 bg-theatre-800">
+                        {photo ? (
+                          <img src={photo} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">👤</div>
+                        )}
+                      </div>
+                      <p className="mt-2 line-clamp-1 text-sm font-semibold text-zinc-100">{p.name}</p>
+                      <p className="line-clamp-1 text-xs text-projector/70">
+                        {p.department ? ROLE_LABEL[p.department] ?? p.department : ''}
+                      </p>
+                    </Link>
+                  )
+                })}
               </div>
             </div>
           ) : (
-            <EmptyState
-              title={`Cerca ${activeMode.label.toLowerCase()}`}
-              message={`Digita un nome per cercare tra ${activeMode.label.toLowerCase()}.`}
-              icon={activeMode.icon}
-            />
+            <div>
+              <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
+                {mode === 'studios' ? '🏛️ Studi famosi' : '📚 Saghe famose'}
+              </h2>
+              <div className="flex flex-wrap gap-3">
+                {(mode === 'studios' ? FAMOUS_STUDIOS : FAMOUS_SAGAS).map((name) => (
+                  <button
+                    key={name}
+                    onClick={() => runQuery(name)}
+                    className="rounded-xl border border-theatre-700 bg-theatre-900/60 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:-translate-y-0.5 hover:border-projector/40 hover:text-projector"
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+            </div>
           )
         ) : mode === 'titles' ? (
           filteredTitles.length === 0 ? (
