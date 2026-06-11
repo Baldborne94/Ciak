@@ -505,6 +505,31 @@ export async function getSeason(tvId: number, seasonNumber: number): Promise<Epi
 
 // ── Discover / browse ─────────────────────────────────────────────────────
 
+// Upcoming releases (future-dated) — movies + TV, by popularity. Used to build
+// the personalised "In arrivo per te" feed (ranked client-side by user taste).
+export async function getUpcoming(): Promise<MediaItem[]> {
+  const today = new Date().toISOString().slice(0, 10)
+  const [mv, tv] = await Promise.all([
+    tmdbFetch<{ results: RawMedia[] }>('/discover/movie', {
+      'primary_release_date.gte': today,
+      sort_by: 'popularity.desc',
+      include_adult: 'false',
+      'vote_count.gte': '0',
+      page: '1',
+    }),
+    tmdbFetch<{ results: RawMedia[] }>('/discover/tv', {
+      'first_air_date.gte': today,
+      sort_by: 'popularity.desc',
+      include_adult: 'false',
+      page: '1',
+    }),
+  ])
+  return [
+    ...mv.results.map((r) => normalise(r, 'movie')),
+    ...tv.results.map((r) => normalise(r, 'tv')),
+  ].filter((i) => i.releaseDate && i.releaseDate >= today)
+}
+
 export interface DiscoverFilters {
   year?: string
   language?: string
