@@ -5,6 +5,8 @@ import { posterUrl } from '../lib/tmdb'
 export default function MediaCard({ item }: { item: MediaItem }) {
   const poster = posterUrl(item.posterPath)
   const year = item.releaseDate ? item.releaseDate.slice(0, 4) : '—'
+  // Show the original-language title (easier to find on streaming services).
+  const display = item.originalTitle || item.title
 
   return (
     <Link
@@ -31,8 +33,8 @@ export default function MediaCard({ item }: { item: MediaItem }) {
       </span>
 
       <div className="p-3">
-        <h3 className="line-clamp-1 text-sm font-semibold text-zinc-100">
-          {item.title}
+        <h3 className="line-clamp-1 text-sm font-semibold text-zinc-100" title={display}>
+          {display}
         </h3>
         <p className="mt-0.5 text-xs text-zinc-500">
           {item.mediaType === 'tv' ? 'Serie TV' : 'Film'} · {year}

@@ -68,6 +68,7 @@ function FavoriteEditor({
           id: record.tmdb_id,
           mediaType: record.media_type === 'movie' ? 'movie' : 'tv',
           title: record.title,
+          originalTitle: null,
           posterPath: record.poster_path,
           overview: '',
           backdropPath: null,

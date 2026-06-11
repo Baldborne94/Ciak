@@ -18,6 +18,7 @@ export interface MediaItem {
   id: number
   mediaType: TmdbType
   title: string
+  originalTitle: string | null
   overview: string
   posterPath: string | null
   backdropPath: string | null

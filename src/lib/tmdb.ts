@@ -72,6 +72,8 @@ interface RawMedia {
   media_type?: string
   title?: string
   name?: string
+  original_title?: string
+  original_name?: string
   overview?: string
   poster_path?: string | null
   backdrop_path?: string | null
@@ -94,6 +96,7 @@ function normalise(raw: RawMedia, fallbackType?: TmdbType): MediaItem {
     id: raw.id,
     mediaType,
     title: raw.title ?? raw.name ?? 'Senza titolo',
+    originalTitle: raw.original_title ?? raw.original_name ?? null,
     overview: raw.overview ?? '',
     posterPath: raw.poster_path ?? null,
     backdropPath: raw.backdrop_path ?? null,
