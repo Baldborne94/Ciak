@@ -24,6 +24,7 @@ export interface MediaItem {
   releaseDate: string | null
   voteAverage: number
   genreIds: number[]
+  originalLanguage: string | null
 }
 
 // Extended detail used on the Detail page.

@@ -63,6 +63,7 @@ function FavoriteEditor({
           releaseDate: null,
           voteAverage: 0,
           genreIds: record.genre_ids ?? [],
+          originalLanguage: null,
         }),
         patch,
       )

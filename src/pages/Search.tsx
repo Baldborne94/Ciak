@@ -35,8 +35,8 @@ type TypeFilter = 'all' | TmdbType
 
 const MODES: { value: Mode; label: string; icon: string; placeholder?: string }[] = [
   { value: 'titles', label: 'Titoli', icon: '🎬', placeholder: 'Cerca un film o una serie… (IT o EN)' },
-  { value: 'anime', label: 'Anime', icon: '⛩️' },
-  { value: 'cartoons', label: 'Cartoni', icon: '🎨' },
+  { value: 'anime', label: 'Anime', icon: '⛩️', placeholder: 'Cerca un anime…' },
+  { value: 'cartoons', label: 'Cartoni', icon: '🎨', placeholder: 'Cerca un cartone…' },
   { value: 'people', label: 'Persone', icon: '🌟', placeholder: 'Cerca attore, regista, compositore…' },
   { value: 'studios', label: 'Studi', icon: '🏛️', placeholder: 'Cerca uno studio… (es. Pixar, A24, Ghibli)' },
   { value: 'collections', label: 'Saghe', icon: '📚', placeholder: 'Cerca una saga… (es. Harry Potter, Marvel)' },
@@ -73,6 +73,15 @@ const FAMOUS_STUDIOS = ['Pixar', 'Studio Ghibli', 'A24', 'Marvel Studios', 'Warn
 // Fast&Furious 9485 · James Bond 645 · Pirates 295 · Dark Knight 263 · Toy Story 10194
 const FAMOUS_SAGAS = [1241, 10, 119, 86311, 328, 9485, 645, 295, 263, 10194]
 const FAMOUS_ACTORS = ['Al Pacino', 'Robert De Niro', 'Meryl Streep', 'Leonardo DiCaprio', 'Tom Hanks', 'Denzel Washington', 'Anthony Hopkins', 'Morgan Freeman', 'Cate Blanchett', 'Joaquin Phoenix', 'Christian Bale', 'Daniel Day-Lewis', 'Natalie Portman', 'Gary Oldman', 'Brad Pitt']
+
+// Filter title search results down to anime (Japanese animation) or
+// cartoons (non-Japanese animation) using genre + original language.
+function filterKind(mode: Mode, items: MediaItem[]): MediaItem[] {
+  const isAnimation = (i: MediaItem) => i.genreIds.includes(16)
+  if (mode === 'anime') return items.filter((i) => isAnimation(i) && i.originalLanguage === 'ja')
+  if (mode === 'cartoons') return items.filter((i) => isAnimation(i) && i.originalLanguage !== 'ja')
+  return items
+}
 
 function PersonCard({ p }: { p: Person }) {
   const photo = profileUrl(p.profilePath)
@@ -222,10 +231,10 @@ export default function Search() {
   const [famousSagas, setFamousSagas] = useState<Collection[]>([])
 
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
-  const usesSearch = mode === 'titles' || mode === 'people' || mode === 'studios' || mode === 'collections'
+  const isAnimationMode = mode === 'anime' || mode === 'cartoons'
 
   useEffect(() => {
-    if (!usesSearch || !query.trim()) {
+    if (!query.trim()) {
       setTitles([]); setPeople([]); setStudios([]); setCollections([])
       return
     }
@@ -239,9 +248,11 @@ export default function Search() {
       mode === 'people' ? searchPerson(query).then(setPeople)
       : mode === 'studios' ? searchCompany(query).then(setStudios)
       : mode === 'collections' ? searchCollection(query).then(setCollections)
+      // Anime/Cartoni: cerca per nome (IT o EN) e filtra per animazione + lingua.
+      : isAnimationMode ? searchMulti(query).then((items) => setTitles(filterKind(mode, items)))
       : searchMulti(query).then(setTitles)
     run.catch((e: Error) => setError(e.message)).finally(() => setLoading(false))
-  }, [query, mode, usesSearch])
+  }, [query, mode])
 
   useEffect(() => {
     if (mode !== 'titles' || !isTmdbConfigured) return
@@ -329,8 +340,8 @@ export default function Search() {
         ))}
       </div>
 
-      {/* Search bar — only for search-based modes */}
-      {usesSearch && (
+      {/* Search bar — available for every mode */}
+      {(
         <form onSubmit={onSubmit} className="mb-6 flex gap-2">
           <div className="relative flex-1">
             <input
@@ -421,12 +432,26 @@ export default function Search() {
         </div>
       )}
 
-      {/* ── Browse modes (no search) ── */}
-      {mode === 'anime' && <BrowseList fetcher={getAnime} />}
-      {mode === 'cartoons' && <BrowseList fetcher={getCartoons} />}
+      {/* ── Anime / Cartoni: sfoglia se vuoto, cerca per nome se digiti ── */}
+      {isAnimationMode && (
+        !query.trim() ? (
+          <BrowseList fetcher={mode === 'anime' ? getAnime : getCartoons} />
+        ) : loading ? (
+          <Loader label="Sfoglio la pellicola…" />
+        ) : error ? (
+          <ErrorState title="Ricerca non riuscita" message={error} />
+        ) : titles.length === 0 ? (
+          <EmptyState
+            title="Nessun risultato"
+            message={`Nessun ${mode === 'anime' ? 'anime' : 'cartone'} trovato per "${query}".`}
+          />
+        ) : (
+          <MediaGrid items={titles} />
+        )
+      )}
 
-      {/* ── Search modes ── */}
-      {usesSearch && (
+      {/* ── Search modes (titoli, persone, studi, saghe) ── */}
+      {!isAnimationMode && (
         loading ? (
           <Loader label="Sfoglio la pellicola…" />
         ) : error ? (
