@@ -33,13 +33,14 @@ import type {
   TmdbType,
 } from '../lib/types'
 
-type Mode = 'titles' | 'anime' | 'cartoons' | 'people' | 'studios' | 'collections' | 'song' | 'image'
-type TypeFilter = 'all' | TmdbType
+type Mode = 'titles' | 'people' | 'studios' | 'collections' | 'song' | 'image'
+// "Kind" filter inside the Titoli tab: real media types + the derived
+// animation catalogs (anime / cartoons), so they live under Titoli instead of
+// taking their own top-level tabs.
+type Kind = 'all' | 'movie' | 'tv' | 'anime' | 'cartoons'
 
 const MODES: { value: Mode; label: string; icon: string; placeholder?: string }[] = [
-  { value: 'titles', label: 'Titoli', icon: '🎬', placeholder: 'Cerca un film o una serie… (IT o EN)' },
-  { value: 'anime', label: 'Anime', icon: '⛩️', placeholder: 'Cerca un anime…' },
-  { value: 'cartoons', label: 'Cartoni', icon: '🎨', placeholder: 'Cerca un cartone…' },
+  { value: 'titles', label: 'Titoli', icon: '🎬', placeholder: 'Cerca un film, una serie, un anime… (IT o EN)' },
   { value: 'people', label: 'Persone', icon: '🌟', placeholder: 'Cerca attore, regista, compositore…' },
   { value: 'studios', label: 'Studi', icon: '🏛️', placeholder: 'Cerca uno studio… (es. Pixar, A24, Ghibli)' },
   { value: 'collections', label: 'Saghe', icon: '📚', placeholder: 'Cerca una saga… (es. Harry Potter, Marvel)' },
@@ -50,10 +51,12 @@ const MODES: { value: Mode; label: string; icon: string; placeholder?: string }[
 // Tools that don't do a plain catalog search — set apart in the tab bar.
 const AI_MODES = new Set<Mode>(['song', 'image'])
 
-const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
+const KIND_FILTERS: { value: Kind; label: string }[] = [
   { value: 'all', label: 'Tutti' },
   { value: 'movie', label: 'Film' },
   { value: 'tv', label: 'Serie TV' },
+  { value: 'anime', label: '⛩️ Anime' },
+  { value: 'cartoons', label: '🎨 Cartoni' },
 ]
 
 // People role filter — maps to TMDB known_for_department.
@@ -118,11 +121,10 @@ async function findSongFilms(song: string): Promise<{ item: MediaItem; note: str
 
 // Filter title search results down to anime (Japanese animation) or
 // cartoons (non-Japanese animation) using genre + original language.
-function filterKind(mode: Mode, items: MediaItem[]): MediaItem[] {
+function filterKind(kind: 'anime' | 'cartoons', items: MediaItem[]): MediaItem[] {
   const isAnimation = (i: MediaItem) => i.genreIds.includes(16)
-  if (mode === 'anime') return items.filter((i) => isAnimation(i) && i.originalLanguage === 'ja')
-  if (mode === 'cartoons') return items.filter((i) => isAnimation(i) && i.originalLanguage !== 'ja')
-  return items
+  if (kind === 'anime') return items.filter((i) => isAnimation(i) && i.originalLanguage === 'ja')
+  return items.filter((i) => isAnimation(i) && i.originalLanguage !== 'ja')
 }
 
 function PersonCard({ p }: { p: Person }) {
@@ -248,7 +250,9 @@ function BrowseList({
 export default function Search() {
   const [params, setParams] = useSearchParams()
   const query = params.get('q') ?? ''
-  const mode = (params.get('mode') as Mode) || 'titles'
+  const rawMode = params.get('mode')
+  // Old links used mode=anime / mode=cartoons; those now live under Titoli.
+  const mode: Mode = MODES.some((m) => m.value === rawMode) ? (rawMode as Mode) : 'titles'
 
   const [input, setInput] = useState(query)
   const [loading, setLoading] = useState(false)
@@ -260,7 +264,9 @@ export default function Search() {
   const [collections, setCollections] = useState<Collection[]>([])
   const [songFilms, setSongFilms] = useState<{ item: MediaItem; note: string }[]>([])
 
-  const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
+  const [kind, setKind] = useState<Kind>(
+    rawMode === 'anime' || rawMode === 'cartoons' ? rawMode : 'all',
+  )
   const [minRating, setMinRating] = useState(0)
   const [role, setRole] = useState('all')
 
@@ -274,7 +280,7 @@ export default function Search() {
   const [famousSagas, setFamousSagas] = useState<Collection[]>([])
 
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
-  const isAnimationMode = mode === 'anime' || mode === 'cartoons'
+  const isAnimationKind = kind === 'anime' || kind === 'cartoons'
   const isSongMode = mode === 'song'
   const isImageMode = mode === 'image'
 
@@ -294,8 +300,7 @@ export default function Search() {
       : mode === 'studios' ? searchCompany(query).then(setStudios)
       : mode === 'collections' ? searchCollection(query).then(setCollections)
       : mode === 'song' ? findSongFilms(query).then(setSongFilms)
-      // Anime/Cartoni: cerca per nome (IT o EN) e filtra per animazione + lingua.
-      : isAnimationMode ? searchMulti(query).then((items) => setTitles(filterKind(mode, items)))
+      // Titoli (anche anime/cartoni): cerca per nome; il filtro "kind" è applicato lato client.
       : searchMulti(query).then(setTitles)
     run.catch((e: Error) => setError(e.message)).finally(() => setLoading(false))
   }, [query, mode])
@@ -322,15 +327,14 @@ export default function Search() {
     }
   }, [mode, query])
 
-  const filteredTitles = useMemo(
-    () =>
-      titles.filter((r) => {
-        if (typeFilter !== 'all' && r.mediaType !== typeFilter) return false
-        if (r.voteAverage < minRating) return false
-        return true
-      }),
-    [titles, typeFilter, minRating],
-  )
+  const filteredTitles = useMemo(() => {
+    const base = isAnimationKind ? filterKind(kind as 'anime' | 'cartoons', titles) : titles
+    return base.filter((r) => {
+      if ((kind === 'movie' || kind === 'tv') && r.mediaType !== kind) return false
+      if (r.voteAverage < minRating) return false
+      return true
+    })
+  }, [titles, kind, isAnimationKind, minRating])
 
   const filteredPeople = useMemo(() => {
     const dept = ROLES.find((r) => r.value === role)?.dept
@@ -443,18 +447,18 @@ export default function Search() {
         </form>
       )}
 
-      {/* Title-mode filters */}
-      {mode === 'titles' && query.trim() && (
+      {/* Title-mode filters — type (incl. anime/cartoons) always, rating when searching */}
+      {mode === 'titles' && (
         <div className="mb-8 flex flex-wrap items-center gap-4 rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
           <div className="flex items-center gap-2">
             <span className="text-xs uppercase tracking-wider text-zinc-500">Tipo</span>
-            <div className="flex gap-1">
-              {TYPE_FILTERS.map((f) => (
+            <div className="flex flex-wrap gap-1">
+              {KIND_FILTERS.map((f) => (
                 <button
                   key={f.value}
-                  onClick={() => setTypeFilter(f.value)}
+                  onClick={() => setKind(f.value)}
                   className={`rounded-md px-3 py-1.5 text-sm transition ${
-                    typeFilter === f.value
+                    kind === f.value
                       ? 'bg-projector text-theatre-950'
                       : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
                   }`}
@@ -464,17 +468,19 @@ export default function Search() {
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs uppercase tracking-wider text-zinc-500">Voto minimo</span>
-            <input
-              type="range" min={0} max={9} step={1} value={minRating}
-              onChange={(e) => setMinRating(Number(e.target.value))}
-              className="accent-projector"
-            />
-            <span className="w-8 text-sm font-semibold text-projector">
-              {minRating > 0 ? `${minRating}+` : '—'}
-            </span>
-          </div>
+          {query.trim() && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase tracking-wider text-zinc-500">Voto minimo</span>
+              <input
+                type="range" min={0} max={9} step={1} value={minRating}
+                onChange={(e) => setMinRating(Number(e.target.value))}
+                className="accent-projector"
+              />
+              <span className="w-8 text-sm font-semibold text-projector">
+                {minRating > 0 ? `${minRating}+` : '—'}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -496,39 +502,6 @@ export default function Search() {
             </button>
           ))}
         </div>
-      )}
-
-      {/* ── Anime / Cartoni: sfoglia se vuoto, cerca per nome se digiti ── */}
-      {isAnimationMode && (
-        !query.trim() ? (
-          mode === 'anime' ? (
-            <div className="space-y-12">
-              <BrowseList fetcher={getAnime} />
-              <div>
-                <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">
-                  😏 Pervertito
-                </h2>
-                <p className="mb-4 text-sm text-zinc-500">
-                  Ecchi, fan-service e hentai, confinati nel loro angolo.
-                </p>
-                <BrowseList fetcher={getPervertitoAnime} />
-              </div>
-            </div>
-          ) : (
-            <BrowseList fetcher={getCartoons} />
-          )
-        ) : loading ? (
-          <Loader label="Sfoglio la pellicola…" />
-        ) : error ? (
-          <ErrorState title="Ricerca non riuscita" message={error} />
-        ) : titles.length === 0 ? (
-          <EmptyState
-            title="Nessun risultato"
-            message={`Nessun ${mode === 'anime' ? 'anime' : 'cartone'} trovato per "${query}".`}
-          />
-        ) : (
-          <MediaGrid items={titles} />
-        )
       )}
 
       {/* ── Canzone → film (via AI) ── */}
@@ -565,13 +538,31 @@ export default function Search() {
       {isImageMode && <ImageIdentify />}
 
       {/* ── Search modes (titoli, persone, studi, saghe) ── */}
-      {!isAnimationMode && !isSongMode && !isImageMode && (
+      {!isSongMode && !isImageMode && (
         loading ? (
           <Loader label="Sfoglio la pellicola…" />
         ) : error ? (
           <ErrorState title="Ricerca non riuscita" message={error} />
         ) : !query.trim() ? (
           mode === 'titles' ? (
+            isAnimationKind ? (
+              kind === 'anime' ? (
+                <div className="space-y-12">
+                  <BrowseList fetcher={getAnime} />
+                  <div>
+                    <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">
+                      😏 Pervertito
+                    </h2>
+                    <p className="mb-4 text-sm text-zinc-500">
+                      Ecchi, fan-service e hentai, confinati nel loro angolo.
+                    </p>
+                    <BrowseList fetcher={getPervertitoAnime} />
+                  </div>
+                </div>
+              ) : (
+                <BrowseList fetcher={getCartoons} />
+              )
+            ) : (
             <div className="space-y-10">
               {previewTitles.length > 0 && (
                 <div>
@@ -615,6 +606,7 @@ export default function Search() {
                 </div>
               </div>
             </div>
+            )
           ) : mode === 'people' ? (
             <div>
               <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
