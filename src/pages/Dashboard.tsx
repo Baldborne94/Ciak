@@ -187,7 +187,7 @@ export default function Dashboard() {
             </p>
             <div className="mt-4 flex justify-center gap-3">
               <Link to="/search" className="btn-primary">🔍 Cerca & Esplora</Link>
-              <Link to="/anime" className="btn-ghost">Sfoglia gli anime</Link>
+              <Link to="/search?mode=anime" className="btn-ghost">Sfoglia gli anime</Link>
             </div>
           </section>
         )}

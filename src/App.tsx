@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import RequireAuth from './components/RequireAuth'
 import Dashboard from './pages/Dashboard'
@@ -7,7 +7,6 @@ import TitleDetail from './pages/TitleDetail'
 import ListPage from './pages/ListPage'
 import Favorites from './pages/Favorites'
 import Recommendations from './pages/Recommendations'
-import CatalogPage from './pages/CatalogPage'
 import TrophiesPage from './pages/TrophiesPage'
 import TasteProfile from './pages/TasteProfile'
 import ListsPage from './pages/ListsPage'
@@ -20,7 +19,6 @@ import CollectionPage from './pages/CollectionPage'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
-import { getAnime, getCartoons } from './lib/tmdb'
 
 export default function App() {
   return (
@@ -99,28 +97,9 @@ export default function App() {
             </RequireAuth>
           }
         />
-        <Route
-          path="anime"
-          element={
-            <CatalogPage
-              eyebrow="Catalogo"
-              title="Anime"
-              subtitle="Le serie animate giapponesi più popolari del momento."
-              fetcher={getAnime}
-            />
-          }
-        />
-        <Route
-          path="cartoons"
-          element={
-            <CatalogPage
-              eyebrow="Catalogo"
-              title="Cartoni animati"
-              subtitle="Le serie animate occidentali: Scooby-Doo, Tom & Jerry e altri classici."
-              fetcher={getCartoons}
-            />
-          }
-        />
+        {/* Anime/Cartoni ora vivono dentro Cerca → Titoli; i vecchi URL reindirizzano. */}
+        <Route path="anime" element={<Navigate to="/search?mode=anime" replace />} />
+        <Route path="cartoons" element={<Navigate to="/search?mode=cartoons" replace />} />
         <Route path="recommendations" element={<Recommendations />} />
         <Route path="trophies" element={<TrophiesPage />} />
         <Route path="settings" element={<Settings />} />

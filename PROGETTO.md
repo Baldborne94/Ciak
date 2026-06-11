@@ -45,16 +45,14 @@ Il tuo archivio personale di cinema: traccia **film, serie TV, anime e cartoni**
 - Stati vuoti dedicati per ospiti e utenti senza titoli
 
 ### 🔍 Cerca & Esplora (hub unico)
-Una sola pagina con schede:
-- **Titoli** — ricerca **bilingue** (IT + EN in parallelo, uniti e de-duplicati), ordinati per popolarità; a campo vuoto "Di tendenza ora" + sfoglia per genere; filtri tipo/voto
-- **Anime** — animazione giapponese (sezione **😏 Pervertito** a parte per ecchi/hentai)
-- **Cartoni** — serie animate occidentali (Scooby-Doo, Tom & Jerry…)
+Una sola pagina con schede (catalogo/entità) e, separati, gli **strumenti AI**:
+- **Titoli** — ricerca **bilingue** (IT + EN in parallelo, uniti e de-duplicati); a campo vuoto "Di tendenza ora" + sfoglia per genere. Filtro **Tipo**: Tutti · Film · Serie · **⛩️ Anime** · **🎨 Cartoni** (gli anime mostrano anche la sezione **😏 Pervertito** per ecchi/hentai) + voto minimo
 - **Persone** — attori / registi / compositori / sceneggiatori (filtro per ruolo); a campo vuoto "Attori celebri"
 - **Studi** — studi di produzione con logo; a campo vuoto "Studi celebri"
 - **Saghe** — collezioni/franchise; a campo vuoto "Saghe celebri" (con poster reali)
-- **🎵 Canzone → film** — l'AI trova i film che usano una canzone, con la scena
+- **✨ Strumenti AI** (staccati nella barra): **🎵 Canzone → film** (l'AI, con ricerca web, trova i film che usano una canzone) e **📷 Foto** (riconosce titoli e persone da un'immagine)
 
-> Anime e Cartoni si possono anche **cercare** per nome IT/EN. I titoli appaiono in **lingua originale** (più facili da cercare sui siti di streaming); gli anime restano leggibili (IT/EN, non in giapponese).
+> Anime e Cartoni (filtro sotto Titoli) si possono anche **cercare** per nome IT/EN. I titoli appaiono in **lingua originale** (più facili da cercare sui siti di streaming); gli anime restano leggibili (IT/EN, non in giapponese). I vecchi URL `/anime` e `/cartoons` reindirizzano qui.
 
 ### 🎞️ Scheda titolo dettagliata
 - Backdrop, locandina, trama, generi, voto; **titolo originale** + 🇮🇹 italiano se diverso
@@ -129,10 +127,9 @@ src/
     types.ts                Tipi condivisi
   pages/
     Dashboard.tsx           Homepage personale
-    Search.tsx              Cerca & Esplora (hub: titoli/anime/cartoni/
-                            persone/studi/saghe/canzone)
+    Search.tsx              Cerca & Esplora (hub: titoli [+ filtro anime/
+                            cartoni], persone, studi, saghe, canzone, foto)
     GenrePage / PersonPage / StudioPage / CollectionPage
-    CatalogPage.tsx         Catalogo anime / cartoni
     TitleDetail.tsx         Scheda titolo (provider, trailer, stagioni…)
     ListPage / Favorites / ListsPage / CustomListPage / DiaryPage
     TasteProfile.tsx        Profilo di gusto (statistiche)
@@ -265,7 +262,7 @@ Il tema attivo persiste in `localStorage`.
 5. ✅ Dashboard con statistiche reali
 6. ✅ Raccomandazioni AI collegate ai dati utente
 7. ✅ Trofei, badge e temi dinamici
-8. ✅ Cerca & Esplora (hub: titoli/anime/cartoni/persone/studi/saghe)
+8. ✅ Cerca & Esplora (hub: titoli con filtro anime/cartoni, persone, studi, saghe)
 9. ✅ Ricerca bilingue + titoli in lingua originale
 10. ✅ Dove guardarlo (streaming IT) + trailer
 11. ✅ Profilo di gusto (statistiche personali)
