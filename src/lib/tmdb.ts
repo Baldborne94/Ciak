@@ -5,6 +5,7 @@ import type {
   Company,
   CrewMember,
   Genre,
+  Episode,
   MediaDetail,
   MediaItem,
   Person,
@@ -230,6 +231,28 @@ interface RawDetail extends RawMedia {
   created_by?: { id: number; name: string }[]
   videos?: { results: RawVideo[] }
   'watch/providers'?: { results: Record<string, RawWatchRegion> }
+  seasons?: RawSeason[]
+}
+
+interface RawSeason {
+  id: number
+  season_number: number
+  name: string
+  episode_count?: number
+  air_date?: string | null
+  poster_path?: string | null
+  overview?: string
+}
+
+interface RawEpisode {
+  id: number
+  episode_number: number
+  name: string
+  overview?: string
+  air_date?: string | null
+  runtime?: number | null
+  vote_average?: number
+  still_path?: string | null
 }
 
 interface RawVideo {
@@ -451,7 +474,33 @@ export async function getDetail(
     directors: [...new Set(directors)],
     trailerKey: trailer?.key ?? null,
     watchProviders,
+    seasons: (raw.seasons ?? [])
+      .filter((s) => (s.episode_count ?? 0) > 0)
+      .map((s) => ({
+        id: s.id,
+        seasonNumber: s.season_number,
+        name: s.name,
+        episodeCount: s.episode_count ?? 0,
+        airDate: s.air_date ?? null,
+        posterPath: s.poster_path ?? null,
+        overview: s.overview || null,
+      }))
+      .sort((a, b) => a.seasonNumber - b.seasonNumber),
   }
+}
+
+export async function getSeason(tvId: number, seasonNumber: number): Promise<Episode[]> {
+  const raw = await tmdbFetch<{ episodes?: RawEpisode[] }>(`/tv/${tvId}/season/${seasonNumber}`)
+  return (raw.episodes ?? []).map((e) => ({
+    id: e.id,
+    episodeNumber: e.episode_number,
+    name: e.name,
+    overview: e.overview ?? '',
+    airDate: e.air_date ?? null,
+    runtime: e.runtime ?? null,
+    voteAverage: e.vote_average ?? 0,
+    stillPath: e.still_path ?? null,
+  }))
 }
 
 // ── Discover / browse ─────────────────────────────────────────────────────
