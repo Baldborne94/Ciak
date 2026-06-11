@@ -1,5 +1,7 @@
 import type {
   CastMember,
+  Collection,
+  CollectionDetail,
   Company,
   CrewMember,
   Genre,
@@ -359,6 +361,7 @@ export async function searchPerson(query: string): Promise<Person[]> {
     id: p.id,
     name: p.name,
     profilePath: p.profile_path ?? null,
+    department: p.known_for_department ?? null,
     knownFor: (p.known_for ?? [])
       .map((m) => m.title ?? m.name)
       .filter(Boolean)
@@ -392,11 +395,51 @@ export async function getPersonDetail(id: number): Promise<PersonDetail> {
     id: raw.id,
     name: raw.name,
     profilePath: raw.profile_path ?? null,
+    department: raw.known_for_department ?? null,
     knownFor: raw.known_for_department ?? null,
     biography: raw.biography || null,
     birthday: raw.birthday ?? null,
     placeOfBirth: raw.place_of_birth ?? null,
     credits: uniqueCredits,
+  }
+}
+
+// ── Collections / sagas ────────────────────────────────────────────────────
+
+interface RawCollection {
+  id: number
+  name: string
+  overview?: string
+  poster_path?: string | null
+  backdrop_path?: string | null
+  parts?: RawMedia[]
+}
+
+export async function searchCollection(query: string): Promise<Collection[]> {
+  if (!query.trim()) return []
+  const data = await tmdbFetch<{ results: RawCollection[] }>('/search/collection', {
+    query,
+  })
+  return data.results.map((c) => ({
+    id: c.id,
+    name: c.name,
+    posterPath: c.poster_path ?? null,
+  }))
+}
+
+export async function getCollection(id: number): Promise<CollectionDetail> {
+  const raw = await tmdbFetch<RawCollection>(`/collection/${id}`)
+  const items = (raw.parts ?? [])
+    .map((m) => normalise(m, 'movie'))
+    // Chronological order by release date.
+    .sort((a, b) => (a.releaseDate ?? '').localeCompare(b.releaseDate ?? ''))
+  return {
+    id: raw.id,
+    name: raw.name,
+    overview: raw.overview || null,
+    posterPath: raw.poster_path ?? null,
+    backdropPath: raw.backdrop_path ?? null,
+    items,
   }
 }
 

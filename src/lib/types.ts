@@ -69,11 +69,12 @@ export interface Company {
   logoPath: string | null
 }
 
-// A person (actor / director) from TMDB.
+// A person (actor / director / composer …) from TMDB.
 export interface Person {
   id: number
   name: string
   profilePath: string | null
+  department: string | null
   knownFor: string | null
 }
 
@@ -82,6 +83,22 @@ export interface PersonDetail extends Person {
   birthday: string | null
   placeOfBirth: string | null
   credits: MediaItem[]
+}
+
+// A movie collection / saga (e.g. "Harry Potter Collection").
+export interface Collection {
+  id: number
+  name: string
+  posterPath: string | null
+}
+
+export interface CollectionDetail {
+  id: number
+  name: string
+  overview: string | null
+  posterPath: string | null
+  backdropPath: string | null
+  items: MediaItem[]
 }
 
 export interface Genre {

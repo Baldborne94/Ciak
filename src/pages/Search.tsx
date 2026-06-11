@@ -7,26 +7,34 @@ import {
   searchMulti,
   searchPerson,
   searchCompany,
+  searchCollection,
   getGenres,
+  getAnime,
+  getCartoons,
   profileUrl,
   logoUrl,
+  posterUrl,
   isTmdbConfigured,
 } from '../lib/tmdb'
 import type {
   MediaItem,
   Person,
   Company,
+  Collection,
   Genre,
   TmdbType,
 } from '../lib/types'
 
-type Mode = 'titles' | 'actors' | 'studios'
+type Mode = 'titles' | 'anime' | 'cartoons' | 'people' | 'studios' | 'collections'
 type TypeFilter = 'all' | TmdbType
 
-const MODES: { value: Mode; label: string; icon: string; placeholder: string }[] = [
+const MODES: { value: Mode; label: string; icon: string; placeholder?: string }[] = [
   { value: 'titles', label: 'Titoli', icon: '🎬', placeholder: 'Cerca un film o una serie… (IT o EN)' },
-  { value: 'actors', label: 'Attori', icon: '🌟', placeholder: 'Cerca un attore o regista… (es. Al Pacino)' },
+  { value: 'anime', label: 'Anime', icon: '⛩️' },
+  { value: 'cartoons', label: 'Cartoni', icon: '🎨' },
+  { value: 'people', label: 'Persone', icon: '🌟', placeholder: 'Cerca attore, regista, compositore…' },
   { value: 'studios', label: 'Studi', icon: '🏛️', placeholder: 'Cerca uno studio… (es. Pixar, A24, Ghibli)' },
+  { value: 'collections', label: 'Saghe', icon: '📚', placeholder: 'Cerca una saga… (es. Harry Potter, Marvel)' },
 ]
 
 const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
@@ -34,6 +42,83 @@ const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
   { value: 'movie', label: 'Film' },
   { value: 'tv', label: 'Serie TV' },
 ]
+
+// People role filter — maps to TMDB known_for_department.
+const ROLES: { value: string; label: string; dept: string | null }[] = [
+  { value: 'all', label: 'Tutti', dept: null },
+  { value: 'acting', label: 'Attori', dept: 'Acting' },
+  { value: 'directing', label: 'Registi', dept: 'Directing' },
+  { value: 'composing', label: 'Compositori', dept: 'Sound' },
+  { value: 'writing', label: 'Sceneggiatori', dept: 'Writing' },
+]
+
+const ROLE_LABEL: Record<string, string> = {
+  Acting: 'Attore',
+  Directing: 'Regista',
+  Sound: 'Compositore',
+  Writing: 'Sceneggiatore',
+  Production: 'Produttore',
+  Camera: 'Direttore della fotografia',
+}
+
+// Paginated browse list for anime / cartoons.
+function BrowseList({
+  fetcher,
+}: {
+  fetcher: (page: number) => Promise<{ items: MediaItem[]; totalPages: number }>
+}) {
+  const [items, setItems] = useState<MediaItem[]>([])
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    setItems([])
+    setPage(1)
+    fetcher(1)
+      .then(({ items: it, totalPages: tp }) => {
+        setItems(it)
+        setTotalPages(tp)
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [fetcher])
+
+  async function loadMore() {
+    const next = page + 1
+    setLoadingMore(true)
+    try {
+      const { items: it } = await fetcher(next)
+      setItems((prev) => [...prev, ...it])
+      setPage(next)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  if (loading) return <Loader label="Carico il catalogo…" />
+  if (error) return <ErrorState title="Catalogo non disponibile" message={error} />
+  if (items.length === 0) return <EmptyState title="Nessun titolo" message="Riprova più tardi." />
+
+  return (
+    <>
+      <MediaGrid items={items} />
+      {page < totalPages && (
+        <div className="mt-8 flex justify-center">
+          <button onClick={loadMore} disabled={loadingMore} className="btn-primary">
+            {loadingMore ? 'Carico…' : 'Carica altri'}
+          </button>
+        </div>
+      )}
+    </>
+  )
+}
 
 export default function Search() {
   const [params, setParams] = useSearchParams()
@@ -47,23 +132,21 @@ export default function Search() {
   const [titles, setTitles] = useState<MediaItem[]>([])
   const [people, setPeople] = useState<Person[]>([])
   const [studios, setStudios] = useState<Company[]>([])
+  const [collections, setCollections] = useState<Collection[]>([])
 
-  // Title-mode filters
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [minRating, setMinRating] = useState(0)
+  const [role, setRole] = useState('all')
 
-  // Genre chips shown when browsing without a query (titles mode)
   const [genreType, setGenreType] = useState<TmdbType>('movie')
   const [genres, setGenres] = useState<Genre[]>([])
 
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
+  const usesSearch = mode === 'titles' || mode === 'people' || mode === 'studios' || mode === 'collections'
 
-  // Run search when query/mode changes
   useEffect(() => {
-    if (!query.trim()) {
-      setTitles([])
-      setPeople([])
-      setStudios([])
+    if (!usesSearch || !query.trim()) {
+      setTitles([]); setPeople([]); setStudios([]); setCollections([])
       return
     }
     if (!isTmdbConfigured) {
@@ -73,15 +156,13 @@ export default function Search() {
     setLoading(true)
     setError(null)
     const run =
-      mode === 'actors'
-        ? searchPerson(query).then(setPeople)
-        : mode === 'studios'
-          ? searchCompany(query).then(setStudios)
-          : searchMulti(query).then(setTitles)
+      mode === 'people' ? searchPerson(query).then(setPeople)
+      : mode === 'studios' ? searchCompany(query).then(setStudios)
+      : mode === 'collections' ? searchCollection(query).then(setCollections)
+      : searchMulti(query).then(setTitles)
     run.catch((e: Error) => setError(e.message)).finally(() => setLoading(false))
-  }, [query, mode])
+  }, [query, mode, usesSearch])
 
-  // Load genres for the browse-by-genre default (titles mode, no query)
   useEffect(() => {
     if (mode !== 'titles' || !isTmdbConfigured) return
     getGenres(genreType).then(setGenres).catch(() => setGenres([]))
@@ -96,6 +177,12 @@ export default function Search() {
       }),
     [titles, typeFilter, minRating],
   )
+
+  const filteredPeople = useMemo(() => {
+    const dept = ROLES.find((r) => r.value === role)?.dept
+    if (!dept) return people
+    return people.filter((p) => p.department === dept)
+  }, [people, role])
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -117,16 +204,16 @@ export default function Search() {
       <PageHeader
         eyebrow="Catalogo"
         title="Cerca & Esplora"
-        subtitle="Trova un titolo, sfoglia per genere, o scopri attori e studi di produzione."
+        subtitle="Titoli, anime, cartoni, persone, studi e saghe — tutto in un posto."
       />
 
       {/* Mode selector */}
-      <div className="mb-4 flex gap-2 border-b border-theatre-800">
+      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-theatre-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {MODES.map((m) => (
           <button
             key={m.value}
             onClick={() => switchMode(m.value)}
-            className={`-mb-px border-b-2 px-4 py-3 text-sm font-medium transition ${
+            className={`-mb-px whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition ${
               mode === m.value
                 ? 'border-projector text-projector'
                 : 'border-transparent text-zinc-400 hover:text-zinc-200'
@@ -137,19 +224,21 @@ export default function Search() {
         ))}
       </div>
 
-      {/* Search bar */}
-      <form onSubmit={onSubmit} className="mb-6 flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={activeMode.placeholder}
-          className="input-cine"
-          autoFocus
-        />
-        <button type="submit" className="btn-primary whitespace-nowrap">
-          🔍 Cerca
-        </button>
-      </form>
+      {/* Search bar — only for search-based modes */}
+      {usesSearch && (
+        <form onSubmit={onSubmit} className="mb-6 flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={activeMode.placeholder}
+            className="input-cine"
+            autoFocus
+          />
+          <button type="submit" className="btn-primary whitespace-nowrap">
+            🔍 Cerca
+          </button>
+        </form>
+      )}
 
       {/* Title-mode filters */}
       {mode === 'titles' && query.trim() && (
@@ -175,11 +264,7 @@ export default function Search() {
           <div className="flex items-center gap-2">
             <span className="text-xs uppercase tracking-wider text-zinc-500">Voto minimo</span>
             <input
-              type="range"
-              min={0}
-              max={9}
-              step={1}
-              value={minRating}
+              type="range" min={0} max={9} step={1} value={minRating}
               onChange={(e) => setMinRating(Number(e.target.value))}
               className="accent-projector"
             />
@@ -190,116 +275,168 @@ export default function Search() {
         </div>
       )}
 
-      {/* Results */}
-      {loading ? (
-        <Loader label="Sfoglio la pellicola…" />
-      ) : error ? (
-        <ErrorState title="Ricerca non riuscita" message={error} />
-      ) : !query.trim() ? (
-        // Idle state: browse by genre (titles) or a hint (people/studios)
-        mode === 'titles' ? (
-          <div>
-            <div className="mb-4 flex items-center gap-2">
-              <span className="font-display text-xl tracking-wide text-zinc-100">
-                🎭 Sfoglia per genere
-              </span>
-              <div className="ml-auto flex gap-1">
-                {(['movie', 'tv'] as TmdbType[]).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setGenreType(t)}
-                    className={`rounded-md px-3 py-1.5 text-sm transition ${
-                      genreType === t
-                        ? 'bg-projector text-theatre-950'
-                        : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
-                    }`}
+      {/* People-mode role filter */}
+      {mode === 'people' && query.trim() && people.length > 0 && (
+        <div className="mb-8 flex flex-wrap items-center gap-2 rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
+          <span className="text-xs uppercase tracking-wider text-zinc-500">Ruolo</span>
+          {ROLES.map((r) => (
+            <button
+              key={r.value}
+              onClick={() => setRole(r.value)}
+              className={`rounded-md px-3 py-1.5 text-sm transition ${
+                role === r.value
+                  ? 'bg-projector text-theatre-950'
+                  : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Browse modes (no search) ── */}
+      {mode === 'anime' && <BrowseList fetcher={getAnime} />}
+      {mode === 'cartoons' && <BrowseList fetcher={getCartoons} />}
+
+      {/* ── Search modes ── */}
+      {usesSearch && (
+        loading ? (
+          <Loader label="Sfoglio la pellicola…" />
+        ) : error ? (
+          <ErrorState title="Ricerca non riuscita" message={error} />
+        ) : !query.trim() ? (
+          mode === 'titles' ? (
+            <div>
+              <div className="mb-4 flex items-center gap-2">
+                <span className="font-display text-xl tracking-wide text-zinc-100">
+                  🎭 Sfoglia per genere
+                </span>
+                <div className="ml-auto flex gap-1">
+                  {(['movie', 'tv'] as TmdbType[]).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setGenreType(t)}
+                      className={`rounded-md px-3 py-1.5 text-sm transition ${
+                        genreType === t
+                          ? 'bg-projector text-theatre-950'
+                          : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
+                      }`}
+                    >
+                      {t === 'movie' ? 'Film' : 'Serie TV'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {genres.map((g) => (
+                  <Link
+                    key={g.id}
+                    to={`/genre/${genreType}/${g.id}`}
+                    className="rounded-xl border border-theatre-700 bg-theatre-900/60 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:-translate-y-0.5 hover:border-projector/40 hover:text-projector"
                   >
-                    {t === 'movie' ? 'Film' : 'Serie TV'}
-                  </button>
+                    {g.name}
+                  </Link>
                 ))}
               </div>
             </div>
-            <div className="flex flex-wrap gap-3">
-              {genres.map((g) => (
-                <Link
-                  key={g.id}
-                  to={`/genre/${genreType}/${g.id}`}
-                  className="rounded-xl border border-theatre-700 bg-theatre-900/60 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:-translate-y-0.5 hover:border-projector/40 hover:text-projector"
-                >
-                  {g.name}
-                </Link>
-              ))}
+          ) : (
+            <EmptyState
+              title={`Cerca ${activeMode.label.toLowerCase()}`}
+              message={`Digita un nome per cercare tra ${activeMode.label.toLowerCase()}.`}
+              icon={activeMode.icon}
+            />
+          )
+        ) : mode === 'titles' ? (
+          filteredTitles.length === 0 ? (
+            <EmptyState title="Nessun risultato" message={`Nessun titolo per "${query}" con i filtri attuali.`} />
+          ) : (
+            <MediaGrid items={filteredTitles} />
+          )
+        ) : mode === 'people' ? (
+          filteredPeople.length === 0 ? (
+            <EmptyState title="Nessuna persona trovata" message={`Nessun risultato per "${query}" in questo ruolo.`} />
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {filteredPeople.map((p) => {
+                const photo = profileUrl(p.profilePath)
+                return (
+                  <Link
+                    key={p.id}
+                    to={`/person/${p.id}`}
+                    className="group rounded-xl border border-theatre-800 bg-theatre-900 p-3 text-center transition hover:-translate-y-1 hover:border-projector/40"
+                  >
+                    <div className="mx-auto aspect-square w-full overflow-hidden rounded-full border border-theatre-700 bg-theatre-800">
+                      {photo ? (
+                        <img src={photo} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">👤</div>
+                      )}
+                    </div>
+                    <p className="mt-2 line-clamp-1 text-sm font-semibold text-zinc-100">{p.name}</p>
+                    <p className="line-clamp-1 text-xs text-projector/70">
+                      {p.department ? ROLE_LABEL[p.department] ?? p.department : ''}
+                    </p>
+                    {p.knownFor && <p className="line-clamp-1 text-xs text-zinc-500">{p.knownFor}</p>}
+                  </Link>
+                )
+              })}
             </div>
-          </div>
-        ) : (
-          <EmptyState
-            title={mode === 'actors' ? 'Cerca una persona' : 'Cerca uno studio'}
-            message={
-              mode === 'actors'
-                ? 'Digita il nome di un attore o regista per vedere la sua filmografia.'
-                : 'Digita il nome di uno studio per vedere i suoi film.'
-            }
-            icon={mode === 'actors' ? '🌟' : '🏛️'}
-          />
-        )
-      ) : mode === 'titles' ? (
-        filteredTitles.length === 0 ? (
-          <EmptyState
-            title="Nessun risultato"
-            message={`Nessun titolo per "${query}" con i filtri attuali.`}
-          />
-        ) : (
-          <MediaGrid items={filteredTitles} />
-        )
-      ) : mode === 'actors' ? (
-        people.length === 0 ? (
-          <EmptyState title="Nessuna persona trovata" message={`Nessun risultato per "${query}".`} />
-        ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {people.map((p) => {
-              const photo = profileUrl(p.profilePath)
-              return (
-                <Link
-                  key={p.id}
-                  to={`/person/${p.id}`}
-                  className="group rounded-xl border border-theatre-800 bg-theatre-900 p-3 text-center transition hover:-translate-y-1 hover:border-projector/40"
-                >
-                  <div className="mx-auto aspect-square w-full overflow-hidden rounded-full border border-theatre-700 bg-theatre-800">
-                    {photo ? (
-                      <img src={photo} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
+          )
+        ) : mode === 'studios' ? (
+          studios.length === 0 ? (
+            <EmptyState title="Nessuno studio trovato" message={`Nessun risultato per "${query}".`} />
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+              {studios.map((c) => {
+                const logo = logoUrl(c.logoPath)
+                return (
+                  <Link
+                    key={c.id}
+                    to={`/studio/${c.id}`}
+                    className="group flex h-28 flex-col items-center justify-center gap-2 rounded-xl border border-theatre-800 bg-theatre-900 p-4 text-center transition hover:-translate-y-1 hover:border-projector/40"
+                  >
+                    {logo ? (
+                      <img src={logo} alt={c.name} loading="lazy" className="max-h-12 max-w-full bg-white/90 px-2 py-1" />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">👤</div>
+                      <span className="text-3xl opacity-40">🏛️</span>
                     )}
-                  </div>
-                  <p className="mt-2 line-clamp-1 text-sm font-semibold text-zinc-100">{p.name}</p>
-                  {p.knownFor && <p className="line-clamp-1 text-xs text-zinc-500">{p.knownFor}</p>}
-                </Link>
-              )
-            })}
-          </div>
+                    <p className="line-clamp-1 text-sm font-medium text-zinc-200">{c.name}</p>
+                  </Link>
+                )
+              })}
+            </div>
+          )
+        ) : (
+          // collections
+          collections.length === 0 ? (
+            <EmptyState title="Nessuna saga trovata" message={`Nessun risultato per "${query}".`} />
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {collections.map((c) => {
+                const poster = posterUrl(c.posterPath)
+                return (
+                  <Link
+                    key={c.id}
+                    to={`/collection/${c.id}`}
+                    className="group overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
+                  >
+                    <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
+                      {poster ? (
+                        <img src={poster} alt={c.name} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-4xl opacity-30">📚</div>
+                      )}
+                    </div>
+                    <div className="p-3">
+                      <h3 className="line-clamp-2 text-sm font-semibold text-zinc-100">{c.name}</h3>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          )
         )
-      ) : studios.length === 0 ? (
-        <EmptyState title="Nessuno studio trovato" message={`Nessun risultato per "${query}".`} />
-      ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-          {studios.map((c) => {
-            const logo = logoUrl(c.logoPath)
-            return (
-              <Link
-                key={c.id}
-                to={`/studio/${c.id}`}
-                className="group flex h-28 flex-col items-center justify-center gap-2 rounded-xl border border-theatre-800 bg-theatre-900 p-4 text-center transition hover:-translate-y-1 hover:border-projector/40"
-              >
-                {logo ? (
-                  <img src={logo} alt={c.name} loading="lazy" className="max-h-12 max-w-full bg-white/90 px-2 py-1" />
-                ) : (
-                  <span className="text-3xl opacity-40">🏛️</span>
-                )}
-                <p className="line-clamp-1 text-sm font-medium text-zinc-200">{c.name}</p>
-              </Link>
-            )
-          })}
-        </div>
       )}
     </div>
   )

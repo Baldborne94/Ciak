@@ -2,12 +2,10 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 
-// Primary links shown inline.
+// Primary links shown inline. Anime/Cartoni now live inside "Cerca".
 const primary = [
   { to: '/', label: 'Sala', end: true },
   { to: '/search', label: 'Cerca' },
-  { to: '/anime', label: 'Anime' },
-  { to: '/cartoons', label: 'Cartoni' },
 ]
 
 // Personal lists grouped under a dropdown.
