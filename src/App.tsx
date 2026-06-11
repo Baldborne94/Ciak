@@ -9,7 +9,6 @@ import Favorites from './pages/Favorites'
 import Recommendations from './pages/Recommendations'
 import CatalogPage from './pages/CatalogPage'
 import TrophiesPage from './pages/TrophiesPage'
-import Explore from './pages/Explore'
 import GenrePage from './pages/GenrePage'
 import PersonPage from './pages/PersonPage'
 import StudioPage from './pages/StudioPage'
@@ -24,7 +23,7 @@ export default function App() {
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="search" element={<Search />} />
-        <Route path="explore" element={<Explore />} />
+        <Route path="explore" element={<Search />} />
         <Route path="genre/:type/:genreId" element={<GenrePage />} />
         <Route path="person/:id" element={<PersonPage />} />
         <Route path="studio/:id" element={<StudioPage />} />

@@ -79,10 +79,10 @@ export default function StudioPage() {
       )}
 
       <Link
-        to="/explore"
+        to="/search"
         className="mt-8 inline-block text-sm text-projector/80 hover:text-projector"
       >
-        ← Torna a Esplora
+        ← Torna alla ricerca
       </Link>
     </div>
   )
