@@ -47,6 +47,9 @@ const MODES: { value: Mode; label: string; icon: string; placeholder?: string }[
   { value: 'image', label: 'Foto', icon: '📷' },
 ]
 
+// Tools that don't do a plain catalog search — set apart in the tab bar.
+const AI_MODES = new Set<Mode>(['song', 'image'])
+
 const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
   { value: 'all', label: 'Tutti' },
   { value: 'movie', label: 'Film' },
@@ -363,12 +366,32 @@ export default function Search() {
       <PageHeader
         eyebrow="Catalogo"
         title="Cerca & Esplora"
-        subtitle="Titoli, anime, cartoni, persone, studi e saghe — tutto in un posto."
+        subtitle="Titoli, anime, cartoni, persone, studi e saghe — più gli strumenti AI (canzone, foto)."
       />
 
-      {/* Mode selector */}
-      <div className="mb-4 flex gap-1 overflow-x-auto border-b border-theatre-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {MODES.map((m) => (
+      {/* Mode selector — catalog/entity tabs, then the AI tools set apart */}
+      <div className="mb-4 flex items-stretch gap-1 overflow-x-auto border-b border-theatre-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {MODES.filter((m) => !AI_MODES.has(m.value)).map((m) => (
+          <button
+            key={m.value}
+            onClick={() => switchMode(m.value)}
+            className={`-mb-px whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition ${
+              mode === m.value
+                ? 'border-projector text-projector'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            {m.icon} {m.label}
+          </button>
+        ))}
+
+        {/* Divider + label introducing the AI-powered tools */}
+        <span aria-hidden className="mx-2 my-2 w-px self-stretch bg-theatre-700" />
+        <span className="flex items-center whitespace-nowrap pr-1 text-xs font-semibold uppercase tracking-wider text-zinc-600">
+          ✨ AI
+        </span>
+
+        {MODES.filter((m) => AI_MODES.has(m.value)).map((m) => (
           <button
             key={m.value}
             onClick={() => switchMode(m.value)}
