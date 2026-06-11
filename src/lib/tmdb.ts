@@ -9,7 +9,9 @@ import type {
   MediaItem,
   Person,
   PersonDetail,
+  Provider,
   TmdbType,
+  WatchProviders,
 } from './types'
 
 const API_BASE = 'https://api.themoviedb.org/3'
@@ -226,6 +228,29 @@ interface RawDetail extends RawMedia {
   number_of_seasons?: number
   number_of_episodes?: number
   created_by?: { id: number; name: string }[]
+  videos?: { results: RawVideo[] }
+  'watch/providers'?: { results: Record<string, RawWatchRegion> }
+}
+
+interface RawVideo {
+  key: string
+  site: string
+  type: string
+  official?: boolean
+  iso_639_1?: string
+}
+
+interface RawProvider {
+  provider_id: number
+  provider_name: string
+  logo_path?: string | null
+}
+
+interface RawWatchRegion {
+  link?: string
+  flatrate?: RawProvider[]
+  rent?: RawProvider[]
+  buy?: RawProvider[]
 }
 
 // Resolve the TMDB keyword IDs for "ecchi" / fan-service once, then cache.
@@ -348,7 +373,8 @@ export async function getDetail(
   id: number,
 ): Promise<MediaDetail> {
   const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, {
-    append_to_response: 'credits,recommendations',
+    append_to_response: 'credits,recommendations,videos,watch/providers',
+    include_video_language: 'it,en',
   })
 
   const base = normalise(raw, type)
@@ -383,6 +409,27 @@ export async function getDetail(
     .slice(0, 12)
     .map((r) => normalise(r, type))
 
+  // Best YouTube trailer: prefer official Trailer, then any trailer/teaser.
+  const videos = (raw.videos?.results ?? []).filter((v) => v.site === 'YouTube')
+  const trailer =
+    videos.find((v) => v.type === 'Trailer' && v.official) ??
+    videos.find((v) => v.type === 'Trailer') ??
+    videos.find((v) => v.type === 'Teaser') ??
+    videos[0]
+
+  // Where to watch — Italy region.
+  const region = raw['watch/providers']?.results?.IT
+  const mapProviders = (list?: RawProvider[]): Provider[] =>
+    (list ?? []).map((p) => ({ id: p.provider_id, name: p.provider_name, logoPath: p.logo_path ?? null }))
+  const watchProviders: WatchProviders | null = region
+    ? {
+        link: region.link ?? null,
+        flatrate: mapProviders(region.flatrate),
+        rent: mapProviders(region.rent),
+        buy: mapProviders(region.buy),
+      }
+    : null
+
   return {
     ...base,
     genres: raw.genres ?? [],
@@ -402,6 +449,8 @@ export async function getDetail(
     numberOfSeasons: raw.number_of_seasons ?? null,
     numberOfEpisodes: raw.number_of_episodes ?? null,
     directors: [...new Set(directors)],
+    trailerKey: trailer?.key ?? null,
+    watchProviders,
   }
 }
 

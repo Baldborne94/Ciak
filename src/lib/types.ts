@@ -49,6 +49,23 @@ export interface MediaDetail extends MediaItem {
   numberOfEpisodes: number | null
   // Directors / creators, derived from crew
   directors: string[]
+  // YouTube trailer key, if available
+  trailerKey: string | null
+  // Where to watch (region IT)
+  watchProviders: WatchProviders | null
+}
+
+export interface Provider {
+  id: number
+  name: string
+  logoPath: string | null
+}
+
+export interface WatchProviders {
+  link: string | null
+  flatrate: Provider[]
+  rent: Provider[]
+  buy: Provider[]
 }
 
 export interface CastMember {
