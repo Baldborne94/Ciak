@@ -10,7 +10,7 @@ import {
   searchCollection,
   getGenres,
   getAnime,
-  getEcchiAnime,
+  getPervertitoAnime,
   getCartoons,
   getTrending,
   resolveStudios,
@@ -444,9 +444,9 @@ export default function Search() {
                   😏 Pervertito
                 </h2>
                 <p className="mb-4 text-sm text-zinc-500">
-                  Ecchi e fan-service, confinati nel loro angolo.
+                  Ecchi, fan-service e hentai, confinati nel loro angolo.
                 </p>
-                <BrowseList fetcher={getEcchiAnime} />
+                <BrowseList fetcher={getPervertitoAnime} />
               </div>
             </div>
           ) : (

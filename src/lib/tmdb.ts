@@ -240,18 +240,17 @@ export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPag
   }
 }
 
-// The "Pervertito" corner: ecchi / fan-service anime (still no hentai).
-export async function getEcchiAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
+// The "Pervertito" corner: ecchi / fan-service AND hentai anime.
+export async function getPervertitoAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
   const ecchi = await getEcchiKeywordIds()
-  if (ecchi.length === 0) return { items: [], totalPages: 0 }
+  const keywords = [...ecchi, '198385'] // ecchi + hentai
   const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/tv', {
     with_genres: '16',
     with_original_language: 'ja',
-    with_keywords: ecchi.join('|'), // ha almeno un keyword ecchi
-    without_keywords: '198385', // ma niente hentai
+    with_keywords: keywords.join('|'), // ha almeno un keyword ecchi/hentai
+    include_adult: 'true', // necessario per mostrare gli hentai
     sort_by: 'popularity.desc',
-    include_adult: 'false',
-    'vote_count.gte': '10',
+    'vote_count.gte': '5',
     page: String(page),
   })
   return {
