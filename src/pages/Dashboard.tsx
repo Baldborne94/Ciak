@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
 import { MediaRow, ScrollRow } from '../components/MediaRow'
-import { ErrorState, Loader } from '../components/States'
-import { getTrending, resolveSuggestions, isTmdbConfigured } from '../lib/tmdb'
+import { Loader } from '../components/States'
+import { resolveSuggestions } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { getStats, listByStatus, listFavorites, type UserStats } from '../lib/userTitles'
 import type { MediaItem, UserTitle } from '../lib/types'
@@ -95,22 +95,6 @@ export default function Dashboard() {
   const [stats, setStats] = useState<UserStats | null>(null)
   const [watchlist, setWatchlist] = useState<UserTitle[]>([])
   const [inProgress, setInProgress] = useState<UserTitle[]>([])
-  const [trending, setTrending] = useState<MediaItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  // Trending — public, always shown (one compact row).
-  useEffect(() => {
-    if (!isTmdbConfigured) {
-      setError('Configura VITE_TMDB_API_KEY per scoprire i titoli del momento.')
-      setLoading(false)
-      return
-    }
-    getTrending()
-      .then(setTrending)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
-  }, [])
 
   // Personal lists from Supabase.
   useEffect(() => {
@@ -137,7 +121,7 @@ export default function Dashboard() {
       <PageHeader
         eyebrow="La tua sala"
         title="Bentornato al cinema"
-        subtitle="I tuoi titoli, i suggerimenti su misura e cosa sta spopolando."
+        subtitle="I tuoi titoli e i suggerimenti su misura per te."
       />
 
       <div className="mb-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -217,20 +201,6 @@ export default function Dashboard() {
             <Link to="/login" className="btn-primary mt-4 inline-flex">🎟️ Accedi</Link>
           </section>
         )}
-
-        {/* Trending — one compact row */}
-        <section>
-          <SectionTitle icon="🔥" title="Di tendenza" action={
-            <span className="text-sm text-zinc-500">Questa settimana</span>
-          } />
-          {loading ? (
-            <Loader label="Accendo il proiettore…" />
-          ) : error ? (
-            <ErrorState title="Niente proiezione" message={error} />
-          ) : (
-            <MediaRow items={trending} />
-          )}
-        </section>
       </div>
     </div>
   )

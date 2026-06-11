@@ -377,6 +377,19 @@ export async function resolveSagas(names: string[]): Promise<Collection[]> {
   return found.filter((c): c is Collection => c !== null)
 }
 
+// Resolve specific collection IDs (more reliable than name search for the
+// curated "famous sagas" — avoids matching "making of" documentaries).
+export async function resolveSagaIds(ids: number[]): Promise<Collection[]> {
+  const found = await Promise.all(
+    ids.map((id) =>
+      getCollection(id)
+        .then((c): Collection => ({ id: c.id, name: c.name, posterPath: c.posterPath }))
+        .catch(() => null),
+    ),
+  )
+  return found.filter((c): c is Collection => c !== null)
+}
+
 export async function resolvePeople(names: string[]): Promise<Person[]> {
   const found = await Promise.all(
     names.map((n) => searchPerson(n).then((r) => r[0] ?? null).catch(() => null)),
