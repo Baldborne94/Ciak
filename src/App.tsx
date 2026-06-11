@@ -9,6 +9,7 @@ import Favorites from './pages/Favorites'
 import Recommendations from './pages/Recommendations'
 import CatalogPage from './pages/CatalogPage'
 import TrophiesPage from './pages/TrophiesPage'
+import TasteProfile from './pages/TasteProfile'
 import GenrePage from './pages/GenrePage'
 import PersonPage from './pages/PersonPage'
 import StudioPage from './pages/StudioPage'
@@ -60,6 +61,14 @@ export default function App() {
           element={
             <RequireAuth>
               <Favorites />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="profilo"
+          element={
+            <RequireAuth>
+              <TasteProfile />
             </RequireAuth>
           }
         />
