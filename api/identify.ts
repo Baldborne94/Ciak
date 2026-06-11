@@ -11,18 +11,21 @@ interface RequestBody {
 const ALLOWED = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
 const SYSTEM_PROMPT = `Sei un esperto di cinema, serie TV e anime con enorme memoria visiva.
-Ti viene mostrata un'immagine (un fotogramma, una locandina, un personaggio o uno screenshot).
-Identifica il titolo da cui proviene. Restituisci da 1 a 3 candidati ordinati dal più probabile,
-ognuno con: titolo (nel suo nome più conosciuto), anno se lo sai, tipo ("movie" o "tv"),
-confidenza ("alta" | "media" | "bassa") e una motivazione brevissima su COSA riconosci
-(personaggio, scena, stile, locandina). Se non riconosci nulla con ragionevolezza, restituisci
-una lista vuota. Non inventare titoli inesistenti.`
+Ti viene mostrata un'immagine (fotogramma, locandina, personaggio, screenshot o un COLLAGE
+con più titoli). Analizzala e restituisci:
+1) "titles": TUTTI i film/serie/anime distinti che riconosci. Se è un collage con più opere,
+   elencale tutte (una voce ciascuna). Se è una sola scena ambigua, metti fino a 3 ipotesi.
+   Per ognuna: titolo (nome più conosciuto), anno se noto, tipo ("movie" o "tv"),
+   confidenza ("alta"|"media"|"bassa"), e una motivazione brevissima (cosa riconosci).
+2) "people": eventuali PERSONE riconoscibili (attori, registi). Per ognuna: nome,
+   ruolo se evidente (es. "attore", "regista"), confidenza, e una motivazione.
+Se non riconosci nulla in una categoria, restituisci lista vuota. Non inventare nomi/titoli.`
 
 const OUTPUT_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    candidates: {
+    titles: {
       type: 'array',
       items: {
         type: 'object',
@@ -37,8 +40,22 @@ const OUTPUT_SCHEMA = {
         required: ['title', 'type', 'confidence', 'reason'],
       },
     },
+    people: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          name: { type: 'string' },
+          role: { type: 'string' },
+          confidence: { type: 'string', enum: ['alta', 'media', 'bassa'] },
+          reason: { type: 'string' },
+        },
+        required: ['name', 'confidence', 'reason'],
+      },
+    },
   },
-  required: ['candidates'],
+  required: ['titles', 'people'],
 } as const
 
 interface ApiRequest {
@@ -92,14 +109,15 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
               type: 'image',
               source: { type: 'base64', media_type: mediaType as 'image/jpeg', data: image },
             },
-            { type: 'text', text: 'Che film, serie o anime è? Elenca i candidati più probabili.' },
+            { type: 'text', text: 'Identifica tutti i titoli e le persone riconoscibili nell\'immagine.' },
           ],
         },
       ],
       output_config: { format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
     })
     const textBlock = message.content.find((b) => b.type === 'text')
-    const parsed = textBlock && 'text' in textBlock ? JSON.parse(textBlock.text) : { candidates: [] }
+    const parsed =
+      textBlock && 'text' in textBlock ? JSON.parse(textBlock.text) : { titles: [], people: [] }
     res.status(200).json(parsed)
   } catch (err) {
     res.status(502).json({ error: `Errore nell'identificare l'immagine: ${(err as Error).message}` })

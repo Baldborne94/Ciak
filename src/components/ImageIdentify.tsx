@@ -2,17 +2,24 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { EmptyState, Loader } from './States'
 import { useAuth } from '../lib/auth'
-import { searchMulti, posterUrl, displayTitle } from '../lib/tmdb'
+import { searchMulti, searchPerson, posterUrl, profileUrl, displayTitle } from '../lib/tmdb'
 import { refFromMedia, upsertUserTitle } from '../lib/userTitles'
-import type { MediaItem } from '../lib/types'
+import type { MediaItem, Person } from '../lib/types'
 
-interface Candidate {
+interface TitleHit {
   title: string
   year?: string
   type: 'movie' | 'tv'
   confidence: 'alta' | 'media' | 'bassa'
   reason: string
   item: MediaItem | null
+}
+interface PersonHit {
+  name: string
+  role?: string
+  confidence: 'alta' | 'media' | 'bassa'
+  reason: string
+  person: Person | null
 }
 
 const CONF_COLOR: Record<string, string> = {
@@ -21,7 +28,6 @@ const CONF_COLOR: Record<string, string> = {
   bassa: 'text-zinc-400',
 }
 
-// Resize + compress an image file to keep the upload light.
 function compress(file: File): Promise<{ base64: string; mediaType: string }> {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -50,12 +56,14 @@ export default function ImageIdentify() {
   const [preview, setPreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null)
+  const [titles, setTitles] = useState<TitleHit[] | null>(null)
+  const [people, setPeople] = useState<PersonHit[]>([])
   const [added, setAdded] = useState<Set<number>>(new Set())
 
   async function handleFile(file: File) {
     setError(null)
-    setCandidates(null)
+    setTitles(null)
+    setPeople([])
     setAdded(new Set())
     setPreview(URL.createObjectURL(file))
     setLoading(true)
@@ -70,21 +78,34 @@ export default function ImageIdentify() {
         const b = await res.json().catch(() => ({}))
         throw new Error(b.error ?? 'Servizio non disponibile.')
       }
-      const data = (await res.json()) as { candidates: Omit<Candidate, 'item'>[] }
-      // Resolve each candidate to a TMDB item (poster + link).
-      const resolved = await Promise.all(
-        (data.candidates ?? []).map(async (c) => {
-          let item: MediaItem | null = null
-          try {
-            const results = await searchMulti(c.title)
-            item = results.find((r) => r.mediaType === c.type) ?? results[0] ?? null
-          } catch {
-            item = null
-          }
-          return { ...c, item }
-        }),
-      )
-      setCandidates(resolved)
+      const data = (await res.json()) as {
+        titles: Omit<TitleHit, 'item'>[]
+        people: Omit<PersonHit, 'person'>[]
+      }
+      const [resolvedTitles, resolvedPeople] = await Promise.all([
+        Promise.all(
+          (data.titles ?? []).map(async (c) => {
+            let item: MediaItem | null = null
+            try {
+              const results = await searchMulti(c.title)
+              item = results.find((r) => r.mediaType === c.type) ?? results[0] ?? null
+            } catch { /* ignore */ }
+            return { ...c, item }
+          }),
+        ),
+        Promise.all(
+          (data.people ?? []).map(async (p) => {
+            let person: Person | null = null
+            try {
+              const results = await searchPerson(p.name)
+              person = results[0] ?? null
+            } catch { /* ignore */ }
+            return { ...p, person }
+          }),
+        ),
+      ])
+      setTitles(resolvedTitles)
+      setPeople(resolvedPeople)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -97,6 +118,8 @@ export default function ImageIdentify() {
     await upsertUserTitle(user.id, refFromMedia(item), { status: 'to_watch' }).catch(() => {})
     setAdded((prev) => new Set(prev).add(item.id))
   }
+
+  const nothing = titles !== null && titles.length === 0 && people.length === 0
 
   return (
     <div>
@@ -123,9 +146,12 @@ export default function ImageIdentify() {
         />
         <span className="text-4xl">📷</span>
         <p className="text-sm text-zinc-300">
-          Trascina qui una foto o uno screenshot, oppure <span className="text-projector">clicca per sceglierla</span>
+          Trascina qui una foto, uno screenshot o un collage, oppure{' '}
+          <span className="text-projector">clicca per sceglierla</span>
         </p>
-        <p className="text-xs text-zinc-500">L'AI proverà a riconoscere il film, la serie o l'anime.</p>
+        <p className="text-xs text-zinc-500">
+          L'AI riconosce film, serie, anime e gli attori presenti.
+        </p>
       </div>
 
       {preview && (
@@ -138,60 +164,104 @@ export default function ImageIdentify() {
         <Loader label="🔍 L'AI sta osservando l'immagine…" />
       ) : error ? (
         <p className="text-center text-sm text-curtain-light">{error}</p>
-      ) : candidates === null ? null : candidates.length === 0 ? (
+      ) : nothing ? (
         <EmptyState
-          title="Non sono riuscito a riconoscerla"
-          message="Prova con un'immagine più nitida o più rappresentativa (una scena chiave o la locandina)."
+          title="Non sono riuscito a riconoscere nulla"
+          message="Prova con un'immagine più nitida o più rappresentativa (una scena chiave, una locandina, un volto)."
           icon="🤔"
         />
       ) : (
-        <div className="space-y-4">
-          <p className="text-sm text-zinc-400">Ecco cosa potrebbe essere:</p>
-          {candidates.map((c, i) => (
-            <div key={i} className="flex gap-4 rounded-xl border border-theatre-800 bg-theatre-900/60 p-3">
-              <div className="h-28 w-20 shrink-0 overflow-hidden rounded-md bg-theatre-800">
-                {c.item && posterUrl(c.item.posterPath) ? (
-                  <img src={posterUrl(c.item.posterPath)!} alt={c.title} className="h-full w-full object-cover" />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
-                )}
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-zinc-100">
-                  {c.item ? displayTitle(c.item) : c.title}
-                  {c.year && <span className="text-zinc-500"> · {c.year}</span>}
-                </h3>
-                <p className="text-xs">
-                  <span className={CONF_COLOR[c.confidence]}>Confidenza {c.confidence}</span>
-                  <span className="text-zinc-500"> · {c.type === 'tv' ? 'Serie/Anime' : 'Film'}</span>
-                </p>
-                <p className="mt-1 text-sm text-zinc-400">{c.reason}</p>
-                {c.item && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Link
-                      to={`/title/${c.item.mediaType}/${c.item.id}`}
-                      className="btn-ghost px-3 py-1.5 text-xs"
-                    >
-                      Apri scheda
-                    </Link>
-                    {user &&
-                      (added.has(c.item.id) ? (
-                        <span className="inline-flex items-center px-3 py-1.5 text-xs text-projector">
-                          ✓ In «Da vedere»
-                        </span>
+        <div className="space-y-10">
+          {/* Titles */}
+          {titles && titles.length > 0 && (
+            <section>
+              <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">🎬 Titoli riconosciuti</h2>
+              <div className="space-y-4">
+                {titles.map((c, i) => (
+                  <div key={i} className="flex gap-4 rounded-xl border border-theatre-800 bg-theatre-900/60 p-3">
+                    <div className="h-28 w-20 shrink-0 overflow-hidden rounded-md bg-theatre-800">
+                      {c.item && posterUrl(c.item.posterPath) ? (
+                        <img src={posterUrl(c.item.posterPath)!} alt={c.title} className="h-full w-full object-cover" />
                       ) : (
-                        <button
-                          onClick={() => c.item && addToWatchlist(c.item)}
-                          className="btn-primary px-3 py-1.5 text-xs"
-                        >
-                          🎟️ Aggiungi a Da vedere
-                        </button>
-                      ))}
+                        <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-zinc-100">
+                        {c.item ? displayTitle(c.item) : c.title}
+                        {c.year && <span className="text-zinc-500"> · {c.year}</span>}
+                      </h3>
+                      <p className="text-xs">
+                        <span className={CONF_COLOR[c.confidence]}>Confidenza {c.confidence}</span>
+                        <span className="text-zinc-500"> · {c.type === 'tv' ? 'Serie/Anime' : 'Film'}</span>
+                      </p>
+                      <p className="mt-1 text-sm text-zinc-400">{c.reason}</p>
+                      {c.item && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Link to={`/title/${c.item.mediaType}/${c.item.id}`} className="btn-ghost px-3 py-1.5 text-xs">
+                            Apri scheda
+                          </Link>
+                          {user &&
+                            (added.has(c.item.id) ? (
+                              <span className="inline-flex items-center px-3 py-1.5 text-xs text-projector">
+                                ✓ In «Da vedere»
+                              </span>
+                            ) : (
+                              <button onClick={() => c.item && addToWatchlist(c.item)} className="btn-primary px-3 py-1.5 text-xs">
+                                🎟️ Aggiungi a Da vedere
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
+                ))}
               </div>
-            </div>
-          ))}
+            </section>
+          )}
+
+          {/* People */}
+          {people.length > 0 && (
+            <section>
+              <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">🌟 Persone riconosciute</h2>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {people.map((p, i) => {
+                  const photo = p.person ? profileUrl(p.person.profilePath) : null
+                  const inner = (
+                    <>
+                      <div className="mx-auto aspect-square w-full overflow-hidden rounded-full border border-theatre-700 bg-theatre-800">
+                        {photo ? (
+                          <img src={photo} alt={p.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">👤</div>
+                        )}
+                      </div>
+                      <p className="mt-2 line-clamp-1 text-sm font-semibold text-zinc-100">
+                        {p.person?.name ?? p.name}
+                      </p>
+                      <p className={`text-xs ${CONF_COLOR[p.confidence]}`}>
+                        {p.role ? p.role : 'persona'} · {p.confidence}
+                      </p>
+                      <p className="line-clamp-2 text-xs text-zinc-500">{p.reason}</p>
+                    </>
+                  )
+                  return p.person ? (
+                    <Link
+                      key={i}
+                      to={`/person/${p.person.id}`}
+                      className="group rounded-xl border border-theatre-800 bg-theatre-900 p-3 text-center transition hover:-translate-y-1 hover:border-projector/40"
+                    >
+                      {inner}
+                    </Link>
+                  ) : (
+                    <div key={i} className="rounded-xl border border-theatre-800 bg-theatre-900 p-3 text-center">
+                      {inner}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
         </div>
       )}
     </div>
