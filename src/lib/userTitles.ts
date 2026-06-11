@@ -128,6 +128,12 @@ export async function listFavorites(userId: string): Promise<UserTitle[]> {
   return (data ?? []) as UserTitle[]
 }
 
+export async function listAll(userId: string): Promise<UserTitle[]> {
+  const { data, error } = await client().from(TABLE).select('*').eq('user_id', userId)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as UserTitle[]
+}
+
 export interface UserStats {
   watched: number
   favorites: number
