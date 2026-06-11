@@ -10,6 +10,7 @@ import {
   searchCollection,
   getGenres,
   getAnime,
+  getEcchiAnime,
   getCartoons,
   getTrending,
   resolveStudios,
@@ -435,7 +436,22 @@ export default function Search() {
       {/* ── Anime / Cartoni: sfoglia se vuoto, cerca per nome se digiti ── */}
       {isAnimationMode && (
         !query.trim() ? (
-          <BrowseList fetcher={mode === 'anime' ? getAnime : getCartoons} />
+          mode === 'anime' ? (
+            <div className="space-y-12">
+              <BrowseList fetcher={getAnime} />
+              <div>
+                <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">
+                  😏 Pervertito
+                </h2>
+                <p className="mb-4 text-sm text-zinc-500">
+                  Ecchi e fan-service, confinati nel loro angolo.
+                </p>
+                <BrowseList fetcher={getEcchiAnime} />
+              </div>
+            </div>
+          ) : (
+            <BrowseList fetcher={getCartoons} />
+          )
         ) : loading ? (
           <Loader label="Sfoglio la pellicola…" />
         ) : error ? (

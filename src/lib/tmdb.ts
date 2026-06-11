@@ -203,13 +203,54 @@ interface RawDetail extends RawMedia {
   created_by?: { id: number; name: string }[]
 }
 
+// Resolve the TMDB keyword IDs for "ecchi" / fan-service once, then cache.
+let ecchiIdsCache: string[] | null = null
+async function getEcchiKeywordIds(): Promise<string[]> {
+  if (ecchiIdsCache) return ecchiIdsCache
+  try {
+    const results = await Promise.all(
+      ['ecchi', 'fan service'].map((q) =>
+        tmdbFetch<{ results: { id: number }[] }>('/search/keyword', { query: q })
+          .then((d) => d.results.map((r) => String(r.id)))
+          .catch(() => []),
+      ),
+    )
+    ecchiIdsCache = [...new Set(results.flat())]
+  } catch {
+    ecchiIdsCache = []
+  }
+  return ecchiIdsCache
+}
+
 export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
+  const ecchi = await getEcchiKeywordIds()
   const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/tv', {
     with_genres: '16',
     with_original_language: 'ja',
     sort_by: 'popularity.desc',
     include_adult: 'false',
-    without_keywords: '198385', // escludi hentai
+    // Escludi hentai (198385) e gli ecchi → quelli finiscono in "Pervertito".
+    without_keywords: ['198385', ...ecchi].join(','),
+    'vote_count.gte': '10',
+    page: String(page),
+  })
+  return {
+    items: data.results.map((r) => normalise(r, 'tv')),
+    totalPages: data.total_pages,
+  }
+}
+
+// The "Pervertito" corner: ecchi / fan-service anime (still no hentai).
+export async function getEcchiAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
+  const ecchi = await getEcchiKeywordIds()
+  if (ecchi.length === 0) return { items: [], totalPages: 0 }
+  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/tv', {
+    with_genres: '16',
+    with_original_language: 'ja',
+    with_keywords: ecchi.join('|'), // ha almeno un keyword ecchi
+    without_keywords: '198385', // ma niente hentai
+    sort_by: 'popularity.desc',
+    include_adult: 'false',
     'vote_count.gte': '10',
     page: String(page),
   })
