@@ -10,6 +10,8 @@ import Recommendations from './pages/Recommendations'
 import CatalogPage from './pages/CatalogPage'
 import TrophiesPage from './pages/TrophiesPage'
 import TasteProfile from './pages/TasteProfile'
+import ListsPage from './pages/ListsPage'
+import CustomListPage from './pages/CustomListPage'
 import GenrePage from './pages/GenrePage'
 import PersonPage from './pages/PersonPage'
 import StudioPage from './pages/StudioPage'
@@ -69,6 +71,22 @@ export default function App() {
           element={
             <RequireAuth>
               <TasteProfile />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="liste"
+          element={
+            <RequireAuth>
+              <ListsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="liste/:id"
+          element={
+            <RequireAuth>
+              <CustomListPage />
             </RequireAuth>
           }
         />
