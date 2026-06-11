@@ -66,10 +66,11 @@ export default function TitleDetail() {
 
   return (
     <div className="space-y-10">
-      {/* Hero with backdrop */}
-      <div className="relative overflow-hidden rounded-2xl border border-theatre-800">
+      {/* Hero with backdrop — no overflow-hidden here so the action menus can
+          escape; the backdrop image is clipped by its own wrapper instead. */}
+      <div className="relative rounded-2xl border border-theatre-800">
         {backdrop && (
-          <div className="absolute inset-0">
+          <div className="absolute inset-0 overflow-hidden rounded-2xl">
             <img
               src={backdrop}
               alt=""
