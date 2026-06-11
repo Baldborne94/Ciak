@@ -4,6 +4,7 @@ import { ErrorState, Loader } from '../components/States'
 import MediaGrid from '../components/MediaGrid'
 import TitleActions from '../components/TitleActions'
 import AddToListButton from '../components/AddToListButton'
+import LogDiaryButton from '../components/LogDiaryButton'
 import {
   backdropUrl,
   displayTitle,
@@ -149,8 +150,16 @@ export default function TitleDetail() {
                 genreIds: detail.genreIds,
               }}
             />
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap gap-2">
               <AddToListButton
+                item={{
+                  tmdbId: detail.id,
+                  mediaType: detail.mediaType,
+                  title: detail.title,
+                  posterPath: detail.posterPath,
+                }}
+              />
+              <LogDiaryButton
                 item={{
                   tmdbId: detail.id,
                   mediaType: detail.mediaType,

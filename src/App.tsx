@@ -12,6 +12,7 @@ import TrophiesPage from './pages/TrophiesPage'
 import TasteProfile from './pages/TasteProfile'
 import ListsPage from './pages/ListsPage'
 import CustomListPage from './pages/CustomListPage'
+import DiaryPage from './pages/DiaryPage'
 import GenrePage from './pages/GenrePage'
 import PersonPage from './pages/PersonPage'
 import StudioPage from './pages/StudioPage'
@@ -87,6 +88,14 @@ export default function App() {
           element={
             <RequireAuth>
               <CustomListPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="diario"
+          element={
+            <RequireAuth>
+              <DiaryPage />
             </RequireAuth>
           }
         />
