@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import MediaCard from '../components/MediaCard'
+import ImageIdentify from '../components/ImageIdentify'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import {
   searchMulti,
@@ -32,7 +33,7 @@ import type {
   TmdbType,
 } from '../lib/types'
 
-type Mode = 'titles' | 'anime' | 'cartoons' | 'people' | 'studios' | 'collections' | 'song'
+type Mode = 'titles' | 'anime' | 'cartoons' | 'people' | 'studios' | 'collections' | 'song' | 'image'
 type TypeFilter = 'all' | TmdbType
 
 const MODES: { value: Mode; label: string; icon: string; placeholder?: string }[] = [
@@ -43,6 +44,7 @@ const MODES: { value: Mode; label: string; icon: string; placeholder?: string }[
   { value: 'studios', label: 'Studi', icon: '🏛️', placeholder: 'Cerca uno studio… (es. Pixar, A24, Ghibli)' },
   { value: 'collections', label: 'Saghe', icon: '📚', placeholder: 'Cerca una saga… (es. Harry Potter, Marvel)' },
   { value: 'song', label: 'Canzone', icon: '🎵', placeholder: 'In quali film c’è questa canzone? (es. Stayin’ Alive)' },
+  { value: 'image', label: 'Foto', icon: '📷' },
 ]
 
 const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
@@ -271,6 +273,7 @@ export default function Search() {
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
   const isAnimationMode = mode === 'anime' || mode === 'cartoons'
   const isSongMode = mode === 'song'
+  const isImageMode = mode === 'image'
 
   useEffect(() => {
     if (!query.trim()) {
@@ -380,8 +383,8 @@ export default function Search() {
         ))}
       </div>
 
-      {/* Search bar — available for every mode */}
-      {(
+      {/* Search bar — every mode except the image (photo) mode */}
+      {!isImageMode && (
         <form onSubmit={onSubmit} className="mb-6 flex gap-2">
           <div className="relative flex-1">
             <input
@@ -531,8 +534,11 @@ export default function Search() {
         )
       )}
 
+      {/* ── Foto → riconosci il titolo (via AI vision) ── */}
+      {isImageMode && <ImageIdentify />}
+
       {/* ── Search modes (titoli, persone, studi, saghe) ── */}
-      {!isAnimationMode && !isSongMode && (
+      {!isAnimationMode && !isSongMode && !isImageMode && (
         loading ? (
           <Loader label="Sfoglio la pellicola…" />
         ) : error ? (
