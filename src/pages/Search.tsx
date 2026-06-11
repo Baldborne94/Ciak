@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
+import MediaCard from '../components/MediaCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import {
   searchMulti,
@@ -31,7 +32,7 @@ import type {
   TmdbType,
 } from '../lib/types'
 
-type Mode = 'titles' | 'anime' | 'cartoons' | 'people' | 'studios' | 'collections'
+type Mode = 'titles' | 'anime' | 'cartoons' | 'people' | 'studios' | 'collections' | 'song'
 type TypeFilter = 'all' | TmdbType
 
 const MODES: { value: Mode; label: string; icon: string; placeholder?: string }[] = [
@@ -41,6 +42,7 @@ const MODES: { value: Mode; label: string; icon: string; placeholder?: string }[
   { value: 'people', label: 'Persone', icon: '🌟', placeholder: 'Cerca attore, regista, compositore…' },
   { value: 'studios', label: 'Studi', icon: '🏛️', placeholder: 'Cerca uno studio… (es. Pixar, A24, Ghibli)' },
   { value: 'collections', label: 'Saghe', icon: '📚', placeholder: 'Cerca una saga… (es. Harry Potter, Marvel)' },
+  { value: 'song', label: 'Canzone', icon: '🎵', placeholder: 'In quali film c’è questa canzone? (es. Stayin’ Alive)' },
 ]
 
 const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
@@ -74,6 +76,40 @@ const FAMOUS_STUDIOS = ['Pixar', 'Studio Ghibli', 'A24', 'Marvel Studios', 'Warn
 // Fast&Furious 9485 · James Bond 645 · Pirates 295 · Dark Knight 263 · Toy Story 10194
 const FAMOUS_SAGAS = [1241, 10, 119, 86311, 328, 9485, 645, 295, 263, 10194]
 const FAMOUS_ACTORS = ['Al Pacino', 'Robert De Niro', 'Meryl Streep', 'Leonardo DiCaprio', 'Tom Hanks', 'Denzel Washington', 'Anthony Hopkins', 'Morgan Freeman', 'Cate Blanchett', 'Joaquin Phoenix', 'Christian Bale', 'Daniel Day-Lewis', 'Natalie Portman', 'Gary Oldman', 'Brad Pitt']
+
+// Ask the AI which films use a song, then resolve each to a TMDB item.
+async function findSongFilms(song: string): Promise<{ item: MediaItem; note: string }[]> {
+  const res = await fetch('/api/song-films', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ song }),
+  })
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}))
+    throw new Error(b.error ?? 'Servizio AI non disponibile.')
+  }
+  const data = (await res.json()) as { films: { title: string; year?: string; scene: string }[] }
+  const resolved = await Promise.all(
+    (data.films ?? []).map(async (f) => {
+      try {
+        const items = await searchMulti(f.title)
+        return items[0] ? { item: items[0], note: f.scene } : null
+      } catch {
+        return null
+      }
+    }),
+  )
+  const seen = new Set<string>()
+  const out: { item: MediaItem; note: string }[] = []
+  for (const r of resolved) {
+    if (!r) continue
+    const key = `${r.item.mediaType}-${r.item.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(r)
+  }
+  return out
+}
 
 // Filter title search results down to anime (Japanese animation) or
 // cartoons (non-Japanese animation) using genre + original language.
@@ -217,6 +253,7 @@ export default function Search() {
   const [people, setPeople] = useState<Person[]>([])
   const [studios, setStudios] = useState<Company[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
+  const [songFilms, setSongFilms] = useState<{ item: MediaItem; note: string }[]>([])
 
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all')
   const [minRating, setMinRating] = useState(0)
@@ -233,10 +270,11 @@ export default function Search() {
 
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
   const isAnimationMode = mode === 'anime' || mode === 'cartoons'
+  const isSongMode = mode === 'song'
 
   useEffect(() => {
     if (!query.trim()) {
-      setTitles([]); setPeople([]); setStudios([]); setCollections([])
+      setTitles([]); setPeople([]); setStudios([]); setCollections([]); setSongFilms([])
       return
     }
     if (!isTmdbConfigured) {
@@ -249,6 +287,7 @@ export default function Search() {
       mode === 'people' ? searchPerson(query).then(setPeople)
       : mode === 'studios' ? searchCompany(query).then(setStudios)
       : mode === 'collections' ? searchCollection(query).then(setCollections)
+      : mode === 'song' ? findSongFilms(query).then(setSongFilms)
       // Anime/Cartoni: cerca per nome (IT o EN) e filtra per animazione + lingua.
       : isAnimationMode ? searchMulti(query).then((items) => setTitles(filterKind(mode, items)))
       : searchMulti(query).then(setTitles)
@@ -466,8 +505,34 @@ export default function Search() {
         )
       )}
 
+      {/* ── Canzone → film (via AI) ── */}
+      {isSongMode && (
+        loading ? (
+          <Loader label="🎵 Cerco i film con questa canzone…" />
+        ) : error ? (
+          <ErrorState title="Ricerca non riuscita" message={error} />
+        ) : !query.trim() ? (
+          <EmptyState
+            title="In quali film c'è una canzone?"
+            message="Scrivi il titolo di una canzone (es. «Mrs. Robinson», «Singin' in the Rain»): l'AI trova i film che la usano in scene memorabili."
+            icon="🎵"
+          />
+        ) : songFilms.length === 0 ? (
+          <EmptyState title="Nessun film trovato" message={`Non ho trovato film noti che usano "${query}".`} />
+        ) : (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {songFilms.map(({ item, note }) => (
+              <div key={`${item.mediaType}-${item.id}`}>
+                <MediaCard item={item} />
+                {note && <p className="mt-1 px-1 text-xs italic text-zinc-500">🎬 {note}</p>}
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
       {/* ── Search modes (titoli, persone, studi, saghe) ── */}
-      {!isAnimationMode && (
+      {!isAnimationMode && !isSongMode && (
         loading ? (
           <Loader label="Sfoglio la pellicola…" />
         ) : error ? (
