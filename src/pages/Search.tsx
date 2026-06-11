@@ -221,6 +221,14 @@ export default function Search() {
     setParams(next)
   }
 
+  // Clear the field and return to the idle preview state.
+  function clearSearch() {
+    setInput('')
+    const next = new URLSearchParams(params)
+    next.delete('q')
+    setParams(next)
+  }
+
   // Run a search from a quick-suggestion chip.
   function runQuery(text: string) {
     setInput(text)
@@ -258,13 +266,34 @@ export default function Search() {
       {/* Search bar — only for search-based modes */}
       {usesSearch && (
         <form onSubmit={onSubmit} className="mb-6 flex gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={activeMode.placeholder}
-            className="input-cine"
-            autoFocus
-          />
+          <div className="relative flex-1">
+            <input
+              value={input}
+              onChange={(e) => {
+                const v = e.target.value
+                setInput(v)
+                // Emptying the field resets to the idle preview state.
+                if (v === '' && query) {
+                  const next = new URLSearchParams(params)
+                  next.delete('q')
+                  setParams(next)
+                }
+              }}
+              placeholder={activeMode.placeholder}
+              className="input-cine w-full pr-10"
+              autoFocus
+            />
+            {input && (
+              <button
+                type="button"
+                onClick={clearSearch}
+                aria-label="Pulisci ricerca"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-zinc-500 transition hover:text-zinc-200"
+              >
+                ✕
+              </button>
+            )}
+          </div>
           <button type="submit" className="btn-primary whitespace-nowrap">
             🔍 Cerca
           </button>
