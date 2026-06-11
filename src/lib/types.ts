@@ -219,6 +219,19 @@ export interface DiaryEntry {
   created_at: string
 }
 
+// `user_alerts` — "avvisami quando esce" reminders.
+export interface UserAlert {
+  id: string
+  user_id: string
+  tmdb_id: number
+  media_type: MediaType
+  title: string
+  poster_path: string | null
+  release_date: string | null
+  notified: boolean
+  created_at: string
+}
+
 // `user_achievements` — trophies unlocked by the user.
 export interface UserAchievement {
   id: string

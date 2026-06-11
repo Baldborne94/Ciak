@@ -16,6 +16,7 @@ const TasteProfile = lazy(() => import('./pages/TasteProfile'))
 const ListsPage = lazy(() => import('./pages/ListsPage'))
 const CustomListPage = lazy(() => import('./pages/CustomListPage'))
 const DiaryPage = lazy(() => import('./pages/DiaryPage'))
+const UpcomingPage = lazy(() => import('./pages/UpcomingPage'))
 const GenrePage = lazy(() => import('./pages/GenrePage'))
 const PersonPage = lazy(() => import('./pages/PersonPage'))
 const StudioPage = lazy(() => import('./pages/StudioPage'))
@@ -104,6 +105,14 @@ export default function App() {
         {/* Anime/Cartoni ora vivono dentro Cerca → Titoli; i vecchi URL reindirizzano. */}
         <Route path="anime" element={<Navigate to="/search?mode=anime" replace />} />
         <Route path="cartoons" element={<Navigate to="/search?mode=cartoons" replace />} />
+        <Route
+          path="in-arrivo"
+          element={
+            <RequireAuth>
+              <UpcomingPage />
+            </RequireAuth>
+          }
+        />
         <Route path="recommendations" element={<Recommendations />} />
         <Route path="trophies" element={<TrophiesPage />} />
         <Route path="settings" element={<Settings />} />

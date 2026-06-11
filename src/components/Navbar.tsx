@@ -20,6 +20,7 @@ const lists = [
 
 const trailing = [
   { to: '/recommendations', label: 'Per te' },
+  { to: '/in-arrivo', label: 'In arrivo' },
   { to: '/profilo', label: 'Profilo' },
   { to: '/trophies', label: 'Trofei' },
 ]
