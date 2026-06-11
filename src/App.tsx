@@ -12,6 +12,7 @@ import TrophiesPage from './pages/TrophiesPage'
 import GenrePage from './pages/GenrePage'
 import PersonPage from './pages/PersonPage'
 import StudioPage from './pages/StudioPage'
+import CollectionPage from './pages/CollectionPage'
 import Settings from './pages/Settings'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
@@ -27,6 +28,7 @@ export default function App() {
         <Route path="genre/:type/:genreId" element={<GenrePage />} />
         <Route path="person/:id" element={<PersonPage />} />
         <Route path="studio/:id" element={<StudioPage />} />
+        <Route path="collection/:id" element={<CollectionPage />} />
         <Route path="title/:mediaType/:id" element={<TitleDetail />} />
         <Route path="login" element={<Login />} />
         <Route
