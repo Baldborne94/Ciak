@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import MediaGrid from '../components/MediaGrid'
 import { ErrorState, Loader } from '../components/States'
 import { getPersonDetail, profileUrl, isTmdbConfigured } from '../lib/tmdb'
+import EntityFavoriteButton from '../components/EntityFavoriteButton'
 import type { PersonDetail } from '../lib/types'
 
 function calcAge(birthday: string): number {
@@ -78,6 +79,16 @@ export default function PersonPage() {
               {person.biography}
             </p>
           )}
+
+          <EntityFavoriteButton
+            entity={{
+              entityType: 'person',
+              entityId: person.id,
+              name: person.name,
+              imagePath: person.profilePath,
+              subtitle: person.knownFor,
+            }}
+          />
         </div>
       </div>
 

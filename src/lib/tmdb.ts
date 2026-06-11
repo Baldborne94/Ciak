@@ -586,6 +586,11 @@ export async function searchCompany(query: string): Promise<Company[]> {
   }))
 }
 
+export async function getCompany(id: number): Promise<Company> {
+  const raw = await tmdbFetch<RawCompany>(`/company/${id}`)
+  return { id: raw.id, name: raw.name, logoPath: raw.logo_path ?? null }
+}
+
 export async function discoverByCompany(
   companyId: number,
   page = 1,
