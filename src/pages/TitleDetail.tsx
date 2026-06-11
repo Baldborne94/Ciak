@@ -5,6 +5,7 @@ import MediaGrid from '../components/MediaGrid'
 import TitleActions from '../components/TitleActions'
 import {
   backdropUrl,
+  displayTitle,
   getDetail,
   isTmdbConfigured,
   logoUrl,
@@ -95,9 +96,9 @@ export default function TitleDetail() {
               {detail.mediaType === 'tv' ? 'Serie TV' : 'Film'} · {year}
             </p>
             <h1 className="mt-1 font-display text-4xl tracking-wide text-zinc-100 sm:text-5xl">
-              {detail.originalTitle || detail.title}
+              {displayTitle(detail)}
             </h1>
-            {detail.originalTitle && detail.title && detail.originalTitle !== detail.title && (
+            {detail.title && detail.title !== displayTitle(detail) && (
               <p className="mt-1 text-lg text-zinc-400">
                 🇮🇹 {detail.title}
               </p>
@@ -156,8 +157,8 @@ export default function TitleDetail() {
           📋 Scheda tecnica
         </h2>
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-          {detail.title && detail.originalTitle && detail.title !== detail.originalTitle && (
-            <Info label="Titolo italiano" value={detail.title} />
+          {detail.originalTitle && detail.originalTitle !== displayTitle(detail) && (
+            <Info label="Titolo originale" value={detail.originalTitle} />
           )}
           {detail.originalLanguage && (
             <Info

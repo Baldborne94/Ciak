@@ -37,6 +37,28 @@ export function profileUrl(path: string | null): string | null {
   return path ? `${IMG_BASE}/w185${path}` : null
 }
 
+// Languages written in Latin script — readable as-is. For everything else
+// (Japanese, Korean, Chinese, …) the original title isn't useful, so we fall
+// back to the localized (Italian/English) title.
+const LATIN_LANGS = new Set([
+  'en', 'it', 'es', 'fr', 'de', 'pt', 'nl', 'sv', 'da', 'no', 'fi', 'pl',
+  'cs', 'hu', 'ro', 'tr', 'id', 'vi', 'ca', 'hr', 'sk', 'sl', 'et', 'lv',
+  'lt', 'is', 'ga', 'eu', 'gl', 'af', 'sw', 'ms', 'tl',
+])
+
+// The best title to show: original if it's in a readable script, otherwise
+// the localized one (so anime show their IT/EN name, not the Japanese one).
+export function displayTitle(item: {
+  title: string
+  originalTitle: string | null
+  originalLanguage: string | null
+}): string {
+  if (item.originalTitle && item.originalLanguage && LATIN_LANGS.has(item.originalLanguage)) {
+    return item.originalTitle
+  }
+  return item.title || item.originalTitle || 'Senza titolo'
+}
+
 export function logoUrl(path: string | null): string | null {
   return path ? `${IMG_BASE}/w154${path}` : null
 }

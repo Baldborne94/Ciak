@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom'
 import type { MediaItem } from '../lib/types'
-import { posterUrl } from '../lib/tmdb'
+import { posterUrl, displayTitle } from '../lib/tmdb'
 
 export default function MediaCard({ item }: { item: MediaItem }) {
   const poster = posterUrl(item.posterPath)
   const year = item.releaseDate ? item.releaseDate.slice(0, 4) : '—'
-  // Show the original-language title (easier to find on streaming services).
-  const display = item.originalTitle || item.title
+  // Original title when readable; localized (IT/EN) for Japanese etc.
+  const display = displayTitle(item)
 
   return (
     <Link
