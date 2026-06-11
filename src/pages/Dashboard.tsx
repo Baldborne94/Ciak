@@ -202,8 +202,8 @@ export default function Dashboard() {
               La tua sala è ancora vuota. Esplora il catalogo e aggiungi i titoli che vuoi vedere.
             </p>
             <div className="mt-4 flex justify-center gap-3">
-              <Link to="/explore" className="btn-primary">🔍 Esplora</Link>
-              <Link to="/search" className="btn-ghost">Cerca un titolo</Link>
+              <Link to="/search" className="btn-primary">🔍 Cerca & Esplora</Link>
+              <Link to="/anime" className="btn-ghost">Sfoglia gli anime</Link>
             </div>
           </section>
         )}

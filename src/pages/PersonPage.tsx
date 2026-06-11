@@ -91,10 +91,10 @@ export default function PersonPage() {
       )}
 
       <Link
-        to="/explore"
+        to="/search"
         className="inline-block text-sm text-projector/80 hover:text-projector"
       >
-        ← Torna a Esplora
+        ← Torna alla ricerca
       </Link>
     </div>
   )
