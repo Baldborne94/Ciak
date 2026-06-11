@@ -95,8 +95,13 @@ export default function TitleDetail() {
               {detail.mediaType === 'tv' ? 'Serie TV' : 'Film'} · {year}
             </p>
             <h1 className="mt-1 font-display text-4xl tracking-wide text-zinc-100 sm:text-5xl">
-              {detail.title}
+              {detail.originalTitle || detail.title}
             </h1>
+            {detail.originalTitle && detail.title && detail.originalTitle !== detail.title && (
+              <p className="mt-1 text-lg text-zinc-400">
+                🇮🇹 {detail.title}
+              </p>
+            )}
             {detail.tagline && (
               <p className="mt-2 italic text-zinc-400">«{detail.tagline}»</p>
             )}
@@ -151,8 +156,8 @@ export default function TitleDetail() {
           📋 Scheda tecnica
         </h2>
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-          {detail.originalTitle && detail.originalTitle !== detail.title && (
-            <Info label="Titolo originale" value={detail.originalTitle} />
+          {detail.title && detail.originalTitle && detail.title !== detail.originalTitle && (
+            <Info label="Titolo italiano" value={detail.title} />
           )}
           {detail.originalLanguage && (
             <Info
