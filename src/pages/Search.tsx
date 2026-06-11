@@ -12,7 +12,9 @@ import {
   getAnime,
   getCartoons,
   getTrending,
-  getPopularPeople,
+  resolveStudios,
+  resolveSagas,
+  resolvePeople,
   profileUrl,
   logoUrl,
   posterUrl,
@@ -64,9 +66,71 @@ const ROLE_LABEL: Record<string, string> = {
   Camera: 'Direttore della fotografia',
 }
 
-// Quick suggestions for the idle state (clicking runs the search).
-const FAMOUS_STUDIOS = ['Pixar', 'Studio Ghibli', 'A24', 'Marvel Studios', 'Warner Bros.', 'DreamWorks', 'Universal', 'Walt Disney']
-const FAMOUS_SAGAS = ['Harry Potter', 'Star Wars', 'Il Signore degli Anelli', 'Marvel', 'Jurassic Park', 'Fast & Furious', 'James Bond', 'Pirati dei Caraibi']
+// Curated lists resolved to real TMDB entities for the idle "famous" previews.
+const FAMOUS_STUDIOS = ['Pixar', 'Studio Ghibli', 'A24', 'Marvel Studios', 'Warner Bros. Pictures', 'DreamWorks Animation', 'Universal Pictures', 'Walt Disney Pictures', 'Lucasfilm', 'Columbia Pictures']
+const FAMOUS_SAGAS = ['Harry Potter', 'Star Wars', 'The Lord of the Rings', 'The Avengers', 'Jurassic Park', 'Fast & Furious', 'James Bond', 'Pirates of the Caribbean', 'The Dark Knight', 'Toy Story']
+const FAMOUS_ACTORS = ['Al Pacino', 'Robert De Niro', 'Meryl Streep', 'Leonardo DiCaprio', 'Tom Hanks', 'Denzel Washington', 'Anthony Hopkins', 'Morgan Freeman', 'Cate Blanchett', 'Joaquin Phoenix', 'Christian Bale', 'Daniel Day-Lewis', 'Natalie Portman', 'Gary Oldman', 'Brad Pitt']
+
+function PersonCard({ p }: { p: Person }) {
+  const photo = profileUrl(p.profilePath)
+  return (
+    <Link
+      to={`/person/${p.id}`}
+      className="group rounded-xl border border-theatre-800 bg-theatre-900 p-3 text-center transition hover:-translate-y-1 hover:border-projector/40"
+    >
+      <div className="mx-auto aspect-square w-full overflow-hidden rounded-full border border-theatre-700 bg-theatre-800">
+        {photo ? (
+          <img src={photo} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">👤</div>
+        )}
+      </div>
+      <p className="mt-2 line-clamp-1 text-sm font-semibold text-zinc-100">{p.name}</p>
+      <p className="line-clamp-1 text-xs text-projector/70">
+        {p.department ? ROLE_LABEL[p.department] ?? p.department : ''}
+      </p>
+      {p.knownFor && <p className="line-clamp-1 text-xs text-zinc-500">{p.knownFor}</p>}
+    </Link>
+  )
+}
+
+function StudioCard({ c }: { c: Company }) {
+  const logo = logoUrl(c.logoPath)
+  return (
+    <Link
+      to={`/studio/${c.id}`}
+      className="group flex h-32 flex-col items-center justify-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900 p-4 text-center transition hover:-translate-y-1 hover:border-projector/40"
+    >
+      {logo ? (
+        <img src={logo} alt={c.name} loading="lazy" className="max-h-14 max-w-[80%] rounded bg-white/90 px-3 py-2" />
+      ) : (
+        <span className="text-4xl opacity-40">🏛️</span>
+      )}
+      <p className="line-clamp-1 text-sm font-medium text-zinc-200">{c.name}</p>
+    </Link>
+  )
+}
+
+function CollectionCard({ c }: { c: Collection }) {
+  const poster = posterUrl(c.posterPath)
+  return (
+    <Link
+      to={`/collection/${c.id}`}
+      className="group overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
+    >
+      <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
+        {poster ? (
+          <img src={poster} alt={c.name} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-4xl opacity-30">📚</div>
+        )}
+      </div>
+      <div className="p-3">
+        <h3 className="line-clamp-2 text-sm font-semibold text-zinc-100">{c.name}</h3>
+      </div>
+    </Link>
+  )
+}
 
 // Paginated browse list for anime / cartoons.
 function BrowseList({
@@ -150,7 +214,9 @@ export default function Search() {
 
   // Idle previews
   const [previewTitles, setPreviewTitles] = useState<MediaItem[]>([])
-  const [popularPeople, setPopularPeople] = useState<Person[]>([])
+  const [famousActors, setFamousActors] = useState<Person[]>([])
+  const [famousStudios, setFamousStudios] = useState<Company[]>([])
+  const [famousSagas, setFamousSagas] = useState<Collection[]>([])
 
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
   const usesSearch = mode === 'titles' || mode === 'people' || mode === 'studios' || mode === 'collections'
@@ -185,8 +251,14 @@ export default function Search() {
     if (mode === 'titles' && previewTitles.length === 0) {
       getTrending().then(setPreviewTitles).catch(() => {})
     }
-    if (mode === 'people' && popularPeople.length === 0) {
-      getPopularPeople().then(setPopularPeople).catch(() => {})
+    if (mode === 'people' && famousActors.length === 0) {
+      resolvePeople(FAMOUS_ACTORS).then(setFamousActors).catch(() => {})
+    }
+    if (mode === 'studios' && famousStudios.length === 0) {
+      resolveStudios(FAMOUS_STUDIOS).then(setFamousStudios).catch(() => {})
+    }
+    if (mode === 'collections' && famousSagas.length === 0) {
+      resolveSagas(FAMOUS_SAGAS).then(setFamousSagas).catch(() => {})
     }
   }, [mode, query])
 
@@ -226,15 +298,6 @@ export default function Search() {
     setInput('')
     const next = new URLSearchParams(params)
     next.delete('q')
-    setParams(next)
-  }
-
-  // Run a search from a quick-suggestion chip.
-  function runQuery(text: string) {
-    setInput(text)
-    const next = new URLSearchParams(params)
-    next.set('q', text)
-    next.set('mode', mode)
     setParams(next)
   }
 
@@ -413,48 +476,28 @@ export default function Search() {
           ) : mode === 'people' ? (
             <div>
               <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
-                🔥 Personaggi del momento
+                🌟 Attori celebri
               </h2>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {popularPeople.map((p) => {
-                  const photo = profileUrl(p.profilePath)
-                  return (
-                    <Link
-                      key={p.id}
-                      to={`/person/${p.id}`}
-                      className="group rounded-xl border border-theatre-800 bg-theatre-900 p-3 text-center transition hover:-translate-y-1 hover:border-projector/40"
-                    >
-                      <div className="mx-auto aspect-square w-full overflow-hidden rounded-full border border-theatre-700 bg-theatre-800">
-                        {photo ? (
-                          <img src={photo} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">👤</div>
-                        )}
-                      </div>
-                      <p className="mt-2 line-clamp-1 text-sm font-semibold text-zinc-100">{p.name}</p>
-                      <p className="line-clamp-1 text-xs text-projector/70">
-                        {p.department ? ROLE_LABEL[p.department] ?? p.department : ''}
-                      </p>
-                    </Link>
-                  )
-                })}
+                {famousActors.map((p) => <PersonCard key={p.id} p={p} />)}
+              </div>
+            </div>
+          ) : mode === 'studios' ? (
+            <div>
+              <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
+                🏛️ Studi celebri
+              </h2>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+                {famousStudios.map((c) => <StudioCard key={c.id} c={c} />)}
               </div>
             </div>
           ) : (
             <div>
               <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
-                {mode === 'studios' ? '🏛️ Studi famosi' : '📚 Saghe famose'}
+                📚 Saghe celebri
               </h2>
-              <div className="flex flex-wrap gap-3">
-                {(mode === 'studios' ? FAMOUS_STUDIOS : FAMOUS_SAGAS).map((name) => (
-                  <button
-                    key={name}
-                    onClick={() => runQuery(name)}
-                    className="rounded-xl border border-theatre-700 bg-theatre-900/60 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:-translate-y-0.5 hover:border-projector/40 hover:text-projector"
-                  >
-                    {name}
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {famousSagas.map((c) => <CollectionCard key={c.id} c={c} />)}
               </div>
             </div>
           )
@@ -469,29 +512,7 @@ export default function Search() {
             <EmptyState title="Nessuna persona trovata" message={`Nessun risultato per "${query}" in questo ruolo.`} />
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {filteredPeople.map((p) => {
-                const photo = profileUrl(p.profilePath)
-                return (
-                  <Link
-                    key={p.id}
-                    to={`/person/${p.id}`}
-                    className="group rounded-xl border border-theatre-800 bg-theatre-900 p-3 text-center transition hover:-translate-y-1 hover:border-projector/40"
-                  >
-                    <div className="mx-auto aspect-square w-full overflow-hidden rounded-full border border-theatre-700 bg-theatre-800">
-                      {photo ? (
-                        <img src={photo} alt={p.name} loading="lazy" className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">👤</div>
-                      )}
-                    </div>
-                    <p className="mt-2 line-clamp-1 text-sm font-semibold text-zinc-100">{p.name}</p>
-                    <p className="line-clamp-1 text-xs text-projector/70">
-                      {p.department ? ROLE_LABEL[p.department] ?? p.department : ''}
-                    </p>
-                    {p.knownFor && <p className="line-clamp-1 text-xs text-zinc-500">{p.knownFor}</p>}
-                  </Link>
-                )
-              })}
+              {filteredPeople.map((p) => <PersonCard key={p.id} p={p} />)}
             </div>
           )
         ) : mode === 'studios' ? (
@@ -499,23 +520,7 @@ export default function Search() {
             <EmptyState title="Nessuno studio trovato" message={`Nessun risultato per "${query}".`} />
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-              {studios.map((c) => {
-                const logo = logoUrl(c.logoPath)
-                return (
-                  <Link
-                    key={c.id}
-                    to={`/studio/${c.id}`}
-                    className="group flex h-28 flex-col items-center justify-center gap-2 rounded-xl border border-theatre-800 bg-theatre-900 p-4 text-center transition hover:-translate-y-1 hover:border-projector/40"
-                  >
-                    {logo ? (
-                      <img src={logo} alt={c.name} loading="lazy" className="max-h-12 max-w-full bg-white/90 px-2 py-1" />
-                    ) : (
-                      <span className="text-3xl opacity-40">🏛️</span>
-                    )}
-                    <p className="line-clamp-1 text-sm font-medium text-zinc-200">{c.name}</p>
-                  </Link>
-                )
-              })}
+              {studios.map((c) => <StudioCard key={c.id} c={c} />)}
             </div>
           )
         ) : (
@@ -524,27 +529,7 @@ export default function Search() {
             <EmptyState title="Nessuna saga trovata" message={`Nessun risultato per "${query}".`} />
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {collections.map((c) => {
-                const poster = posterUrl(c.posterPath)
-                return (
-                  <Link
-                    key={c.id}
-                    to={`/collection/${c.id}`}
-                    className="group overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
-                  >
-                    <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
-                      {poster ? (
-                        <img src={poster} alt={c.name} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-4xl opacity-30">📚</div>
-                      )}
-                    </div>
-                    <div className="p-3">
-                      <h3 className="line-clamp-2 text-sm font-semibold text-zinc-100">{c.name}</h3>
-                    </div>
-                  </Link>
-                )
-              })}
+              {collections.map((c) => <CollectionCard key={c.id} c={c} />)}
             </div>
           )
         )
