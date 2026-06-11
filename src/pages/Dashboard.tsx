@@ -4,10 +4,38 @@ import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
 import { MediaRow, ScrollRow } from '../components/MediaRow'
 import { Loader } from '../components/States'
-import { resolveSuggestions } from '../lib/tmdb'
+import { resolveSuggestions, posterUrl } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { getStats, listByStatus, listFavorites, type UserStats } from '../lib/userTitles'
+import { getContinueWatching, type ContinueItem } from '../lib/episodes'
 import type { MediaItem, UserTitle } from '../lib/types'
+
+function ContinueCard({ c }: { c: ContinueItem }) {
+  const poster = posterUrl(c.posterPath)
+  const pct = c.totalEpisodes > 0 ? Math.round((c.watchedCount / c.totalEpisodes) * 100) : 0
+  return (
+    <Link
+      to={`/title/tv/${c.tvId}`}
+      className="group w-40 shrink-0 overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
+    >
+      <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
+        {poster ? (
+          <img src={poster} alt={c.title} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
+        )}
+      </div>
+      <div className="p-2">
+        <p className="line-clamp-1 text-sm font-semibold text-zinc-100">{c.title}</p>
+        <p className="text-xs text-projector">▶ S{c.season} · E{c.episode}</p>
+        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-theatre-800">
+          <div className="h-full rounded-full bg-projector" style={{ width: `${pct}%` }} />
+        </div>
+        <p className="mt-0.5 text-[11px] text-zinc-500">{c.watchedCount}/{c.totalEpisodes} episodi</p>
+      </div>
+    </Link>
+  )
+}
 
 interface Suggestion {
   title: string
@@ -95,6 +123,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState<UserStats | null>(null)
   const [watchlist, setWatchlist] = useState<UserTitle[]>([])
   const [inProgress, setInProgress] = useState<UserTitle[]>([])
+  const [continueList, setContinueList] = useState<ContinueItem[]>([])
 
   // Personal lists from Supabase.
   useEffect(() => {
@@ -102,11 +131,13 @@ export default function Dashboard() {
       setStats(null)
       setWatchlist([])
       setInProgress([])
+      setContinueList([])
       return
     }
     getStats(user.id).then(setStats).catch(() => setStats(null))
     listByStatus(user.id, 'to_watch').then(setWatchlist).catch(() => setWatchlist([]))
     listByStatus(user.id, 'in_progress').then(setInProgress).catch(() => setInProgress([]))
+    getContinueWatching(user.id).then(setContinueList).catch(() => setContinueList([]))
   }, [user])
 
   const statCards = [
@@ -140,7 +171,17 @@ export default function Dashboard() {
       </div>
 
       <div className="space-y-12">
-        {/* Continue watching */}
+        {/* Resume by episode — next unwatched episode of tracked series */}
+        {user && continueList.length > 0 && (
+          <section>
+            <SectionTitle icon="📺" title="Riprendi a guardare" />
+            <ScrollRow>
+              {continueList.map((c) => <ContinueCard key={c.tvId} c={c} />)}
+            </ScrollRow>
+          </section>
+        )}
+
+        {/* Continue watching (titles marked "in corso") */}
         {user && inProgress.length > 0 && (
           <section>
             <SectionTitle
@@ -180,7 +221,7 @@ export default function Dashboard() {
         {user && <AiSuggestions user={user} />}
 
         {/* Empty state for signed-in users with nothing yet */}
-        {user && watchlist.length === 0 && inProgress.length === 0 && (
+        {user && watchlist.length === 0 && inProgress.length === 0 && continueList.length === 0 && (
           <section className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
             <p className="text-zinc-300">
               La tua sala è ancora vuota. Esplora il catalogo e aggiungi i titoli che vuoi vedere.
