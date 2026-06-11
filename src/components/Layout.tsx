@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { Outlet } from 'react-router-dom'
 import Navbar from './Navbar'
 import AchievementToast from './AchievementToast'
+import InstallPrompt from './InstallPrompt'
 import { Loader } from './States'
 
 export default function Layout() {
@@ -14,6 +15,7 @@ export default function Layout() {
         </Suspense>
       </main>
       <AchievementToast />
+      <InstallPrompt />
       <footer className="border-t border-theatre-800/80 py-6">
         <div className="container-cine flex flex-col items-center justify-between gap-2 text-sm text-zinc-500 sm:flex-row">
           <p>
