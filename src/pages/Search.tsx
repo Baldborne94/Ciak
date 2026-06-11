@@ -13,7 +13,7 @@ import {
   getCartoons,
   getTrending,
   resolveStudios,
-  resolveSagas,
+  resolveSagaIds,
   resolvePeople,
   profileUrl,
   logoUrl,
@@ -68,7 +68,10 @@ const ROLE_LABEL: Record<string, string> = {
 
 // Curated lists resolved to real TMDB entities for the idle "famous" previews.
 const FAMOUS_STUDIOS = ['Pixar', 'Studio Ghibli', 'A24', 'Marvel Studios', 'Warner Bros. Pictures', 'DreamWorks Animation', 'Universal Pictures', 'Walt Disney Pictures', 'Lucasfilm', 'Columbia Pictures']
-const FAMOUS_SAGAS = ['Harry Potter', 'Star Wars', 'The Lord of the Rings', 'The Avengers', 'Jurassic Park', 'Fast & Furious', 'James Bond', 'Pirates of the Caribbean', 'The Dark Knight', 'Toy Story']
+// TMDB collection IDs (reliable: name search can match "making of" docs).
+// Harry Potter 1241 · Star Wars 10 · LOTR 119 · Avengers 86311 · Jurassic 328
+// Fast&Furious 9485 · James Bond 645 · Pirates 295 · Dark Knight 263 · Toy Story 10194
+const FAMOUS_SAGAS = [1241, 10, 119, 86311, 328, 9485, 645, 295, 263, 10194]
 const FAMOUS_ACTORS = ['Al Pacino', 'Robert De Niro', 'Meryl Streep', 'Leonardo DiCaprio', 'Tom Hanks', 'Denzel Washington', 'Anthony Hopkins', 'Morgan Freeman', 'Cate Blanchett', 'Joaquin Phoenix', 'Christian Bale', 'Daniel Day-Lewis', 'Natalie Portman', 'Gary Oldman', 'Brad Pitt']
 
 function PersonCard({ p }: { p: Person }) {
@@ -258,7 +261,7 @@ export default function Search() {
       resolveStudios(FAMOUS_STUDIOS).then(setFamousStudios).catch(() => {})
     }
     if (mode === 'collections' && famousSagas.length === 0) {
-      resolveSagas(FAMOUS_SAGAS).then(setFamousSagas).catch(() => {})
+      resolveSagaIds(FAMOUS_SAGAS).then(setFamousSagas).catch(() => {})
     }
   }, [mode, query])
 
