@@ -53,6 +53,29 @@ export interface MediaDetail extends MediaItem {
   trailerKey: string | null
   // Where to watch (region IT)
   watchProviders: WatchProviders | null
+  // TV seasons (empty for movies)
+  seasons: Season[]
+}
+
+export interface Season {
+  id: number
+  seasonNumber: number
+  name: string
+  episodeCount: number
+  airDate: string | null
+  posterPath: string | null
+  overview: string | null
+}
+
+export interface Episode {
+  id: number
+  episodeNumber: number
+  name: string
+  overview: string
+  airDate: string | null
+  runtime: number | null
+  voteAverage: number
+  stillPath: string | null
 }
 
 export interface Provider {

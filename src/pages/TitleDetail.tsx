@@ -5,6 +5,7 @@ import MediaGrid from '../components/MediaGrid'
 import TitleActions from '../components/TitleActions'
 import AddToListButton from '../components/AddToListButton'
 import LogDiaryButton from '../components/LogDiaryButton'
+import SeasonsSection from '../components/SeasonsSection'
 import {
   backdropUrl,
   displayTitle,
@@ -313,6 +314,11 @@ export default function TitleDetail() {
           </a>
         )}
       </section>
+
+      {/* Seasons & episodes (TV only) */}
+      {detail.mediaType === 'tv' && detail.seasons.length > 0 && (
+        <SeasonsSection tvId={detail.id} seasons={detail.seasons} />
+      )}
 
       {/* Cast */}
       {detail.cast.length > 0 && (
