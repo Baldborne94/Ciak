@@ -1,10 +1,21 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { listFavorites, refFromMedia, upsertUserTitle } from '../lib/userTitles'
-import type { UserTitle } from '../lib/types'
+import { listEntities } from '../lib/entities'
+import { profileUrl, logoUrl } from '../lib/tmdb'
+import type { SavedEntity, UserTitle } from '../lib/types'
+
+type Tab = 'titles' | 'people' | 'studios'
+
+const TABS: { value: Tab; label: string; icon: string }[] = [
+  { value: 'titles', label: 'Titoli', icon: '🎬' },
+  { value: 'people', label: 'Persone', icon: '🌟' },
+  { value: 'studios', label: 'Studi', icon: '🏛️' },
+]
 
 type SortKey = 'rating' | 'updated' | 'title'
 
@@ -99,7 +110,7 @@ function FavoriteEditor({
   )
 }
 
-export default function Favorites() {
+function TitlesTab() {
   const { user } = useAuth()
   const [items, setItems] = useState<UserTitle[]>([])
   const [loading, setLoading] = useState(true)
@@ -117,10 +128,7 @@ export default function Favorites() {
   }, [user])
 
   function replace(next: UserTitle) {
-    setItems((prev) =>
-      // A title can be un-favorited from its detail page; keep it here until reload.
-      prev.map((r) => (r.id === next.id ? next : r)),
-    )
+    setItems((prev) => prev.map((r) => (r.id === next.id ? next : r)))
   }
 
   const sorted = [...items].sort((a, b) => {
@@ -129,45 +137,152 @@ export default function Favorites() {
     return (b.personal_rating ?? 0) - (a.personal_rating ?? 0)
   })
 
+  if (loading) return <Loader label="Apro la tua collezione…" />
+  if (error) return <ErrorState title="Impossibile caricare i preferiti" message={error} />
+  if (sorted.length === 0)
+    return (
+      <EmptyState
+        title="Nessun titolo preferito"
+        message="Segna un titolo come preferito dalla sua scheda: qui potrai votarlo e annotare i tuoi commenti."
+        icon="❤️"
+      />
+    )
+
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as SortKey)}
+          className="input-cine w-auto"
+        >
+          <option value="rating">Ordina per voto</option>
+          <option value="updated">Più recenti</option>
+          <option value="title">Titolo (A–Z)</option>
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        {sorted.map((record) => (
+          <SavedTitleCard key={record.id} record={record}>
+            <FavoriteEditor record={record} onSaved={replace} />
+          </SavedTitleCard>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function EntitiesTab({ type }: { type: 'person' | 'company' }) {
+  const { user } = useAuth()
+  const [items, setItems] = useState<SavedEntity[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!user) return
+    setLoading(true)
+    setError(null)
+    listEntities(user.id, type)
+      .then(setItems)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [user, type])
+
+  if (loading) return <Loader label="Apro la tua collezione…" />
+  if (error) return <ErrorState title="Impossibile caricare i preferiti" message={error} />
+  if (items.length === 0)
+    return (
+      <EmptyState
+        title={type === 'person' ? 'Nessuna persona preferita' : 'Nessuno studio preferito'}
+        message={
+          type === 'person'
+            ? 'Apri il profilo di un attore o regista e premi «Aggiungi ai preferiti».'
+            : 'Apri la pagina di uno studio e premi «Aggiungi ai preferiti».'
+        }
+        icon={type === 'person' ? '🌟' : '🏛️'}
+      />
+    )
+
+  if (type === 'person') {
+    return (
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        {items.map((e) => {
+          const photo = profileUrl(e.image_path)
+          return (
+            <Link
+              key={e.id}
+              to={`/person/${e.entity_id}`}
+              className="group rounded-xl border border-theatre-800 bg-theatre-900 p-3 text-center transition hover:-translate-y-1 hover:border-projector/40"
+            >
+              <div className="mx-auto aspect-square w-full overflow-hidden rounded-full border border-theatre-700 bg-theatre-800">
+                {photo ? (
+                  <img src={photo} alt={e.name} loading="lazy" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">👤</div>
+                )}
+              </div>
+              <p className="mt-2 line-clamp-1 text-sm font-semibold text-zinc-100">{e.name}</p>
+              {e.subtitle && <p className="line-clamp-1 text-xs text-zinc-500">{e.subtitle}</p>}
+            </Link>
+          )
+        })}
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+      {items.map((e) => {
+        const logo = logoUrl(e.image_path)
+        return (
+          <Link
+            key={e.id}
+            to={`/studio/${e.entity_id}`}
+            className="group flex h-32 flex-col items-center justify-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900 p-4 text-center transition hover:-translate-y-1 hover:border-projector/40"
+          >
+            {logo ? (
+              <img src={logo} alt={e.name} loading="lazy" className="max-h-14 max-w-[80%] rounded bg-white/90 px-3 py-2" />
+            ) : (
+              <span className="text-4xl opacity-40">🏛️</span>
+            )}
+            <p className="line-clamp-1 text-sm font-medium text-zinc-200">{e.name}</p>
+          </Link>
+        )
+      })}
+    </div>
+  )
+}
+
+export default function Favorites() {
+  const [tab, setTab] = useState<Tab>('titles')
+
   return (
     <div>
       <PageHeader
         eyebrow="La tua collezione"
         title="Preferiti"
-        subtitle="I titoli che ami, con voto personale (1–5 ★) e note."
-      >
-        {items.length > 0 && (
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            className="input-cine w-auto"
-          >
-            <option value="rating">Ordina per voto</option>
-            <option value="updated">Più recenti</option>
-            <option value="title">Titolo (A–Z)</option>
-          </select>
-        )}
-      </PageHeader>
+        subtitle="Titoli, persone e studi che ami — divisi per sezione."
+      />
 
-      {loading ? (
-        <Loader label="Apro la tua collezione…" />
-      ) : error ? (
-        <ErrorState title="Impossibile caricare i preferiti" message={error} />
-      ) : sorted.length === 0 ? (
-        <EmptyState
-          title="Nessun preferito, per ora"
-          message="Segna un titolo come preferito dalla sua scheda: qui potrai votarlo e annotare i tuoi commenti."
-          icon="❤️"
-        />
-      ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {sorted.map((record) => (
-            <SavedTitleCard key={record.id} record={record}>
-              <FavoriteEditor record={record} onSaved={replace} />
-            </SavedTitleCard>
-          ))}
-        </div>
-      )}
+      <div className="mb-8 flex gap-2 border-b border-theatre-800">
+        {TABS.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => setTab(t.value)}
+            className={`-mb-px border-b-2 px-4 py-3 text-sm font-medium transition ${
+              tab === t.value
+                ? 'border-projector text-projector'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'titles' && <TitlesTab />}
+      {tab === 'people' && <EntitiesTab type="person" />}
+      {tab === 'studios' && <EntitiesTab type="company" />}
     </div>
   )
 }

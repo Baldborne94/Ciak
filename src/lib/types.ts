@@ -102,6 +102,20 @@ export interface CollectionDetail {
   items: MediaItem[]
 }
 
+// Favorited people / studios (Supabase user_entities).
+export type EntityType = 'person' | 'company'
+
+export interface SavedEntity {
+  id: string
+  user_id: string
+  entity_type: EntityType
+  entity_id: number
+  name: string
+  image_path: string | null
+  subtitle: string | null
+  created_at: string
+}
+
 export interface Genre {
   id: number
   name: string

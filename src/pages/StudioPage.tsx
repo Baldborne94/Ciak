@@ -3,11 +3,13 @@ import { useParams, Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { discoverByCompany, isTmdbConfigured } from '../lib/tmdb'
-import type { MediaItem } from '../lib/types'
+import { discoverByCompany, getCompany, logoUrl, isTmdbConfigured } from '../lib/tmdb'
+import EntityFavoriteButton from '../components/EntityFavoriteButton'
+import type { Company, MediaItem } from '../lib/types'
 
 export default function StudioPage() {
   const { id } = useParams<{ id: string }>()
+  const [company, setCompany] = useState<Company | null>(null)
   const [items, setItems] = useState<MediaItem[]>([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -28,6 +30,7 @@ export default function StudioPage() {
     setError(null)
     setItems([])
     setPage(1)
+    getCompany(cid).then(setCompany).catch(() => setCompany(null))
     discoverByCompany(cid, 1)
       .then(({ items: newItems, totalPages: tp }) => {
         setItems(newItems)
@@ -55,9 +58,31 @@ export default function StudioPage() {
     <div>
       <PageHeader
         eyebrow="Studio di produzione"
-        title="Film dello studio"
+        title={company?.name ?? 'Film dello studio'}
         subtitle="Tutti i titoli prodotti, dai più popolari."
-      />
+      >
+        {company && logoUrl(company.logoPath) && (
+          <img
+            src={logoUrl(company.logoPath)!}
+            alt={company.name}
+            className="max-h-12 rounded bg-white/90 px-3 py-2"
+          />
+        )}
+      </PageHeader>
+
+      {company && (
+        <EntityFavoriteButton
+          entity={{
+            entityType: 'company',
+            entityId: company.id,
+            name: company.name,
+            imagePath: company.logoPath,
+            subtitle: null,
+          }}
+        />
+      )}
+
+      <div className="mt-8" />
 
       {loading ? (
         <Loader label="Carico la produzione…" />
