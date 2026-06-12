@@ -38,6 +38,9 @@ function extractFilms(text: string): unknown {
   }
 }
 
+// Give the web-search round-trips room before Vercel kills the function.
+export const config = { maxDuration: 60 }
+
 interface ApiRequest {
   method?: string
   body?: RequestBody | string
@@ -81,25 +84,20 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     // Web search is a server-side tool; the API may pause after several rounds.
     // Re-send the assistant turn to let it finish (bounded loop).
-    let message = await client.messages.create({
-      model: 'claude-opus-4-8',
-      max_tokens: 2048,
-      thinking: { type: 'adaptive' },
+    // Sonnet + low effort + few searches keeps it fast and under the timeout.
+    const baseReq = {
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      thinking: { type: 'adaptive' as const },
+      output_config: { effort: 'low' as const },
       system: SYSTEM_PROMPT,
-      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }],
-      messages,
-    })
+      tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
+    }
+    let message = await client.messages.create({ ...baseReq, messages })
     let guard = 0
-    while (message.stop_reason === 'pause_turn' && guard++ < 4) {
+    while (message.stop_reason === 'pause_turn' && guard++ < 3) {
       messages.push({ role: 'assistant', content: message.content })
-      message = await client.messages.create({
-        model: 'claude-opus-4-8',
-        max_tokens: 2048,
-        thinking: { type: 'adaptive' },
-        system: SYSTEM_PROMPT,
-        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 5 }],
-        messages,
-      })
+      message = await client.messages.create({ ...baseReq, messages })
     }
 
     const text = message.content

@@ -39,6 +39,8 @@ const OUTPUT_SCHEMA = {
   required: ['order'],
 } as const
 
+export const config = { maxDuration: 60 }
+
 interface ApiRequest {
   method?: string
   body?: RequestBody | string
