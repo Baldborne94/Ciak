@@ -765,10 +765,11 @@ export async function getCollection(id: number): Promise<CollectionDetail> {
   }
 }
 
-// Collections truly related to a saga. Instead of a name search (which drags
-// in same-named junk and misses renamed prequels), we take TMDB's
-// recommendations for the saga's films and group them by the collection those
-// recommended films belong to (e.g. Alien → Prometheus, Alien vs Predator).
+// Candidate collections related to a saga, from TMDB recommendations for the
+// saga's films grouped by the collection the recommended films belong to.
+// Recommendations are genre-based, so candidates can include unrelated
+// franchises (Alien → Riddick): callers must pass the result through
+// filterRelatedCollections (relatedSagas.ts) to keep same-universe ones only.
 export async function getRelatedCollections(c: CollectionDetail): Promise<Collection[]> {
   // Seed with up to 3 films spread across the saga (first / middle / last).
   const films = c.items
