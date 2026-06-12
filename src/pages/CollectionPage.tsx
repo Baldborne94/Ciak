@@ -3,13 +3,21 @@ import { useParams, Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaCard from '../components/MediaCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { getCollection, backdropUrl, isTmdbConfigured } from '../lib/tmdb'
-import type { CollectionDetail, MediaItem } from '../lib/types'
+import { getCollection, searchCollection, backdropUrl, posterUrl, isTmdbConfigured } from '../lib/tmdb'
+import type { Collection, CollectionDetail, MediaItem } from '../lib/types'
 
 type Order = 'release' | 'story'
 
 function normaliseTitle(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+// Strip "collection/collezione/saga" etc. to get a franchise search term.
+function franchiseTerm(name: string): string {
+  return name
+    .replace(/[-–—:].*$/, '')
+    .replace(/\b(collection|collezione|saga|the|trilogy|trilogia|anthology|series|serie)\b/gi, '')
+    .trim()
 }
 
 export default function CollectionPage() {
@@ -23,6 +31,7 @@ export default function CollectionPage() {
   const [storyOrder, setStoryOrder] = useState<number[] | null>(null) // tmdb ids in story order
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [related, setRelated] = useState<Collection[]>([])
 
   useEffect(() => {
     if (!id) return
@@ -35,8 +44,18 @@ export default function CollectionPage() {
     setOrder('release')
     setStoryOrder(null)
     setStoryNotes(new Map())
+    setRelated([])
     getCollection(Number(id))
-      .then(setCollection)
+      .then((c) => {
+        setCollection(c)
+        // Other TMDB collections of the same franchise (prequels, spin-off…).
+        const term = franchiseTerm(c.name)
+        if (term.length >= 3) {
+          searchCollection(term)
+            .then((cols) => setRelated(cols.filter((x) => x.id !== c.id).slice(0, 8)))
+            .catch(() => setRelated([]))
+        }
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [id])
@@ -162,6 +181,39 @@ export default function CollectionPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Related franchise collections (Alien → Prometheus, AvP, …) */}
+      {related.length > 0 && (
+        <section className="mt-12">
+          <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">🔗 Saghe collegate</h2>
+          <p className="mb-4 text-sm text-zinc-500">
+            Su TMDB i prequel e gli spin-off stanno in collezioni separate.
+          </p>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {related.map((c) => {
+              const poster = posterUrl(c.posterPath)
+              return (
+                <Link
+                  key={c.id}
+                  to={`/collection/${c.id}`}
+                  className="group overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
+                >
+                  <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
+                    {poster ? (
+                      <img src={poster} alt={c.name} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">📚</div>
+                    )}
+                  </div>
+                  <div className="p-2">
+                    <p className="line-clamp-2 text-sm font-semibold text-zinc-100">{c.name}</p>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </section>
       )}
 
       <Link
