@@ -46,7 +46,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
       JSON.stringify({
-        title: '🔔 CineVault',
+        title: '🔔 Ciak',
         body: 'Le notifiche funzionano! Ti avviserò all’uscita dei titoli che aspetti.',
         url: '/in-arrivo',
       }),

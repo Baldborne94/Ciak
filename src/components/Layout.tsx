@@ -21,7 +21,7 @@ export default function Layout() {
       <footer className="border-t border-theatre-800/80 py-6">
         <div className="container-cine flex flex-col items-center justify-between gap-2 text-sm text-zinc-500 sm:flex-row">
           <p>
-            🎬 <span className="font-display tracking-wide">CineVault</span> — il
+            🎬 <span className="font-display tracking-wide">Ciak</span> — il
             tuo archivio personale di cinema.
           </p>
           <p>

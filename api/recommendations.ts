@@ -18,7 +18,7 @@ interface RequestBody {
   excludedGenres?: string[]
 }
 
-const SYSTEM_PROMPT = `Sei il curatore cinematografico di CineVault, un cinefilo appassionato.
+const SYSTEM_PROMPT = `Sei il curatore cinematografico di Ciak, un cinefilo appassionato.
 Analizzi i titoli preferiti e già visti dall'utente per individuare pattern — generi
 ricorrenti, registi amati, temi narrativi, periodi storici — e proponi nuovi titoli.
 Per ogni suggerimento scrivi una spiegazione personalizzata e calorosa in italiano,

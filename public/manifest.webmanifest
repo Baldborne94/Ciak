@@ -1,6 +1,6 @@
 {
-  "name": "CineVault",
-  "short_name": "CineVault",
+  "name": "Ciak",
+  "short_name": "Ciak",
   "description": "Il tuo archivio personale di cinema: film, serie TV, anime e cartoni con watchlist, diario e suggerimenti AI.",
   "start_url": "/",
   "scope": "/",
@@ -10,11 +10,8 @@
   "theme_color": "#0a0a0f",
   "lang": "it",
   "icons": [
-    {
-      "src": "/ciak.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
