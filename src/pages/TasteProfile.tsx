@@ -4,8 +4,9 @@ import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { listAll } from '../lib/userTitles'
+import { listDiary } from '../lib/diary'
 import { getGenres, posterUrl } from '../lib/tmdb'
-import type { UserTitle } from '../lib/types'
+import type { DiaryEntry, MediaType, UserTitle } from '../lib/types'
 
 const TYPE_LABELS: Record<string, string> = {
   movie: 'Film',
@@ -32,6 +33,7 @@ function Bar({ label, value, max, suffix }: { label: string; value: number; max:
 export default function TasteProfile() {
   const { user } = useAuth()
   const [rows, setRows] = useState<UserTitle[]>([])
+  const [diary, setDiary] = useState<DiaryEntry[]>([])
   const [genreMap, setGenreMap] = useState<Map<number, string>>(new Map())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,9 +41,15 @@ export default function TasteProfile() {
   useEffect(() => {
     if (!user) return
     setLoading(true)
-    Promise.all([listAll(user.id), getGenres('movie'), getGenres('tv')])
-      .then(([titles, gm, gt]) => {
+    Promise.all([
+      listAll(user.id),
+      listDiary(user.id).catch(() => [] as DiaryEntry[]),
+      getGenres('movie'),
+      getGenres('tv'),
+    ])
+      .then(([titles, diaryEntries, gm, gt]) => {
         setRows(titles)
+        setDiary(diaryEntries)
         const map = new Map<number, string>()
         for (const g of [...gm, ...gt]) map.set(g.id, g.name)
         setGenreMap(map)
@@ -52,8 +60,48 @@ export default function TasteProfile() {
 
   const stats = useMemo(() => {
     const watched = rows.filter((r) => r.status === 'watched')
-    const rated = rows.filter((r) => r.personal_rating != null)
     const favs = rows.filter((r) => r.is_favorite)
+
+    // I voti vivono in due posti: user_titles (scheda titolo) e user_diary
+    // (visioni registrate). Li uniamo per titolo: vale il voto della scheda,
+    // altrimenti il voto del diario più recente.
+    interface RatedItem {
+      id: string
+      tmdb_id: number
+      media_type: MediaType
+      title: string
+      poster_path: string | null
+      rating: number
+    }
+    const ratedByTitle = new Map<string, RatedItem>()
+    const keyOf = (tmdbId: number, mediaType: string) => `${mediaType}:${tmdbId}`
+    for (const e of diary) {
+      // listDiary è ordinato dal più recente: la prima occorrenza vince.
+      if (e.rating == null) continue
+      const k = keyOf(e.tmdb_id, e.media_type)
+      if (!ratedByTitle.has(k)) {
+        ratedByTitle.set(k, {
+          id: `diary-${e.id}`,
+          tmdb_id: e.tmdb_id,
+          media_type: e.media_type,
+          title: e.title,
+          poster_path: e.poster_path,
+          rating: e.rating,
+        })
+      }
+    }
+    for (const r of rows) {
+      if (r.personal_rating == null) continue
+      ratedByTitle.set(keyOf(r.tmdb_id, r.media_type), {
+        id: r.id,
+        tmdb_id: r.tmdb_id,
+        media_type: r.media_type,
+        title: r.title,
+        poster_path: r.poster_path,
+        rating: r.personal_rating,
+      })
+    }
+    const rated = [...ratedByTitle.values()]
     // Taste = watched + favorites
     const taste = rows.filter((r) => r.status === 'watched' || r.is_favorite)
 
@@ -76,24 +124,20 @@ export default function TasteProfile() {
 
     const ratingDist = [5, 4, 3, 2, 1].map((star) => ({
       star,
-      count: rated.filter((r) => r.personal_rating === star).length,
+      count: rated.filter((r) => r.rating === star).length,
     }))
     const avg =
-      rated.length > 0
-        ? rated.reduce((s, r) => s + (r.personal_rating ?? 0), 0) / rated.length
-        : 0
+      rated.length > 0 ? rated.reduce((s, r) => s + r.rating, 0) / rated.length : 0
 
-    const topRated = [...rated]
-      .sort((a, b) => (b.personal_rating ?? 0) - (a.personal_rating ?? 0))
-      .slice(0, 10)
+    const topRated = [...rated].sort((a, b) => b.rating - a.rating).slice(0, 10)
 
     return { watched, rated, favs, topGenres, types, ratingDist, avg, topRated }
-  }, [rows, genreMap])
+  }, [rows, diary, genreMap])
 
   if (loading) return <Loader label="Analizzo i tuoi gusti…" />
   if (error) return <ErrorState title="Profilo non disponibile" message={error} />
 
-  if (rows.length === 0)
+  if (rows.length === 0 && diary.length === 0)
     return (
       <div>
         <PageHeader eyebrow="Su di te" title="Profilo di gusto" />
@@ -194,7 +238,7 @@ export default function TasteProfile() {
                   </div>
                   <div className="p-2">
                     <p className="line-clamp-1 text-xs font-semibold text-zinc-100">{r.title}</p>
-                    <p className="text-xs text-projector">{'★'.repeat(r.personal_rating ?? 0)}</p>
+                    <p className="text-xs text-projector">{'★'.repeat(r.rating)}</p>
                   </div>
                 </Link>
               )

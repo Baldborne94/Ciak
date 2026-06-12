@@ -765,11 +765,10 @@ export async function getCollection(id: number): Promise<CollectionDetail> {
   }
 }
 
-// Candidate collections related to a saga, from TMDB recommendations for the
-// saga's films grouped by the collection the recommended films belong to.
-// Recommendations are genre-based, so candidates can include unrelated
-// franchises (Alien → Riddick): callers must pass the result through
-// filterRelatedCollections (relatedSagas.ts) to keep same-universe ones only.
+// Collections related to a saga, from TMDB recommendations for the saga's
+// films grouped by the collection the recommended films belong to. Note:
+// recommendations are genre-based ("who liked X also liked Y"), so results
+// can include franchises from other universes (e.g. Alien → Riddick).
 export async function getRelatedCollections(c: CollectionDetail): Promise<Collection[]> {
   // Seed with up to 3 films spread across the saga (first / middle / last).
   const films = c.items
