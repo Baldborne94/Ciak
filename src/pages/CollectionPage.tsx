@@ -4,6 +4,7 @@ import PageHeader from '../components/PageHeader'
 import MediaCard from '../components/MediaCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { getCollection, searchCollection, backdropUrl, posterUrl, isTmdbConfigured } from '../lib/tmdb'
+import { assertAiQuota, recordAiUse } from '../lib/aiQuota'
 import type { Collection, CollectionDetail, MediaItem } from '../lib/types'
 
 type Order = 'release' | 'story'
@@ -69,6 +70,7 @@ export default function CollectionPage() {
     setAiLoading(true)
     setAiError(null)
     try {
+      assertAiQuota()
       const res = await fetch('/api/saga-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -80,6 +82,7 @@ export default function CollectionPage() {
           })),
         }),
       })
+      recordAiUse()
       if (!res.ok) {
         const b = await res.json().catch(() => ({}))
         throw new Error(b.error ?? 'Servizio AI non disponibile.')

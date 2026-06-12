@@ -8,6 +8,7 @@ import { resolveSuggestions, posterUrl } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { getStats, listByStatus, listFavorites, type UserStats } from '../lib/userTitles'
 import { getContinueWatching, type ContinueItem } from '../lib/episodes'
+import { assertAiQuota, recordAiUse } from '../lib/aiQuota'
 import type { MediaItem, UserTitle } from '../lib/types'
 
 function ContinueCard({ c }: { c: ContinueItem }) {
@@ -62,6 +63,7 @@ function AiSuggestions({ user }: { user: ReturnType<typeof useAuth>['user'] }) {
     setLoading(true)
     setError(null)
     try {
+      assertAiQuota()
       const [favorites, watched] = user
         ? await Promise.all([listFavorites(user.id), listByStatus(user.id, 'watched')])
         : [[], []]
@@ -74,6 +76,7 @@ function AiSuggestions({ user }: { user: ReturnType<typeof useAuth>['user'] }) {
           watched: watched.map((w) => ({ title: w.title, mediaType: w.media_type })),
         }),
       })
+      recordAiUse()
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         throw new Error(body.error ?? 'Servizio AI non disponibile.')
