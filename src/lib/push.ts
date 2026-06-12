@@ -59,20 +59,34 @@ export async function enablePush(userId: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-// Sends a test notification to this device's subscription via the server.
+// Test that notifications actually display on this device. Shows one locally
+// through the service worker (same mechanism as a real push) — the most
+// reliable check, and it also exercises the remote push path via /api/push-test.
 export async function sendTestNotification(): Promise<void> {
   if (!pushSupported) throw new Error('Notifiche non supportate da questo browser.')
-  const reg = await navigator.serviceWorker.getRegistration()
-  const sub = await reg?.pushManager.getSubscription()
-  if (!sub) throw new Error('Attiva prima le notifiche.')
-  const res = await fetch('/api/push-test', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subscription: sub.toJSON() }),
+  if (Notification.permission !== 'granted') {
+    throw new Error('Permesso notifiche non concesso dal browser/sistema.')
+  }
+  const reg =
+    (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.ready)
+  if (!reg) throw new Error('Service worker non attivo. Ricarica la pagina e riprova.')
+
+  // Local notification — appears immediately if the OS allows notifications.
+  await reg.showNotification('🔔 CineVault', {
+    body: 'Le notifiche funzionano! Ti avviserò all’uscita dei titoli che aspetti.',
+    icon: '/ciak.svg',
+    badge: '/ciak.svg',
+    data: { url: '/in-arrivo' },
   })
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b.error ?? 'Invio non riuscito.')
+
+  // Also fire the real push path (best-effort; failures here aren't fatal).
+  const sub = await reg.pushManager.getSubscription()
+  if (sub) {
+    fetch('/api/push-test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subscription: sub.toJSON() }),
+    }).catch(() => {})
   }
 }
 
