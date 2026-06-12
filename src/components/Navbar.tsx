@@ -107,6 +107,18 @@ export default function Navbar() {
         <div className="flex shrink-0 items-center gap-2">
           {user ? (
             <>
+              <NavLink
+                to="/settings"
+                title="Impostazioni"
+                aria-label="Impostazioni"
+                className={({ isActive }) =>
+                  `rounded-lg px-2 py-2 text-lg transition ${
+                    isActive ? 'text-projector' : 'text-zinc-400 hover:text-zinc-100'
+                  }`
+                }
+              >
+                ⚙️
+              </NavLink>
               <span
                 className="hidden max-w-[12rem] truncate text-sm text-zinc-400 sm:inline"
                 title={user.email ?? undefined}
