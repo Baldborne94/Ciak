@@ -41,7 +41,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const vapidPublic = process.env.VAPID_PUBLIC_KEY
+  const vapidPublic = process.env.VAPID_PUBLIC_KEY || process.env.VITE_VAPID_PUBLIC_KEY
   const vapidPrivate = process.env.VAPID_PRIVATE_KEY
   const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:noreply@cinevault.app'
 
