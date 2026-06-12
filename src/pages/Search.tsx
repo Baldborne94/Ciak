@@ -348,6 +348,15 @@ export default function Search() {
     }
   }, [mode, query])
 
+  // Trending row respects the Tipo filter (Film / Serie TV).
+  const trendingPreview = useMemo(
+    () =>
+      kind === 'movie' || kind === 'tv'
+        ? previewTitles.filter((i) => i.mediaType === kind)
+        : previewTitles,
+    [previewTitles, kind],
+  )
+
   const filteredTitles = useMemo(() => {
     const base = isAnimationKind ? filterKind(kind as 'anime' | 'cartoons', titles) : titles
     return base.filter((r) => {
@@ -605,12 +614,13 @@ export default function Search() {
               )
             ) : (
             <div className="space-y-10">
-              {previewTitles.length > 0 && (
+              {trendingPreview.length > 0 && (
                 <div>
                   <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
                     🔥 Di tendenza ora
+                    {kind === 'movie' ? ' · Film' : kind === 'tv' ? ' · Serie TV' : ''}
                   </h2>
-                  <MediaRow items={previewTitles} />
+                  <MediaRow items={trendingPreview} />
                 </div>
               )}
               <div>
