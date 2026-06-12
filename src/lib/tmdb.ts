@@ -308,9 +308,32 @@ async function getEcchiKeywordIds(): Promise<string[]> {
   return ecchiIdsCache
 }
 
+// Discover with a readable title: fetch IT (for poster/overview) + EN, and when
+// the localized title is in a non-Latin script use the English one instead.
+async function discoverReadable(
+  type: TmdbType,
+  params: Record<string, string>,
+): Promise<{ items: MediaItem[]; totalPages: number }> {
+  const [it, en] = await Promise.all([
+    tmdbFetch<{ results: RawMedia[]; total_pages: number }>(`/discover/${type}`, params),
+    tmdbFetch<{ results: RawMedia[] }>(`/discover/${type}`, { ...params, language: 'en-US' }),
+  ])
+  const enTitle = new Map<number, string>()
+  for (const r of en.results) enTitle.set(r.id, (r.title ?? r.name) ?? '')
+  const items = it.results.map((r) => {
+    const item = normalise(r, type)
+    if (!isReadableTitle(item.title)) {
+      const e = enTitle.get(item.id)
+      if (isReadableTitle(e)) item.title = e!
+    }
+    return item
+  })
+  return { items, totalPages: it.total_pages }
+}
+
 export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
   const ecchi = await getEcchiKeywordIds()
-  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/tv', {
+  return discoverReadable('tv', {
     with_genres: '16',
     with_original_language: 'ja',
     sort_by: 'popularity.desc',
@@ -320,17 +343,13 @@ export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPag
     'vote_count.gte': '10',
     page: String(page),
   })
-  return {
-    items: data.results.map((r) => normalise(r, 'tv')),
-    totalPages: data.total_pages,
-  }
 }
 
 // The "Pervertito" corner: ecchi / fan-service AND hentai anime.
 export async function getPervertitoAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
   const ecchi = await getEcchiKeywordIds()
   const keywords = [...ecchi, '198385'] // ecchi + hentai
-  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/tv', {
+  return discoverReadable('tv', {
     with_genres: '16',
     with_original_language: 'ja',
     with_keywords: keywords.join('|'), // ha almeno un keyword ecchi/hentai
@@ -339,10 +358,6 @@ export async function getPervertitoAnime(page = 1): Promise<{ items: MediaItem[]
     'vote_count.gte': '5',
     page: String(page),
   })
-  return {
-    items: data.results.map((r) => normalise(r, 'tv')),
-    totalPages: data.total_pages,
-  }
 }
 
 // Most popular people right now — for the idle "Personaggi del momento" preview.
@@ -365,17 +380,13 @@ export async function getPopularPeople(): Promise<Person[]> {
 // Western animated TV series (Scooby-Doo, Tom & Jerry, …): genre Animation,
 // English original language to exclude Japanese anime.
 export async function getCartoons(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
-  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/tv', {
+  return discoverReadable('tv', {
     with_genres: '16',
     with_original_language: 'en',
     sort_by: 'popularity.desc',
     'vote_count.gte': '20',
     page: String(page),
   })
-  return {
-    items: data.results.map((r) => normalise(r, 'tv')),
-    totalPages: data.total_pages,
-  }
 }
 
 // Resolve AI text suggestions ({title}) to real TMDB items with posters.
@@ -535,32 +546,11 @@ export async function getUpcoming(): Promise<MediaItem[]> {
     include_adult: 'false',
     page: '1',
   }
-  // Fetch IT (for poster/overview) + EN (fallback title for non-Latin originals).
-  const [mvIt, mvEn, tvIt, tvEn] = await Promise.all([
-    tmdbFetch<{ results: RawMedia[] }>('/discover/movie', movieParams),
-    tmdbFetch<{ results: RawMedia[] }>('/discover/movie', { ...movieParams, language: 'en-US' }),
-    tmdbFetch<{ results: RawMedia[] }>('/discover/tv', tvParams),
-    tmdbFetch<{ results: RawMedia[] }>('/discover/tv', { ...tvParams, language: 'en-US' }),
+  const [mv, tv] = await Promise.all([
+    discoverReadable('movie', movieParams),
+    discoverReadable('tv', tvParams),
   ])
-
-  const enTitle = new Map<number, string>()
-  for (const r of mvEn.results) enTitle.set(r.id, r.title ?? '')
-  for (const r of tvEn.results) enTitle.set(r.id, r.name ?? '')
-
-  const merge = (list: RawMedia[], type: TmdbType): MediaItem[] =>
-    list.map((r) => {
-      const item = normalise(r, type)
-      // If the localized title is in an unreadable script, prefer the EN one.
-      if (!isReadableTitle(item.title)) {
-        const en = enTitle.get(item.id)
-        if (isReadableTitle(en)) item.title = en!
-      }
-      return item
-    })
-
-  return [...merge(mvIt.results, 'movie'), ...merge(tvIt.results, 'tv')].filter(
-    (i) => i.releaseDate && i.releaseDate >= today,
-  )
+  return [...mv.items, ...tv.items].filter((i) => i.releaseDate && i.releaseDate >= today)
 }
 
 export interface DiscoverFilters {
@@ -588,14 +578,7 @@ export async function discoverByGenre(
   if (filters.language) params.with_original_language = filters.language
   if (filters.country) params.with_origin_country = filters.country
 
-  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>(
-    `/discover/${type}`,
-    params,
-  )
-  return {
-    items: data.results.map((r) => normalise(r, type)),
-    totalPages: data.total_pages,
-  }
+  return discoverReadable(type, params)
 }
 
 // Resolve a curated list of names to real TMDB entities (with logos/photos),
