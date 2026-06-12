@@ -9,7 +9,7 @@ import {
   getActiveAchievementId,
   setActiveAchievement,
 } from '../lib/userTitles'
-import { useAchievementsCtx, achievementById } from '../lib/achievementsContext'
+import { useAchievementsCtx, achievementById } from '../lib/achievementsCtx'
 import {
   ACHIEVEMENTS,
   RARITY_STYLES,
@@ -131,7 +131,7 @@ export default function TrophiesPage() {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [user])
+  }, [user, notify])
 
   async function equip(achievement: Achievement) {
     if (!user) return

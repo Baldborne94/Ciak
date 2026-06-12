@@ -7,7 +7,7 @@ import {
   checkAndUnlockAchievements,
   type TitleRef,
 } from '../lib/userTitles'
-import { useAchievementsCtx } from '../lib/achievementsContext'
+import { useAchievementsCtx } from '../lib/achievementsCtx'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
 const STATUS_ORDER: TitleStatus[] = [

@@ -409,7 +409,7 @@ export default function Search() {
     if (mode === 'collections' && famousSagas.length === 0) {
       resolveSagaIds(FAMOUS_SAGAS).then(setFamousSagas).catch(() => {})
     }
-  }, [mode, query])
+  }, [mode, query, previewTitles.length, famousActors.length, famousStudios.length, famousSagas.length])
 
   // Trending row respects the Tipo filter (Film / Serie TV).
   const trendingPreview = useMemo(
