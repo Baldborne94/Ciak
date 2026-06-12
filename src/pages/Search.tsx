@@ -274,6 +274,14 @@ export default function Search() {
   const mode: Mode = MODES.some((m) => m.value === rawMode) ? (rawMode as Mode) : 'titles'
 
   const [input, setInput] = useState(query)
+  // Song mode uses two fields (title + artist); split an existing "title - artist".
+  const songSplit = rawMode === 'song' ? query.lastIndexOf(' - ') : -1
+  const [songTitle, setSongTitle] = useState(() =>
+    rawMode === 'song' ? (songSplit > 0 ? query.slice(0, songSplit) : query) : '',
+  )
+  const [songArtist, setSongArtist] = useState(() =>
+    songSplit > 0 ? query.slice(songSplit + 3) : '',
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -442,8 +450,42 @@ export default function Search() {
         ))}
       </div>
 
-      {/* Search bar — every mode except the image (photo) mode */}
-      {!isImageMode && (
+      {/* Song mode — two fields (title + artist) compose the query */}
+      {isSongMode && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            const t = songTitle.trim()
+            const a = songArtist.trim()
+            const next = new URLSearchParams(params)
+            if (t) next.set('q', a ? `${t} - ${a}` : t)
+            else next.delete('q')
+            next.set('mode', 'song')
+            setParams(next)
+          }}
+          className="mb-6 flex flex-col gap-2 sm:flex-row"
+        >
+          <input
+            value={songTitle}
+            onChange={(e) => setSongTitle(e.target.value)}
+            placeholder="Titolo canzone (es. Thunderstruck)"
+            className="input-cine flex-1"
+            autoFocus
+          />
+          <input
+            value={songArtist}
+            onChange={(e) => setSongArtist(e.target.value)}
+            placeholder="Artista — consigliato (es. AC/DC)"
+            className="input-cine flex-1"
+          />
+          <button type="submit" disabled={!songTitle.trim()} className="btn-primary whitespace-nowrap">
+            🔍 Cerca
+          </button>
+        </form>
+      )}
+
+      {/* Search bar — every mode except photo and song (which have custom inputs) */}
+      {!isImageMode && !isSongMode && (
         <form onSubmit={onSubmit} className="mb-6 flex gap-2">
           <div className="relative flex-1">
             <input
