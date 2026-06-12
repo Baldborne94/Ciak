@@ -1,27 +1,12 @@
 import {
-  createContext,
-  useContext,
   useState,
   useEffect,
+  useCallback,
+  useMemo,
   type ReactNode,
 } from 'react'
-import { ACHIEVEMENTS, type Achievement } from './achievements'
-
-interface AchievementsCtx {
-  pending: Achievement[]
-  notify: (achievements: Achievement[]) => void
-  dismiss: () => void
-  activeAchievementId: string | null
-  setActiveAchievement: (id: string, theme: string) => void
-}
-
-const Ctx = createContext<AchievementsCtx>({
-  pending: [],
-  notify: () => {},
-  dismiss: () => {},
-  activeAchievementId: null,
-  setActiveAchievement: () => {},
-})
+import { type Achievement } from './achievements'
+import { Ctx } from './achievementsCtx'
 
 const ID_KEY    = 'cinevault_active_achievement_id'
 const THEME_KEY = 'cinevault_active_theme'
@@ -42,32 +27,23 @@ export function AchievementsProvider({ children }: { children: ReactNode }) {
     applyTheme(savedTheme)
   }, [])
 
-  function setActiveAchievement(id: string, theme: string) {
+  const setActiveAchievement = useCallback((id: string, theme: string) => {
     setActiveId(id)
     localStorage.setItem(ID_KEY, id)
     localStorage.setItem(THEME_KEY, theme)
     applyTheme(theme)
-  }
+  }, [])
 
-  return (
-    <Ctx.Provider
-      value={{
-        pending,
-        notify: (a) => setPending((prev) => [...prev, ...a]),
-        dismiss: () => setPending([]),
-        activeAchievementId,
-        setActiveAchievement,
-      }}
-    >
-      {children}
-    </Ctx.Provider>
+  const notify = useCallback((a: Achievement[]) => {
+    setPending((prev) => [...prev, ...a])
+  }, [])
+
+  const dismiss = useCallback(() => setPending([]), [])
+
+  const value = useMemo(
+    () => ({ pending, notify, dismiss, activeAchievementId, setActiveAchievement }),
+    [pending, notify, dismiss, activeAchievementId, setActiveAchievement],
   )
-}
 
-export function useAchievementsCtx() {
-  return useContext(Ctx)
-}
-
-export function achievementById(id: string): Achievement | undefined {
-  return ACHIEVEMENTS.find((a) => a.id === id)
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useAchievementsCtx } from '../lib/achievementsContext'
+import { useAchievementsCtx } from '../lib/achievementsCtx'
 import { RARITY_STYLES, RARITY_LABELS } from '../lib/achievements'
 
 export default function AchievementToast() {
