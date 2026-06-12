@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { guardAi } from './_lib/aiGuard'
 
 // Given a song, ask Claude in which films it was famously used (needle-drops,
 // title themes, key scenes). Server-side only (ANTHROPIC_API_KEY).
@@ -71,6 +72,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return
   }
 
+  const guard = await guardAi(req as never, res as never)
+  if (!guard) return
+
   const client = new Anthropic({ apiKey })
 
   try {
@@ -103,7 +107,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
       .join('\n')
-    res.status(200).json(extractFilms(text))
+    const parsed = extractFilms(text) as Record<string, unknown>
+    res.status(200).json({ ...parsed, aiCreditsLeft: guard.creditsLeft })
   } catch (err) {
     const msg = (err as Error).message
     if (/credit balance is too low/i.test(msg)) {

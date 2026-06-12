@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { guardAi } from './_lib/aiGuard'
 
 // Vercel serverless function (Node runtime).
 // The Anthropic key lives ONLY on the server — never prefixed with VITE_, so it
@@ -92,6 +93,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return
   }
 
+  const guard = await guardAi(req as never, res as never)
+  if (!guard) return
+
   const client = new Anthropic({ apiKey })
 
   const userPrompt = [
@@ -115,7 +119,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const textBlock = message.content.find((b) => b.type === 'text')
     const parsed = textBlock && 'text' in textBlock ? JSON.parse(textBlock.text) : { suggestions: [] }
-    res.status(200).json(parsed)
+    res.status(200).json({ ...parsed, aiCreditsLeft: guard.creditsLeft })
   } catch (err) {
     const msg = (err as Error).message
     if (/credit balance is too low/i.test(msg)) {

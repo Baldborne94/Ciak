@@ -1,39 +1,30 @@
-// Client-side daily cap on AI usage (song search, photo identify, AI
-// recommendations, saga story-order) to protect the Anthropic credit balance.
-// Shared counter across all AI features, reset every day (local time-ish/UTC date).
+// Client-side mirror of the server's daily AI counter, used only for display
+// ("usi rimasti oggi"). The real limit is enforced server-side (api/_lib/
+// aiGuard.ts + tabella ai_usage): ogni risposta AI riporta `aiCreditsLeft`,
+// che salviamo qui. Finché il contatore server non è configurato, mostriamo
+// il valore pieno (la protezione vera resta l'auth obbligatoria sugli endpoint).
 
-export const AI_DAILY_LIMIT = 3
+export const AI_DAILY_LIMIT = Number(import.meta.env.VITE_AI_DAILY_LIMIT ?? '3')
 
-const PREFIX = 'cv_ai_usage_'
+const PREFIX = 'cv_ai_left_'
 
 function todayKey(): string {
   return PREFIX + new Date().toISOString().slice(0, 10)
 }
 
-function currentCount(): number {
-  return Number(localStorage.getItem(todayKey()) || '0')
-}
-
-export function aiUsesLeft(): number {
-  return Math.max(0, AI_DAILY_LIMIT - currentCount())
-}
-
-// Throws when the daily limit is reached — call before an AI request.
-export function assertAiQuota(): void {
-  if (aiUsesLeft() <= 0) {
-    throw new Error(
-      `Hai raggiunto il limite di ${AI_DAILY_LIMIT} ricerche AI per oggi. Riprova domani.`,
-    )
-  }
-}
-
-// Record one AI use (call only after a real AI request, not on cache hits).
-export function recordAiUse(): void {
+// Record the remaining credits reported by the server.
+export function setAiCreditsLeft(n: number): void {
   const key = todayKey()
-  localStorage.setItem(key, String(currentCount() + 1))
+  localStorage.setItem(key, String(Math.max(0, n)))
   // Tidy up old days' counters.
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const k = localStorage.key(i)
     if (k && k.startsWith(PREFIX) && k !== key) localStorage.removeItem(k)
   }
+}
+
+// Best-known remaining credits for today (full limit until the server tells us).
+export function aiUsesLeft(): number {
+  const raw = localStorage.getItem(todayKey())
+  return raw === null ? AI_DAILY_LIMIT : Math.max(0, Number(raw))
 }

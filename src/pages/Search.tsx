@@ -25,7 +25,8 @@ import {
 } from '../lib/tmdb'
 import { MediaRow } from '../components/MediaRow'
 import { LANGUAGES, YEARS } from '../lib/filters'
-import { assertAiQuota, recordAiUse, aiUsesLeft, AI_DAILY_LIMIT } from '../lib/aiQuota'
+import { aiUsesLeft, AI_DAILY_LIMIT } from '../lib/aiQuota'
+import { aiFetch } from '../lib/aiClient'
 import { useAuth } from '../lib/auth'
 import {
   clearCachedSongs,
@@ -99,18 +100,10 @@ const FAMOUS_ACTORS = ['Al Pacino', 'Robert De Niro', 'Meryl Streep', 'Leonardo 
 
 // Ask the AI which films use a song, then resolve each to a TMDB item.
 async function findSongFilms(song: string): Promise<{ item: MediaItem; note: string }[]> {
-  assertAiQuota()
-  const res = await fetch('/api/song-films', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ song }),
-  })
-  recordAiUse()
-  if (!res.ok) {
-    const b = await res.json().catch(() => ({}))
-    throw new Error(b.error ?? 'Servizio AI non disponibile.')
-  }
-  const data = (await res.json()) as { films: { title: string; year?: string; scene: string }[] }
+  const data = await aiFetch<{ films: { title: string; year?: string; scene: string }[] }>(
+    '/api/song-films',
+    { song },
+  )
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
   const resolved = await Promise.all(
     (data.films ?? []).map(async (f) => {

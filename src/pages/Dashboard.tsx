@@ -8,7 +8,7 @@ import { resolveSuggestions, posterUrl } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { getStats, listByStatus, listFavorites, type UserStats } from '../lib/userTitles'
 import { getContinueWatching, type ContinueItem } from '../lib/episodes'
-import { assertAiQuota, recordAiUse } from '../lib/aiQuota'
+import { aiFetch } from '../lib/aiClient'
 import type { MediaItem, UserTitle } from '../lib/types'
 
 function ContinueCard({ c }: { c: ContinueItem }) {
@@ -63,25 +63,14 @@ function AiSuggestions({ user }: { user: ReturnType<typeof useAuth>['user'] }) {
     setLoading(true)
     setError(null)
     try {
-      assertAiQuota()
       const [favorites, watched] = user
         ? await Promise.all([listFavorites(user.id), listByStatus(user.id, 'watched')])
         : [[], []]
 
-      const res = await fetch('/api/recommendations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          favorites: favorites.map((f) => ({ title: f.title, mediaType: f.media_type })),
-          watched: watched.map((w) => ({ title: w.title, mediaType: w.media_type })),
-        }),
+      const data = await aiFetch<{ suggestions: Suggestion[] }>('/api/recommendations', {
+        favorites: favorites.map((f) => ({ title: f.title, mediaType: f.media_type })),
+        watched: watched.map((w) => ({ title: w.title, mediaType: w.media_type })),
       })
-      recordAiUse()
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body.error ?? 'Servizio AI non disponibile.')
-      }
-      const data = (await res.json()) as { suggestions: Suggestion[] }
       const resolved = await resolveSuggestions((data.suggestions ?? []).map((s) => s.title))
       setItems(resolved)
     } catch (e) {
