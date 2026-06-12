@@ -604,7 +604,7 @@ export default function Search() {
                       😏 Pervertito
                     </h2>
                     <p className="mb-4 text-sm text-zinc-500">
-                      Ecchi, fan-service e hentai, confinati nel loro angolo.
+                      Ecchi, fan-service, harem e hentai: tutto ciò che è «sus», nel suo angolo.
                     </p>
                     <BrowseList fetcher={getPervertitoAnime} />
                   </div>

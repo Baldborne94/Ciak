@@ -289,23 +289,38 @@ interface RawWatchRegion {
   buy?: RawProvider[]
 }
 
-// Resolve the TMDB keyword IDs for "ecchi" / fan-service once, then cache.
-let ecchiIdsCache: string[] | null = null
-async function getEcchiKeywordIds(): Promise<string[]> {
-  if (ecchiIdsCache) return ecchiIdsCache
+// Resolve the TMDB keyword IDs for "suggestive" tags once, then cache. Broad
+// on purpose: anything that hints at ecchi/fan-service goes to "Pervertito".
+const SUGGESTIVE_KEYWORDS = [
+  'ecchi',
+  'fan service',
+  'harem',
+  'nudity',
+  'sexualization',
+  'swimsuit',
+  'bikini',
+  'panty shot',
+  'voyeurism',
+  'erotic',
+  'pervert',
+  'sexual content',
+]
+let suggestiveIdsCache: string[] | null = null
+async function getSuggestiveKeywordIds(): Promise<string[]> {
+  if (suggestiveIdsCache) return suggestiveIdsCache
   try {
     const results = await Promise.all(
-      ['ecchi', 'fan service'].map((q) =>
+      SUGGESTIVE_KEYWORDS.map((q) =>
         tmdbFetch<{ results: { id: number }[] }>('/search/keyword', { query: q })
-          .then((d) => d.results.map((r) => String(r.id)))
+          .then((d) => d.results.slice(0, 3).map((r) => String(r.id)))
           .catch(() => []),
       ),
     )
-    ecchiIdsCache = [...new Set(results.flat())]
+    suggestiveIdsCache = [...new Set(results.flat())]
   } catch {
-    ecchiIdsCache = []
+    suggestiveIdsCache = []
   }
-  return ecchiIdsCache
+  return suggestiveIdsCache
 }
 
 // Discover with a readable title: fetch IT (for poster/overview) + EN, and when
@@ -332,14 +347,14 @@ async function discoverReadable(
 }
 
 export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
-  const ecchi = await getEcchiKeywordIds()
+  const suggestive = await getSuggestiveKeywordIds()
   return discoverReadable('tv', {
     with_genres: '16',
     with_original_language: 'ja',
     sort_by: 'popularity.desc',
     include_adult: 'false',
-    // Escludi hentai (198385) e gli ecchi → quelli finiscono in "Pervertito".
-    without_keywords: ['198385', ...ecchi].join(','),
+    // Escludi hentai (198385) e tutto ciò che è ecchi/sus → va in "Pervertito".
+    without_keywords: ['198385', ...suggestive].join(','),
     'vote_count.gte': '10',
     page: String(page),
   })
@@ -347,8 +362,8 @@ export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPag
 
 // The "Pervertito" corner: ecchi / fan-service AND hentai anime.
 export async function getPervertitoAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
-  const ecchi = await getEcchiKeywordIds()
-  const keywords = [...ecchi, '198385'] // ecchi + hentai
+  const suggestive = await getSuggestiveKeywordIds()
+  const keywords = [...suggestive, '198385'] // ecchi/sus + hentai
   return discoverReadable('tv', {
     with_genres: '16',
     with_original_language: 'ja',
