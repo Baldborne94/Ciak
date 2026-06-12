@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaCard from '../components/MediaCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { getCollection, searchCollection, backdropUrl, posterUrl, isTmdbConfigured } from '../lib/tmdb'
+import { getCollection, getRelatedCollections, backdropUrl, posterUrl, isTmdbConfigured } from '../lib/tmdb'
 import { assertAiQuota, recordAiUse } from '../lib/aiQuota'
 import type { Collection, CollectionDetail, MediaItem } from '../lib/types'
 
@@ -11,14 +11,6 @@ type Order = 'release' | 'story'
 
 function normaliseTitle(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '')
-}
-
-// Strip "collection/collezione/saga" etc. to get a franchise search term.
-function franchiseTerm(name: string): string {
-  return name
-    .replace(/[-–—:].*$/, '')
-    .replace(/\b(collection|collezione|saga|the|trilogy|trilogia|anthology|series|serie)\b/gi, '')
-    .trim()
 }
 
 export default function CollectionPage() {
@@ -49,13 +41,11 @@ export default function CollectionPage() {
     getCollection(Number(id))
       .then((c) => {
         setCollection(c)
-        // Other TMDB collections of the same franchise (prequels, spin-off…).
-        const term = franchiseTerm(c.name)
-        if (term.length >= 3) {
-          searchCollection(term)
-            .then((cols) => setRelated(cols.filter((x) => x.id !== c.id).slice(0, 8)))
-            .catch(() => setRelated([]))
-        }
+        // Sister collections of the same universe, via TMDB recommendations
+        // (Alien → Prometheus / Alien vs Predator, not same-named junk).
+        getRelatedCollections(c)
+          .then(setRelated)
+          .catch(() => setRelated([]))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -191,7 +181,7 @@ export default function CollectionPage() {
         <section className="mt-12">
           <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">🔗 Saghe collegate</h2>
           <p className="mb-4 text-sm text-zinc-500">
-            Su TMDB i prequel e gli spin-off stanno in collezioni separate.
+            Prequel, spin-off e saghe dello stesso universo (su TMDB stanno in collezioni separate).
           </p>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {related.map((c) => {

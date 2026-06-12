@@ -765,6 +765,69 @@ export async function getCollection(id: number): Promise<CollectionDetail> {
   }
 }
 
+// Collections truly related to a saga. Instead of a name search (which drags
+// in same-named junk and misses renamed prequels), we take TMDB's
+// recommendations for the saga's films and group them by the collection those
+// recommended films belong to (e.g. Alien → Prometheus, Alien vs Predator).
+export async function getRelatedCollections(c: CollectionDetail): Promise<Collection[]> {
+  // Seed with up to 3 films spread across the saga (first / middle / last).
+  const films = c.items
+  const seeds = [...new Set([films[0], films[Math.floor(films.length / 2)], films[films.length - 1]])]
+    .filter((f): f is MediaItem => !!f)
+
+  // movieId → relevance score (higher rank in recommendations = more points)
+  const recScores = new Map<number, number>()
+  await Promise.all(
+    seeds.map(async (f) => {
+      try {
+        const data = await tmdbFetch<{ results: { id: number }[] }>(
+          `/movie/${f.id}/recommendations`,
+        )
+        data.results.slice(0, 12).forEach((r, idx) => {
+          recScores.set(r.id, (recScores.get(r.id) ?? 0) + (12 - idx))
+        })
+      } catch {
+        /* seed failed — ignore */
+      }
+    }),
+  )
+
+  const own = new Set(films.map((i) => i.id))
+  const top = [...recScores.entries()]
+    .filter(([movieId]) => !own.has(movieId))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+
+  // Fetch each top movie's collection membership and aggregate.
+  const byCollection = new Map<number, { col: Collection; score: number }>()
+  await Promise.all(
+    top.map(async ([movieId, score]) => {
+      try {
+        const raw = await tmdbFetch<{
+          belongs_to_collection?: { id: number; name: string; poster_path?: string | null } | null
+        }>(`/movie/${movieId}`)
+        const btc = raw.belongs_to_collection
+        if (!btc || btc.id === c.id) return
+        const existing = byCollection.get(btc.id)
+        if (existing) existing.score += score
+        else {
+          byCollection.set(btc.id, {
+            col: { id: btc.id, name: btc.name, posterPath: btc.poster_path ?? null },
+            score,
+          })
+        }
+      } catch {
+        /* ignore */
+      }
+    }),
+  )
+
+  return [...byCollection.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map((e) => e.col)
+}
+
 // ── Production companies / studios ─────────────────────────────────────────
 
 export async function searchCompany(query: string): Promise<Company[]> {
