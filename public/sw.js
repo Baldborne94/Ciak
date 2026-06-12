@@ -56,3 +56,38 @@ self.addEventListener('fetch', (event) => {
     ),
   )
 })
+
+// ── Web Push ────────────────────────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  let data = {}
+  try {
+    data = event.data ? event.data.json() : {}
+  } catch {
+    data = {}
+  }
+  const title = data.title || 'CineVault'
+  const options = {
+    body: data.body || 'Un titolo che aspettavi è uscito!',
+    icon: '/ciak.svg',
+    badge: '/ciak.svg',
+    data: { url: data.url || '/in-arrivo' },
+  }
+  event.waitUntil(self.registration.showNotification(title, options))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const url = (event.notification.data && event.notification.data.url) || '/in-arrivo'
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const c of clients) {
+        if ('focus' in c) {
+          c.navigate(url)
+          return c.focus()
+        }
+      }
+      return self.clients.openWindow(url)
+    }),
+  )
+})
+
