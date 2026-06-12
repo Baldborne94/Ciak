@@ -5,6 +5,7 @@ import MediaCard from '../components/MediaCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { getCollection, getRelatedCollections, backdropUrl, posterUrl, isTmdbConfigured } from '../lib/tmdb'
 import { aiFetch } from '../lib/aiClient'
+import AiCreditsNote from '../components/AiCreditsNote'
 import type { Collection, CollectionDetail, MediaItem } from '../lib/types'
 
 type Order = 'release' | 'story'
@@ -146,6 +147,8 @@ export default function CollectionPage() {
         </button>
         {aiError && <span className="text-xs text-curtain-light">{aiError}</span>}
       </div>
+
+      <AiCreditsNote className="mb-6" extra="«Secondo la storia» usa l'AI." />
 
       {collection.items.length === 0 ? (
         <EmptyState title="Nessun film nella saga" message="TMDB non ha titoli per questa collezione." />

@@ -25,8 +25,8 @@ import {
 } from '../lib/tmdb'
 import { MediaRow } from '../components/MediaRow'
 import { LANGUAGES, YEARS } from '../lib/filters'
-import { aiUsesLeft, AI_DAILY_LIMIT } from '../lib/aiQuota'
 import { aiFetch } from '../lib/aiClient'
+import AiCreditsNote from '../components/AiCreditsNote'
 import { useAuth } from '../lib/auth'
 import {
   clearCachedSongs,
@@ -545,10 +545,7 @@ export default function Search() {
         </form>
       )}
       {isSongMode && (
-        <p className="mb-4 text-xs text-zinc-500">
-          🤖 Ricerche AI rimaste oggi: <span className="text-projector">{aiUsesLeft()}</span>/{AI_DAILY_LIMIT}
-          {' '}· le ricerche già salvate qui sotto non contano.
-        </p>
+        <AiCreditsNote className="mb-4" extra="le ricerche già salvate qui sotto non contano." />
       )}
 
       {/* Saved song searches (cache) — instant re-open + delete */}
@@ -744,7 +741,12 @@ export default function Search() {
       )}
 
       {/* ── Foto → riconosci il titolo (via AI vision) ── */}
-      {isImageMode && <ImageIdentify />}
+      {isImageMode && (
+        <>
+          <AiCreditsNote className="mb-4" />
+          <ImageIdentify />
+        </>
+      )}
 
       {/* ── Search modes (titoli, persone, studi, saghe) ── */}
       {!isSongMode && !isImageMode && (

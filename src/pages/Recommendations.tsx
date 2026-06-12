@@ -4,6 +4,7 @@ import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { listByStatus, listFavorites } from '../lib/userTitles'
 import { aiFetch } from '../lib/aiClient'
+import AiCreditsNote from '../components/AiCreditsNote'
 import type { UserTitle } from '../lib/types'
 
 interface Suggestion {
@@ -53,6 +54,8 @@ export default function Recommendations() {
           {loading ? '✨ Genero…' : '✨ Genera suggerimenti'}
         </button>
       </PageHeader>
+
+      <AiCreditsNote className="mb-6" />
 
       {loading ? (
         <Loader label="L'AI sta sfogliando la tua cineteca…" />
