@@ -25,6 +25,16 @@ import {
 } from '../lib/tmdb'
 import { MediaRow } from '../components/MediaRow'
 import { LANGUAGES, YEARS } from '../lib/filters'
+import { useAuth } from '../lib/auth'
+import {
+  clearCachedSongs,
+  deleteCachedSong,
+  getCachedSong,
+  listCachedSongs,
+  saveCachedSong,
+  songKey,
+  type CachedSong,
+} from '../lib/songCache'
 import type {
   MediaItem,
   Person,
@@ -267,6 +277,7 @@ function BrowseList({
 }
 
 export default function Search() {
+  const { user } = useAuth()
   const [params, setParams] = useSearchParams()
   const query = params.get('q') ?? ''
   const rawMode = params.get('mode')
@@ -290,6 +301,7 @@ export default function Search() {
   const [studios, setStudios] = useState<Company[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
   const [songFilms, setSongFilms] = useState<{ item: MediaItem; note: string }[]>([])
+  const [savedSongs, setSavedSongs] = useState<CachedSong[]>([])
 
   const [kind, setKind] = useState<Kind>(
     rawMode === 'anime' || rawMode === 'cartoons' ? rawMode : 'all',
@@ -328,16 +340,55 @@ export default function Search() {
       mode === 'people' ? searchPerson(query).then(setPeople)
       : mode === 'studios' ? searchCompany(query).then(setStudios)
       : mode === 'collections' ? searchCollection(query).then(setCollections)
-      : mode === 'song' ? findSongFilms(query).then(setSongFilms)
+      : mode === 'song' ? runSongSearch(query)
       // Titoli (anche anime/cartoni): cerca per nome; il filtro "kind" è applicato lato client.
       : searchMulti(query).then(setTitles)
     run.catch((e: Error) => setError(e.message)).finally(() => setLoading(false))
-  }, [query, mode])
+
+    // Song search: serve dalla cache se presente, altrimenti chiama l'AI e salva.
+    async function runSongSearch(q: string) {
+      const key = songKey(q)
+      if (user) {
+        const cached = await getCachedSong(user.id, key).catch(() => null)
+        if (cached) {
+          setSongFilms(cached)
+          return
+        }
+      }
+      const results = await findSongFilms(q)
+      setSongFilms(results)
+      if (user && results.length > 0) {
+        await saveCachedSong(user.id, key, q, results).catch(() => {})
+        listCachedSongs(user.id).then(setSavedSongs).catch(() => {})
+      }
+    }
+  }, [query, mode, user])
 
   useEffect(() => {
     if (mode !== 'titles' || !isTmdbConfigured) return
     getGenres(genreType).then(setGenres).catch(() => setGenres([]))
   }, [genreType, mode])
+
+  // Saved song searches (cache) for the Canzone tab.
+  useEffect(() => {
+    if (mode !== 'song' || !user) {
+      setSavedSongs([])
+      return
+    }
+    listCachedSongs(user.id).then(setSavedSongs).catch(() => setSavedSongs([]))
+  }, [mode, user])
+
+  async function removeSavedSong(key: string) {
+    if (!user) return
+    setSavedSongs((prev) => prev.filter((s) => s.query_key !== key))
+    await deleteCachedSong(user.id, key).catch(() => {})
+  }
+
+  async function clearSavedSongs() {
+    if (!user) return
+    setSavedSongs([])
+    await clearCachedSongs(user.id).catch(() => {})
+  }
 
   // Idle previews — loaded lazily only for the active tab, once.
   useEffect(() => {
@@ -482,6 +533,46 @@ export default function Search() {
             🔍 Cerca
           </button>
         </form>
+      )}
+
+      {/* Saved song searches (cache) — instant re-open + delete */}
+      {isSongMode && savedSongs.length > 0 && (
+        <div className="mb-6 rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="text-xs uppercase tracking-wider text-zinc-500">💾 Ricerche salvate</span>
+            <button onClick={clearSavedSongs} className="text-xs text-curtain-light/80 hover:text-curtain-light">
+              Cancella tutte
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {savedSongs.map((s) => (
+              <span
+                key={s.query_key}
+                className="group inline-flex items-center gap-1 rounded-full border border-theatre-700 bg-theatre-800 py-1 pl-3 pr-1 text-sm text-zinc-200"
+              >
+                <button
+                  onClick={() => {
+                    const next = new URLSearchParams(params)
+                    next.set('q', s.query)
+                    next.set('mode', 'song')
+                    setParams(next)
+                  }}
+                  className="hover:text-projector"
+                  title="Riapri (dalla cache)"
+                >
+                  🎵 {s.query}
+                </button>
+                <button
+                  onClick={() => removeSavedSong(s.query_key)}
+                  aria-label="Cancella"
+                  className="flex h-5 w-5 items-center justify-center rounded-full text-zinc-500 transition hover:bg-curtain hover:text-white"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Search bar — every mode except photo and song (which have custom inputs) */}
