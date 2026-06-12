@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader'
 import MediaCard from '../components/MediaCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { getCollection, getRelatedCollections, backdropUrl, posterUrl, isTmdbConfigured } from '../lib/tmdb'
-import { assertAiQuota, recordAiUse } from '../lib/aiQuota'
+import { aiFetch } from '../lib/aiClient'
 import type { Collection, CollectionDetail, MediaItem } from '../lib/types'
 
 type Order = 'release' | 'story'
@@ -60,24 +60,13 @@ export default function CollectionPage() {
     setAiLoading(true)
     setAiError(null)
     try {
-      assertAiQuota()
-      const res = await fetch('/api/saga-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: collection.name,
-          films: collection.items.map((i) => ({
-            title: i.title,
-            year: i.releaseDate?.slice(0, 4),
-          })),
-        }),
+      const data = await aiFetch<{ order: { title: string; note: string }[] }>('/api/saga-order', {
+        name: collection.name,
+        films: collection.items.map((i) => ({
+          title: i.title,
+          year: i.releaseDate?.slice(0, 4),
+        })),
       })
-      recordAiUse()
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}))
-        throw new Error(b.error ?? 'Servizio AI non disponibile.')
-      }
-      const data = (await res.json()) as { order: { title: string; note: string }[] }
       // Map AI titles back to TMDB items.
       const byTitle = new Map(collection.items.map((i) => [normaliseTitle(i.title), i]))
       const ids: number[] = []

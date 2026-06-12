@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { guardAi } from './_lib/aiGuard'
 
 // Identify a film/series/anime from an uploaded image (scene, poster, character)
 // using Claude's vision. Server-side only (ANTHROPIC_API_KEY).
@@ -95,6 +96,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return
   }
 
+  const guard = await guardAi(req as never, res as never)
+  if (!guard) return
+
   const client = new Anthropic({ apiKey })
 
   try {
@@ -120,7 +124,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const textBlock = message.content.find((b) => b.type === 'text')
     const parsed =
       textBlock && 'text' in textBlock ? JSON.parse(textBlock.text) : { titles: [], people: [] }
-    res.status(200).json(parsed)
+    res.status(200).json({ ...parsed, aiCreditsLeft: guard.creditsLeft })
   } catch (err) {
     const msg = (err as Error).message
     if (/credit balance is too low/i.test(msg)) {

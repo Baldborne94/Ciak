@@ -3,6 +3,7 @@ import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { listByStatus, listFavorites } from '../lib/userTitles'
+import { aiFetch } from '../lib/aiClient'
 import type { UserTitle } from '../lib/types'
 
 interface Suggestion {
@@ -29,21 +30,10 @@ export default function Recommendations() {
         ? await Promise.all([listFavorites(user.id), listByStatus(user.id, 'watched')])
         : [[], []]
 
-      const res = await fetch('/api/recommendations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          favorites: favorites.map(toSummary),
-          watched: watched.map(toSummary),
-        }),
+      const data = await aiFetch<{ suggestions: Suggestion[] }>('/api/recommendations', {
+        favorites: favorites.map(toSummary),
+        watched: watched.map(toSummary),
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(
-          body.error ?? 'Il servizio di raccomandazioni non è ancora attivo.',
-        )
-      }
-      const data = (await res.json()) as { suggestions: Suggestion[] }
       setSuggestions(data.suggestions ?? [])
     } catch (e) {
       setError((e as Error).message)

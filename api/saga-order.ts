@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { guardAi } from './_lib/aiGuard'
 
 // Given a movie saga and its films, ask Claude for the recommended
 // chronological (story) viewing order. Server-side only (ANTHROPIC_API_KEY).
@@ -71,6 +72,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return
   }
 
+  const guard = await guardAi(req as never, res as never)
+  if (!guard) return
+
   const client = new Anthropic({ apiKey })
   const list = films.map((f) => (f.year ? `${f.title} (${f.year})` : f.title)).join('\n')
   const userPrompt = `Saga: ${name}\nFilm (ordine di uscita):\n${list}\n\nDammi l'ordine cronologico secondo la storia.`
@@ -86,7 +90,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     })
     const textBlock = message.content.find((b) => b.type === 'text')
     const parsed = textBlock && 'text' in textBlock ? JSON.parse(textBlock.text) : { order: [] }
-    res.status(200).json(parsed)
+    res.status(200).json({ ...parsed, aiCreditsLeft: guard.creditsLeft })
   } catch (err) {
     const msg = (err as Error).message
     if (/credit balance is too low/i.test(msg)) {

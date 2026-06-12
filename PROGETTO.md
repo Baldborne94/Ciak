@@ -162,7 +162,10 @@ src/
 - **`user_lists`** + **`user_list_items`** — liste personali e i loro titoli.
 - **`user_diary`** — registro di visione (data, voto, nota).
 
-> ⚠️ Esegui **tutti e 4** gli script nel SQL Editor di Supabase, in ordine (v1 → v2 → v3 → v4). Ogni tabella ha la propria **RLS**.
+### `schema_v9_ai_usage.sql` — limite usi AI lato server
+- **`ai_usage`** (`user_id`, `day`, `count`) + funzione `consume_ai_credit()`: contatore giornaliero a prova di manomissione, scritto solo dal service role. Protegge i crediti Anthropic insieme all'auth obbligatoria sugli endpoint `/api/*`.
+
+> ⚠️ Esegui **tutti** gli script nel SQL Editor di Supabase, in ordine (v1 → … → v9). Ogni tabella ha la propria **RLS**.
 
 ---
 
@@ -174,6 +177,8 @@ src/
 | `VITE_SUPABASE_URL` | Supabase → Project Settings → API | Project URL |
 | `VITE_SUPABASE_ANON_KEY` | Supabase → API → **Legacy anon key** (`eyJ…`) | client browser |
 | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) | **senza** prefisso `VITE_` — solo server |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → API → service_role | **solo server**: cron push + limite usi AI |
+| `AI_DAILY_LIMIT` | (opzionale, default 3) | usi AI per utente al giorno, enforce lato server |
 
 > 🔒 `ANTHROPIC_API_KEY` non deve **mai** avere il prefisso `VITE_`: resta lato server nella serverless function, mai esposta al browser.
 
