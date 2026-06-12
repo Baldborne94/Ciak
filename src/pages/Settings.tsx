@@ -3,7 +3,14 @@ import PageHeader from '../components/PageHeader'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { isTmdbConfigured } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
-import { disablePush, enablePush, isPushEnabled, pushConfigured, pushSupported } from '../lib/push'
+import {
+  disablePush,
+  enablePush,
+  isPushEnabled,
+  pushConfigured,
+  pushSupported,
+  sendTestNotification,
+} from '../lib/push'
 
 function StatusRow({ label, ok }: { label: string; ok: boolean }) {
   return (
@@ -66,9 +73,27 @@ function PushSettings() {
           <p className="text-sm text-zinc-400">
             Ricevi una notifica sul dispositivo (anche ad app chiusa) quando esce un titolo che hai segnato con «Avvisami».
           </p>
-          <button onClick={toggle} disabled={busy} className={`mt-4 ${enabled ? 'btn-ghost' : 'btn-primary'}`}>
-            {busy ? '…' : enabled ? 'Disattiva notifiche' : '🔔 Attiva notifiche'}
-          </button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={toggle} disabled={busy} className={enabled ? 'btn-ghost' : 'btn-primary'}>
+              {busy ? '…' : enabled ? 'Disattiva notifiche' : '🔔 Attiva notifiche'}
+            </button>
+            {enabled && (
+              <button
+                onClick={async () => {
+                  setMsg(null)
+                  try {
+                    await sendTestNotification()
+                    setMsg('Inviata! Dovrebbe arrivarti una notifica tra pochi secondi.')
+                  } catch (e) {
+                    setMsg((e as Error).message)
+                  }
+                }}
+                className="btn-ghost"
+              >
+                🧪 Invia notifica di prova
+              </button>
+            )}
+          </div>
           {msg && <p className="mt-3 text-xs text-projector">{msg}</p>}
         </>
       )}
