@@ -11,12 +11,17 @@ const SYSTEM_PROMPT = `Sei un esperto di musica nel cinema. Data una canzone, in
 (reali ed esistenti) in cui è stata usata in modo memorabile: needle-drop, scena chiave,
 tema, sigla o nei titoli di coda. USA LA RICERCA WEB per verificare gli utilizzi reali
 (fonti come Tunefind, WhatSong, IMDb soundtracks) invece di affidarti solo alla memoria.
-Per ciascun film indica una breve descrizione dell'uso (la scena o il contesto) e l'anno
-se lo conosci. Non inventare film: includi solo utilizzi che puoi confermare.
+
+REGOLE FERREE:
+- Considera ESCLUSIVAMENTE la canzone esatta indicata (titolo e, se c'è, artista).
+- NON sostituirla con un'altra canzone o un altro artista, nemmeno se simili.
+- Includi un film SOLO se proprio QUELLA canzone vi è usata, confermato da una fonte.
+- Per ogni film: titolo esatto come su IMDb/TMDB, l'anno, e una breve descrizione dell'uso.
+- Se non trovi utilizzi affidabili di QUELLA precisa canzone, restituisci lista vuota.
 
 Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza testo prima o dopo, nella forma:
 {"films":[{"title":"Titolo","year":"2005","scene":"descrizione dell'uso"}]}
-Se non trovi utilizzi affidabili, rispondi {"films":[]}.`
+Se non trovi nulla, rispondi {"films":[]}.`
 
 // Best-effort JSON extraction from a free-form model answer (web search adds
 // citation text around the JSON, so we can't use strict structured outputs).
