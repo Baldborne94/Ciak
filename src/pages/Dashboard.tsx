@@ -181,24 +181,6 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* Continue watching (titles marked "in corso") */}
-        {user && inProgress.length > 0 && (
-          <section>
-            <SectionTitle
-              icon="▶️"
-              title="Continua a guardare"
-              action={
-                <Link to="/lists/in-progress" className="text-sm text-projector/70 hover:text-projector">
-                  Vedi tutti →
-                </Link>
-              }
-            />
-            <ScrollRow>
-              {inProgress.map((r) => <SavedTitleCard key={r.id} record={r} />)}
-            </ScrollRow>
-          </section>
-        )}
-
         {/* Watchlist */}
         {user && watchlist.length > 0 && (
           <section>
