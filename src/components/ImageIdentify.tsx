@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth'
 import { searchMulti, searchPerson, posterUrl, profileUrl, displayTitle } from '../lib/tmdb'
 import { refFromMedia, upsertUserTitle } from '../lib/userTitles'
 import { addEntity } from '../lib/entities'
+import { assertAiQuota, recordAiUse } from '../lib/aiQuota'
 import type { MediaItem, Person } from '../lib/types'
 
 interface TitleHit {
@@ -70,12 +71,14 @@ export default function ImageIdentify() {
     setPreview(URL.createObjectURL(file))
     setLoading(true)
     try {
+      assertAiQuota()
       const { base64, mediaType } = await compress(file)
       const res = await fetch('/api/identify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: base64, mediaType }),
       })
+      recordAiUse()
       if (!res.ok) {
         const b = await res.json().catch(() => ({}))
         throw new Error(b.error ?? 'Servizio non disponibile.')

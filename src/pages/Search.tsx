@@ -25,6 +25,7 @@ import {
 } from '../lib/tmdb'
 import { MediaRow } from '../components/MediaRow'
 import { LANGUAGES, YEARS } from '../lib/filters'
+import { assertAiQuota, recordAiUse, aiUsesLeft, AI_DAILY_LIMIT } from '../lib/aiQuota'
 import { useAuth } from '../lib/auth'
 import {
   clearCachedSongs,
@@ -98,11 +99,13 @@ const FAMOUS_ACTORS = ['Al Pacino', 'Robert De Niro', 'Meryl Streep', 'Leonardo 
 
 // Ask the AI which films use a song, then resolve each to a TMDB item.
 async function findSongFilms(song: string): Promise<{ item: MediaItem; note: string }[]> {
+  assertAiQuota()
   const res = await fetch('/api/song-films', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ song }),
   })
+  recordAiUse()
   if (!res.ok) {
     const b = await res.json().catch(() => ({}))
     throw new Error(b.error ?? 'Servizio AI non disponibile.')
@@ -547,6 +550,12 @@ export default function Search() {
             🔍 Cerca
           </button>
         </form>
+      )}
+      {isSongMode && (
+        <p className="mb-4 text-xs text-zinc-500">
+          🤖 Ricerche AI rimaste oggi: <span className="text-projector">{aiUsesLeft()}</span>/{AI_DAILY_LIMIT}
+          {' '}· le ricerche già salvate qui sotto non contano.
+        </p>
       )}
 
       {/* Saved song searches (cache) — instant re-open + delete */}
