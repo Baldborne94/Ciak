@@ -102,6 +102,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       title: '🎬 È uscito!',
       body: `«${a.title}» che aspettavi è ora disponibile.`,
       url: `/title/${type}/${a.tmdb_id}`,
+      icon: '/icon-192.png',
+      badge: '/badge-96.png',
     })
     for (const s of userSubs) {
       try {

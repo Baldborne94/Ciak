@@ -41,7 +41,7 @@ export default function InstallPrompt() {
 
   return (
     <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border border-theatre-700 bg-theatre-900/95 px-4 py-2 shadow-reel backdrop-blur">
-      <span className="text-sm text-zinc-200">📲 Installa CineVault sul tuo dispositivo</span>
+      <span className="text-sm text-zinc-200">📲 Installa Ciak sul tuo dispositivo</span>
       <button onClick={install} className="btn-primary px-3 py-1.5 text-sm">
         Installa
       </button>

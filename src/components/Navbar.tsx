@@ -46,7 +46,7 @@ export default function Navbar() {
         <NavLink to="/" className="group flex shrink-0 items-center gap-2">
           <span className="text-2xl transition-transform group-hover:rotate-12">🎬</span>
           <span className="font-display text-2xl tracking-wide text-projector">
-            Cine<span className="text-curtain-light">Vault</span>
+            Ciak
           </span>
         </NavLink>
 

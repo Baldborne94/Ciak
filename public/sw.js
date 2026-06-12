@@ -5,7 +5,7 @@
 //  - Same-origin static assets (content-hashed JS/CSS/img): cache-first.
 //  - Everything cross-origin (TMDB, Supabase, Anthropic) is left untouched.
 
-const CACHE = 'cinevault-v1'
+const CACHE = 'ciak-v2'
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
@@ -65,11 +65,11 @@ self.addEventListener('push', (event) => {
   } catch {
     data = {}
   }
-  const title = data.title || 'CineVault'
+  const title = data.title || 'Ciak'
   const options = {
     body: data.body || 'Un titolo che aspettavi è uscito!',
-    icon: '/ciak.svg',
-    badge: '/ciak.svg',
+    icon: '/icon-192.png',
+    badge: '/badge-96.png',
     data: { url: data.url || '/in-arrivo' },
   }
   event.waitUntil(self.registration.showNotification(title, options))

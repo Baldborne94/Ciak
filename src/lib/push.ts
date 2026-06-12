@@ -59,9 +59,8 @@ export async function enablePush(userId: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
-// Test that notifications actually display on this device. Shows one locally
-// through the service worker (same mechanism as a real push) — the most
-// reliable check, and it also exercises the remote push path via /api/push-test.
+// Test that notifications actually display on this device. Shows a single
+// local notification through the service worker — same mechanism as a real push.
 export async function sendTestNotification(): Promise<void> {
   if (!pushSupported) throw new Error('Notifiche non supportate da questo browser.')
   if (Notification.permission !== 'granted') {
@@ -71,23 +70,12 @@ export async function sendTestNotification(): Promise<void> {
     (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.ready)
   if (!reg) throw new Error('Service worker non attivo. Ricarica la pagina e riprova.')
 
-  // Local notification — appears immediately if the OS allows notifications.
-  await reg.showNotification('🔔 CineVault', {
+  await reg.showNotification('Ciak', {
     body: 'Le notifiche funzionano! Ti avviserò all’uscita dei titoli che aspetti.',
-    icon: '/ciak.svg',
-    badge: '/ciak.svg',
+    icon: '/icon-192.png',
+    badge: '/badge-96.png',
     data: { url: '/in-arrivo' },
   })
-
-  // Also fire the real push path (best-effort; failures here aren't fatal).
-  const sub = await reg.pushManager.getSubscription()
-  if (sub) {
-    fetch('/api/push-test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ subscription: sub.toJSON() }),
-    }).catch(() => {})
-  }
 }
 
 export async function disablePush(): Promise<void> {
