@@ -309,6 +309,7 @@ export default function Search() {
   const [minRating, setMinRating] = useState(0)
   const [titleYear, setTitleYear] = useState('')
   const [titleLang, setTitleLang] = useState('')
+  const [sortBy, setSortBy] = useState<'relevance' | 'date_desc' | 'date_asc' | 'rating_desc'>('relevance')
   const [role, setRole] = useState('all')
 
   const [genreType, setGenreType] = useState<TmdbType>('movie')
@@ -418,14 +419,27 @@ export default function Search() {
 
   const filteredTitles = useMemo(() => {
     const base = isAnimationKind ? filterKind(kind as 'anime' | 'cartoons', titles) : titles
-    return base.filter((r) => {
+    const list = base.filter((r) => {
       if ((kind === 'movie' || kind === 'tv') && r.mediaType !== kind) return false
       if (r.voteAverage < minRating) return false
       if (titleYear && r.releaseDate?.slice(0, 4) !== titleYear) return false
       if (titleLang && r.originalLanguage !== titleLang) return false
       return true
     })
-  }, [titles, kind, isAnimationKind, minRating, titleYear, titleLang])
+    // Sort: relevance keeps the API order; date/rating sort explicitly (no-date last).
+    const byDate = (a: MediaItem, b: MediaItem, dir: 'asc' | 'desc') => {
+      if (!a.releaseDate && !b.releaseDate) return 0
+      if (!a.releaseDate) return 1
+      if (!b.releaseDate) return -1
+      return dir === 'asc'
+        ? a.releaseDate.localeCompare(b.releaseDate)
+        : b.releaseDate.localeCompare(a.releaseDate)
+    }
+    if (sortBy === 'date_desc') return [...list].sort((a, b) => byDate(a, b, 'desc'))
+    if (sortBy === 'date_asc') return [...list].sort((a, b) => byDate(a, b, 'asc'))
+    if (sortBy === 'rating_desc') return [...list].sort((a, b) => b.voteAverage - a.voteAverage)
+    return list
+  }, [titles, kind, isAnimationKind, minRating, titleYear, titleLang, sortBy])
 
   const filteredPeople = useMemo(() => {
     const dept = ROLES.find((r) => r.value === role)?.dept
@@ -661,6 +675,16 @@ export default function Search() {
               >
                 <option value="">Lingua: qualsiasi</option>
                 {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className="input-cine w-auto py-1.5 text-sm"
+              >
+                <option value="relevance">Ordina: rilevanza</option>
+                <option value="date_desc">Più recenti</option>
+                <option value="date_asc">Più vecchi</option>
+                <option value="rating_desc">Voto più alto</option>
               </select>
             </>
           )}
