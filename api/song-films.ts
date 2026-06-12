@@ -84,12 +84,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     // Web search is a server-side tool; the API may pause after several rounds.
     // Re-send the assistant turn to let it finish (bounded loop).
-    // Sonnet + low effort + few searches keeps it fast and under the timeout.
+    // Fewer searches + maxDuration keep it fast and under the timeout.
     const baseReq = {
-      model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      model: 'claude-opus-4-8',
+      max_tokens: 1536,
       thinking: { type: 'adaptive' as const },
-      output_config: { effort: 'low' as const },
       system: SYSTEM_PROMPT,
       tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
     }
