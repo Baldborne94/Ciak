@@ -5,7 +5,6 @@ import MediaCard from '../components/MediaCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { getCollection, getRelatedCollections, backdropUrl, posterUrl, isTmdbConfigured } from '../lib/tmdb'
 import { assertAiQuota, recordAiUse } from '../lib/aiQuota'
-import { filterRelatedCollections } from '../lib/relatedSagas'
 import type { Collection, CollectionDetail, MediaItem } from '../lib/types'
 
 type Order = 'release' | 'story'
@@ -42,11 +41,9 @@ export default function CollectionPage() {
     getCollection(Number(id))
       .then((c) => {
         setCollection(c)
-        // Sister collections of the same universe: TMDB recommendations give
-        // the candidates (genre-based, can include junk like Riddick), then
-        // an AI check keeps only the same-universe ones (cached per saga).
+        // Sister collections via TMDB recommendations (no AI: per scelta
+        // dell'utente mostriamo i suggerimenti TMDB così come sono).
         getRelatedCollections(c)
-          .then((candidates) => filterRelatedCollections(c.id, c.name, candidates))
           .then(setRelated)
           .catch(() => setRelated([]))
       })
