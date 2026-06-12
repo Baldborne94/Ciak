@@ -105,6 +105,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       .join('\n')
     res.status(200).json(extractFilms(text))
   } catch (err) {
-    res.status(502).json({ error: `Errore nella ricerca per canzone: ${(err as Error).message}` })
+    const msg = (err as Error).message
+    if (/credit balance is too low/i.test(msg)) {
+      res.status(502).json({ error: 'Crediti AI esauriti: ricarica il saldo su Anthropic (Plans & Billing).' })
+      return
+    }
+    res.status(502).json({ error: `Errore nella ricerca per canzone: ${msg}` })
   }
 }
