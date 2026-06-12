@@ -49,8 +49,19 @@ const LATIN_LANGS = new Set([
   'lt', 'is', 'ga', 'eu', 'gl', 'af', 'sw', 'ms', 'tl',
 ])
 
+// True when the string is in a script we can read (no CJK, Hangul, Thai,
+// Arabic, Cyrillic, Hebrew, Devanagari, kana…).
+// eslint-disable-next-line no-misleading-character-class
+const NON_LATIN_SCRIPTS = new RegExp('[\\u0400-\\u05FF\\u0600-\\u06FF\\u0900-\\u097F\\u0E00-\\u0E7F\\u3000-\\u30FF\\u3400-\\u9FFF\\uAC00-\\uD7AF]')
+export function isReadableTitle(s: string | null | undefined): boolean {
+  if (!s) return false
+  // Reject Cyrillic/Hebrew, Arabic, Devanagari, Thai, CJK punct + kana, CJK, Hangul.
+  return !NON_LATIN_SCRIPTS.test(s)
+}
+
 // The best title to show: original if it's in a readable script, otherwise
-// the localized one (so anime show their IT/EN name, not the Japanese one).
+// the localized one — and never a non-readable script when a readable
+// alternative exists (so anime/foreign titles show their IT/EN name).
 export function displayTitle(item: {
   title: string
   originalTitle: string | null
@@ -59,6 +70,8 @@ export function displayTitle(item: {
   if (item.originalTitle && item.originalLanguage && LATIN_LANGS.has(item.originalLanguage)) {
     return item.originalTitle
   }
+  if (isReadableTitle(item.title)) return item.title
+  if (isReadableTitle(item.originalTitle)) return item.originalTitle as string
   return item.title || item.originalTitle || 'Senza titolo'
 }
 
@@ -509,25 +522,45 @@ export async function getSeason(tvId: number, seasonNumber: number): Promise<Epi
 // the personalised "In arrivo per te" feed (ranked client-side by user taste).
 export async function getUpcoming(): Promise<MediaItem[]> {
   const today = new Date().toISOString().slice(0, 10)
-  const [mv, tv] = await Promise.all([
-    tmdbFetch<{ results: RawMedia[] }>('/discover/movie', {
-      'primary_release_date.gte': today,
-      sort_by: 'popularity.desc',
-      include_adult: 'false',
-      'vote_count.gte': '0',
-      page: '1',
-    }),
-    tmdbFetch<{ results: RawMedia[] }>('/discover/tv', {
-      'first_air_date.gte': today,
-      sort_by: 'popularity.desc',
-      include_adult: 'false',
-      page: '1',
-    }),
+  const movieParams = {
+    'primary_release_date.gte': today,
+    sort_by: 'popularity.desc',
+    include_adult: 'false',
+    'vote_count.gte': '0',
+    page: '1',
+  }
+  const tvParams = {
+    'first_air_date.gte': today,
+    sort_by: 'popularity.desc',
+    include_adult: 'false',
+    page: '1',
+  }
+  // Fetch IT (for poster/overview) + EN (fallback title for non-Latin originals).
+  const [mvIt, mvEn, tvIt, tvEn] = await Promise.all([
+    tmdbFetch<{ results: RawMedia[] }>('/discover/movie', movieParams),
+    tmdbFetch<{ results: RawMedia[] }>('/discover/movie', { ...movieParams, language: 'en-US' }),
+    tmdbFetch<{ results: RawMedia[] }>('/discover/tv', tvParams),
+    tmdbFetch<{ results: RawMedia[] }>('/discover/tv', { ...tvParams, language: 'en-US' }),
   ])
-  return [
-    ...mv.results.map((r) => normalise(r, 'movie')),
-    ...tv.results.map((r) => normalise(r, 'tv')),
-  ].filter((i) => i.releaseDate && i.releaseDate >= today)
+
+  const enTitle = new Map<number, string>()
+  for (const r of mvEn.results) enTitle.set(r.id, r.title ?? '')
+  for (const r of tvEn.results) enTitle.set(r.id, r.name ?? '')
+
+  const merge = (list: RawMedia[], type: TmdbType): MediaItem[] =>
+    list.map((r) => {
+      const item = normalise(r, type)
+      // If the localized title is in an unreadable script, prefer the EN one.
+      if (!isReadableTitle(item.title)) {
+        const en = enTitle.get(item.id)
+        if (isReadableTitle(en)) item.title = en!
+      }
+      return item
+    })
+
+  return [...merge(mvIt.results, 'movie'), ...merge(tvIt.results, 'tv')].filter(
+    (i) => i.releaseDate && i.releaseDate >= today,
+  )
 }
 
 export interface DiscoverFilters {

@@ -59,6 +59,23 @@ export async function enablePush(userId: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+// Sends a test notification to this device's subscription via the server.
+export async function sendTestNotification(): Promise<void> {
+  if (!pushSupported) throw new Error('Notifiche non supportate da questo browser.')
+  const reg = await navigator.serviceWorker.getRegistration()
+  const sub = await reg?.pushManager.getSubscription()
+  if (!sub) throw new Error('Attiva prima le notifiche.')
+  const res = await fetch('/api/push-test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ subscription: sub.toJSON() }),
+  })
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}))
+    throw new Error(b.error ?? 'Invio non riuscito.')
+  }
+}
+
 export async function disablePush(): Promise<void> {
   if (!pushSupported || !supabase) return
   const reg = await navigator.serviceWorker.getRegistration()
