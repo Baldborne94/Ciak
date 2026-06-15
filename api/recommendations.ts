@@ -111,7 +111,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const message = await client.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: 2048,
-      thinking: { type: 'adaptive' },
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userPrompt }],
       output_config: { format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
