@@ -1,5 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk'
-import { guardAi } from './_lib/aiGuard'
+// NB: gli import di '@anthropic-ai/sdk' e './_lib/aiGuard' sono DINAMICI dentro
+// l'handler (vedi sotto). Se uno dei due non si carica nel runtime serverless,
+// l'errore viene catturato e restituito come JSON, invece di far crashare la
+// funzione al module-load (che la pagina mostrerebbe come generico HTTP 500).
 
 // Given a song, ask Claude in which films it was famously used (needle-drops,
 // title themes, key scenes). Server-side only (ANTHROPIC_API_KEY).
@@ -73,6 +75,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   try {
+    const { guardAi } = await import('./_lib/aiGuard')
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+
     const guard = await guardAi(req as never, res as never)
     if (!guard) return
 
@@ -103,8 +108,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     }
 
     const text = message.content
-      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
-      .map((b) => b.text)
+      .filter((b) => b.type === 'text')
+      .map((b) => (b as { text: string }).text)
       .join('\n')
     const parsed = extractFilms(text) as Record<string, unknown>
     res.status(200).json({ ...parsed, aiCreditsLeft: guard.creditsLeft })

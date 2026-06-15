@@ -1,5 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
-import { guardAi } from './_lib/aiGuard'
+// '@anthropic-ai/sdk' e './_lib/aiGuard' sono importati dinamicamente dentro
+// l'handler (try/catch), così un errore di caricamento torna come JSON invece
+// di un crash al module-load (generico HTTP 500).
 
 // Given a movie saga and its films, ask Claude for the recommended
 // chronological (story) viewing order. Server-side only (ANTHROPIC_API_KEY).
@@ -76,6 +77,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const userPrompt = `Saga: ${name}\nFilm (ordine di uscita):\n${list}\n\nDammi l'ordine cronologico secondo la storia.`
 
   try {
+    const { guardAi } = await import('./_lib/aiGuard')
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+
     const guard = await guardAi(req as never, res as never)
     if (!guard) return
 
