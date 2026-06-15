@@ -1,5 +1,6 @@
-import Anthropic from '@anthropic-ai/sdk'
-import { guardAi } from './_lib/aiGuard'
+// '@anthropic-ai/sdk' e './_lib/aiGuard' sono importati dinamicamente dentro
+// l'handler (try/catch), così un errore di caricamento torna come JSON invece
+// di un crash al module-load (generico HTTP 500).
 
 // Identify a film/series/anime from an uploaded image (scene, poster, character)
 // using Claude's vision. Server-side only (ANTHROPIC_API_KEY).
@@ -97,6 +98,9 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   try {
+    const { guardAi } = await import('./_lib/aiGuard')
+    const { default: Anthropic } = await import('@anthropic-ai/sdk')
+
     const guard = await guardAi(req as never, res as never)
     if (!guard) return
 
