@@ -1,5 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
-
 // Server-side protection for the AI endpoints. Two layers:
 //  1) AUTH — only a logged-in Supabase user (valid JWT) can call the endpoint.
 //     This alone blocks anonymous/bot abuse of /api/*, the main cost vector.
@@ -13,6 +11,14 @@ const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?
 const ANON_KEY = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ''
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 export const AI_DAILY_LIMIT = Number(process.env.AI_DAILY_LIMIT ?? '3')
+
+// Imported lazily inside guardAi's try/catch: if the package fails to load in
+// the serverless runtime, the error is reported as JSON instead of crashing
+// the function at module-load time (which would show the generic 500).
+async function loadCreateClient() {
+  const mod = await import('@supabase/supabase-js')
+  return mod.createClient
+}
 
 interface GuardRequest {
   headers?: Record<string, string | string[] | undefined>
@@ -43,6 +49,7 @@ async function requireUser(req: GuardRequest, res: GuardResponse): Promise<strin
     res.status(401).json({ error: 'Accedi per usare le funzioni AI.' })
     return null
   }
+  const createClient = await loadCreateClient()
   const supa = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } })
   const { data, error } = await supa.auth.getUser(token)
   if (error || !data?.user) {
@@ -57,6 +64,7 @@ async function requireUser(req: GuardRequest, res: GuardResponse): Promise<strin
 // 429 and returns -1 when the daily limit is already reached.
 async function consumeCredit(userId: string, res: GuardResponse): Promise<number | null | -1> {
   if (!SERVICE_ROLE_KEY) return null // hard cap not set up yet; auth gate still applies
+  const createClient = await loadCreateClient()
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   const { data, error } = await admin.rpc('consume_ai_credit', {
     p_user_id: userId,
@@ -76,14 +84,23 @@ async function consumeCredit(userId: string, res: GuardResponse): Promise<number
 
 // Gate an AI endpoint: enforce auth, then reserve one daily credit.
 // Returns { userId, creditsLeft } on success, or null if the request was
-// already answered with 401/429/503 (the caller should just return).
+// already answered with 401/429/503/500 (the caller should just return).
+//
+// Everything is wrapped so an unexpected exception (e.g. a network error while
+// talking to Supabase, or a failure loading the SDK) becomes a readable JSON
+// 500 instead of a bare crash shown as the generic "Servizio AI non disponibile".
 export async function guardAi(
   req: GuardRequest,
   res: GuardResponse,
 ): Promise<{ userId: string; creditsLeft: number | null } | null> {
-  const userId = await requireUser(req, res)
-  if (!userId) return null
-  const creditsLeft = await consumeCredit(userId, res)
-  if (creditsLeft === -1) return null
-  return { userId, creditsLeft }
+  try {
+    const userId = await requireUser(req, res)
+    if (!userId) return null
+    const creditsLeft = await consumeCredit(userId, res)
+    if (creditsLeft === -1) return null
+    return { userId, creditsLeft }
+  } catch (err) {
+    res.status(500).json({ error: `Errore nel controllo accessi AI: ${(err as Error).message}` })
+    return null
+  }
 }
