@@ -72,14 +72,14 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return
   }
 
-  const guard = await guardAi(req as never, res as never)
-  if (!guard) return
-
-  const client = new Anthropic({ apiKey })
   const list = films.map((f) => (f.year ? `${f.title} (${f.year})` : f.title)).join('\n')
   const userPrompt = `Saga: ${name}\nFilm (ordine di uscita):\n${list}\n\nDammi l'ordine cronologico secondo la storia.`
 
   try {
+    const guard = await guardAi(req as never, res as never)
+    if (!guard) return
+
+    const client = new Anthropic({ apiKey })
     const message = await client.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: 1536,
@@ -96,6 +96,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       res.status(502).json({ error: 'Crediti AI esauriti: ricarica il saldo su Anthropic (Plans & Billing).' })
       return
     }
-    res.status(502).json({ error: `Errore nel calcolare l'ordine: ${msg}` })
+    res.status(500).json({ error: `Errore nel calcolare l'ordine: ${msg}` })
   }
 }
