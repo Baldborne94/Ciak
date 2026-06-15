@@ -26,7 +26,11 @@ export async function aiFetch<T>(path: string, body: unknown): Promise<T> {
     setAiCreditsLeft((data as { aiCreditsLeft: number }).aiCreditsLeft)
   }
   if (!res.ok) {
-    throw new Error((data as { error?: string }).error ?? 'Servizio AI non disponibile.')
+    const serverError = (data as { error?: string }).error
+    // Se il server non ha restituito un messaggio JSON (es. timeout/crash della
+    // funzione su Vercel) mostriamo almeno il codice HTTP, così l'errore è
+    // diagnosticabile invece del generico "non disponibile".
+    throw new Error(serverError ?? `Servizio AI non disponibile (HTTP ${res.status}).`)
   }
   return data as T
 }

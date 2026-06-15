@@ -92,7 +92,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     const baseReq = {
       model: 'claude-opus-4-8',
       max_tokens: 1536,
-      thinking: { type: 'adaptive' as const },
       system: SYSTEM_PROMPT,
       tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
     }
