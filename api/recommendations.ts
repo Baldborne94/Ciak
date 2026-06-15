@@ -93,11 +93,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return
   }
 
-  const guard = await guardAi(req as never, res as never)
-  if (!guard) return
-
-  const client = new Anthropic({ apiKey })
-
   const userPrompt = [
     `Titoli PREFERITI dell'utente:\n${describe(favorites)}`,
     `\nTitoli GIÀ VISTI:\n${describe(watched)}`,
@@ -108,6 +103,10 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   ].join('\n')
 
   try {
+    const guard = await guardAi(req as never, res as never)
+    if (!guard) return
+
+    const client = new Anthropic({ apiKey })
     const message = await client.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: 2048,
@@ -125,6 +124,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       res.status(502).json({ error: 'Crediti AI esauriti: ricarica il saldo su Anthropic (Plans & Billing).' })
       return
     }
-    res.status(502).json({ error: `Errore nel generare le raccomandazioni: ${msg}` })
+    res.status(500).json({ error: `Errore nel generare le raccomandazioni: ${msg}` })
   }
 }

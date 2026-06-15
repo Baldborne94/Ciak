@@ -72,12 +72,12 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     return
   }
 
-  const guard = await guardAi(req as never, res as never)
-  if (!guard) return
-
-  const client = new Anthropic({ apiKey })
-
   try {
+    const guard = await guardAi(req as never, res as never)
+    if (!guard) return
+
+    const client = new Anthropic({ apiKey })
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const messages: any[] = [
       {
@@ -96,8 +96,8 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }],
     }
     let message = await client.messages.create({ ...baseReq, messages })
-    let guard = 0
-    while (message.stop_reason === 'pause_turn' && guard++ < 3) {
+    let rounds = 0
+    while (message.stop_reason === 'pause_turn' && rounds++ < 3) {
       messages.push({ role: 'assistant', content: message.content })
       message = await client.messages.create({ ...baseReq, messages })
     }
@@ -114,6 +114,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       res.status(502).json({ error: 'Crediti AI esauriti: ricarica il saldo su Anthropic (Plans & Billing).' })
       return
     }
-    res.status(502).json({ error: `Errore nella ricerca per canzone: ${msg}` })
+    res.status(500).json({ error: `Errore nella ricerca per canzone: ${msg}` })
   }
 }
