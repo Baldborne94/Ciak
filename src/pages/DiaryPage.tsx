@@ -4,7 +4,8 @@ import PageHeader from '../components/PageHeader'
 import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
-import { deleteDiaryEntry, listDiary } from '../lib/diary'
+import { deleteDiaryEntry, listDiary, updateDiaryEntry } from '../lib/diary'
+import { useToast } from '../lib/toastCtx'
 import { posterUrl } from '../lib/tmdb'
 import type { DiaryEntry } from '../lib/types'
 
@@ -19,6 +20,7 @@ function formatDate(iso: string): string {
 
 export default function DiaryPage() {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const [entries, setEntries] = useState<DiaryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,9 +34,27 @@ export default function DiaryPage() {
       .finally(() => setLoading(false))
   }, [user])
 
-  async function remove(id: string) {
-    await deleteDiaryEntry(id)
-    setEntries((prev) => prev.filter((e) => e.id !== id))
+  async function remove(entry: DiaryEntry) {
+    if (!user) return
+    try {
+      await deleteDiaryEntry(user.id, entry)
+      setEntries((prev) => prev.filter((e) => e.id !== entry.id))
+    } catch (e) {
+      showToast(`Impossibile rimuovere dal diario: ${(e as Error).message}`)
+    }
+  }
+
+  async function changeRating(entry: DiaryEntry, rating: number | null) {
+    if (!user) return
+    // Aggiornamento ottimistico: la UI risponde subito, poi confermiamo.
+    setEntries((prev) => prev.map((e) => (e.id === entry.id ? { ...e, rating } : e)))
+    try {
+      await updateDiaryEntry(user.id, entry, { rating })
+    } catch (e) {
+      // Ripristina il valore precedente e avvisa.
+      setEntries((prev) => prev.map((e) => (e.id === entry.id ? entry : e)))
+      showToast(`Voto non salvato: ${(e as Error).message}`)
+    }
   }
 
   // Group by date.
@@ -49,7 +69,7 @@ export default function DiaryPage() {
       <PageHeader
         eyebrow="Il tuo registro"
         title="Diario di visione"
-        subtitle="Ogni film e serie che hai guardato, in ordine di data. Segnali dalla scheda titolo."
+        subtitle="Ogni film e serie che hai guardato, in ordine di data. Tocca le stelle per cambiare il voto."
       />
 
       {loading ? (
@@ -94,15 +114,17 @@ export default function DiaryPage() {
                         >
                           {e.title}
                         </Link>
-                        {e.rating ? (
-                          <div className="mt-0.5">
-                            <StarRating value={e.rating} size="sm" />
-                          </div>
-                        ) : null}
+                        <div className="mt-0.5">
+                          <StarRating
+                            value={e.rating}
+                            onChange={(v) => changeRating(e, v)}
+                            size="sm"
+                          />
+                        </div>
                         {e.note && <p className="mt-1 text-sm text-zinc-400">{e.note}</p>}
                       </div>
                       <button
-                        onClick={() => remove(e.id)}
+                        onClick={() => remove(e)}
                         aria-label="Rimuovi dal diario"
                         className="self-start text-zinc-600 opacity-0 transition hover:text-curtain-light group-hover:opacity-100"
                       >
