@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader'
 import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
-import { listAll } from '../lib/userTitles'
+import { backfillGenreIds, listAll } from '../lib/userTitles'
 import { listDiary } from '../lib/diary'
 import { getGenres, posterUrl } from '../lib/tmdb'
 import type { DiaryEntry, MediaType, UserTitle } from '../lib/types'
@@ -57,6 +57,22 @@ export default function TasteProfile() {
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
+  }, [user])
+
+  // Backfill una tantum dei generi mancanti (titoli salvati prima del fix):
+  // gira in background e, se aggiorna qualcosa, ricarica i titoli così i
+  // "Generi preferiti" si popolano senza dover ri-toccare ogni titolo.
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    backfillGenreIds(user.id)
+      .then((n) => {
+        if (n > 0 && !cancelled) listAll(user.id).then(setRows).catch(() => {})
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [user])
 
   const stats = useMemo(() => {
