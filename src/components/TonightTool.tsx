@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import PageHeader from '../components/PageHeader'
-import { EmptyState, ErrorState, Loader } from '../components/States'
-import AiCreditsNote from '../components/AiCreditsNote'
+import { EmptyState, ErrorState, Loader } from './States'
+import AiCreditsNote from './AiCreditsNote'
 import { useAuth } from '../lib/auth'
 import { listByStatus, listFavorites } from '../lib/userTitles'
 import { aiFetch } from '../lib/aiClient'
@@ -36,7 +35,9 @@ function toSummary(record: UserTitle) {
   return { title: record.title, mediaType: record.media_type }
 }
 
-export default function TonightPage() {
+// "Stasera": suggerimenti AI in base a umore e tempo a disposizione.
+// Estratto dalla vecchia pagina TonightPage per vivere come scheda dell'hub AI.
+export default function TonightTool() {
   const { user } = useAuth()
   const [mood, setMood] = useState(MOODS[0].value)
   const [time, setTime] = useState(TIMES[1])
@@ -69,12 +70,6 @@ export default function TonightPage() {
 
   return (
     <div>
-      <PageHeader
-        eyebrow="Decidiamo insieme"
-        title="Non so cosa vedere stasera"
-        subtitle="Dimmi com'è il tuo umore e quanto tempo hai: ci penso io a scegliere."
-      />
-
       <AiCreditsNote className="mb-6" />
 
       <div className="space-y-6">

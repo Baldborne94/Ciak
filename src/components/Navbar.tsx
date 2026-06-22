@@ -21,7 +21,7 @@ const lists = [
 // "Trofei" è temporaneamente nascosto: la feature verrà rifatta meglio in
 // futuro. La pagina e la lib restano nel codice ma non sono raggiungibili.
 const trailing = [
-  { to: '/stasera', label: 'Stasera' },
+  { to: '/ai', label: '✨ AI' },
   { to: '/in-arrivo', label: 'In arrivo' },
   { to: '/profilo', label: 'Profilo' },
 ]

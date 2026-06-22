@@ -52,7 +52,7 @@ function TonightCta() {
     <section>
       <SectionTitle icon="🌙" title="Non sai cosa vedere?" />
       <Link
-        to="/stasera"
+        to="/ai?tab=tonight"
         className="group flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-theatre-800 bg-gradient-to-br from-theatre-900/80 to-theatre-900/40 p-6 transition hover:border-projector/40"
       >
         <p className="text-zinc-300">

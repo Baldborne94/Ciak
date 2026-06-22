@@ -10,7 +10,7 @@ const Search = lazy(() => import('./pages/Search'))
 const TitleDetail = lazy(() => import('./pages/TitleDetail'))
 const ListPage = lazy(() => import('./pages/ListPage'))
 const Favorites = lazy(() => import('./pages/Favorites'))
-const TonightPage = lazy(() => import('./pages/TonightPage'))
+const AiToolsPage = lazy(() => import('./pages/AiToolsPage'))
 const TasteProfile = lazy(() => import('./pages/TasteProfile'))
 const ListsPage = lazy(() => import('./pages/ListsPage'))
 const CustomListPage = lazy(() => import('./pages/CustomListPage'))
@@ -106,13 +106,15 @@ export default function App() {
             </RequireAuth>
           }
         />
-        {/* "Per te" sostituito da "Stasera"; vecchi link reindirizzano. */}
-        <Route path="recommendations" element={<Navigate to="/stasera" replace />} />
+        {/* Strumenti AI raccolti in un hub unico (Stasera, Canzone, Foto).
+            Vecchi link a "Per te" e "Stasera" reindirizzano all'hub. */}
+        <Route path="recommendations" element={<Navigate to="/ai?tab=tonight" replace />} />
+        <Route path="stasera" element={<Navigate to="/ai?tab=tonight" replace />} />
         <Route
-          path="stasera"
+          path="ai"
           element={
             <RequireAuth>
-              <TonightPage />
+              <AiToolsPage />
             </RequireAuth>
           }
         />
