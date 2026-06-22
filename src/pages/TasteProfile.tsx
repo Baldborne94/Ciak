@@ -8,7 +8,7 @@ import { backfillGenreIds, getIdentity, listAll, saveIdentity } from '../lib/use
 import { listDiary } from '../lib/diary'
 import { getGenres, posterUrl } from '../lib/tmdb'
 import { useAchievementsCtx } from '../lib/achievementsCtx'
-import { analyzeTaste, avatarDataUrl, buildIdentity, personaById, type TasteInput } from '../lib/cinephileIdentity'
+import { analyzeTaste, buildIdentity, personaById, type TasteInput } from '../lib/cinephileIdentity'
 import type { DiaryEntry, MediaType, UserTitle } from '../lib/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -47,54 +47,67 @@ function IdentityHero({
   const { setIdentity } = useAchievementsCtx()
   const analysis = useMemo(() => analyzeTaste(titles), [titles])
   const [variant, setVariant] = useState(0)
+  // Persona scelta a mano (se ne hai più di una forte); null = quella dominante.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Nickname digitato/scelto a mano; null = quello suggerito dalla variante.
+  const [customNickname, setCustomNickname] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState(false)
   const [appliedNickname, setAppliedNickname] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
 
-  // Allinea la card all'identità già salvata: stesso nickname → stessa variante.
-  // Ne approfitto per ri-sincronizzare il Navbar (utile su un nuovo dispositivo,
-  // dove il localStorage è vuoto ma il profilo è su Supabase).
+  // Persona effettiva: quella scelta a mano, altrimenti la dominante.
+  const persona =
+    analysis.rankedPersonas.find((p) => p.id === selectedId) ?? analysis.persona
+
+  // Allinea la card all'identità già salvata: stessa persona, stesso nickname.
   useEffect(() => {
     let cancelled = false
     getIdentity(userId)
       .then((stored) => {
         if (cancelled || !stored?.nickname) return
         setAppliedNickname(stored.nickname)
-        const idx = analysis.persona.nicknames.findIndex((n) => n === stored.nickname)
-        if (idx >= 0) setVariant(idx)
-        const persona = personaById(stored.avatar_seed) ?? analysis.persona
-        if (stored.avatar_style) {
-          setIdentity({
-            nickname: stored.nickname,
-            avatarUrl: avatarDataUrl(stored.avatar_style, persona.colors),
-            theme: stored.theme ?? persona.theme,
-          })
+        const savedPersona = personaById(stored.avatar_seed)
+        if (savedPersona && analysis.rankedPersonas.some((p) => p.id === savedPersona.id)) {
+          setSelectedId(savedPersona.id)
         }
+        const pool = (savedPersona ?? analysis.persona).nicknames
+        const idx = pool.findIndex((n) => n === stored.nickname)
+        // Se il nome salvato non è tra i suggerimenti, era personalizzato.
+        if (idx >= 0) setVariant(idx)
+        else setCustomNickname(stored.nickname)
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [userId, analysis.persona, setIdentity])
+  }, [userId, analysis.persona, analysis.rankedPersonas])
 
-  const identity = buildIdentity(analysis.persona, variant)
-  const isActive = appliedNickname === identity.nickname
+  const base = buildIdentity(persona, variant)
+  const nickname = customNickname?.trim() ? customNickname.trim() : base.nickname
+  const isActive = appliedNickname === nickname
   const topNames = analysis.topGenreIds
     .map((g) => genreMap.get(g))
     .filter((n): n is string => !!n)
     .slice(0, 3)
+
+  function chooseInstead(p: typeof persona) {
+    setSelectedId(p.id)
+    setCustomNickname(null)
+    setVariant(0)
+  }
 
   async function apply() {
     setApplying(true)
     try {
       // avatar_style = icona, avatar_seed = id persona (per ricostruire i colori).
       await saveIdentity(userId, {
-        nickname: identity.nickname,
-        avatarStyle: identity.emoji,
-        avatarSeed: identity.personaId,
-        theme: identity.theme,
+        nickname,
+        avatarStyle: base.emoji,
+        avatarSeed: persona.id,
+        theme: persona.theme,
       })
-      setIdentity({ nickname: identity.nickname, avatarUrl: identity.avatarUrl, theme: identity.theme })
-      setAppliedNickname(identity.nickname)
+      setIdentity({ nickname, avatarUrl: base.avatarUrl, theme: persona.theme })
+      setAppliedNickname(nickname)
     } catch {
       // best-effort: un errore di rete/permessi non deve rompere la pagina.
     } finally {
@@ -106,8 +119,8 @@ function IdentityHero({
     <div className="mb-10 flex flex-col items-center gap-6 rounded-2xl border border-projector/30 bg-theatre-900/60 p-6 shadow-reel sm:flex-row sm:p-8">
       <div className="shrink-0">
         <img
-          src={identity.avatarUrl}
-          alt={identity.nickname}
+          src={base.avatarUrl}
+          alt={nickname}
           className="h-28 w-28 rounded-2xl border-2 border-projector/40 bg-theatre-800"
         />
       </div>
@@ -117,10 +130,10 @@ function IdentityHero({
           La tua identità cinefila
         </p>
         <h2 className="mt-1 font-display text-3xl tracking-wide text-projector">
-          {identity.nickname}
+          {nickname}
         </h2>
         <p className="mt-1 text-sm text-zinc-300">
-          {analysis.persona.emoji} {analysis.persona.label} — {analysis.persona.tagline}
+          {persona.emoji} {persona.label} — {persona.tagline}
         </p>
         {topNames.length > 0 && (
           <p className="mt-2 text-xs text-zinc-500">
@@ -129,16 +142,77 @@ function IdentityHero({
           </p>
         )}
 
+        {/* Scelta tra le persone affini (solo se ne hai più di una). */}
+        {analysis.rankedPersonas.length > 1 && (
+          <div className="mt-4">
+            <p className="mb-1.5 text-xs text-zinc-500">Il tuo stile spazia — scegli l'identità:</p>
+            <div className="flex flex-wrap justify-center gap-1.5 sm:justify-start">
+              {analysis.rankedPersonas.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => chooseInstead(p)}
+                  className={`rounded-full border px-3 py-1 text-xs transition ${
+                    p.id === persona.id
+                      ? 'border-projector/60 bg-projector/15 text-projector'
+                      : 'border-theatre-800 text-zinc-400 hover:text-zinc-100'
+                  }`}
+                >
+                  {p.emoji} {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Editor del nickname: suggerimenti + campo libero. */}
+        {editingName && (
+          <div className="mt-4 rounded-xl border border-theatre-800 bg-theatre-950/40 p-3">
+            <div className="flex flex-wrap justify-center gap-1.5 sm:justify-start">
+              {persona.nicknames.map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setCustomNickname(n)}
+                  className={`rounded-full border px-3 py-1 text-xs transition ${
+                    n === nickname
+                      ? 'border-projector/60 bg-projector/15 text-projector'
+                      : 'border-theatre-800 text-zinc-400 hover:text-zinc-100'
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              value={customNickname ?? ''}
+              onChange={(e) => setCustomNickname(e.target.value)}
+              placeholder="…oppure scrivi il tuo nickname"
+              maxLength={40}
+              className="mt-2 w-full rounded-lg border border-theatre-800 bg-theatre-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-projector/50"
+            />
+          </div>
+        )}
+
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
           <button onClick={apply} disabled={applying || isActive} className="btn-primary px-4 py-2 text-sm">
             {isActive ? '✓ Identità attiva' : applying ? 'Applico…' : '✨ Applica identità'}
           </button>
           <button
-            onClick={() => setVariant((v) => v + 1)}
-            disabled={applying || analysis.persona.nicknames.length <= 1}
+            onClick={() => {
+              setCustomNickname(null)
+              setVariant((v) => v + 1)
+            }}
+            disabled={applying || persona.nicknames.length <= 1}
             className="btn-ghost px-4 py-2 text-sm"
           >
             🎲 Rigenera
+          </button>
+          <button
+            onClick={() => setEditingName((v) => !v)}
+            disabled={applying}
+            className="btn-ghost px-4 py-2 text-sm"
+          >
+            {editingName ? '✕ Chiudi' : '✏️ Scegli nome'}
           </button>
         </div>
       </div>

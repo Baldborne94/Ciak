@@ -59,7 +59,7 @@ export const PERSONAS: Persona[] = [
     colors: ['#3b0a0a', '#7f1d1d'],
     avatars: ['👻', '🔪', '🦇', '🕸️', '💀'],
     genres: [G.horror, G.thriller],
-    nicknames: ['Anima Notturna', 'Custode del Buio', 'Spettro della Sala', 'Voce nel Buio', 'Brivido Eterno'],
+    nicknames: ['Signore del Buio', 'Predatore Notturno', 'Anima Nera', 'Sussurro Mortale', 'Ombra Inquieta', 'Custode dell’Incubo'],
   },
   {
     id: 'scifi',
@@ -70,7 +70,7 @@ export const PERSONAS: Persona[] = [
     colors: ['#0b1020', '#1e3a8a'],
     avatars: ['🚀', '🛸', '🌌', '🤖', '🪐'],
     genres: [G.scifi],
-    nicknames: ['Viaggiatore Stellare', 'Mente Quantica', 'Esploratore di Mondi', 'Pioniere Galattico', 'Sognatore Cosmico'],
+    nicknames: ['Nomade Stellare', 'Mente Quantica', 'Figlio delle Stelle', 'Architetto del Futuro', 'Sentinella Cosmica', 'Eco Galattico'],
   },
   {
     id: 'fantasy',
@@ -81,7 +81,7 @@ export const PERSONAS: Persona[] = [
     colors: ['#2e1065', '#6d28d9'],
     avatars: ['🐉', '🧙', '🗡️', '🔮', '🏰'],
     genres: [G.fantasy],
-    nicknames: ['Cantastorie', 'Custode dei Reami', 'Evocatore di Meraviglie', 'Cercatore di Magie', 'Guardiano dei Mondi'],
+    nicknames: ['Signore dei Reami', 'Forgiatore di Leggende', 'Stirpe del Drago', 'Custode dell’Antico', 'Voce delle Saghe', 'Cercatore di Reami'],
   },
   {
     id: 'anime',
@@ -92,7 +92,7 @@ export const PERSONAS: Persona[] = [
     colors: ['#831843', '#db2777'],
     avatars: ['🌸', '⛩️', '🎌', '🍥', '✨'],
     genres: [G.animation],
-    nicknames: ['Spirito Animato', 'Sognatore Disegnato', 'Anima Pop', 'Cuore Otaku', 'Pennello Vivente'],
+    nicknames: ['Spirito Pop', 'Sensei della Sala', 'Cuore Shōnen', 'Lama Disegnata', 'Eroe Inchiostrato', 'Anima Kawaii'],
   },
   {
     id: 'romance',
@@ -103,7 +103,7 @@ export const PERSONAS: Persona[] = [
     colors: ['#4c0519', '#e11d48'],
     avatars: ['❤️', '🌹', '💋', '💘', '🥂'],
     genres: [G.romance],
-    nicknames: ['Cuore Romantico', 'Anima Gentile', 'Eterno Innamorato', 'Sognatore Sentimentale', 'Tenero Spettatore'],
+    nicknames: ['Cuore Indomito', 'Anima Gemella', 'Poeta della Sala', 'Eterno Sognatore', 'Incanto', 'Battito'],
   },
   {
     id: 'action',
@@ -114,7 +114,7 @@ export const PERSONAS: Persona[] = [
     colors: ['#7c2d12', '#ea580c'],
     avatars: ['💥', '🔥', '🏍️', '🥊', '🚁'],
     genres: [G.action],
-    nicknames: ['Adrenalina Pura', 'Eroe Senza Sosta', 'Cuore Esplosivo', 'Spirito Indomito', 'Senza Freni'],
+    nicknames: ['Furia d’Asfalto', 'Lupo d’Acciaio', 'Pugno di Ferro', 'Re del Caos', 'Nervi d’Acciaio', 'Tempesta'],
   },
   {
     id: 'crime',
@@ -125,7 +125,7 @@ export const PERSONAS: Persona[] = [
     colors: ['#0f172a', '#334155'],
     avatars: ['🕵️', '🔍', '🚬', '💼', '🎩'],
     genres: [G.crime, G.mystery],
-    nicknames: ['Detective Notturno', 'Mente Investigativa', 'Ombra del Noir', 'Segugio della Sala', 'Occhio Acuto'],
+    nicknames: ['Mente Criminale', 'Ombra del Noir', 'Re della Notte', 'Lupo di Strada', 'Occhio di Falco', 'Segugio'],
   },
   {
     id: 'western',
@@ -136,7 +136,7 @@ export const PERSONAS: Persona[] = [
     colors: ['#451a03', '#b45309'],
     avatars: ['🤠', '🌵', '🐎', '🌅', '🔫'],
     genres: [G.western],
-    nicknames: ['Pistolero Solitario', 'Spirito di Frontiera', 'Cavaliere del Tramonto', 'Vagabondo del West', 'Anima Selvaggia'],
+    nicknames: ['Lupo Solitario', 'Mano Veloce', 'Spettro della Frontiera', 'Cavaliere del Deserto', 'Sceriffo dell’Ovest', 'Vagabondo'],
   },
   {
     id: 'comedy',
@@ -147,7 +147,7 @@ export const PERSONAS: Persona[] = [
     colors: ['#713f12', '#eab308'],
     avatars: ['😂', '🤡', '🎪', '🎭', '🍌'],
     genres: [G.comedy],
-    nicknames: ['Re della Risata', 'Anima Brillante', 'Spirito Allegro', 'Cuore Leggero', 'Sorriso in Sala'],
+    nicknames: ['Re del Sorriso', 'Genio della Risata', 'Asso di Cuori', 'Mattatore', 'Anima Folle', 'Spirito Ribelle'],
   },
   {
     id: 'drama',
@@ -158,7 +158,7 @@ export const PERSONAS: Persona[] = [
     colors: ['#1e293b', '#475569'],
     avatars: ['🎭', '🎬', '🕯️', '📜', '🖤'],
     genres: [G.drama, G.history],
-    nicknames: ['Anima Profonda', 'Spettatore Sensibile', 'Cuore Pensoso', "Cronista dell'Anima", 'Sguardo Intenso'],
+    nicknames: ['Anima Inquieta', 'Sguardo d’Autore', 'Poeta del Buio', 'Cuore Profondo', 'Voce dell’Anima', 'Spettatore d’Élite'],
   },
 ]
 
@@ -181,6 +181,9 @@ export interface IdentityAnalysis {
   persona: Persona
   watchedCount: number
   topGenreIds: number[]
+  // Persone con punteggio > 0, ordinate dalla più affine: l'utente può
+  // scegliere quale "indossare" se ha più generi forti. Vuota se in calibrazione.
+  rankedPersonas: Persona[]
 }
 
 // Avatar SVG (data URL): icona del genere centrata su uno sfondo sfumato a
@@ -211,24 +214,26 @@ export function analyzeTaste(titles: TasteInput[]): IdentityAnalysis {
     for (const g of t.genre_ids ?? []) weighted[g] = (weighted[g] ?? 0) + w
   }
 
-  let best: Persona = CALIBRATING
-  let bestScore = 0
-  for (const p of PERSONAS) {
-    const score = p.genres.reduce((s, g) => s + (weighted[g] ?? 0), 0)
-    if (score > bestScore) {
-      bestScore = score
-      best = p
-    }
-  }
+  // Punteggio per ogni persona; l'ordine in PERSONAS fa da spareggio a pari
+  // punteggio (Array.sort è stabile). Teniamo solo quelle realmente affini.
+  const scored = PERSONAS.map((p) => ({
+    p,
+    score: p.genres.reduce((s, g) => s + (weighted[g] ?? 0), 0),
+  }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+
   // Servono almeno un po' di dati e un genere dominante reale.
-  if (watchedCount < 3 || bestScore === 0) best = CALIBRATING
+  const calibrating = watchedCount < 3 || scored.length === 0
+  const best = calibrating ? CALIBRATING : scored[0].p
+  const rankedPersonas = calibrating ? [] : scored.map((x) => x.p)
 
   const topGenreIds = Object.entries(weighted)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
     .map(([g]) => Number(g))
 
-  return { persona: best, watchedCount, topGenreIds }
+  return { persona: best, watchedCount, topGenreIds, rankedPersonas }
 }
 
 // Costruisce un'identità concreta dalla persona: la "variante" sceglie nickname

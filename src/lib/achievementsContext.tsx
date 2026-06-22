@@ -7,6 +7,9 @@ import {
 } from 'react'
 import { type Achievement } from './achievements'
 import { Ctx } from './achievementsCtx'
+import { useAuth } from './auth'
+import { getIdentity } from './userTitles'
+import { avatarDataUrl, personaById } from './cinephileIdentity'
 
 const ID_KEY       = 'cinevault_active_achievement_id'
 const THEME_KEY    = 'cinevault_active_theme'
@@ -31,6 +34,7 @@ function readIdentity(): StoredIdentity | null {
 }
 
 export function AchievementsProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
   const [pending, setPending] = useState<Achievement[]>([])
   const [activeAchievementId, setActiveId] = useState<string | null>(
     () => localStorage.getItem(ID_KEY),
@@ -62,6 +66,30 @@ export function AchievementsProvider({ children }: { children: ReactNode }) {
     },
     [],
   )
+
+  // Sync all'avvio: appena c'è un utente, carico l'identità da Supabase così
+  // Navbar e tema sono corretti su qualsiasi dispositivo, senza dover prima
+  // aprire il Profilo (il localStorage è vuoto su un device nuovo).
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    getIdentity(user.id)
+      .then((stored) => {
+        if (cancelled || !stored?.nickname || !stored.avatar_style) return
+        const persona = personaById(stored.avatar_seed)
+        const colors: [string, string] = persona?.colors ?? ['#18181b', '#3f3f46']
+        setIdentity({
+          nickname: stored.nickname,
+          avatarUrl: avatarDataUrl(stored.avatar_style, colors),
+          theme: stored.theme ?? persona?.theme ?? 'default',
+        })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // setIdentity è stabile (useCallback senza deps).
+  }, [user, setIdentity])
 
   const notify = useCallback((a: Achievement[]) => {
     setPending((prev) => [...prev, ...a])
