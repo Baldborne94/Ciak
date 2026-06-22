@@ -181,6 +181,9 @@ export interface IdentityAnalysis {
   persona: Persona
   watchedCount: number
   topGenreIds: number[]
+  // Persone con punteggio > 0, ordinate dalla più affine: l'utente può
+  // scegliere quale "indossare" se ha più generi forti. Vuota se in calibrazione.
+  rankedPersonas: Persona[]
 }
 
 // Avatar SVG (data URL): icona del genere centrata su uno sfondo sfumato a
@@ -211,24 +214,26 @@ export function analyzeTaste(titles: TasteInput[]): IdentityAnalysis {
     for (const g of t.genre_ids ?? []) weighted[g] = (weighted[g] ?? 0) + w
   }
 
-  let best: Persona = CALIBRATING
-  let bestScore = 0
-  for (const p of PERSONAS) {
-    const score = p.genres.reduce((s, g) => s + (weighted[g] ?? 0), 0)
-    if (score > bestScore) {
-      bestScore = score
-      best = p
-    }
-  }
+  // Punteggio per ogni persona; l'ordine in PERSONAS fa da spareggio a pari
+  // punteggio (Array.sort è stabile). Teniamo solo quelle realmente affini.
+  const scored = PERSONAS.map((p) => ({
+    p,
+    score: p.genres.reduce((s, g) => s + (weighted[g] ?? 0), 0),
+  }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+
   // Servono almeno un po' di dati e un genere dominante reale.
-  if (watchedCount < 3 || bestScore === 0) best = CALIBRATING
+  const calibrating = watchedCount < 3 || scored.length === 0
+  const best = calibrating ? CALIBRATING : scored[0].p
+  const rankedPersonas = calibrating ? [] : scored.map((x) => x.p)
 
   const topGenreIds = Object.entries(weighted)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
     .map(([g]) => Number(g))
 
-  return { persona: best, watchedCount, topGenreIds }
+  return { persona: best, watchedCount, topGenreIds, rankedPersonas }
 }
 
 // Costruisce un'identità concreta dalla persona: la "variante" sceglie nickname
