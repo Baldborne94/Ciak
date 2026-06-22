@@ -85,6 +85,13 @@ Una sola pagina con schede (catalogo/entità) e, separati, gli **strumenti AI**:
 - Serverless `/api/recommendations` — chiave Anthropic **mai esposta al browser**
 - Legge preferiti e visti per suggerire il prossimo titolo
 
+### 🔒 Protezione dei crediti AI (lato server)
+Tutti gli endpoint `/api/*` AI sono protetti su due livelli:
+1. **Auth obbligatoria** — serve un JWT Supabase valido (blocca bot/anonimi, il principale vettore di spesa). Il client allega il token via `aiClient.ts`.
+2. **Tetto giornaliero** — contatore per-utente a prova di manomissione sulla tabella `ai_usage`, incrementato atomicamente dal service role (`consume_ai_credit`).
+
+La riga **"🤖 Usi AI rimasti oggi: X/3"** (`AiCreditsNote`) compare in modo coerente su tutte le superfici AI (Canzone, Foto, Raccomandazioni, ordine saga).
+
 ### 🏆 Trofei e gamification
 - 20 trofei con rarità (bronzo / argento / oro / platino)
 - Badge equipaggiabile che cambia avatar, titolo profilo e **tema dell'app**
@@ -96,9 +103,12 @@ Una sola pagina con schede (catalogo/entità) e, separati, gli **strumenti AI**:
 
 ```
 api/                        Serverless Anthropic (lato server, chiave protetta)
+  _lib/aiGuard.ts           Guardia condivisa: auth JWT + tetto giornaliero usi AI
   recommendations.ts        Raccomandazioni personalizzate
   saga-order.ts             Ordine-trama di una saga
-  song-films.ts             Film che usano una canzone
+  song-films.ts             Film che usano una canzone (con ricerca web)
+  identify.ts               Riconosce titoli/persone da un'immagine
+  check-releases.ts         Cron: notifiche push per le nuove uscite
 public/
   ciak.svg                  Favicon ciak
 supabase/
@@ -106,6 +116,11 @@ supabase/
   schema_v2_achievements.sql Trofei: user_achievements, user_profile + genre_ids
   schema_v3_entities.sql    Preferiti persone/studi: user_entities
   schema_v4_lists_diary.sql Liste tematiche + diario: user_lists, user_list_items, user_diary
+  schema_v5_episodes.sql    Tracking episodi: user_episodes
+  schema_v6_alerts.sql      Avvisi uscite: user_alerts
+  schema_v7_push.sql        Notifiche push: push_subscriptions
+  schema_v8_song_cache.sql  Cache "Canzone → film": user_song_cache
+  schema_v9_ai_usage.sql    Limite usi AI lato server: ai_usage + consume_ai_credit()
 src/
   components/
     Layout, Navbar, MediaCard/Grid, MediaRow (caroselli con frecce),
@@ -162,6 +177,18 @@ src/
 - **`user_lists`** + **`user_list_items`** — liste personali e i loro titoli.
 - **`user_diary`** — registro di visione (data, voto, nota).
 
+### `schema_v5_episodes.sql` — tracking episodi
+- **`user_episodes`** — singoli episodi segnati come visti (serie/anime).
+
+### `schema_v6_alerts.sql` — avvisi uscite
+- **`user_alerts`** — titoli per cui ricevere una notifica all'uscita.
+
+### `schema_v7_push.sql` — notifiche push
+- **`push_subscriptions`** — endpoint Web Push per dispositivo (usati dal cron).
+
+### `schema_v8_song_cache.sql` — cache "Canzone → film"
+- **`user_song_cache`** — risultati AI per canzone già cercata (riusati senza riconsumare crediti).
+
 ### `schema_v9_ai_usage.sql` — limite usi AI lato server
 - **`ai_usage`** (`user_id`, `day`, `count`) + funzione `consume_ai_credit()`: contatore giornaliero a prova di manomissione, scritto solo dal service role. Protegge i crediti Anthropic insieme all'auth obbligatoria sugli endpoint `/api/*`.
 
@@ -188,7 +215,8 @@ src/
 
 ### 1. Supabase
 1. Crea un progetto (piano free = 2 progetti per account).
-2. SQL Editor → esegui **in ordine**: `schema.sql`, `schema_v2_achievements.sql`, `schema_v3_entities.sql`, `schema_v4_lists_diary.sql`.
+2. SQL Editor → esegui **in ordine, tutti**: `schema.sql`, `schema_v2_achievements.sql`, `schema_v3_entities.sql`, `schema_v4_lists_diary.sql`, `schema_v5_episodes.sql`, `schema_v6_alerts.sql`, `schema_v7_push.sql`, `schema_v8_song_cache.sql`, `schema_v9_ai_usage.sql`.
+   > ⚠️ Saltare uno script causa errori **404** sulle tabelle mancanti (es. `user_song_cache`, `ai_usage`). Eseguili tutti.
 3. Project Settings → API → copia **Project URL** e **Legacy anon key**.
 5. (Opzionale) Authentication → URL Configuration → **Site URL** = `https://ciak.vercel.app` e Additional Redirect URLs = `https://ciak.vercel.app/**`.
 6. (Opzionale) Google OAuth: Authentication → Providers → Google (richiede Client ID/Secret da Google Cloud Console).
@@ -278,12 +306,18 @@ Il tema attivo persiste in `localStorage`.
 16. ✅ Ricerca "Canzone → film" (via AI)
 17. ✅ Stagioni ed episodi per serie/anime
 
+18. ✅ Riconoscimento immagini (Foto → titoli/persone via AI)
+19. ✅ Notifiche push per le nuove uscite (cron + Web Push)
+20. ✅ Protezione crediti AI lato server (auth JWT + tetto giornaliero su DB)
+21. ✅ Affidabilità endpoint AI (import dinamici, errori leggibili col codice HTTP)
+
 ### Idee in coda (da valutare)
 - ✅ ~~Stagioni/episodi in ordine~~ → fatto
-- ⏳ **Tracking episodi** — segna i singoli episodi come visti
+- ✅ ~~Tracking episodi~~ → fatto (`user_episodes`)
+- ⏳ **Aggiornare `@anthropic-ai/sdk`** (0.32.1 non conosce `output_config`/thinking adaptive: i parametri vengono inviati ma non sono tipizzati)
+- ⏳ **Errori di salvataggio non silenziosi** nel diario/liste (oggi alcuni `.catch(() => {})` nascondono i fallimenti)
+- ⏳ **Cancellare una voce di diario** dovrebbe rimuovere anche il voto sincronizzato in `user_titles`
 - ⏳ **Preferenze utente** (`user_preferences`) e filtri avanzati (anno, lingua, paese)
-- ⏳ **Suggerimenti AI automatici** con caching
-- ⏳ **Lazy-loading delle rotte** per alleggerire il bundle
 - ⏳ **Onboarding** + **command palette (Cmd+K)**
 
 ---
