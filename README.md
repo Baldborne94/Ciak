@@ -22,7 +22,8 @@ Estetica da sala cinematografica: tema scuro, oro proiettore, rosso sipario, cia
 - 🔐 **Autenticazione Supabase** (email/password + Google OAuth)
 - 📋 **Liste personali** (Visti / Da vedere / In corso) salvate su Supabase — assegna lo stato dalla scheda titolo
 - ❤️ **Preferiti** con **voto (1–5 ★)** e **note** modificabili, ordinabili per voto/data/titolo
-- ✨ **Raccomandazioni AI** che leggono i tuoi preferiti e visti — serverless `/api/recommendations`, chiave Anthropic mai esposta al browser
+- 🌙 **"Stasera"** — consigli AI in base a umore e tempo a disposizione, serverless `/api/tonight`, chiave Anthropic mai esposta al browser
+- 📖 **Diario di visione** — registro unico (Visti + diario datato) con voto inline e note per visione
 - ⚙️ **Impostazioni** con stato delle integrazioni
 
 > Le schede titolo mostrano i dati TMDB in tempo reale: nessuna copia locale del catalogo. Solo i dati personali (stato, voto, note, preferiti) finiscono su Supabase.
@@ -72,7 +73,7 @@ src/
                       TitleActions, RequireAuth, PageHeader, stati
   lib/                TMDB, Supabase, auth (context), userTitles (CRUD), tipi
   pages/              Dashboard, Search, TitleDetail, ListPage, Favorites,
-                      Recommendations, Settings, Login, NotFound
+                      DiaryPage, TonightPage, Settings, Login, NotFound
 ```
 
 ### Autenticazione e dati

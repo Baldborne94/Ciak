@@ -82,16 +82,17 @@ Una sola pagina con schede (catalogo/entità) e, separati, gli **strumenti AI**:
 ### 📊 Profilo di gusto
 - Generi preferiti, distribuzione voti, cosa guardi (film/serie/anime/cartoni), voto medio, top titoli
 
-### ✨ Raccomandazioni AI
-- Serverless `/api/recommendations` — chiave Anthropic **mai esposta al browser**
-- Legge preferiti e visti per suggerire il prossimo titolo
+### 🌙 "Stasera" — il consigliere AI
+- Serverless `/api/tonight` — chiave Anthropic **mai esposta al browser**
+- Sceglie cosa vedere in base a **umore** + **tempo a disposizione**, leggendo preferiti e visti
+- Unico consigliere AI dell'app: ha sostituito la vecchia pagina "Per te" / `/api/recommendations`
 
 ### 🔒 Protezione dei crediti AI (lato server)
 Tutti gli endpoint `/api/*` AI sono protetti su due livelli:
 1. **Auth obbligatoria** — serve un JWT Supabase valido (blocca bot/anonimi, il principale vettore di spesa). Il client allega il token via `aiClient.ts`.
 2. **Tetto giornaliero** — contatore per-utente a prova di manomissione sulla tabella `ai_usage`, incrementato atomicamente dal service role (`consume_ai_credit`).
 
-La riga **"🤖 Usi AI rimasti oggi: X/3"** (`AiCreditsNote`) compare in modo coerente su tutte le superfici AI (Canzone, Foto, Raccomandazioni, ordine saga).
+La riga **"🤖 Usi AI rimasti oggi: X/3"** (`AiCreditsNote`) compare in modo coerente su tutte le superfici AI (Stasera, Canzone, Foto, ordine saga).
 
 ### 🏆 Trofei e gamification
 - 20 trofei con rarità (bronzo / argento / oro / platino)
@@ -107,7 +108,6 @@ api/                        Serverless Anthropic (lato server, chiave protetta)
                             NB: la guardia AI (auth JWT + tetto giornaliero) è
                             INLINE in ogni endpoint, non in un modulo condiviso:
                             così finisce sempre nel bundle della funzione Vercel.
-  recommendations.ts        Raccomandazioni personalizzate
   tonight.ts                "Non so cosa vedere stasera" (umore + tempo a disposizione)
   saga-order.ts             Ordine-trama di una saga
   song-films.ts             Film che usano una canzone (con ricerca web)
@@ -157,7 +157,7 @@ src/
     ListPage / Favorites / ListsPage / CustomListPage / DiaryPage
     TasteProfile.tsx        Profilo di gusto (statistiche)
     TonightPage.tsx         "Non so cosa vedere stasera" (umore + tempo)
-    Recommendations / TrophiesPage / Settings / Login / NotFound
+    TrophiesPage / Settings / Login / NotFound
   App.tsx                   Rotte
   main.tsx                  Provider (Auth + Toast + Achievements) + Router
 ```

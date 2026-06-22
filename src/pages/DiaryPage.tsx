@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
+import SavedTitleCard from '../components/SavedTitleCard'
 import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { deleteDiaryEntry, listDiary, updateDiaryEntry } from '../lib/diary'
+import { listByStatus } from '../lib/userTitles'
 import { useToast } from '../lib/toastCtx'
 import { posterUrl } from '../lib/tmdb'
-import type { DiaryEntry } from '../lib/types'
+import type { DiaryEntry, UserTitle } from '../lib/types'
 
 function formatDate(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('it-IT', {
@@ -22,14 +24,20 @@ export default function DiaryPage() {
   const { user } = useAuth()
   const { showToast } = useToast()
   const [entries, setEntries] = useState<DiaryEntry[]>([])
+  const [watched, setWatched] = useState<UserTitle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user) return
     setLoading(true)
-    listDiary(user.id)
-      .then(setEntries)
+    // Carichiamo sia il diario (visioni datate) sia i titoli segnati "Visto":
+    // così questa è l'unica pagina di tutto ciò che hai guardato.
+    Promise.all([listDiary(user.id), listByStatus(user.id, 'watched')])
+      .then(([diary, seen]) => {
+        setEntries(diary)
+        setWatched(seen)
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [user])
@@ -64,22 +72,29 @@ export default function DiaryPage() {
   }, {})
   const dates = Object.keys(groups)
 
+  // Titoli segnati "Visto" che non hanno una voce nel diario: li mostriamo a
+  // parte così non spariscono ora che "Visti" e "Diario" sono un'unica sezione.
+  const inDiary = new Set(entries.map((e) => `${e.tmdb_id}:${e.media_type}`))
+  const watchedOnly = watched.filter((w) => !inDiary.has(`${w.tmdb_id}:${w.media_type}`))
+
+  const isEmpty = entries.length === 0 && watchedOnly.length === 0
+
   return (
     <div>
       <PageHeader
         eyebrow="Il tuo registro"
-        title="Diario di visione"
-        subtitle="Ogni film e serie che hai guardato, in ordine di data. Tocca le stelle per cambiare il voto."
+        title="Visti & Diario"
+        subtitle="Tutto ciò che hai guardato: le visioni datate in ordine di data e i titoli segnati come visti. Tocca le stelle per cambiare il voto."
       />
 
       {loading ? (
         <Loader label="Sfoglio il diario…" />
       ) : error ? (
         <ErrorState title="Diario non disponibile" message={error} />
-      ) : entries.length === 0 ? (
+      ) : isEmpty ? (
         <EmptyState
-          title="Diario ancora vuoto"
-          message="Apri la scheda di un titolo e usa «Segna nel diario» per registrare quando l'hai visto."
+          title="Ancora niente da mostrare"
+          message="Apri la scheda di un titolo: segnalo come «Visto» o usa «Segna nel diario» per registrare quando l'hai guardato."
           icon="📖"
         />
       ) : (
@@ -136,6 +151,23 @@ export default function DiaryPage() {
               </div>
             </div>
           ))}
+
+          {watchedOnly.length > 0 && (
+            <div>
+              <h2 className="mb-1 font-display text-xl tracking-wide text-projector">
+                Visti (senza data)
+              </h2>
+              <p className="mb-4 text-sm text-zinc-500">
+                Titoli che hai segnato come visti senza registrarli nel diario. Aprili e usa «Segna
+                nel diario» per dargli una data e un voto.
+              </p>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {watchedOnly.map((record) => (
+                  <SavedTitleCard key={record.id} record={record} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

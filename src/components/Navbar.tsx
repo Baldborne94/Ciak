@@ -8,19 +8,18 @@ const primary = [
   { to: '/search', label: 'Cerca' },
 ]
 
-// Personal lists grouped under a dropdown.
+// Personal lists grouped under a dropdown. "Visti" e "Diario" ora sono una sola
+// voce: il diario è il registro unico di tutto ciò che hai guardato.
 const lists = [
   { to: '/lists/watchlist', label: 'Da vedere' },
   { to: '/lists/in-progress', label: 'In corso' },
-  { to: '/lists/watched', label: 'Visti' },
+  { to: '/diario', label: 'Visti & Diario' },
   { to: '/favorites', label: 'Preferiti' },
   { to: '/liste', label: 'Liste personali' },
-  { to: '/diario', label: 'Diario' },
 ]
 
 const trailing = [
   { to: '/stasera', label: 'Stasera' },
-  { to: '/recommendations', label: 'Per te' },
   { to: '/in-arrivo', label: 'In arrivo' },
   { to: '/profilo', label: 'Profilo' },
   { to: '/trophies', label: 'Trofei' },
