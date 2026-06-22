@@ -7,6 +7,10 @@ export interface AchievementsCtx {
   dismiss: () => void
   activeAchievementId: string | null
   setActiveAchievement: (id: string, theme: string) => void
+  // Identità Cinefila: nickname + avatar mostrati nel Navbar.
+  nickname: string | null
+  avatarUrl: string | null
+  setIdentity: (identity: { nickname: string; avatarUrl: string; theme: string }) => void
 }
 
 export const Ctx = createContext<AchievementsCtx>({
@@ -15,6 +19,9 @@ export const Ctx = createContext<AchievementsCtx>({
   dismiss: () => {},
   activeAchievementId: null,
   setActiveAchievement: () => {},
+  nickname: null,
+  avatarUrl: null,
+  setIdentity: () => {},
 })
 
 export function useAchievementsCtx() {

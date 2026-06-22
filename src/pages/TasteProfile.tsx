@@ -4,9 +4,11 @@ import PageHeader from '../components/PageHeader'
 import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
-import { backfillGenreIds, listAll } from '../lib/userTitles'
+import { backfillGenreIds, getIdentity, listAll, saveIdentity } from '../lib/userTitles'
 import { listDiary } from '../lib/diary'
 import { getGenres, posterUrl } from '../lib/tmdb'
+import { useAchievementsCtx } from '../lib/achievementsCtx'
+import { analyzeTaste, avatarUrl, buildIdentity, type TasteInput } from '../lib/cinephileIdentity'
 import type { DiaryEntry, MediaType, UserTitle } from '../lib/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -27,6 +29,109 @@ function Bar({ label, value, max, suffix }: { label: string; value: number; max:
       <span className="w-10 shrink-0 text-right text-sm font-semibold text-projector">
         {value}{suffix ?? ''}
       </span>
+    </div>
+  )
+}
+
+// Identità Cinefila: card in cima al profilo. Analizza i gusti, propone
+// persona/tema/avatar/nickname e lascia all'utente «Applica» o «Rigenera».
+function IdentityHero({
+  titles,
+  genreMap,
+  userId,
+}: {
+  titles: TasteInput[]
+  genreMap: Map<number, string>
+  userId: string
+}) {
+  const { setIdentity } = useAchievementsCtx()
+  const analysis = useMemo(() => analyzeTaste(titles), [titles])
+  const [variant, setVariant] = useState(0)
+  const [appliedSeed, setAppliedSeed] = useState<string | null>(null)
+  const [applying, setApplying] = useState(false)
+
+  // Allinea la card all'identità già salvata: stesso nickname → stessa variante.
+  useEffect(() => {
+    let cancelled = false
+    getIdentity(userId)
+      .then((stored) => {
+        if (cancelled || !stored?.avatar_seed) return
+        setAppliedSeed(stored.avatar_seed)
+        const idx = analysis.persona.nicknames.findIndex((n) => n === stored.nickname)
+        if (idx >= 0) setVariant(idx)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [userId, analysis.persona])
+
+  const identity = buildIdentity(analysis.persona, variant)
+  const avatar = avatarUrl(identity.avatarStyle, identity.avatarSeed)
+  const isActive = appliedSeed === identity.avatarSeed
+  const topNames = analysis.topGenreIds
+    .map((g) => genreMap.get(g))
+    .filter((n): n is string => !!n)
+    .slice(0, 3)
+
+  async function apply() {
+    setApplying(true)
+    try {
+      await saveIdentity(userId, {
+        nickname: identity.nickname,
+        avatarStyle: identity.avatarStyle,
+        avatarSeed: identity.avatarSeed,
+        theme: identity.theme,
+      })
+      setIdentity({ nickname: identity.nickname, avatarUrl: avatar, theme: identity.theme })
+      setAppliedSeed(identity.avatarSeed)
+    } catch {
+      // best-effort: un errore di rete/permessi non deve rompere la pagina.
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  return (
+    <div className="mb-10 flex flex-col items-center gap-6 rounded-2xl border border-projector/30 bg-theatre-900/60 p-6 shadow-reel sm:flex-row sm:p-8">
+      <div className="shrink-0">
+        <img
+          src={avatar}
+          alt={identity.nickname}
+          className="h-28 w-28 rounded-2xl border-2 border-projector/40 bg-theatre-800"
+        />
+      </div>
+
+      <div className="flex-1 text-center sm:text-left">
+        <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
+          La tua identità cinefila
+        </p>
+        <h2 className="mt-1 font-display text-3xl tracking-wide text-projector">
+          {identity.nickname}
+        </h2>
+        <p className="mt-1 text-sm text-zinc-300">
+          {analysis.persona.emoji} {analysis.persona.label} — {analysis.persona.tagline}
+        </p>
+        {topNames.length > 0 && (
+          <p className="mt-2 text-xs text-zinc-500">
+            Basata sui tuoi {analysis.watchedCount} titoli visti, soprattutto{' '}
+            <span className="text-zinc-400">{topNames.join(', ')}</span>.
+          </p>
+        )}
+
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+          <button onClick={apply} disabled={applying || isActive} className="btn-primary px-4 py-2 text-sm">
+            {isActive ? '✓ Identità attiva' : applying ? 'Applico…' : '✨ Applica identità'}
+          </button>
+          <button
+            onClick={() => setVariant((v) => v + 1)}
+            disabled={applying || analysis.persona.nicknames.length <= 1}
+            className="btn-ghost px-4 py-2 text-sm"
+          >
+            🎲 Rigenera
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -177,6 +282,8 @@ export default function TasteProfile() {
         title="Profilo di gusto"
         subtitle="Cosa raccontano i tuoi voti e i titoli che hai visto."
       />
+
+      {user && <IdentityHero titles={rows} genreMap={genreMap} userId={user.id} />}
 
       {/* Headline numbers */}
       <div className="mb-10 grid grid-cols-2 gap-4 sm:grid-cols-4">
