@@ -21,8 +21,20 @@ const MOODS = [
   { value: 'mente accesa, thriller o mistero', label: '🧠 Cervellotico' },
   { value: 'profondo e drammatico', label: '🎭 Profondo' },
   { value: 'nostalgia, un grande classico', label: '📼 Nostalgia' },
-  { value: 'da paura', label: '👻 Paura' },
+  { value: 'da paura, horror', label: '👻 Paura' },
   { value: 'sci-fi e mondi nuovi', label: '🚀 Sci-fi' },
+  { value: 'commovente, da lacrime', label: '🥹 Commovente' },
+  { value: 'ironico e demenziale', label: '🤪 Demenziale' },
+  { value: 'avventura epica', label: '🗺️ Avventura' },
+  { value: 'feel-good, che scalda il cuore', label: '🌈 Feel-good' },
+  { value: 'tensione e suspense', label: '😰 Tensione' },
+  { value: 'crime, gangster e noir', label: '🕵️ Crime' },
+  { value: 'fantasy e magia', label: '🐉 Fantasy' },
+  { value: 'ispirato a una storia vera', label: '📖 Storia vera' },
+  { value: 'musicale, tanta musica', label: '🎶 Musical' },
+  { value: 'mind-bending, da ripensarci dopo', label: '🌀 Mind-bending' },
+  { value: 'dark e disturbante', label: '🩸 Dark' },
+  { value: 'cult e di culto', label: '🎟️ Cult' },
 ]
 
 const TIMES = [
@@ -40,9 +52,10 @@ function toSummary(record: UserTitle) {
 // Estratto dalla vecchia pagina TonightPage per vivere come scheda dell'hub AI.
 export default function TonightTool() {
   const { user } = useAuth()
-  // Umore, tempo e ultimo risultato vivono in localStorage: restano dopo cambio
-  // scheda e refresh, finché non rigeneri o premi «Cancella».
-  const [mood, setMood] = usePersistedState('ciak.ai.tonight.mood', MOODS[0].value)
+  // Umore/i, tempo e ultimo risultato vivono in localStorage: restano dopo
+  // cambio scheda e refresh, finché non rigeneri o premi «Cancella».
+  // moods: selezione multipla (puoi combinare più umori per stasera).
+  const [moods, setMoods] = usePersistedState<string[]>('ciak.ai.tonight.moods', [MOODS[0].value])
   const [time, setTime] = usePersistedState('ciak.ai.tonight.time', TIMES[1])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +64,14 @@ export default function TonightTool() {
     null,
   )
 
+  function toggleMood(value: string) {
+    setMoods((prev) =>
+      prev.includes(value) ? prev.filter((m) => m !== value) : [...prev, value],
+    )
+  }
+
   async function generate() {
+    if (moods.length === 0) return
     setLoading(true)
     setError(null)
     try {
@@ -60,7 +80,8 @@ export default function TonightTool() {
         : [[], []]
 
       const data = await aiFetch<{ suggestions: Suggestion[] }>('/api/tonight', {
-        mood,
+        // Più umori vengono uniti: il prompt server li tratta come combinazione.
+        mood: moods.join(', '),
         maxMinutes: time.minutes,
         wantSeries: time.series,
         favorites: favorites.map(toSummary),
@@ -80,21 +101,27 @@ export default function TonightTool() {
 
       <div className="space-y-6">
         <div>
-          <p className="mb-2 text-xs uppercase tracking-wider text-zinc-500">Che umore hai?</p>
+          <p className="mb-2 text-xs uppercase tracking-wider text-zinc-500">
+            Che umore hai? <span className="normal-case text-zinc-600">· puoi sceglierne più di uno</span>
+          </p>
           <div className="flex flex-wrap gap-2">
-            {MOODS.map((m) => (
-              <button
-                key={m.value}
-                onClick={() => setMood(m.value)}
-                className={`rounded-full border px-3 py-1.5 text-sm transition ${
-                  mood === m.value
-                    ? 'border-projector bg-projector/10 text-projector'
-                    : 'border-theatre-700 text-zinc-300 hover:border-projector/40'
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
+            {MOODS.map((m) => {
+              const active = moods.includes(m.value)
+              return (
+                <button
+                  key={m.value}
+                  onClick={() => toggleMood(m.value)}
+                  aria-pressed={active}
+                  className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                    active
+                      ? 'border-projector bg-projector/10 text-projector'
+                      : 'border-theatre-700 text-zinc-300 hover:border-projector/40'
+                  }`}
+                >
+                  {m.label}
+                </button>
+              )
+            })}
           </div>
         </div>
 
@@ -117,7 +144,7 @@ export default function TonightTool() {
           </div>
         </div>
 
-        <button onClick={generate} className="btn-primary" disabled={loading}>
+        <button onClick={generate} className="btn-primary" disabled={loading || moods.length === 0}>
           {loading ? '✨ Sto scegliendo…' : '✨ Dimmi cosa vedere'}
         </button>
       </div>
