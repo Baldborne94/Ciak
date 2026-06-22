@@ -1,7 +1,10 @@
 // Identità Cinefila: in base ai film che l'utente ha visto/preferito,
 // determina un "tipo di cinefilo" (persona) e ne deriva tema, avatar e nickname.
 // Tutto deterministico (nessuna chiamata AI): a parità di gusti il risultato è
-// stabile; «Rigenera» fa solo variare nickname e avatar dentro la stessa persona.
+// stabile; «Rigenera» fa solo variare nickname e icona dentro la stessa persona.
+//
+// L'avatar è un SVG generato in casa (icona evocativa del genere su sfondo
+// sfumato a tema): niente servizi esterni, niente dipendenze, funziona offline.
 
 // ID generi TMDB (gli stessi usati per i vecchi trofei).
 const G = {
@@ -24,9 +27,10 @@ export interface Persona {
   id: string
   label: string // il "tipo di cinefilo" (es. «Anima del Brivido»)
   tagline: string // breve descrizione dello stile
-  emoji: string
+  emoji: string // icona rappresentativa (per testo/etichette)
   theme: string // valore CSS data-theme (deve esistere in index.css)
-  avatarStyle: string // stile DiceBear (https://dicebear.com)
+  colors: [string, string] // stop del gradiente di sfondo dell'avatar
+  avatars: string[] // pool di icone per l'avatar (variano con «Rigenera»)
   genres: number[] // generi TMDB che alimentano questa persona
   nicknames: string[] // pool da cui pescare il nickname (deterministico)
 }
@@ -38,7 +42,8 @@ export const CALIBRATING: Persona = {
   tagline: 'Guarda ancora qualche film: sto imparando i tuoi gusti.',
   emoji: '🎬',
   theme: 'default',
-  avatarStyle: 'thumbs',
+  colors: ['#18181b', '#3f3f46'],
+  avatars: ['🎬', '🍿', '🎞️', '🎟️'],
   genres: [],
   nicknames: ['Spettatore Curioso', 'Nuovo in Sala', 'Esploratore di Storie'],
 }
@@ -51,7 +56,8 @@ export const PERSONAS: Persona[] = [
     tagline: 'Vivi per la tensione, il buio e i brividi.',
     emoji: '👻',
     theme: 'horror',
-    avatarStyle: 'pixel-art',
+    colors: ['#3b0a0a', '#7f1d1d'],
+    avatars: ['👻', '🔪', '🦇', '🕸️', '💀'],
     genres: [G.horror, G.thriller],
     nicknames: ['Anima Notturna', 'Custode del Buio', 'Spettro della Sala', 'Voce nel Buio', 'Brivido Eterno'],
   },
@@ -61,7 +67,8 @@ export const PERSONAS: Persona[] = [
     tagline: 'Il tuo cinema guarda sempre oltre le stelle.',
     emoji: '🚀',
     theme: 'scifi',
-    avatarStyle: 'bottts',
+    colors: ['#0b1020', '#1e3a8a'],
+    avatars: ['🚀', '🛸', '🌌', '🤖', '🪐'],
     genres: [G.scifi],
     nicknames: ['Viaggiatore Stellare', 'Mente Quantica', 'Esploratore di Mondi', 'Pioniere Galattico', 'Sognatore Cosmico'],
   },
@@ -71,7 +78,8 @@ export const PERSONAS: Persona[] = [
     tagline: 'Cerchi mondi impossibili e meraviglie.',
     emoji: '🐉',
     theme: 'fantasy',
-    avatarStyle: 'lorelei',
+    colors: ['#2e1065', '#6d28d9'],
+    avatars: ['🐉', '🧙', '🗡️', '🔮', '🏰'],
     genres: [G.fantasy],
     nicknames: ['Cantastorie', 'Custode dei Reami', 'Evocatore di Meraviglie', 'Cercatore di Magie', 'Guardiano dei Mondi'],
   },
@@ -81,7 +89,8 @@ export const PERSONAS: Persona[] = [
     tagline: "Il disegno e l'animazione sono la tua firma.",
     emoji: '🌸',
     theme: 'anime',
-    avatarStyle: 'fun-emoji',
+    colors: ['#831843', '#db2777'],
+    avatars: ['🌸', '⛩️', '🎌', '🍥', '✨'],
     genres: [G.animation],
     nicknames: ['Spirito Animato', 'Sognatore Disegnato', 'Anima Pop', 'Cuore Otaku', 'Pennello Vivente'],
   },
@@ -91,7 +100,8 @@ export const PERSONAS: Persona[] = [
     tagline: "Le grandi storie d'amore ti conquistano.",
     emoji: '❤️',
     theme: 'romance',
-    avatarStyle: 'big-smile',
+    colors: ['#4c0519', '#e11d48'],
+    avatars: ['❤️', '🌹', '💋', '💘', '🥂'],
     genres: [G.romance],
     nicknames: ['Cuore Romantico', 'Anima Gentile', 'Eterno Innamorato', 'Sognatore Sentimentale', 'Tenero Spettatore'],
   },
@@ -101,7 +111,8 @@ export const PERSONAS: Persona[] = [
     tagline: 'Ritmo, azione e adrenalina, sempre.',
     emoji: '💥',
     theme: 'action',
-    avatarStyle: 'micah',
+    colors: ['#7c2d12', '#ea580c'],
+    avatars: ['💥', '🔥', '🏍️', '🥊', '🚁'],
     genres: [G.action],
     nicknames: ['Adrenalina Pura', 'Eroe Senza Sosta', 'Cuore Esplosivo', 'Spirito Indomito', 'Senza Freni'],
   },
@@ -111,7 +122,8 @@ export const PERSONAS: Persona[] = [
     tagline: 'Ami intrighi, indagini e colpi di scena.',
     emoji: '🕵️',
     theme: 'crime',
-    avatarStyle: 'personas',
+    colors: ['#0f172a', '#334155'],
+    avatars: ['🕵️', '🔍', '🚬', '💼', '🎩'],
     genres: [G.crime, G.mystery],
     nicknames: ['Detective Notturno', 'Mente Investigativa', 'Ombra del Noir', 'Segugio della Sala', 'Occhio Acuto'],
   },
@@ -121,7 +133,8 @@ export const PERSONAS: Persona[] = [
     tagline: 'Polvere, orizzonti e duelli al tramonto.',
     emoji: '🤠',
     theme: 'western',
-    avatarStyle: 'adventurer',
+    colors: ['#451a03', '#b45309'],
+    avatars: ['🤠', '🌵', '🐎', '🌅', '🔫'],
     genres: [G.western],
     nicknames: ['Pistolero Solitario', 'Spirito di Frontiera', 'Cavaliere del Tramonto', 'Vagabondo del West', 'Anima Selvaggia'],
   },
@@ -131,7 +144,8 @@ export const PERSONAS: Persona[] = [
     tagline: 'Ridere è il tuo genere preferito.',
     emoji: '😂',
     theme: 'gold',
-    avatarStyle: 'croodles',
+    colors: ['#713f12', '#eab308'],
+    avatars: ['😂', '🤡', '🎪', '🎭', '🍌'],
     genres: [G.comedy],
     nicknames: ['Re della Risata', 'Anima Brillante', 'Spirito Allegro', 'Cuore Leggero', 'Sorriso in Sala'],
   },
@@ -141,7 +155,8 @@ export const PERSONAS: Persona[] = [
     tagline: 'Cerchi storie intense e personaggi veri.',
     emoji: '🎭',
     theme: 'platinum',
-    avatarStyle: 'notionists',
+    colors: ['#1e293b', '#475569'],
+    avatars: ['🎭', '🎬', '🕯️', '📜', '🖤'],
     genres: [G.drama, G.history],
     nicknames: ['Anima Profonda', 'Spettatore Sensibile', 'Cuore Pensoso', "Cronista dell'Anima", 'Sguardo Intenso'],
   },
@@ -151,8 +166,8 @@ export interface CinephileIdentity {
   personaId: string
   nickname: string
   theme: string
-  avatarStyle: string
-  avatarSeed: string
+  emoji: string // icona usata nell'avatar
+  avatarUrl: string // SVG (data URL) pronto da mostrare
 }
 
 export interface TasteInput {
@@ -168,10 +183,18 @@ export interface IdentityAnalysis {
   topGenreIds: number[]
 }
 
-// URL dell'avatar generato da DiceBear (SVG, nessuna libreria da installare:
-// è solo un'immagine remota caricata dal browser dell'utente a runtime).
-export function avatarUrl(style: string, seed: string): string {
-  return `https://api.dicebear.com/9.x/${style}/svg?seed=${encodeURIComponent(seed)}`
+// Avatar SVG (data URL): icona del genere centrata su uno sfondo sfumato a
+// tema. Nessuna rete, nessuna dipendenza — funziona anche offline.
+export function avatarDataUrl(emoji: string, colors: [string, string]): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
+    `<stop offset="0" stop-color="${colors[0]}"/><stop offset="1" stop-color="${colors[1]}"/>` +
+    `</linearGradient></defs>` +
+    `<rect width="120" height="120" rx="24" fill="url(#g)"/>` +
+    `<text x="60" y="64" font-size="62" text-anchor="middle" dominant-baseline="central">${emoji}</text>` +
+    `</svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
 }
 
 // Determina la persona dominante pesando i generi: i preferiti e i voti alti
@@ -209,17 +232,20 @@ export function analyzeTaste(titles: TasteInput[]): IdentityAnalysis {
 }
 
 // Costruisce un'identità concreta dalla persona: la "variante" sceglie nickname
-// e seme dell'avatar in modo deterministico (usata da «Rigenera»).
+// e icona in modo deterministico (usata da «Rigenera»).
 export function buildIdentity(persona: Persona, variant: number): CinephileIdentity {
-  const pool = persona.nicknames
-  const idx = ((variant % pool.length) + pool.length) % pool.length
-  const nickname = pool[idx]
+  const pick = <T>(pool: T[]): T => {
+    const i = ((variant % pool.length) + pool.length) % pool.length
+    return pool[i]
+  }
+  const nickname = pick(persona.nicknames)
+  const emoji = pick(persona.avatars)
   return {
     personaId: persona.id,
     nickname,
     theme: persona.theme,
-    avatarStyle: persona.avatarStyle,
-    avatarSeed: `${persona.id}-${nickname}`,
+    emoji,
+    avatarUrl: avatarDataUrl(emoji, persona.colors),
   }
 }
 

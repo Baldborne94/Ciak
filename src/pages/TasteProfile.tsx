@@ -8,7 +8,7 @@ import { backfillGenreIds, getIdentity, listAll, saveIdentity } from '../lib/use
 import { listDiary } from '../lib/diary'
 import { getGenres, posterUrl } from '../lib/tmdb'
 import { useAchievementsCtx } from '../lib/achievementsCtx'
-import { analyzeTaste, avatarUrl, buildIdentity, type TasteInput } from '../lib/cinephileIdentity'
+import { analyzeTaste, avatarDataUrl, buildIdentity, personaById, type TasteInput } from '../lib/cinephileIdentity'
 import type { DiaryEntry, MediaType, UserTitle } from '../lib/types'
 
 const TYPE_LABELS: Record<string, string> = {
@@ -47,28 +47,37 @@ function IdentityHero({
   const { setIdentity } = useAchievementsCtx()
   const analysis = useMemo(() => analyzeTaste(titles), [titles])
   const [variant, setVariant] = useState(0)
-  const [appliedSeed, setAppliedSeed] = useState<string | null>(null)
+  const [appliedNickname, setAppliedNickname] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
 
   // Allinea la card all'identità già salvata: stesso nickname → stessa variante.
+  // Ne approfitto per ri-sincronizzare il Navbar (utile su un nuovo dispositivo,
+  // dove il localStorage è vuoto ma il profilo è su Supabase).
   useEffect(() => {
     let cancelled = false
     getIdentity(userId)
       .then((stored) => {
-        if (cancelled || !stored?.avatar_seed) return
-        setAppliedSeed(stored.avatar_seed)
+        if (cancelled || !stored?.nickname) return
+        setAppliedNickname(stored.nickname)
         const idx = analysis.persona.nicknames.findIndex((n) => n === stored.nickname)
         if (idx >= 0) setVariant(idx)
+        const persona = personaById(stored.avatar_seed) ?? analysis.persona
+        if (stored.avatar_style) {
+          setIdentity({
+            nickname: stored.nickname,
+            avatarUrl: avatarDataUrl(stored.avatar_style, persona.colors),
+            theme: stored.theme ?? persona.theme,
+          })
+        }
       })
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [userId, analysis.persona])
+  }, [userId, analysis.persona, setIdentity])
 
   const identity = buildIdentity(analysis.persona, variant)
-  const avatar = avatarUrl(identity.avatarStyle, identity.avatarSeed)
-  const isActive = appliedSeed === identity.avatarSeed
+  const isActive = appliedNickname === identity.nickname
   const topNames = analysis.topGenreIds
     .map((g) => genreMap.get(g))
     .filter((n): n is string => !!n)
@@ -77,14 +86,15 @@ function IdentityHero({
   async function apply() {
     setApplying(true)
     try {
+      // avatar_style = icona, avatar_seed = id persona (per ricostruire i colori).
       await saveIdentity(userId, {
         nickname: identity.nickname,
-        avatarStyle: identity.avatarStyle,
-        avatarSeed: identity.avatarSeed,
+        avatarStyle: identity.emoji,
+        avatarSeed: identity.personaId,
         theme: identity.theme,
       })
-      setIdentity({ nickname: identity.nickname, avatarUrl: avatar, theme: identity.theme })
-      setAppliedSeed(identity.avatarSeed)
+      setIdentity({ nickname: identity.nickname, avatarUrl: identity.avatarUrl, theme: identity.theme })
+      setAppliedNickname(identity.nickname)
     } catch {
       // best-effort: un errore di rete/permessi non deve rompere la pagina.
     } finally {
@@ -96,7 +106,7 @@ function IdentityHero({
     <div className="mb-10 flex flex-col items-center gap-6 rounded-2xl border border-projector/30 bg-theatre-900/60 p-6 shadow-reel sm:flex-row sm:p-8">
       <div className="shrink-0">
         <img
-          src={avatar}
+          src={identity.avatarUrl}
           alt={identity.nickname}
           className="h-28 w-28 rounded-2xl border-2 border-projector/40 bg-theatre-800"
         />
