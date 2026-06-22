@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { useAchievementsCtx } from '../lib/achievementsCtx'
 
 // Primary links shown inline. Anime/Cartoni now live inside "Cerca".
 const primary = [
@@ -33,6 +34,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 export default function Navbar() {
   const { user, signOut } = useAuth()
+  const { nickname, avatarUrl } = useAchievementsCtx()
   const navigate = useNavigate()
   const [listsOpen, setListsOpen] = useState(false)
 
@@ -120,12 +122,27 @@ export default function Navbar() {
               >
                 ⚙️
               </NavLink>
-              <span
-                className="hidden max-w-[12rem] truncate text-sm text-zinc-400 sm:inline"
-                title={user.email ?? undefined}
-              >
-                {user.email}
-              </span>
+              {nickname && avatarUrl ? (
+                <NavLink
+                  to="/profilo"
+                  title={user.email ?? undefined}
+                  className="hidden items-center gap-2 sm:flex"
+                >
+                  <img
+                    src={avatarUrl}
+                    alt=""
+                    className="h-7 w-7 rounded-full border border-projector/40 bg-theatre-800"
+                  />
+                  <span className="max-w-[10rem] truncate text-sm text-zinc-300">{nickname}</span>
+                </NavLink>
+              ) : (
+                <span
+                  className="hidden max-w-[12rem] truncate text-sm text-zinc-400 sm:inline"
+                  title={user.email ?? undefined}
+                >
+                  {user.email}
+                </span>
+              )}
               <button onClick={onSignOut} className="btn-ghost px-3 py-2">
                 Esci
               </button>

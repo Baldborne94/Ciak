@@ -256,3 +256,37 @@ export async function setActiveAchievement(
     .upsert({ user_id: userId, active_achievement_id: achievementId })
   if (error) throw new Error(error.message)
 }
+
+// ── Identità Cinefila ───────────────────────────────────────────────────────
+// Nickname + avatar (DiceBear) + tema, scelti in base ai gusti e salvati sulla
+// riga del profilo. Vivono accanto ad active_achievement_id (colonne distinte).
+
+export interface StoredIdentity {
+  nickname: string | null
+  avatar_style: string | null
+  avatar_seed: string | null
+  theme: string | null
+}
+
+export async function getIdentity(userId: string): Promise<StoredIdentity | null> {
+  const { data } = await client()
+    .from('user_profile')
+    .select('nickname, avatar_style, avatar_seed, theme')
+    .eq('user_id', userId)
+    .maybeSingle()
+  return (data as StoredIdentity | null) ?? null
+}
+
+export async function saveIdentity(
+  userId: string,
+  identity: { nickname: string; avatarStyle: string; avatarSeed: string; theme: string },
+): Promise<void> {
+  const { error } = await client().from('user_profile').upsert({
+    user_id: userId,
+    nickname: identity.nickname,
+    avatar_style: identity.avatarStyle,
+    avatar_seed: identity.avatarSeed,
+    theme: identity.theme,
+  })
+  if (error) throw new Error(error.message)
+}
