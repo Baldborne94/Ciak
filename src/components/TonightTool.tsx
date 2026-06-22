@@ -1,17 +1,51 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { EmptyState, ErrorState, Loader } from './States'
 import AiCreditsNote from './AiCreditsNote'
 import { useAuth } from '../lib/auth'
 import { listByStatus, listFavorites } from '../lib/userTitles'
 import { aiFetch } from '../lib/aiClient'
 import { usePersistedState } from '../lib/usePersistedState'
-import type { UserTitle } from '../lib/types'
+import { searchMulti, posterUrl, displayTitle } from '../lib/tmdb'
+import type { MediaItem, UserTitle } from '../lib/types'
 
 interface Suggestion {
   title: string
   year?: string
   length?: string
   reason: string
+}
+
+// Suggerimento dell'AI risolto (best-effort) a un titolo reale di TMDB, così la
+// card è cliccabile e porta alla scheda del film/serie.
+interface ResolvedSuggestion {
+  suggestion: Suggestion
+  item: MediaItem | null
+}
+
+// Associa il titolo proposto dall'AI al miglior risultato TMDB: privilegia il
+// match esatto del titolo e l'anno, per evitare omonimi o scambi di media.
+async function resolveSuggestion(s: Suggestion): Promise<ResolvedSuggestion> {
+  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')
+  try {
+    const items = await searchMulti(s.title)
+    if (items.length > 0) {
+      const target = norm(s.title)
+      const ranked = items
+        .map((r) => {
+          let score = 0
+          if (norm(r.title) === target || norm(r.originalTitle ?? '') === target) score += 10
+          else if (norm(r.title).includes(target) || target.includes(norm(r.title))) score += 4
+          if (s.year && r.releaseDate?.slice(0, 4) === String(s.year)) score += 5
+          return { r, score }
+        })
+        .sort((a, b) => b.score - a.score)
+      return { suggestion: s, item: ranked[0]?.r ?? items[0] }
+    }
+  } catch {
+    // ricerca TMDB non riuscita: si mostra comunque il testo dell'AI.
+  }
+  return { suggestion: s, item: null }
 }
 
 const MOODS = [
@@ -59,8 +93,8 @@ export default function TonightTool() {
   const [time, setTime] = usePersistedState('ciak.ai.tonight.time', TIMES[1])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [suggestions, setSuggestions] = usePersistedState<Suggestion[] | null>(
-    'ciak.ai.tonight.suggestions',
+  const [results, setResults] = usePersistedState<ResolvedSuggestion[] | null>(
+    'ciak.ai.tonight.results',
     null,
   )
 
@@ -87,7 +121,8 @@ export default function TonightTool() {
         favorites: favorites.map(toSummary),
         watched: watched.map(toSummary),
       })
-      setSuggestions(data.suggestions ?? [])
+      const resolved = await Promise.all((data.suggestions ?? []).map(resolveSuggestion))
+      setResults(resolved)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -154,13 +189,13 @@ export default function TonightTool() {
           <Loader label="Sfoglio la cineteca per stasera…" />
         ) : error ? (
           <ErrorState title="Niente suggerimenti" message={error} icon="🤖" />
-        ) : suggestions === null ? (
+        ) : results === null ? (
           <EmptyState
             title="Pronto quando lo sei"
             message="Scegli umore e tempo, poi premi «Dimmi cosa vedere»."
             icon="🌙"
           />
-        ) : suggestions.length === 0 ? (
+        ) : results.length === 0 ? (
           <EmptyState
             title="Non ho trovato nulla"
             message="Prova a cambiare umore o tempo a disposizione, poi riprova."
@@ -168,18 +203,23 @@ export default function TonightTool() {
         ) : (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-wider text-zinc-500">Per stasera ti propongo</p>
+              <p className="text-xs uppercase tracking-wider text-zinc-500">
+                Per stasera ti propongo <span className="normal-case text-zinc-600">· tocca un titolo per aprirne la scheda</span>
+              </p>
               <button
-                onClick={() => setSuggestions(null)}
+                onClick={() => setResults(null)}
                 className="text-xs text-curtain-light/80 hover:text-curtain-light"
               >
                 ✕ Cancella
               </button>
             </div>
-            {suggestions.map((s, i) => (
-              <div key={i} className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
+            {results.map(({ suggestion: s, item }, i) => {
+              const poster = item ? posterUrl(item.posterPath) : null
+              const heading = (
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <h3 className="font-display text-xl tracking-wide text-projector">{s.title}</h3>
+                  <h3 className="font-display text-xl tracking-wide text-projector">
+                    {item ? displayTitle(item) : s.title}
+                  </h3>
                   {s.year && <span className="text-sm text-zinc-500">{s.year}</span>}
                   {s.length && (
                     <span className="rounded-full bg-theatre-800 px-2 py-0.5 text-xs text-zinc-300">
@@ -187,9 +227,37 @@ export default function TonightTool() {
                     </span>
                   )}
                 </div>
-                <p className="mt-2 text-sm text-zinc-300">{s.reason}</p>
-              </div>
-            ))}
+              )
+              const body = (
+                <div className="flex gap-4">
+                  <div className="h-28 w-20 shrink-0 overflow-hidden rounded-md bg-theatre-800">
+                    {poster ? (
+                      <img src={poster} alt={s.title} loading="lazy" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    {heading}
+                    <p className="mt-2 text-sm text-zinc-300">{s.reason}</p>
+                    {item && <p className="mt-2 text-xs text-projector/70">Apri la scheda →</p>}
+                  </div>
+                </div>
+              )
+              return item ? (
+                <Link
+                  key={i}
+                  to={`/title/${item.mediaType}/${item.id}`}
+                  className="block rounded-xl border border-theatre-800 bg-theatre-900/60 p-4 transition hover:-translate-y-0.5 hover:border-projector/40"
+                >
+                  {body}
+                </Link>
+              ) : (
+                <div key={i} className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-4">
+                  {body}
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
