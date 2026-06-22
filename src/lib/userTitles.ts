@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { getDetail } from './tmdb'
 import {
   computeAchievementData,
   getEarnedIds,
@@ -132,6 +133,42 @@ export async function listAll(userId: string): Promise<UserTitle[]> {
   const { data, error } = await client().from(TABLE).select('*').eq('user_id', userId)
   if (error) throw new Error(error.message)
   return (data ?? []) as UserTitle[]
+}
+
+// I titoli salvati prima del fix sui generi hanno `genre_ids` vuoto: il
+// dettaglio TMDB esponeva i generi come oggetti e non venivano persistiti.
+// Questo backfill, una tantum, recupera i generi dei titoli ancora vuoti e li
+// salva, così il "Profilo di gusto" si popola anche per lo storico.
+// Best-effort: gli errori sui singoli titoli non bloccano gli altri.
+export async function backfillGenreIds(userId: string): Promise<number> {
+  const db = client()
+  const { data, error } = await db
+    .from(TABLE)
+    .select('id, tmdb_id, media_type, genre_ids')
+    .eq('user_id', userId)
+  if (error) throw new Error(error.message)
+
+  const missing = (data ?? []).filter(
+    (r) => !r.genre_ids || (r.genre_ids as number[]).length === 0,
+  ) as Pick<UserTitle, 'id' | 'tmdb_id' | 'media_type'>[]
+
+  let updated = 0
+  for (const r of missing) {
+    try {
+      const type: TmdbType = r.media_type === 'movie' ? 'movie' : 'tv'
+      const detail = await getDetail(type, r.tmdb_id)
+      if (detail.genreIds.length === 0) continue
+      const { error: upErr } = await db
+        .from(TABLE)
+        .update({ genre_ids: detail.genreIds })
+        .eq('user_id', userId)
+        .eq('id', r.id)
+      if (!upErr) updated++
+    } catch {
+      // titolo non risolvibile (rimosso da TMDB, rete, ecc.): si salta.
+    }
+  }
+  return updated
 }
 
 export interface UserStats {
