@@ -11,7 +11,6 @@ const TitleDetail = lazy(() => import('./pages/TitleDetail'))
 const ListPage = lazy(() => import('./pages/ListPage'))
 const Favorites = lazy(() => import('./pages/Favorites'))
 const TonightPage = lazy(() => import('./pages/TonightPage'))
-const TrophiesPage = lazy(() => import('./pages/TrophiesPage'))
 const TasteProfile = lazy(() => import('./pages/TasteProfile'))
 const ListsPage = lazy(() => import('./pages/ListsPage'))
 const CustomListPage = lazy(() => import('./pages/CustomListPage'))
@@ -117,7 +116,8 @@ export default function App() {
             </RequireAuth>
           }
         />
-        <Route path="trophies" element={<TrophiesPage />} />
+        {/* "Trofei" temporaneamente nascosto; verrà rifatto in futuro. */}
+        <Route path="trophies" element={<Navigate to="/" replace />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />
       </Route>
