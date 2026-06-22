@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
-import MediaCard from '../components/MediaCard'
-import ImageIdentify from '../components/ImageIdentify'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import {
   searchMulti,
@@ -25,18 +23,6 @@ import {
 } from '../lib/tmdb'
 import { MediaRow } from '../components/MediaRow'
 import { LANGUAGES, YEARS } from '../lib/filters'
-import { aiFetch } from '../lib/aiClient'
-import AiCreditsNote from '../components/AiCreditsNote'
-import { useAuth } from '../lib/auth'
-import {
-  clearCachedSongs,
-  deleteCachedSong,
-  getCachedSong,
-  listCachedSongs,
-  saveCachedSong,
-  songKey,
-  type CachedSong,
-} from '../lib/songCache'
 import type {
   MediaItem,
   Person,
@@ -46,7 +32,9 @@ import type {
   TmdbType,
 } from '../lib/types'
 
-type Mode = 'titles' | 'people' | 'studios' | 'collections' | 'song' | 'image'
+// Gli strumenti AI (Canzone, Foto) vivono ora nell'hub "/ai"; qui Cerca fa
+// solo ricerca nel catalogo: titoli, persone, studi, saghe.
+type Mode = 'titles' | 'people' | 'studios' | 'collections'
 // "Kind" filter inside the Titoli tab: real media types + the derived
 // animation catalogs (anime / cartoons), so they live under Titoli instead of
 // taking their own top-level tabs.
@@ -57,12 +45,7 @@ const MODES: { value: Mode; label: string; icon: string; placeholder?: string }[
   { value: 'people', label: 'Persone', icon: '🌟', placeholder: 'Cerca attore, regista, compositore…' },
   { value: 'studios', label: 'Studi', icon: '🏛️', placeholder: 'Cerca uno studio… (es. Pixar, A24, Ghibli)' },
   { value: 'collections', label: 'Saghe', icon: '📚', placeholder: 'Cerca una saga… (es. Harry Potter, Marvel)' },
-  { value: 'song', label: 'Canzone', icon: '🎵', placeholder: 'In quali film c’è questa canzone? (es. Stayin’ Alive)' },
-  { value: 'image', label: 'Foto', icon: '📷' },
 ]
-
-// Tools that don't do a plain catalog search — set apart in the tab bar.
-const AI_MODES = new Set<Mode>(['song', 'image'])
 
 const KIND_FILTERS: { value: Kind; label: string }[] = [
   { value: 'all', label: 'Tutti' },
@@ -97,52 +80,6 @@ const FAMOUS_STUDIOS = ['Pixar', 'Studio Ghibli', 'A24', 'Marvel Studios', 'Warn
 // Fast&Furious 9485 · James Bond 645 · Pirates 295 · Dark Knight 263 · Toy Story 10194
 const FAMOUS_SAGAS = [1241, 10, 119, 86311, 328, 9485, 645, 295, 263, 10194]
 const FAMOUS_ACTORS = ['Al Pacino', 'Robert De Niro', 'Meryl Streep', 'Leonardo DiCaprio', 'Tom Hanks', 'Denzel Washington', 'Anthony Hopkins', 'Morgan Freeman', 'Cate Blanchett', 'Joaquin Phoenix', 'Christian Bale', 'Daniel Day-Lewis', 'Natalie Portman', 'Gary Oldman', 'Brad Pitt']
-
-// Ask the AI which films use a song, then resolve each to a TMDB item.
-async function findSongFilms(song: string): Promise<{ item: MediaItem; note: string }[]> {
-  const data = await aiFetch<{ films: { title: string; year?: string; scene: string }[] }>(
-    '/api/song-films',
-    { song },
-  )
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
-  const resolved = await Promise.all(
-    (data.films ?? []).map(async (f) => {
-      try {
-        const items = await searchMulti(f.title)
-        if (items.length === 0) return null
-        const target = norm(f.title)
-        // Rank by title match + year + prefer movies, to avoid casual mismatches
-        // (e.g. a same-sounding anime instead of the actual film).
-        const ranked = items
-          .map((r) => {
-            let score = 0
-            if (norm(r.title) === target || norm(r.originalTitle ?? '') === target) score += 10
-            else if (norm(r.title).includes(target) || target.includes(norm(r.title))) score += 4
-            if (f.year && r.releaseDate?.slice(0, 4) === String(f.year)) score += 5
-            if (r.mediaType === 'movie') score += 1
-            return { r, score }
-          })
-          .sort((a, b) => b.score - a.score)
-        const best = ranked[0]
-        // If nothing matches the title at all, the AI title is unreliable → skip.
-        if (!best || best.score === 0) return null
-        return { item: best.r, note: f.scene }
-      } catch {
-        return null
-      }
-    }),
-  )
-  const seen = new Set<string>()
-  const out: { item: MediaItem; note: string }[] = []
-  for (const r of resolved) {
-    if (!r) continue
-    const key = `${r.item.mediaType}-${r.item.id}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push(r)
-  }
-  return out
-}
 
 // Filter title search results down to anime (Japanese animation) or
 // cartoons (non-Japanese animation) using genre + original language.
@@ -273,22 +210,20 @@ function BrowseList({
 }
 
 export default function Search() {
-  const { user } = useAuth()
+  const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const query = params.get('q') ?? ''
   const rawMode = params.get('mode')
   // Old links used mode=anime / mode=cartoons; those now live under Titoli.
   const mode: Mode = MODES.some((m) => m.value === rawMode) ? (rawMode as Mode) : 'titles'
 
+  // Vecchi link agli strumenti AI (un tempo schede di Cerca) → hub /ai.
+  useEffect(() => {
+    if (rawMode === 'song') navigate('/ai?tab=song', { replace: true })
+    else if (rawMode === 'image') navigate('/ai?tab=image', { replace: true })
+  }, [rawMode, navigate])
+
   const [input, setInput] = useState(query)
-  // Song mode uses two fields (title + artist); split an existing "title - artist".
-  const songSplit = rawMode === 'song' ? query.lastIndexOf(' - ') : -1
-  const [songTitle, setSongTitle] = useState(() =>
-    rawMode === 'song' ? (songSplit > 0 ? query.slice(0, songSplit) : query) : '',
-  )
-  const [songArtist, setSongArtist] = useState(() =>
-    songSplit > 0 ? query.slice(songSplit + 3) : '',
-  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -296,8 +231,6 @@ export default function Search() {
   const [people, setPeople] = useState<Person[]>([])
   const [studios, setStudios] = useState<Company[]>([])
   const [collections, setCollections] = useState<Collection[]>([])
-  const [songFilms, setSongFilms] = useState<{ item: MediaItem; note: string }[]>([])
-  const [savedSongs, setSavedSongs] = useState<CachedSong[]>([])
 
   const [kind, setKind] = useState<Kind>(
     rawMode === 'anime' || rawMode === 'cartoons' ? rawMode : 'all',
@@ -319,12 +252,10 @@ export default function Search() {
 
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
   const isAnimationKind = kind === 'anime' || kind === 'cartoons'
-  const isSongMode = mode === 'song'
-  const isImageMode = mode === 'image'
 
   useEffect(() => {
     if (!query.trim()) {
-      setTitles([]); setPeople([]); setStudios([]); setCollections([]); setSongFilms([])
+      setTitles([]); setPeople([]); setStudios([]); setCollections([])
       return
     }
     if (!isTmdbConfigured) {
@@ -337,55 +268,15 @@ export default function Search() {
       mode === 'people' ? searchPerson(query).then(setPeople)
       : mode === 'studios' ? searchCompany(query).then(setStudios)
       : mode === 'collections' ? searchCollection(query).then(setCollections)
-      : mode === 'song' ? runSongSearch(query)
       // Titoli (anche anime/cartoni): cerca per nome; il filtro "kind" è applicato lato client.
       : searchMulti(query).then(setTitles)
     run.catch((e: Error) => setError(e.message)).finally(() => setLoading(false))
-
-    // Song search: serve dalla cache se presente, altrimenti chiama l'AI e salva.
-    async function runSongSearch(q: string) {
-      const key = songKey(q)
-      if (user) {
-        const cached = await getCachedSong(user.id, key).catch(() => null)
-        if (cached) {
-          setSongFilms(cached)
-          return
-        }
-      }
-      const results = await findSongFilms(q)
-      setSongFilms(results)
-      if (user && results.length > 0) {
-        await saveCachedSong(user.id, key, q, results).catch(() => {})
-        listCachedSongs(user.id).then(setSavedSongs).catch(() => {})
-      }
-    }
-  }, [query, mode, user])
+  }, [query, mode])
 
   useEffect(() => {
     if (mode !== 'titles' || !isTmdbConfigured) return
     getGenres(genreType).then(setGenres).catch(() => setGenres([]))
   }, [genreType, mode])
-
-  // Saved song searches (cache) for the Canzone tab.
-  useEffect(() => {
-    if (mode !== 'song' || !user) {
-      setSavedSongs([])
-      return
-    }
-    listCachedSongs(user.id).then(setSavedSongs).catch(() => setSavedSongs([]))
-  }, [mode, user])
-
-  async function removeSavedSong(key: string) {
-    if (!user) return
-    setSavedSongs((prev) => prev.filter((s) => s.query_key !== key))
-    await deleteCachedSong(user.id, key).catch(() => {})
-  }
-
-  async function clearSavedSongs() {
-    if (!user) return
-    setSavedSongs([])
-    await clearCachedSongs(user.id).catch(() => {})
-  }
 
   // Idle previews — loaded lazily only for the active tab, once.
   useEffect(() => {
@@ -471,32 +362,12 @@ export default function Search() {
       <PageHeader
         eyebrow="Catalogo"
         title="Cerca & Esplora"
-        subtitle="Titoli, anime, cartoni, persone, studi e saghe — più gli strumenti AI (canzone, foto)."
+        subtitle="Titoli, anime, cartoni, persone, studi e saghe."
       />
 
-      {/* Mode selector — catalog/entity tabs, then the AI tools set apart */}
+      {/* Mode selector — catalog/entity tabs */}
       <div className="mb-4 flex items-stretch gap-1 overflow-x-auto border-b border-theatre-800 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {MODES.filter((m) => !AI_MODES.has(m.value)).map((m) => (
-          <button
-            key={m.value}
-            onClick={() => switchMode(m.value)}
-            className={`-mb-px whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium transition ${
-              mode === m.value
-                ? 'border-projector text-projector'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            {m.icon} {m.label}
-          </button>
-        ))}
-
-        {/* Divider + label introducing the AI-powered tools */}
-        <span aria-hidden className="mx-2 my-2 w-px self-stretch bg-theatre-700" />
-        <span className="flex items-center whitespace-nowrap pr-1 text-xs font-semibold uppercase tracking-wider text-zinc-600">
-          ✨ AI
-        </span>
-
-        {MODES.filter((m) => AI_MODES.has(m.value)).map((m) => (
+        {MODES.map((m) => (
           <button
             key={m.value}
             onClick={() => switchMode(m.value)}
@@ -511,119 +382,40 @@ export default function Search() {
         ))}
       </div>
 
-      {/* Song mode — two fields (title + artist) compose the query */}
-      {isSongMode && (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            const t = songTitle.trim()
-            const a = songArtist.trim()
-            const next = new URLSearchParams(params)
-            if (t) next.set('q', a ? `${t} - ${a}` : t)
-            else next.delete('q')
-            next.set('mode', 'song')
-            setParams(next)
-          }}
-          className="mb-6 flex flex-col gap-2 sm:flex-row"
-        >
+      {/* Search bar */}
+      <form onSubmit={onSubmit} className="mb-6 flex gap-2">
+        <div className="relative flex-1">
           <input
-            value={songTitle}
-            onChange={(e) => setSongTitle(e.target.value)}
-            placeholder="Titolo canzone (es. Thunderstruck)"
-            className="input-cine flex-1"
+            value={input}
+            onChange={(e) => {
+              const v = e.target.value
+              setInput(v)
+              // Emptying the field resets to the idle preview state.
+              if (v === '' && query) {
+                const next = new URLSearchParams(params)
+                next.delete('q')
+                setParams(next)
+              }
+            }}
+            placeholder={activeMode.placeholder}
+            className="input-cine w-full pr-10"
             autoFocus
           />
-          <input
-            value={songArtist}
-            onChange={(e) => setSongArtist(e.target.value)}
-            placeholder="Artista — consigliato (es. AC/DC)"
-            className="input-cine flex-1"
-          />
-          <button type="submit" disabled={!songTitle.trim()} className="btn-primary whitespace-nowrap">
-            🔍 Cerca
-          </button>
-        </form>
-      )}
-      {isSongMode && (
-        <AiCreditsNote className="mb-4" extra="le ricerche già salvate qui sotto non contano." />
-      )}
-
-      {/* Saved song searches (cache) — instant re-open + delete */}
-      {isSongMode && savedSongs.length > 0 && (
-        <div className="mb-6 rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wider text-zinc-500">💾 Ricerche salvate</span>
-            <button onClick={clearSavedSongs} className="text-xs text-curtain-light/80 hover:text-curtain-light">
-              Cancella tutte
+          {input && (
+            <button
+              type="button"
+              onClick={clearSearch}
+              aria-label="Pulisci ricerca"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-zinc-500 transition hover:text-zinc-200"
+            >
+              ✕
             </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {savedSongs.map((s) => (
-              <span
-                key={s.query_key}
-                className="group inline-flex items-center gap-1 rounded-full border border-theatre-700 bg-theatre-800 py-1 pl-3 pr-1 text-sm text-zinc-200"
-              >
-                <button
-                  onClick={() => {
-                    const next = new URLSearchParams(params)
-                    next.set('q', s.query)
-                    next.set('mode', 'song')
-                    setParams(next)
-                  }}
-                  className="hover:text-projector"
-                  title="Riapri (dalla cache)"
-                >
-                  🎵 {s.query}
-                </button>
-                <button
-                  onClick={() => removeSavedSong(s.query_key)}
-                  aria-label="Cancella"
-                  className="flex h-5 w-5 items-center justify-center rounded-full text-zinc-500 transition hover:bg-curtain hover:text-white"
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-          </div>
+          )}
         </div>
-      )}
-
-      {/* Search bar — every mode except photo and song (which have custom inputs) */}
-      {!isImageMode && !isSongMode && (
-        <form onSubmit={onSubmit} className="mb-6 flex gap-2">
-          <div className="relative flex-1">
-            <input
-              value={input}
-              onChange={(e) => {
-                const v = e.target.value
-                setInput(v)
-                // Emptying the field resets to the idle preview state.
-                if (v === '' && query) {
-                  const next = new URLSearchParams(params)
-                  next.delete('q')
-                  setParams(next)
-                }
-              }}
-              placeholder={activeMode.placeholder}
-              className="input-cine w-full pr-10"
-              autoFocus
-            />
-            {input && (
-              <button
-                type="button"
-                onClick={clearSearch}
-                aria-label="Pulisci ricerca"
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-zinc-500 transition hover:text-zinc-200"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-          <button type="submit" className="btn-primary whitespace-nowrap">
-            🔍 Cerca
-          </button>
-        </form>
-      )}
+        <button type="submit" className="btn-primary whitespace-nowrap">
+          🔍 Cerca
+        </button>
+      </form>
 
       {/* Title-mode filters — type (incl. anime/cartoons) always, rating when searching */}
       {mode === 'titles' && (
@@ -710,174 +502,134 @@ export default function Search() {
         </div>
       )}
 
-      {/* ── Canzone → film (via AI) ── */}
-      {isSongMode && (
-        loading ? (
-          <Loader label="🎵 Cerco i film con questa canzone…" />
-        ) : error ? (
-          <ErrorState title="Ricerca non riuscita" message={error} />
-        ) : !query.trim() ? (
-          <EmptyState
-            title="In quali film c'è una canzone?"
-            message="Scrivi il titolo di una canzone — meglio con l'artista (es. «Stuck in the Middle with You - Stealers Wheel»). L'AI trova i film che la usano in scene memorabili. Funziona meglio con brani celebri usati in film noti."
-            icon="🎵"
-          />
-        ) : songFilms.length === 0 ? (
-          <EmptyState
-            title="Nessun film trovato"
-            message={`Non ho trovato film noti che usano "${query}". Prova ad aggiungere l'artista (es. «${query} - nome artista») o un brano più celebre — es. Layla, Bohemian Rhapsody, In the Air Tonight.`}
-            icon="🎵"
-          />
-        ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-            {songFilms.map(({ item, note }) => (
-              <div key={`${item.mediaType}-${item.id}`}>
-                <MediaCard item={item} />
-                {note && <p className="mt-1 px-1 text-xs italic text-zinc-500">🎬 {note}</p>}
-              </div>
-            ))}
-          </div>
-        )
-      )}
-
-      {/* ── Foto → riconosci il titolo (via AI vision) ── */}
-      {isImageMode && (
-        <>
-          <AiCreditsNote className="mb-4" />
-          <ImageIdentify />
-        </>
-      )}
-
       {/* ── Search modes (titoli, persone, studi, saghe) ── */}
-      {!isSongMode && !isImageMode && (
-        loading ? (
-          <Loader label="Sfoglio la pellicola…" />
-        ) : error ? (
-          <ErrorState title="Ricerca non riuscita" message={error} />
-        ) : !query.trim() ? (
-          mode === 'titles' ? (
-            isAnimationKind ? (
-              kind === 'anime' ? (
-                <div className="space-y-12">
-                  <BrowseList fetcher={getAnime} />
-                  <div>
-                    <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">
-                      😏 Pervertito
-                    </h2>
-                    <p className="mb-4 text-sm text-zinc-500">
-                      Ecchi, fan-service, harem e hentai: tutto ciò che è «sus», nel suo angolo.
-                    </p>
-                    <BrowseList fetcher={getPervertitoAnime} />
-                  </div>
-                </div>
-              ) : (
-                <BrowseList fetcher={getCartoons} />
-              )
-            ) : (
-            <div className="space-y-10">
-              {trendingPreview.length > 0 && (
+      {loading ? (
+        <Loader label="Sfoglio la pellicola…" />
+      ) : error ? (
+        <ErrorState title="Ricerca non riuscita" message={error} />
+      ) : !query.trim() ? (
+        mode === 'titles' ? (
+          isAnimationKind ? (
+            kind === 'anime' ? (
+              <div className="space-y-12">
+                <BrowseList fetcher={getAnime} />
                 <div>
-                  <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
-                    🔥 Di tendenza ora
-                    {kind === 'movie' ? ' · Film' : kind === 'tv' ? ' · Serie TV' : ''}
+                  <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">
+                    😏 Pervertito
                   </h2>
-                  <MediaRow items={trendingPreview} />
+                  <p className="mb-4 text-sm text-zinc-500">
+                    Ecchi, fan-service, harem e hentai: tutto ciò che è «sus», nel suo angolo.
+                  </p>
+                  <BrowseList fetcher={getPervertitoAnime} />
                 </div>
-              )}
+              </div>
+            ) : (
+              <BrowseList fetcher={getCartoons} />
+            )
+          ) : (
+          <div className="space-y-10">
+            {trendingPreview.length > 0 && (
               <div>
-                <div className="mb-4 flex items-center gap-2">
-                  <span className="font-display text-xl tracking-wide text-zinc-100">
-                    🎭 Sfoglia per genere
-                  </span>
-                  <div className="ml-auto flex gap-1">
-                    {(['movie', 'tv'] as TmdbType[]).map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => setGenreType(t)}
-                        className={`rounded-md px-3 py-1.5 text-sm transition ${
-                          genreType === t
-                            ? 'bg-projector text-theatre-950'
-                            : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
-                        }`}
-                      >
-                        {t === 'movie' ? 'Film' : 'Serie TV'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  {genres.map((g) => (
-                    <Link
-                      key={g.id}
-                      to={`/genre/${genreType}/${g.id}`}
-                      className="rounded-xl border border-theatre-700 bg-theatre-900/60 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:-translate-y-0.5 hover:border-projector/40 hover:text-projector"
+                <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
+                  🔥 Di tendenza ora
+                  {kind === 'movie' ? ' · Film' : kind === 'tv' ? ' · Serie TV' : ''}
+                </h2>
+                <MediaRow items={trendingPreview} />
+              </div>
+            )}
+            <div>
+              <div className="mb-4 flex items-center gap-2">
+                <span className="font-display text-xl tracking-wide text-zinc-100">
+                  🎭 Sfoglia per genere
+                </span>
+                <div className="ml-auto flex gap-1">
+                  {(['movie', 'tv'] as TmdbType[]).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setGenreType(t)}
+                      className={`rounded-md px-3 py-1.5 text-sm transition ${
+                        genreType === t
+                          ? 'bg-projector text-theatre-950'
+                          : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
+                      }`}
                     >
-                      {g.name}
-                    </Link>
+                      {t === 'movie' ? 'Film' : 'Serie TV'}
+                    </button>
                   ))}
                 </div>
               </div>
-            </div>
-            )
-          ) : mode === 'people' ? (
-            <div>
-              <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
-                🌟 Attori celebri
-              </h2>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {famousActors.map((p) => <PersonCard key={p.id} p={p} />)}
+              <div className="flex flex-wrap gap-3">
+                {genres.map((g) => (
+                  <Link
+                    key={g.id}
+                    to={`/genre/${genreType}/${g.id}`}
+                    className="rounded-xl border border-theatre-700 bg-theatre-900/60 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:-translate-y-0.5 hover:border-projector/40 hover:text-projector"
+                  >
+                    {g.name}
+                  </Link>
+                ))}
               </div>
             </div>
-          ) : mode === 'studios' ? (
-            <div>
-              <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
-                🏛️ Studi celebri
-              </h2>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-                {famousStudios.map((c) => <StudioCard key={c.id} c={c} />)}
-              </div>
-            </div>
-          ) : (
-            <div>
-              <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
-                📚 Saghe celebri
-              </h2>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                {famousSagas.map((c) => <CollectionCard key={c.id} c={c} />)}
-              </div>
-            </div>
-          )
-        ) : mode === 'titles' ? (
-          filteredTitles.length === 0 ? (
-            <EmptyState title="Nessun risultato" message={`Nessun titolo per "${query}" con i filtri attuali.`} />
-          ) : (
-            <MediaGrid items={filteredTitles} />
+          </div>
           )
         ) : mode === 'people' ? (
-          filteredPeople.length === 0 ? (
-            <EmptyState title="Nessuna persona trovata" message={`Nessun risultato per "${query}" in questo ruolo.`} />
-          ) : (
+          <div>
+            <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
+              🌟 Attori celebri
+            </h2>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {filteredPeople.map((p) => <PersonCard key={p.id} p={p} />)}
+              {famousActors.map((p) => <PersonCard key={p.id} p={p} />)}
             </div>
-          )
+          </div>
         ) : mode === 'studios' ? (
-          studios.length === 0 ? (
-            <EmptyState title="Nessuno studio trovato" message={`Nessun risultato per "${query}".`} />
-          ) : (
+          <div>
+            <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
+              🏛️ Studi celebri
+            </h2>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-              {studios.map((c) => <StudioCard key={c.id} c={c} />)}
+              {famousStudios.map((c) => <StudioCard key={c.id} c={c} />)}
             </div>
-          )
+          </div>
         ) : (
-          // collections
-          collections.length === 0 ? (
-            <EmptyState title="Nessuna saga trovata" message={`Nessun risultato per "${query}".`} />
-          ) : (
+          <div>
+            <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
+              📚 Saghe celebri
+            </h2>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-              {collections.map((c) => <CollectionCard key={c.id} c={c} />)}
+              {famousSagas.map((c) => <CollectionCard key={c.id} c={c} />)}
             </div>
-          )
+          </div>
+        )
+      ) : mode === 'titles' ? (
+        filteredTitles.length === 0 ? (
+          <EmptyState title="Nessun risultato" message={`Nessun titolo per "${query}" con i filtri attuali.`} />
+        ) : (
+          <MediaGrid items={filteredTitles} />
+        )
+      ) : mode === 'people' ? (
+        filteredPeople.length === 0 ? (
+          <EmptyState title="Nessuna persona trovata" message={`Nessun risultato per "${query}" in questo ruolo.`} />
+        ) : (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {filteredPeople.map((p) => <PersonCard key={p.id} p={p} />)}
+          </div>
+        )
+      ) : mode === 'studios' ? (
+        studios.length === 0 ? (
+          <EmptyState title="Nessuno studio trovato" message={`Nessun risultato per "${query}".`} />
+        ) : (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+            {studios.map((c) => <StudioCard key={c.id} c={c} />)}
+          </div>
+        )
+      ) : (
+        // collections
+        collections.length === 0 ? (
+          <EmptyState title="Nessuna saga trovata" message={`Nessun risultato per "${query}".`} />
+        ) : (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {collections.map((c) => <CollectionCard key={c.id} c={c} />)}
+          </div>
         )
       )}
     </div>
