@@ -4,6 +4,7 @@ import AiCreditsNote from './AiCreditsNote'
 import { useAuth } from '../lib/auth'
 import { listByStatus, listFavorites } from '../lib/userTitles'
 import { aiFetch } from '../lib/aiClient'
+import { usePersistedState } from '../lib/usePersistedState'
 import type { UserTitle } from '../lib/types'
 
 interface Suggestion {
@@ -39,11 +40,16 @@ function toSummary(record: UserTitle) {
 // Estratto dalla vecchia pagina TonightPage per vivere come scheda dell'hub AI.
 export default function TonightTool() {
   const { user } = useAuth()
-  const [mood, setMood] = useState(MOODS[0].value)
-  const [time, setTime] = useState(TIMES[1])
+  // Umore, tempo e ultimo risultato vivono in localStorage: restano dopo cambio
+  // scheda e refresh, finché non rigeneri o premi «Cancella».
+  const [mood, setMood] = usePersistedState('ciak.ai.tonight.mood', MOODS[0].value)
+  const [time, setTime] = usePersistedState('ciak.ai.tonight.time', TIMES[1])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null)
+  const [suggestions, setSuggestions] = usePersistedState<Suggestion[] | null>(
+    'ciak.ai.tonight.suggestions',
+    null,
+  )
 
   async function generate() {
     setLoading(true)
@@ -134,6 +140,15 @@ export default function TonightTool() {
           />
         ) : (
           <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wider text-zinc-500">Per stasera ti propongo</p>
+              <button
+                onClick={() => setSuggestions(null)}
+                className="text-xs text-curtain-light/80 hover:text-curtain-light"
+              >
+                ✕ Cancella
+              </button>
+            </div>
             {suggestions.map((s, i) => (
               <div key={i} className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

@@ -6,6 +6,7 @@ import { searchMulti, searchPerson, posterUrl, profileUrl, displayTitle } from '
 import { refFromMedia, upsertUserTitle } from '../lib/userTitles'
 import { addEntity } from '../lib/entities'
 import { aiFetch } from '../lib/aiClient'
+import { usePersistedState } from '../lib/usePersistedState'
 import type { MediaItem, Person } from '../lib/types'
 
 interface TitleHit {
@@ -55,13 +56,25 @@ function compress(file: File): Promise<{ base64: string; mediaType: string }> {
 export default function ImageIdentify() {
   const { user } = useAuth()
   const inputRef = useRef<HTMLInputElement>(null)
-  const [preview, setPreview] = useState<string | null>(null)
+  // Anteprima e risultati vivono in localStorage: restano dopo cambio scheda e
+  // refresh, finché non analizzi una nuova foto o premi «Cancella». L'anteprima
+  // è una data-URL (non un object URL) proprio per poter sopravvivere al reload.
+  const [preview, setPreview] = usePersistedState<string | null>('ciak.ai.image.preview', null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [titles, setTitles] = useState<TitleHit[] | null>(null)
-  const [people, setPeople] = useState<PersonHit[]>([])
+  const [titles, setTitles] = usePersistedState<TitleHit[] | null>('ciak.ai.image.titles', null)
+  const [people, setPeople] = usePersistedState<PersonHit[]>('ciak.ai.image.people', [])
   const [added, setAdded] = useState<Set<number>>(new Set())
   const [savedPeople, setSavedPeople] = useState<Set<number>>(new Set())
+
+  function clearResult() {
+    setPreview(null)
+    setTitles(null)
+    setPeople([])
+    setAdded(new Set())
+    setSavedPeople(new Set())
+    setError(null)
+  }
 
   async function handleFile(file: File) {
     setError(null)
@@ -72,6 +85,8 @@ export default function ImageIdentify() {
     setLoading(true)
     try {
       const { base64, mediaType } = await compress(file)
+      // Sostituisce l'object URL temporaneo con una data-URL persistibile.
+      setPreview(`data:${mediaType};base64,${base64}`)
       const data = await aiFetch<{
         titles: Omit<TitleHit, 'item'>[]
         people: Omit<PersonHit, 'person'>[]
@@ -161,8 +176,16 @@ export default function ImageIdentify() {
       </div>
 
       {preview && (
-        <div className="mb-6 flex justify-center">
+        <div className="mb-6 flex flex-col items-center gap-2">
           <img src={preview} alt="Anteprima" className="max-h-64 rounded-xl border border-theatre-800" />
+          {!loading && (
+            <button
+              onClick={clearResult}
+              className="text-xs text-curtain-light/80 hover:text-curtain-light"
+            >
+              ✕ Cancella risultato
+            </button>
+          )}
         </div>
       )}
 
