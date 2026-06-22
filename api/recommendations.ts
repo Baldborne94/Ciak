@@ -1,6 +1,8 @@
-// '@anthropic-ai/sdk' e './_lib/aiGuard' sono importati dinamicamente dentro
-// l'handler (try/catch), così un errore di caricamento torna come JSON invece
-// di un crash al module-load (generico HTTP 500).
+// Import STATICI: Vercel (@vercel/node) fa il bundle (esbuild) degli import
+// statici dentro il file della funzione; un import() dinamico verso un modulo
+// locale (es. ./_lib/aiGuard) NON viene incluso → "Cannot find module" a runtime.
+import Anthropic from '@anthropic-ai/sdk'
+import { guardAi } from './_lib/aiGuard'
 
 // Vercel serverless function (Node runtime).
 // The Anthropic key lives ONLY on the server — never prefixed with VITE_, so it
@@ -104,9 +106,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   ].join('\n')
 
   try {
-    const { guardAi } = await import('./_lib/aiGuard')
-    const { default: Anthropic } = await import('@anthropic-ai/sdk')
-
     const guard = await guardAi(req as never, res as never)
     if (!guard) return
 
