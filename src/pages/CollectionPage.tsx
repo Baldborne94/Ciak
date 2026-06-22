@@ -5,6 +5,7 @@ import MediaCard from '../components/MediaCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { getCollection, getRelatedCollections, backdropUrl, posterUrl, isTmdbConfigured } from '../lib/tmdb'
 import { aiFetch } from '../lib/aiClient'
+import { getCachedSagaOrder, saveCachedSagaOrder } from '../lib/sagaCache'
 import AiCreditsNote from '../components/AiCreditsNote'
 import type { Collection, CollectionDetail, MediaItem } from '../lib/types'
 
@@ -58,6 +59,14 @@ export default function CollectionPage() {
       setOrder('story')
       return
     }
+    // Cache locale: stessa saga → stesso ordine, niente nuova chiamata AI.
+    const cached = getCachedSagaOrder(collection.id)
+    if (cached) {
+      setStoryOrder(cached.ids)
+      setStoryNotes(new Map(Object.entries(cached.notes).map(([k, v]) => [Number(k), v])))
+      setOrder('story')
+      return
+    }
     setAiLoading(true)
     setAiError(null)
     try {
@@ -84,6 +93,7 @@ export default function CollectionPage() {
       setStoryOrder(ids)
       setStoryNotes(notes)
       setOrder('story')
+      saveCachedSagaOrder(collection.id, { ids, notes: Object.fromEntries(notes) })
     } catch (e) {
       setAiError((e as Error).message)
     } finally {
