@@ -251,12 +251,18 @@ export default function TasteProfile() {
   // Backfill una tantum dei generi mancanti (titoli salvati prima del fix):
   // gira in background e, se aggiorna qualcosa, ricarica i titoli così i
   // "Generi preferiti" si popolano senza dover ri-toccare ogni titolo.
+  // Il flag in localStorage evita di ri-scansionare tutto lo storico a ogni
+  // apertura del Profilo: una volta sistemato, non serve più ripeterlo.
   useEffect(() => {
     if (!user) return
+    const flag = `ciak:genre-backfill:${user.id}`
+    if (localStorage.getItem(flag)) return
     let cancelled = false
     backfillGenreIds(user.id)
       .then((n) => {
-        if (n > 0 && !cancelled) listAll(user.id).then(setRows).catch(() => {})
+        if (cancelled) return
+        localStorage.setItem(flag, '1')
+        if (n > 0) listAll(user.id).then(setRows).catch(() => {})
       })
       .catch(() => {})
     return () => {
