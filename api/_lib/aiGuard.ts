@@ -7,18 +7,12 @@
 // Files under api/_lib are ignored by Vercel's routing (leading underscore),
 // so this is a shared helper, not an endpoint.
 
+import { createClient } from '@supabase/supabase-js'
+
 const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? ''
 const ANON_KEY = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY ?? ''
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 export const AI_DAILY_LIMIT = Number(process.env.AI_DAILY_LIMIT ?? '3')
-
-// Imported lazily inside guardAi's try/catch: if the package fails to load in
-// the serverless runtime, the error is reported as JSON instead of crashing
-// the function at module-load time (which would show the generic 500).
-async function loadCreateClient() {
-  const mod = await import('@supabase/supabase-js')
-  return mod.createClient
-}
 
 interface GuardRequest {
   headers?: Record<string, string | string[] | undefined>
@@ -49,7 +43,6 @@ async function requireUser(req: GuardRequest, res: GuardResponse): Promise<strin
     res.status(401).json({ error: 'Accedi per usare le funzioni AI.' })
     return null
   }
-  const createClient = await loadCreateClient()
   const supa = createClient(SUPABASE_URL, ANON_KEY, { auth: { persistSession: false } })
   const { data, error } = await supa.auth.getUser(token)
   if (error || !data?.user) {
@@ -64,7 +57,6 @@ async function requireUser(req: GuardRequest, res: GuardResponse): Promise<strin
 // 429 and returns -1 when the daily limit is already reached.
 async function consumeCredit(userId: string, res: GuardResponse): Promise<number | null | -1> {
   if (!SERVICE_ROLE_KEY) return null // hard cap not set up yet; auth gate still applies
-  const createClient = await loadCreateClient()
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } })
   const { data, error } = await admin.rpc('consume_ai_credit', {
     p_user_id: userId,

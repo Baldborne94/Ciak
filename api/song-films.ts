@@ -1,10 +1,12 @@
-// NB: gli import di '@anthropic-ai/sdk' e './_lib/aiGuard' sono DINAMICI dentro
-// l'handler (vedi sotto). Se uno dei due non si carica nel runtime serverless,
-// l'errore viene catturato e restituito come JSON, invece di far crashare la
-// funzione al module-load (che la pagina mostrerebbe come generico HTTP 500).
-
 // Given a song, ask Claude in which films it was famously used (needle-drops,
 // title themes, key scenes). Server-side only (ANTHROPIC_API_KEY).
+//
+// NB: import STATICI. Vercel (@vercel/node) fa il bundle (esbuild) degli import
+// statici dentro il file della funzione; un import() dinamico verso un modulo
+// locale (es. ./_lib/aiGuard) NON viene incluso → "Cannot find module" a runtime.
+
+import Anthropic from '@anthropic-ai/sdk'
+import { guardAi } from './_lib/aiGuard'
 
 interface RequestBody {
   song?: string
@@ -75,9 +77,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
 
   try {
-    const { guardAi } = await import('./_lib/aiGuard')
-    const { default: Anthropic } = await import('@anthropic-ai/sdk')
-
     const guard = await guardAi(req as never, res as never)
     if (!guard) return
 
