@@ -154,16 +154,6 @@ export async function getTrending(): Promise<MediaItem[]> {
     .map((r) => normalise(r))
 }
 
-export async function getTrendingMovies(): Promise<MediaItem[]> {
-  const data = await tmdbFetch<{ results: RawMedia[] }>('/trending/movie/week')
-  return data.results.map((r) => normalise(r, 'movie'))
-}
-
-export async function getTrendingTV(): Promise<MediaItem[]> {
-  const data = await tmdbFetch<{ results: RawMedia[] }>('/trending/tv/week')
-  return data.results.map((r) => normalise(r, 'tv'))
-}
-
 export async function searchMulti(query: string): Promise<MediaItem[]> {
   if (!query.trim()) return []
 
@@ -373,23 +363,6 @@ export async function getPervertitoAnime(page = 1): Promise<{ items: MediaItem[]
     'vote_count.gte': '5',
     page: String(page),
   })
-}
-
-// Most popular people right now — for the idle "Personaggi del momento" preview.
-export async function getPopularPeople(): Promise<Person[]> {
-  const data = await tmdbFetch<{ results: RawPerson[] }>('/person/popular')
-  return data.results.slice(0, 12).map((p) => ({
-    id: p.id,
-    name: p.name,
-    profilePath: p.profile_path ?? null,
-    department: p.known_for_department ?? null,
-    knownFor:
-      (p.known_for ?? [])
-        .map((m) => m.title ?? m.name)
-        .filter(Boolean)
-        .slice(0, 3)
-        .join(', ') || null,
-  }))
 }
 
 // Western animated TV series (Scooby-Doo, Tom & Jerry, …): genre Animation,
