@@ -7,7 +7,6 @@ import {
   checkAndUnlockAchievements,
   type TitleRef,
 } from '../lib/userTitles'
-import { useAchievementsCtx } from '../lib/achievementsCtx'
 import { useToast } from '../lib/toastCtx'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
@@ -20,7 +19,6 @@ const STATUS_ORDER: TitleStatus[] = [
 
 export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
   const { user } = useAuth()
-  const { notify } = useAchievementsCtx()
   const { showToast } = useToast()
   const [record, setRecord] = useState<UserTitle | null>(null)
   const [loading, setLoading] = useState(true)
@@ -60,10 +58,9 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
     try {
       const next = await upsertUserTitle(user.id, titleRef, patch)
       setRecord(next)
-      // Check for newly unlocked trophies after every save
-      checkAndUnlockAchievements(user.id).then((newOnes) => {
-        if (newOnes.length > 0) notify(newOnes)
-      })
+      // I trofei sono nascosti: continuiamo a registrare gli sblocchi nel DB
+      // (utili per la versione futura) ma senza mostrare il toast.
+      checkAndUnlockAchievements(user.id).catch(() => {})
     } catch (e) {
       setError((e as Error).message)
       showToast(`Salvataggio non riuscito: ${(e as Error).message}`)

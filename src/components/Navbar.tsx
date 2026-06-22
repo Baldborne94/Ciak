@@ -18,11 +18,12 @@ const lists = [
   { to: '/liste', label: 'Liste personali' },
 ]
 
+// "Trofei" è temporaneamente nascosto: la feature verrà rifatta meglio in
+// futuro. La pagina e la lib restano nel codice ma non sono raggiungibili.
 const trailing = [
   { to: '/stasera', label: 'Stasera' },
   { to: '/in-arrivo', label: 'In arrivo' },
   { to: '/profilo', label: 'Profilo' },
-  { to: '/trophies', label: 'Trofei' },
 ]
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
