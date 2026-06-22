@@ -467,6 +467,10 @@ export async function getDetail(
 
   return {
     ...base,
+    // L'endpoint dettaglio espone i generi come oggetti (`genres`), non come
+    // `genre_ids` (presente solo in liste/ricerca). Ricaviamo qui gli id, così
+    // i titoli salvati conservano i generi — servono al "Profilo di gusto".
+    genreIds: (raw.genres ?? []).map((g) => g.id),
     genres: raw.genres ?? [],
     runtime: raw.runtime ?? raw.episode_run_time?.[0] ?? null,
     tagline: raw.tagline ?? null,
