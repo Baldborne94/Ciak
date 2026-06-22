@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/auth'
 import Modal from './Modal'
+import StarRating from './StarRating'
 import { addDiaryEntry, type DiaryRef } from '../lib/diary'
 
 function todayISO() {
@@ -66,18 +67,8 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
               </div>
               <div>
                 <label className="text-xs uppercase tracking-wider text-zinc-500">Voto</label>
-                <div className="mt-1 flex gap-1">
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setRating(s === rating ? 0 : s)}
-                      className={`text-2xl leading-none ${
-                        rating >= s ? 'text-projector' : 'text-theatre-700 hover:text-projector/60'
-                      }`}
-                    >
-                      ★
-                    </button>
-                  ))}
+                <div className="mt-1">
+                  <StarRating value={rating || null} onChange={(v) => setRating(v ?? 0)} size="lg" />
                 </div>
               </div>
               <textarea

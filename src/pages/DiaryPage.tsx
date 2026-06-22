@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
+import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { deleteDiaryEntry, listDiary } from '../lib/diary'
@@ -94,7 +95,9 @@ export default function DiaryPage() {
                           {e.title}
                         </Link>
                         {e.rating ? (
-                          <p className="text-sm text-projector">{'★'.repeat(e.rating)}</p>
+                          <div className="mt-0.5">
+                            <StarRating value={e.rating} size="sm" />
+                          </div>
                         ) : null}
                         {e.note && <p className="mt-1 text-sm text-zinc-400">{e.note}</p>}
                       </div>
