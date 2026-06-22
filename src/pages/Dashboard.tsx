@@ -2,14 +2,12 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
-import { MediaRow, ScrollRow } from '../components/MediaRow'
-import { Loader } from '../components/States'
-import { resolveSuggestions, posterUrl } from '../lib/tmdb'
+import { ScrollRow } from '../components/MediaRow'
+import { posterUrl } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
-import { getStats, listByStatus, listFavorites, type UserStats } from '../lib/userTitles'
+import { getStats, listByStatus, type UserStats } from '../lib/userTitles'
 import { getContinueWatching, type ContinueItem } from '../lib/episodes'
-import { aiFetch } from '../lib/aiClient'
-import type { MediaItem, UserTitle } from '../lib/types'
+import type { UserTitle } from '../lib/types'
 
 function ContinueCard({ c }: { c: ContinueItem }) {
   const poster = posterUrl(c.posterPath)
@@ -38,11 +36,6 @@ function ContinueCard({ c }: { c: ContinueItem }) {
   )
 }
 
-interface Suggestion {
-  title: string
-  reason: string
-}
-
 function SectionTitle({ icon, title, action }: { icon: string; title: string; action?: React.ReactNode }) {
   return (
     <div className="mb-4 flex items-center justify-between">
@@ -54,58 +47,20 @@ function SectionTitle({ icon, title, action }: { icon: string; title: string; ac
   )
 }
 
-function AiSuggestions({ user }: { user: ReturnType<typeof useAuth>['user'] }) {
-  const [loading, setLoading] = useState(false)
-  const [items, setItems] = useState<MediaItem[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  async function generate() {
-    setLoading(true)
-    setError(null)
-    try {
-      const [favorites, watched] = user
-        ? await Promise.all([listFavorites(user.id), listByStatus(user.id, 'watched')])
-        : [[], []]
-
-      const data = await aiFetch<{ suggestions: Suggestion[] }>('/api/recommendations', {
-        favorites: favorites.map((f) => ({ title: f.title, mediaType: f.media_type })),
-        watched: watched.map((w) => ({ title: w.title, mediaType: w.media_type })),
-      })
-      const resolved = await resolveSuggestions((data.suggestions ?? []).map((s) => s.title))
-      setItems(resolved)
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
+function TonightCta() {
   return (
     <section>
-      <SectionTitle
-        icon="✨"
-        title="Suggeriti per te"
-        action={
-          <button onClick={generate} disabled={loading} className="btn-ghost px-3 py-1.5 text-sm">
-            {loading ? 'Genero…' : items ? '↻ Rigenera' : 'Genera con l’AI'}
-          </button>
-        }
-      />
-      {error ? (
-        <p className="text-sm text-curtain-light">{error}</p>
-      ) : loading ? (
-        <Loader label="L’AI sta scegliendo per te…" />
-      ) : items === null ? (
-        <p className="text-sm text-zinc-500">
-          Premi «Genera con l’AI»: analizza i tuoi preferiti e i visti per proporti il prossimo titolo.
+      <SectionTitle icon="🌙" title="Non sai cosa vedere?" />
+      <Link
+        to="/stasera"
+        className="group flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-theatre-800 bg-gradient-to-br from-theatre-900/80 to-theatre-900/40 p-6 transition hover:border-projector/40"
+      >
+        <p className="text-zinc-300">
+          Dimmi <span className="text-projector">umore</span> e{' '}
+          <span className="text-projector">tempo a disposizione</span>: ci penso io a scegliere il film perfetto per stasera.
         </p>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-zinc-500">
-          Servono più dati: aggiungi qualche titolo ai preferiti e ai visti, poi rigenera.
-        </p>
-      ) : (
-        <MediaRow items={items} />
-      )}
+        <span className="btn-primary shrink-0">✨ Apri «Stasera»</span>
+      </Link>
     </section>
   )
 }
@@ -191,8 +146,8 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* AI suggestions */}
-        {user && <AiSuggestions user={user} />}
+        {/* Richiamo a "Stasera" — l'unico consigliere AI dell'app */}
+        {user && <TonightCta />}
 
         {/* Empty state for signed-in users with nothing yet */}
         {user && watchlist.length === 0 && inProgress.length === 0 && continueList.length === 0 && (

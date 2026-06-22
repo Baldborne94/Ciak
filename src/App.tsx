@@ -10,7 +10,6 @@ const Search = lazy(() => import('./pages/Search'))
 const TitleDetail = lazy(() => import('./pages/TitleDetail'))
 const ListPage = lazy(() => import('./pages/ListPage'))
 const Favorites = lazy(() => import('./pages/Favorites'))
-const Recommendations = lazy(() => import('./pages/Recommendations'))
 const TonightPage = lazy(() => import('./pages/TonightPage'))
 const TrophiesPage = lazy(() => import('./pages/TrophiesPage'))
 const TasteProfile = lazy(() => import('./pages/TasteProfile'))
@@ -39,14 +38,8 @@ export default function App() {
         <Route path="collection/:id" element={<CollectionPage />} />
         <Route path="title/:mediaType/:id" element={<TitleDetail />} />
         <Route path="login" element={<Login />} />
-        <Route
-          path="lists/watched"
-          element={
-            <RequireAuth>
-              <ListPage status="watched" />
-            </RequireAuth>
-          }
-        />
+        {/* "Visti" è confluito nel Diario: vecchi link reindirizzano. */}
+        <Route path="lists/watched" element={<Navigate to="/diario" replace />} />
         <Route
           path="lists/watchlist"
           element={
@@ -114,7 +107,8 @@ export default function App() {
             </RequireAuth>
           }
         />
-        <Route path="recommendations" element={<Recommendations />} />
+        {/* "Per te" sostituito da "Stasera"; vecchi link reindirizzano. */}
+        <Route path="recommendations" element={<Navigate to="/stasera" replace />} />
         <Route
           path="stasera"
           element={
