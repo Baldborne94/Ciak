@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
+import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { listFavorites, refFromMedia, upsertUserTitle } from '../lib/userTitles'
@@ -18,31 +19,6 @@ const TABS: { value: Tab; label: string; icon: string }[] = [
 ]
 
 type SortKey = 'rating' | 'updated' | 'title'
-
-function StarRating({
-  value,
-  onChange,
-}: {
-  value: number | null
-  onChange: (v: number) => void
-}) {
-  return (
-    <div className="flex gap-0.5">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <button
-          key={star}
-          onClick={() => onChange(star)}
-          className={`text-lg leading-none transition ${
-            value && star <= value ? 'text-projector' : 'text-theatre-700 hover:text-projector/60'
-          }`}
-          title={`${star}/5`}
-        >
-          ★
-        </button>
-      ))}
-    </div>
-  )
-}
 
 function FavoriteEditor({
   record,

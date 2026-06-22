@@ -75,7 +75,7 @@ Una sola pagina con schede (catalogo/entità) e, separati, gli **strumenti AI**:
 - **📖 Diario di visione** — registra cosa guardi e quando (data, voto, nota, rivisioni)
 
 ### ❤️ Preferiti (a sezioni)
-- **Titoli** con voto **1–5 ★** e **note** modificabili, ordinabili
+- **Titoli** con voto **a mezza stella (0.5–5.0 ★)** stile Letterboxd e **note** modificabili, ordinabili
 - **Persone** e **Studi** preferiti → ritrovi al volo filmografie e produzioni
 
 ### 📊 Profilo di gusto
@@ -121,6 +121,7 @@ supabase/
   schema_v7_push.sql        Notifiche push: push_subscriptions
   schema_v8_song_cache.sql  Cache "Canzone → film": user_song_cache
   schema_v9_ai_usage.sql    Limite usi AI lato server: ai_usage + consume_ai_credit()
+  schema_v10_half_star_ratings.sql  Voti a mezza stella (0.5–5.0): personal_rating/rating → numeric
 src/
   components/
     Layout, Navbar, MediaCard/Grid, MediaRow (caroselli con frecce),
@@ -192,7 +193,10 @@ src/
 ### `schema_v9_ai_usage.sql` — limite usi AI lato server
 - **`ai_usage`** (`user_id`, `day`, `count`) + funzione `consume_ai_credit()`: contatore giornaliero a prova di manomissione, scritto solo dal service role. Protegge i crediti Anthropic insieme all'auth obbligatoria sugli endpoint `/api/*`.
 
-> ⚠️ Esegui **tutti** gli script nel SQL Editor di Supabase, in ordine (v1 → … → v9). Ogni tabella ha la propria **RLS**.
+### `schema_v10_half_star_ratings.sql` — voti a mezza stella
+- Cambia `user_titles.personal_rating` e `user_diary.rating` da `integer` a `numeric(2,1)` con check a passi di 0.5 (0.5–5.0), per voti stile Letterboxd. I voti 1–5 esistenti restano validi: **nessuna migrazione dei dati**.
+
+> ⚠️ Esegui **tutti** gli script nel SQL Editor di Supabase, in ordine (v1 → … → v10). Ogni tabella ha la propria **RLS**.
 
 ---
 
@@ -215,7 +219,7 @@ src/
 
 ### 1. Supabase
 1. Crea un progetto (piano free = 2 progetti per account).
-2. SQL Editor → esegui **in ordine, tutti**: `schema.sql`, `schema_v2_achievements.sql`, `schema_v3_entities.sql`, `schema_v4_lists_diary.sql`, `schema_v5_episodes.sql`, `schema_v6_alerts.sql`, `schema_v7_push.sql`, `schema_v8_song_cache.sql`, `schema_v9_ai_usage.sql`.
+2. SQL Editor → esegui **in ordine, tutti**: `schema.sql`, `schema_v2_achievements.sql`, `schema_v3_entities.sql`, `schema_v4_lists_diary.sql`, `schema_v5_episodes.sql`, `schema_v6_alerts.sql`, `schema_v7_push.sql`, `schema_v8_song_cache.sql`, `schema_v9_ai_usage.sql`, `schema_v10_half_star_ratings.sql`.
    > ⚠️ Saltare uno script causa errori **404** sulle tabelle mancanti (es. `user_song_cache`, `ai_usage`). Eseguili tutti.
 3. Project Settings → API → copia **Project URL** e **Legacy anon key**.
 5. (Opzionale) Authentication → URL Configuration → **Site URL** = `https://ciak.vercel.app` e Additional Redirect URLs = `https://ciak.vercel.app/**`.

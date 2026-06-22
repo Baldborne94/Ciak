@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
+import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { listAll } from '../lib/userTitles'
@@ -122,7 +123,7 @@ export default function TasteProfile() {
       .map(([t, count]) => ({ label: TYPE_LABELS[t] ?? t, count }))
       .sort((a, b) => b.count - a.count)
 
-    const ratingDist = [5, 4, 3, 2, 1].map((star) => ({
+    const ratingDist = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5].map((star) => ({
       star,
       count: rated.filter((r) => r.rating === star).length,
     }))
@@ -207,7 +208,12 @@ export default function TasteProfile() {
           <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">⭐ Come voti</h2>
           <div className="space-y-3">
             {stats.ratingDist.map((r) => (
-              <Bar key={r.star} label={'★'.repeat(r.star)} value={r.count} max={maxRating} />
+              <Bar
+                key={r.star}
+                label={'★'.repeat(Math.floor(r.star)) + (r.star % 1 ? '½' : '')}
+                value={r.count}
+                max={maxRating}
+              />
             ))}
           </div>
         </section>
@@ -238,7 +244,7 @@ export default function TasteProfile() {
                   </div>
                   <div className="p-2">
                     <p className="line-clamp-1 text-xs font-semibold text-zinc-100">{r.title}</p>
-                    <p className="text-xs text-projector">{'★'.repeat(r.rating)}</p>
+                    <StarRating value={r.rating} size="sm" />
                   </div>
                 </Link>
               )
