@@ -19,6 +19,7 @@ const lists = [
 ]
 
 const trailing = [
+  { to: '/stasera', label: 'Stasera' },
   { to: '/recommendations', label: 'Per te' },
   { to: '/in-arrivo', label: 'In arrivo' },
   { to: '/profilo', label: 'Profilo' },

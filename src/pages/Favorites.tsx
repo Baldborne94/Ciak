@@ -5,6 +5,7 @@ import SavedTitleCard from '../components/SavedTitleCard'
 import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
+import { useToast } from '../lib/toastCtx'
 import { listFavorites, refFromMedia, upsertUserTitle } from '../lib/userTitles'
 import { listEntities } from '../lib/entities'
 import { profileUrl, logoUrl } from '../lib/tmdb'
@@ -28,6 +29,7 @@ function FavoriteEditor({
   onSaved: (next: UserTitle) => void
 }) {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const [notes, setNotes] = useState(record.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,6 +60,7 @@ function FavoriteEditor({
       onSaved(next)
     } catch (e) {
       setError((e as Error).message)
+      showToast(`Salvataggio non riuscito: ${(e as Error).message}`)
     } finally {
       setSaving(false)
     }

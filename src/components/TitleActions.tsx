@@ -8,6 +8,7 @@ import {
   type TitleRef,
 } from '../lib/userTitles'
 import { useAchievementsCtx } from '../lib/achievementsCtx'
+import { useToast } from '../lib/toastCtx'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
 const STATUS_ORDER: TitleStatus[] = [
@@ -20,6 +21,7 @@ const STATUS_ORDER: TitleStatus[] = [
 export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
   const { user } = useAuth()
   const { notify } = useAchievementsCtx()
+  const { showToast } = useToast()
   const [record, setRecord] = useState<UserTitle | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -64,6 +66,7 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
       })
     } catch (e) {
       setError((e as Error).message)
+      showToast(`Salvataggio non riuscito: ${(e as Error).message}`)
     } finally {
       setSaving(false)
     }

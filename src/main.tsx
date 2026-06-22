@@ -4,15 +4,18 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
 import { AuthProvider } from './lib/auth.tsx'
 import { AchievementsProvider } from './lib/achievementsContext.tsx'
+import { ToastProvider } from './lib/toastContext.tsx'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthProvider>
-        <AchievementsProvider>
-          <App />
-        </AchievementsProvider>
+        <ToastProvider>
+          <AchievementsProvider>
+            <App />
+          </AchievementsProvider>
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   </StrictMode>,

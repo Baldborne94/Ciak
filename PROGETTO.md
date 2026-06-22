@@ -72,7 +72,8 @@ Una sola pagina con schede (catalogo/entità) e, separati, gli **strumenti AI**:
 ### 📋 Liste e raccolte
 - Liste fisse: **Visto**, **Da vedere**, **In corso**, **Abbandonato** (dalla scheda titolo)
 - **🗂️ Liste personali tematiche** create da te ("Neo-noir", "Da vedere con lei"…) — "Aggiungi a lista" dalla scheda
-- **📖 Diario di visione** — registra cosa guardi e quando (data, voto, nota, rivisioni)
+- **📖 Diario di visione** — registra cosa guardi e quando (data, voto, nota, rivisioni); voto modificabile direttamente dal diario, niente doppioni dello stesso film nello stesso giorno
+- **🌙 Non so cosa vedere stasera** — l'AI sceglie in base a umore + tempo a disposizione
 
 ### ❤️ Preferiti (a sezioni)
 - **Titoli** con voto **a mezza stella (0.5–5.0 ★)** stile Letterboxd e **note** modificabili, ordinabili
@@ -103,8 +104,11 @@ La riga **"🤖 Usi AI rimasti oggi: X/3"** (`AiCreditsNote`) compare in modo co
 
 ```
 api/                        Serverless Anthropic (lato server, chiave protetta)
-  _lib/aiGuard.ts           Guardia condivisa: auth JWT + tetto giornaliero usi AI
+                            NB: la guardia AI (auth JWT + tetto giornaliero) è
+                            INLINE in ogni endpoint, non in un modulo condiviso:
+                            così finisce sempre nel bundle della funzione Vercel.
   recommendations.ts        Raccomandazioni personalizzate
+  tonight.ts                "Non so cosa vedere stasera" (umore + tempo a disposizione)
   saga-order.ts             Ordine-trama di una saga
   song-films.ts             Film che usano una canzone (con ricerca web)
   identify.ts               Riconosce titoli/persone da un'immagine
@@ -126,7 +130,8 @@ src/
   components/
     Layout, Navbar, MediaCard/Grid, MediaRow (caroselli con frecce),
     SavedTitleCard, TitleActions, RequireAuth, PageHeader, States,
-    AchievementToast, Modal (popup centrato),
+    AchievementToast, ToastHost (notifiche errori salvataggio),
+    Modal (popup centrato),
     EntityFavoriteButton (cuore persone/studi),
     AddToListButton, LogDiaryButton, SeasonsSection (stagioni/episodi)
   lib/
@@ -138,7 +143,9 @@ src/
     userTitles.ts           CRUD liste/preferiti, stats, trofei, listAll
     entities.ts             CRUD preferiti persone/studi
     lists.ts                CRUD liste personali
-    diary.ts                CRUD diario
+    diary.ts                CRUD diario (anti-duplicato stesso film+giorno,
+                            modifica voto, sync voto ↔ user_titles)
+    toastCtx.ts / toastContext.tsx  Notifiche toast (errori salvataggio)
     achievements.ts / achievementsContext.tsx  Trofei + temi
     types.ts                Tipi condivisi
   pages/
@@ -149,9 +156,10 @@ src/
     TitleDetail.tsx         Scheda titolo (provider, trailer, stagioni…)
     ListPage / Favorites / ListsPage / CustomListPage / DiaryPage
     TasteProfile.tsx        Profilo di gusto (statistiche)
+    TonightPage.tsx         "Non so cosa vedere stasera" (umore + tempo)
     Recommendations / TrophiesPage / Settings / Login / NotFound
   App.tsx                   Rotte
-  main.tsx                  Provider (Auth + Achievements) + Router
+  main.tsx                  Provider (Auth + Toast + Achievements) + Router
 ```
 
 ### Principio chiave
@@ -313,14 +321,16 @@ Il tema attivo persiste in `localStorage`.
 18. ✅ Riconoscimento immagini (Foto → titoli/persone via AI)
 19. ✅ Notifiche push per le nuove uscite (cron + Web Push)
 20. ✅ Protezione crediti AI lato server (auth JWT + tetto giornaliero su DB)
-21. ✅ Affidabilità endpoint AI (import dinamici, errori leggibili col codice HTTP)
+21. ✅ Affidabilità endpoint AI (guardia inline, errori leggibili col codice HTTP)
+22. ✅ Voti a mezza stella stile Letterboxd (0.5–5.0)
+23. ✅ "Non so cosa vedere stasera" (AI per umore + tempo)
 
 ### Idee in coda (da valutare)
 - ✅ ~~Stagioni/episodi in ordine~~ → fatto
 - ✅ ~~Tracking episodi~~ → fatto (`user_episodes`)
-- ⏳ **Aggiornare `@anthropic-ai/sdk`** (0.32.1 non conosce `output_config`/thinking adaptive: i parametri vengono inviati ma non sono tipizzati)
-- ⏳ **Errori di salvataggio non silenziosi** nel diario/liste (oggi alcuni `.catch(() => {})` nascondono i fallimenti)
-- ⏳ **Cancellare una voce di diario** dovrebbe rimuovere anche il voto sincronizzato in `user_titles`
+- ✅ ~~Aggiornare `@anthropic-ai/sdk`~~ → fatto (0.105.x)
+- ✅ ~~Errori di salvataggio non silenziosi~~ → fatto (sistema toast + `ToastHost`)
+- ✅ ~~Cancellare una voce di diario rimuove il voto sincronizzato in `user_titles`~~ → fatto
 - ⏳ **Preferenze utente** (`user_preferences`) e filtri avanzati (anno, lingua, paese)
 - ⏳ **Onboarding** + **command palette (Cmd+K)**
 

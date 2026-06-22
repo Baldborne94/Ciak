@@ -1,5 +1,3 @@
-// Given a song, ask Claude in which films it was famously used (needle-drops,
-// title themes, key scenes). Server-side only (ANTHROPIC_API_KEY).
 import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 
@@ -64,43 +62,70 @@ async function guardAi(req: GuardReq, res: GuardRes): Promise<{ creditsLeft: num
   }
 }
 
-interface RequestBody {
-  song?: string
+// Vercel serverless function (Node runtime). maxDuration alto: le chiamate Opus
+// possono superare il timeout di default e tornare un 500/504 senza corpo JSON.
+export const config = { maxDuration: 60 }
+
+// "Non so cosa vedere stasera": l'utente sceglie umore + tempo a disposizione,
+// noi gli passiamo anche i suoi gusti (preferiti/visti) e Claude propone titoli
+// che ENTRANO nel tempo disponibile e si adattano all'umore.
+// La chiave Anthropic vive SOLO lato server (mai prefisso VITE_).
+
+interface TitleSummary {
+  title: string
+  mediaType?: string
+  year?: string | number
+  genres?: string[]
 }
 
-const SYSTEM_PROMPT = `Sei un esperto di musica nel cinema. Data una canzone, individua i FILM
-(reali ed esistenti) in cui è stata usata in modo memorabile: needle-drop, scena chiave,
-tema, sigla o nei titoli di coda. USA LA RICERCA WEB per verificare gli utilizzi reali
-(fonti come Tunefind, WhatSong, IMDb soundtracks) invece di affidarti solo alla memoria.
+interface RequestBody {
+  mood?: string
+  maxMinutes?: number | null
+  wantSeries?: boolean
+  favorites?: TitleSummary[]
+  watched?: TitleSummary[]
+  excludedGenres?: string[]
+}
 
-REGOLE FERREE:
-- Considera ESCLUSIVAMENTE la canzone esatta indicata (titolo e, se c'è, artista).
-- NON sostituirla con un'altra canzone o un altro artista, nemmeno se simili.
-- Includi un film SOLO se proprio QUELLA canzone vi è usata, confermato da una fonte.
-- Per ogni film: titolo esatto come su IMDb/TMDB, l'anno, e una breve descrizione dell'uso.
-- Se non trovi utilizzi affidabili di QUELLA precisa canzone, restituisci lista vuota.
+const SYSTEM_PROMPT = `Sei il curatore cinematografico di Ciak, un cinefilo che aiuta a decidere cosa
+guardare STASERA, in base all'umore della persona e al tempo che ha a disposizione.
+Regole:
+- Rispetta il tempo disponibile: se è un film, la durata deve stare comodamente nel
+  tempo indicato; se la persona vuole una serie, suggerisci serie con episodi che
+  entrano nel tempo (indica quanti episodi può vedere).
+- Rispetta l'umore richiesto (es. leggero, adrenalina, romantico, riflessivo…).
+- Tieni conto dei suoi gusti (generi, registi, temi) dai titoli preferiti e visti.
+- Suggerisci titoli reali ed esistenti. Non ripetere titoli già visti o già preferiti.
+- Scrivi spiegazioni brevi, calorose e in italiano.
 
 Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza testo prima o dopo, nella forma:
-{"films":[{"title":"Titolo","year":"2005","scene":"descrizione dell'uso"}]}
-Se non trovi nulla, rispondi {"films":[]}.`
+{"suggestions":[{"title":"Titolo","year":"2010","length":"≈148 min","reason":"perché stasera è perfetto"}]}`
 
-// Best-effort JSON extraction from a free-form model answer (web search adds
-// citation text around the JSON, so we can't use strict structured outputs).
-function extractFilms(text: string): unknown {
+// Estrae il primo oggetto JSON dalla risposta (tollerante a testo/markdown extra).
+function extractJson<T>(text: string, fallback: T): T {
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/)
   const candidate = fence ? fence[1] : text
   const start = candidate.indexOf('{')
   const end = candidate.lastIndexOf('}')
-  if (start === -1 || end === -1) return { films: [] }
+  if (start === -1 || end === -1) return fallback
   try {
-    return JSON.parse(candidate.slice(start, end + 1))
+    return JSON.parse(candidate.slice(start, end + 1)) as T
   } catch {
-    return { films: [] }
+    return fallback
   }
 }
 
-// Give the web-search round-trips room before Vercel kills the function.
-export const config = { maxDuration: 60 }
+function describe(titles: TitleSummary[] = []): string {
+  if (titles.length === 0) return '(nessuno)'
+  return titles
+    .map((t) => {
+      const parts = [t.title]
+      if (t.year) parts.push(`(${t.year})`)
+      if (t.genres?.length) parts.push(`— ${t.genres.join(', ')}`)
+      return parts.join(' ')
+    })
+    .join('\n')
+}
 
 interface ApiRequest {
   method?: string
@@ -119,58 +144,58 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    res.status(503).json({ error: 'AI non configurata (manca ANTHROPIC_API_KEY lato server).' })
+    res.status(503).json({
+      error: 'La funzione AI non è ancora configurata (manca ANTHROPIC_API_KEY lato server).',
+    })
     return
   }
 
   const body: RequestBody =
     typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
-  const song = (body.song ?? '').trim()
 
-  if (!song) {
-    res.status(200).json({ films: [] })
-    return
-  }
+  const {
+    mood = 'qualcosa di bello',
+    maxMinutes = null,
+    wantSeries = false,
+    favorites = [],
+    watched = [],
+    excludedGenres = [],
+  } = body
+
+  const timeLine = wantSeries
+    ? maxMinutes
+      ? `Ha circa ${maxMinutes} minuti e vuole una SERIE: indica quanti episodi può vedere nel tempo.`
+      : `Vuole una SERIE: proponi serie da iniziare stasera.`
+    : maxMinutes
+      ? `Ha circa ${maxMinutes} minuti: il film deve stare comodamente in questo tempo.`
+      : `Non ha un limite di tempo stringente.`
+
+  const userPrompt = [
+    `Umore di stasera: ${mood}`,
+    timeLine,
+    `\nTitoli PREFERITI dell'utente:\n${describe(favorites)}`,
+    `\nTitoli GIÀ VISTI:\n${describe(watched)}`,
+    excludedGenres.length ? `\nGeneri da ESCLUDERE: ${excludedGenres.join(', ')}` : '',
+    `\nProponi da 3 a 5 titoli adatti a stasera, ciascuno con durata e una breve spiegazione.`,
+  ].join('\n')
 
   try {
     const guard = await guardAi(req as never, res as never)
     if (!guard) return
 
     const client = new Anthropic({ apiKey })
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const messages: any[] = [
-      {
-        role: 'user',
-        content: `Canzone: "${song}"\nIn quali film è stata usata? Verifica con la ricerca web e rispondi solo col JSON.`,
-      },
-    ]
-
-    // Web search is a server-side tool; the API may pause after several rounds.
-    // Re-send the assistant turn to let it finish (bounded loop).
-    // Fewer searches + maxDuration keep it fast and under the timeout.
-    const baseReq = {
+    const message = await client.messages.create({
       model: 'claude-opus-4-8',
       max_tokens: 1536,
       system: SYSTEM_PROMPT,
-      // Cast: il tool server-side web_search non combacia coi tipi "tool custom"
-      // (che richiedono input_schema) del nuovo SDK, ma è valido lato API.
-      tools: [
-        { type: 'web_search_20260209', name: 'web_search', max_uses: 3 },
-      ] as unknown as Anthropic.Messages.ToolUnion[],
-    }
-    let message = await client.messages.create({ ...baseReq, messages })
-    let rounds = 0
-    while (message.stop_reason === 'pause_turn' && rounds++ < 3) {
-      messages.push({ role: 'assistant', content: message.content })
-      message = await client.messages.create({ ...baseReq, messages })
-    }
+      messages: [{ role: 'user', content: userPrompt }],
+    })
 
     const text = message.content
       .filter((b) => b.type === 'text')
       .map((b) => (b as { text: string }).text)
       .join('\n')
-    const parsed = extractFilms(text) as Record<string, unknown>
+    const parsed = extractJson(text, { suggestions: [] })
     res.status(200).json({ ...parsed, aiCreditsLeft: guard.creditsLeft })
   } catch (err) {
     const msg = (err as Error).message
@@ -178,6 +203,6 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       res.status(502).json({ error: 'Crediti AI esauriti: ricarica il saldo su Anthropic (Plans & Billing).' })
       return
     }
-    res.status(500).json({ error: `Errore nella ricerca per canzone: ${msg}` })
+    res.status(500).json({ error: `Errore nel generare i suggerimenti: ${msg}` })
   }
 }

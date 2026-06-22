@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/auth'
+import { useToast } from '../lib/toastCtx'
 import Modal from './Modal'
 import StarRating from './StarRating'
 import { addDiaryEntry, type DiaryRef } from '../lib/diary'
@@ -10,6 +11,7 @@ function todayISO() {
 
 export default function LogDiaryButton({ item }: { item: DiaryRef }) {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const [open, setOpen] = useState(false)
   const [date, setDate] = useState(todayISO())
   const [rating, setRating] = useState(0)
@@ -36,8 +38,8 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
         setNote('')
         setDate(todayISO())
       }, 1200)
-    } catch {
-      /* ignore */
+    } catch (e) {
+      showToast(`Non sono riuscito a salvare nel diario: ${(e as Error).message}`)
     } finally {
       setSaving(false)
     }

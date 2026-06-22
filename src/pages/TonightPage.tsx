@@ -1,0 +1,161 @@
+import { useState } from 'react'
+import PageHeader from '../components/PageHeader'
+import { EmptyState, ErrorState, Loader } from '../components/States'
+import AiCreditsNote from '../components/AiCreditsNote'
+import { useAuth } from '../lib/auth'
+import { listByStatus, listFavorites } from '../lib/userTitles'
+import { aiFetch } from '../lib/aiClient'
+import type { UserTitle } from '../lib/types'
+
+interface Suggestion {
+  title: string
+  year?: string
+  length?: string
+  reason: string
+}
+
+const MOODS = [
+  { value: 'leggero e divertente', label: '😄 Leggero' },
+  { value: 'adrenalina e azione', label: '💥 Adrenalina' },
+  { value: 'romantico', label: '❤️ Romantico' },
+  { value: 'mente accesa, thriller o mistero', label: '🧠 Cervellotico' },
+  { value: 'profondo e drammatico', label: '🎭 Profondo' },
+  { value: 'nostalgia, un grande classico', label: '📼 Nostalgia' },
+  { value: 'da paura', label: '👻 Paura' },
+  { value: 'sci-fi e mondi nuovi', label: '🚀 Sci-fi' },
+]
+
+const TIMES = [
+  { minutes: 90, series: false, label: '⏱️ Ho ~1h30' },
+  { minutes: 120, series: false, label: '🍿 Ho ~2 ore' },
+  { minutes: 180, series: false, label: '🎬 Tempo libero' },
+  { minutes: 60, series: true, label: '📺 Una serie' },
+]
+
+function toSummary(record: UserTitle) {
+  return { title: record.title, mediaType: record.media_type }
+}
+
+export default function TonightPage() {
+  const { user } = useAuth()
+  const [mood, setMood] = useState(MOODS[0].value)
+  const [time, setTime] = useState(TIMES[1])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null)
+
+  async function generate() {
+    setLoading(true)
+    setError(null)
+    try {
+      const [favorites, watched] = user
+        ? await Promise.all([listFavorites(user.id), listByStatus(user.id, 'watched')])
+        : [[], []]
+
+      const data = await aiFetch<{ suggestions: Suggestion[] }>('/api/tonight', {
+        mood,
+        maxMinutes: time.minutes,
+        wantSeries: time.series,
+        favorites: favorites.map(toSummary),
+        watched: watched.map(toSummary),
+      })
+      setSuggestions(data.suggestions ?? [])
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div>
+      <PageHeader
+        eyebrow="Decidiamo insieme"
+        title="Non so cosa vedere stasera"
+        subtitle="Dimmi com'è il tuo umore e quanto tempo hai: ci penso io a scegliere."
+      />
+
+      <AiCreditsNote className="mb-6" />
+
+      <div className="space-y-6">
+        <div>
+          <p className="mb-2 text-xs uppercase tracking-wider text-zinc-500">Che umore hai?</p>
+          <div className="flex flex-wrap gap-2">
+            {MOODS.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => setMood(m.value)}
+                className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                  mood === m.value
+                    ? 'border-projector bg-projector/10 text-projector'
+                    : 'border-theatre-700 text-zinc-300 hover:border-projector/40'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="mb-2 text-xs uppercase tracking-wider text-zinc-500">Quanto tempo hai?</p>
+          <div className="flex flex-wrap gap-2">
+            {TIMES.map((t) => (
+              <button
+                key={t.label}
+                onClick={() => setTime(t)}
+                className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                  time.label === t.label
+                    ? 'border-projector bg-projector/10 text-projector'
+                    : 'border-theatre-700 text-zinc-300 hover:border-projector/40'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={generate} className="btn-primary" disabled={loading}>
+          {loading ? '✨ Sto scegliendo…' : '✨ Dimmi cosa vedere'}
+        </button>
+      </div>
+
+      <div className="mt-8">
+        {loading ? (
+          <Loader label="Sfoglio la cineteca per stasera…" />
+        ) : error ? (
+          <ErrorState title="Niente suggerimenti" message={error} icon="🤖" />
+        ) : suggestions === null ? (
+          <EmptyState
+            title="Pronto quando lo sei"
+            message="Scegli umore e tempo, poi premi «Dimmi cosa vedere»."
+            icon="🌙"
+          />
+        ) : suggestions.length === 0 ? (
+          <EmptyState
+            title="Non ho trovato nulla"
+            message="Prova a cambiare umore o tempo a disposizione, poi riprova."
+          />
+        ) : (
+          <div className="space-y-4">
+            {suggestions.map((s, i) => (
+              <div key={i} className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h3 className="font-display text-xl tracking-wide text-projector">{s.title}</h3>
+                  {s.year && <span className="text-sm text-zinc-500">{s.year}</span>}
+                  {s.length && (
+                    <span className="rounded-full bg-theatre-800 px-2 py-0.5 text-xs text-zinc-300">
+                      {s.length}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-sm text-zinc-300">{s.reason}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
