@@ -98,6 +98,10 @@ function IdentityHero({
 
   async function apply() {
     setApplying(true)
+    // Aggiorno subito Navbar e tema (ottimistico): il nome in alto deve cambiare
+    // al click, anche se poi il salvataggio su Supabase dovesse fallire.
+    setIdentity({ nickname, avatarUrl: base.avatarUrl, theme: persona.theme })
+    setAppliedNickname(nickname)
     try {
       // avatar_style = icona, avatar_seed = id persona (per ricostruire i colori).
       await saveIdentity(userId, {
@@ -106,10 +110,9 @@ function IdentityHero({
         avatarSeed: persona.id,
         theme: persona.theme,
       })
-      setIdentity({ nickname, avatarUrl: base.avatarUrl, theme: persona.theme })
-      setAppliedNickname(nickname)
     } catch {
-      // best-effort: un errore di rete/permessi non deve rompere la pagina.
+      // best-effort: un errore di rete/permessi non deve rompere la pagina né
+      // annullare l'aggiornamento già mostrato nel Navbar.
     } finally {
       setApplying(false)
     }
