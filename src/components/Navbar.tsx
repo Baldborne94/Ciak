@@ -19,12 +19,13 @@ const lists = [
   { to: '/liste', label: 'Liste personali' },
 ]
 
+// "Profilo" non è qui: sul desktop si apre cliccando l'avatar/nome in alto a
+// destra. Resta però nel menu compatto mobile (sotto), dove l'avatar è nascosto.
 const trailing = [
   { to: '/ai', label: '✨ AI' },
   { to: '/in-arrivo', label: 'In arrivo' },
   { to: '/statistiche', label: '📊 Statistiche' },
   { to: '/trophies', label: '🏆 Trofei' },
-  { to: '/profilo', label: 'Profilo' },
   { to: '/guida', label: '❓ Guida' },
 ]
 
@@ -130,7 +131,8 @@ export default function Navbar() {
                 <NavLink
                   to="/profilo"
                   title={user.email ?? undefined}
-                  className="hidden items-center gap-2 sm:flex"
+                  aria-label="Vai al profilo"
+                  className="hidden items-center gap-2 rounded-lg px-1 transition hover:bg-theatre-800/60 sm:flex"
                 >
                   <img
                     src={avatarUrl}
@@ -159,9 +161,10 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Compact nav for small/medium screens — flat, horizontal scroll */}
+      {/* Compact nav for small/medium screens — flat, horizontal scroll.
+          Qui includiamo "Profilo": su telefono l'avatar in alto è nascosto. */}
       <ul className="container-cine flex items-center gap-1 overflow-x-auto pb-2 lg:hidden">
-        {[...primary, ...lists, ...trailing].map((link) => (
+        {[...primary, ...lists, ...trailing, { to: '/profilo', label: 'Profilo' }].map((link) => (
           <li key={link.to}>
             <NavLink
               to={link.to}
