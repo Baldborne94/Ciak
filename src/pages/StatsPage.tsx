@@ -153,38 +153,29 @@ function YearsInFilm({ stats }: { stats: CinemaStats }) {
     <div className="rounded-2xl border border-theatre-800 bg-theatre-900/60 p-5">
       <h3 className="mb-4 font-display text-lg tracking-wide text-zinc-100">🎞️ Il tuo anno in film</h3>
       <div className="space-y-3">
-        {stats.yearsInFilm.map((y) => {
-          const maxBucket = y.ratings.length ? Math.max(...y.ratings.map((r) => r.count)) : 0
-          return (
-            <div key={y.year} className="flex items-start justify-between gap-4 border-b border-theatre-800/60 pb-4 last:border-0 last:pb-0">
-              <div className="shrink-0">
-                <p className="font-display text-2xl tracking-wide text-projector">{y.year}</p>
-                <p className="text-xs text-zinc-500">
-                  {y.count} visioni{y.avgRating != null && ` · media ${y.avgRating}`}
-                </p>
-              </div>
-              {y.ratings.length > 0 && (
-                <div className="w-44 shrink-0 sm:w-56">
-                  <p className="mb-1 text-right text-[11px] uppercase tracking-wider text-zinc-600">Come hai votato</p>
-                  <div className="space-y-1">
-                    {y.ratings.map((r) => (
-                      <div key={r.star} className="flex items-center gap-2">
-                        <span className="w-9 shrink-0 text-right text-xs text-amber-400">{r.star}★</span>
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-theatre-800">
-                          <div
-                            className="h-full rounded-full bg-amber-400/80"
-                            style={{ width: `${maxBucket ? (r.count / maxBucket) * 100 : 0}%` }}
-                          />
-                        </div>
-                        <span className="w-6 shrink-0 text-right text-xs text-zinc-500">{r.count}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+        {stats.yearsInFilm.map((y) => (
+          <div key={y.year} className="flex items-center justify-between gap-4 border-b border-theatre-800/60 pb-4 last:border-0 last:pb-0">
+            <div className="shrink-0">
+              <p className="font-display text-2xl tracking-wide text-projector">{y.year}</p>
+              <p className="text-xs text-zinc-500">
+                {y.count} visioni{y.avgRating != null && ` · media ${y.avgRating}`}
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 text-right">
+              <span className="rounded-full border border-theatre-700 bg-theatre-950/40 px-3 py-1 text-sm text-zinc-300">
+                🎬 {y.movies} film
+              </span>
+              <span className="rounded-full border border-theatre-700 bg-theatre-950/40 px-3 py-1 text-sm text-zinc-300">
+                📺 {y.series} serie
+              </span>
+              {y.fiveStars > 0 && (
+                <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-sm text-amber-300">
+                  ⭐ {y.fiveStars} da 5★
+                </span>
               )}
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
     </div>
   )
