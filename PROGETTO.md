@@ -105,6 +105,9 @@ La riga **"🤖 Usi AI rimasti oggi: X/3"** (`AiCreditsNote`) compare in modo co
 - Badge equipaggiabile che cambia avatar, titolo profilo e **tema dell'app**
 - Toast animato allo sblocco
 
+### ❓ Guida & onboarding (`/guida`)
+- Tutorial **a slide** navigabili (frecce ◀▶, puntini, tastiera ← →, barra di avanzamento): "Per cominciare" in 3 passi + **riferimento di tutti gli strumenti** una slide per area (Cerca, Liste, Diario & progressi, AI, Profilo & extra), con link diretti. Accessibile anche da ospite; richiamata dagli stati vuoti della home e dal menu (`❓ Guida`).
+
 ### ♿ Accessibilità
 - Modali con ruolo `dialog`, chiusura con **Esc**, focus spostato dentro e **trappola del focus** (Tab cicla, non esce)
 - Dropdown del menu con `aria-haspopup` / `aria-expanded` e chiusura da tastiera
@@ -150,7 +153,8 @@ src/
       con deep-link episodio e sync stato serie)
   pages/
     … StatsPage (statistiche cinefile), TrophiesPage (trofei),
-      PublicListPage (lista condivisa in sola lettura)
+      GuidePage (guida/onboarding), PublicListPage (lista condivisa),
+      PublicWatchlistPage (watchlist condivisa) — entrambe in sola lettura
   lib/
     tmdb.ts                 Client TMDB (trending, search bilingue, discover,
                             persone, studi, saghe, stagioni, provider, trailer,
@@ -354,6 +358,8 @@ Il tema attivo persiste in `localStorage`.
 27. ✅ Pass di accessibilità (focus trap modali, ARIA dropdown)
 28. ✅ Deep-link episodio dalla card "Riprendi a guardare"
 29. ✅ Filtri e ricerca nel diario (testo, anno, voto minimo)
+30. ✅ Watchlist "Da vedere" condivisibile (link pubblico opt-in)
+31. ✅ Guida / onboarding con riferimento di tutti gli strumenti (`/guida`)
 
 ### Idee in coda (da valutare)
 - ✅ ~~Stagioni/episodi in ordine~~ → fatto
