@@ -25,6 +25,7 @@ const trailing = [
   { to: '/statistiche', label: '📊 Statistiche' },
   { to: '/trophies', label: '🏆 Trofei' },
   { to: '/profilo', label: 'Profilo' },
+  { to: '/guida', label: '❓ Guida' },
 ]
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>

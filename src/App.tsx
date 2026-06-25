@@ -26,6 +26,7 @@ const StudioPage = lazy(() => import('./pages/StudioPage'))
 const CollectionPage = lazy(() => import('./pages/CollectionPage'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Login = lazy(() => import('./pages/Login'))
+const GuidePage = lazy(() => import('./pages/GuidePage'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 export default function App() {
@@ -41,6 +42,8 @@ export default function App() {
         <Route path="collection/:id" element={<CollectionPage />} />
         <Route path="title/:mediaType/:id" element={<TitleDetail />} />
         <Route path="login" element={<Login />} />
+        {/* Guida / tutorial: accessibile a tutti, anche da ospite. */}
+        <Route path="guida" element={<GuidePage />} />
         {/* Viste pubbliche condivise: niente login richiesto. */}
         <Route path="lista/:id" element={<PublicListPage />} />
         <Route path="watchlist/:userId" element={<PublicWatchlistPage />} />

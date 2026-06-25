@@ -155,9 +155,9 @@ export default function Dashboard() {
             <p className="text-zinc-300">
               La tua sala è ancora vuota. Esplora il catalogo e aggiungi i titoli che vuoi vedere.
             </p>
-            <div className="mt-4 flex justify-center gap-3">
+            <div className="mt-4 flex flex-wrap justify-center gap-3">
               <Link to="/search" className="btn-primary">🔍 Cerca & Esplora</Link>
-              <Link to="/search?mode=anime" className="btn-ghost">Sfoglia gli anime</Link>
+              <Link to="/guida" className="btn-ghost">❓ Come funziona</Link>
             </div>
           </section>
         )}
@@ -168,7 +168,10 @@ export default function Dashboard() {
             <p className="text-zinc-300">
               Accedi per creare le tue liste, salvare i preferiti e ricevere suggerimenti AI su misura.
             </p>
-            <Link to="/login" className="btn-primary mt-4 inline-flex">🎟️ Accedi</Link>
+            <div className="mt-4 flex flex-wrap justify-center gap-3">
+              <Link to="/login" className="btn-primary inline-flex">🎟️ Accedi</Link>
+              <Link to="/guida" className="btn-ghost inline-flex">❓ Scopri cosa puoi fare</Link>
+            </div>
           </section>
         )}
       </div>
