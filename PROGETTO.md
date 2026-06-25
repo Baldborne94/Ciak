@@ -106,7 +106,7 @@ La riga **"🤖 Usi AI rimasti oggi: X/3"** (`AiCreditsNote`) compare in modo co
 - Toast animato allo sblocco
 
 ### ❓ Guida & onboarding (`/guida`)
-- Tutorial per i nuovi ("Per cominciare" in 3 passi) e **riferimento di tutti gli strumenti** raggruppati (Cerca, Liste, Diario & progressi, AI, Profilo & extra), con link diretti. Accessibile anche da ospite; richiamata dagli stati vuoti della home e dal menu (`❓ Guida`).
+- Tutorial **a slide** navigabili (frecce ◀▶, puntini, tastiera ← →, barra di avanzamento): "Per cominciare" in 3 passi + **riferimento di tutti gli strumenti** una slide per area (Cerca, Liste, Diario & progressi, AI, Profilo & extra), con link diretti. Accessibile anche da ospite; richiamata dagli stati vuoti della home e dal menu (`❓ Guida`).
 
 ### ♿ Accessibilità
 - Modali con ruolo `dialog`, chiusura con **Esc**, focus spostato dentro e **trappola del focus** (Tab cicla, non esce)
