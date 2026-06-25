@@ -55,6 +55,8 @@ export interface MediaDetail extends MediaItem {
   watchProviders: WatchProviders | null
   // TV seasons (empty for movies)
   seasons: Season[]
+  // Raccolta/saga di cui il film fa parte (es. "Grindhouse Collection"), se presente.
+  collection: Collection | null
 }
 
 export interface Season {

@@ -235,6 +235,7 @@ interface RawDetail extends RawMedia {
   videos?: { results: RawVideo[] }
   'watch/providers'?: { results: Record<string, RawWatchRegion> }
   seasons?: RawSeason[]
+  belongs_to_collection?: { id: number; name: string; poster_path?: string | null } | null
 }
 
 interface RawSeason {
@@ -490,6 +491,13 @@ export async function getDetail(
     directors: [...new Set(directors)],
     trailerKey: trailer?.key ?? null,
     watchProviders,
+    collection: raw.belongs_to_collection
+      ? {
+          id: raw.belongs_to_collection.id,
+          name: raw.belongs_to_collection.name,
+          posterPath: raw.belongs_to_collection.poster_path ?? null,
+        }
+      : null,
     seasons: (raw.seasons ?? [])
       .filter((s) => (s.episode_count ?? 0) > 0)
       .map((s) => ({
