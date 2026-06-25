@@ -112,6 +112,19 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
         >
           {record?.is_favorite ? '❤️ Preferito' : '🤍 Aggiungi ai preferiti'}
         </button>
+
+        {/* "Da rivedere": rimette un titolo già visto nella watchlist senza
+            togliergli lo stato. Ha senso solo se non è già "Da vedere". */}
+        {record && record.status !== 'to_watch' && (
+          <button
+            onClick={() => apply({ rewatch: !record.rewatch })}
+            disabled={saving || loading}
+            title="Lo fa riapparire in «Da vedere» mantenendo lo stato attuale"
+            className={record.rewatch ? 'btn bg-projector text-theatre-950' : 'btn-ghost'}
+          >
+            {record.rewatch ? '🔁 Da rivedere' : '🔁 Rivedi'}
+          </button>
+        )}
       </div>
 
       {record && (

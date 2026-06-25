@@ -180,6 +180,9 @@ export interface UserTitle {
   notes: string | null
   watched_at: string | null
   genre_ids: number[]
+  // Film già visto che vuoi rivedere: lo fa riapparire nella watchlist "Da
+  // vedere" senza togliergli lo stato "Visto".
+  rewatch: boolean
   created_at: string
   updated_at: string
 }

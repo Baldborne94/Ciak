@@ -4,7 +4,7 @@ import SavedTitleCard from '../components/SavedTitleCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
-import { getWatchlistPublic, listByStatus, setWatchlistPublic } from '../lib/userTitles'
+import { getWatchlistPublic, listByStatus, listWatchlist, setWatchlistPublic } from '../lib/userTitles'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
 const COPY: Record<TitleStatus, { subtitle: string; icon: string }> = {
@@ -37,7 +37,9 @@ export default function ListPage({ status }: { status: TitleStatus }) {
     if (!user) return
     setLoading(true)
     setError(null)
-    listByStatus(user.id, status)
+    // La watchlist "Da vedere" include anche i film visti marcati "Da rivedere".
+    const load = status === 'to_watch' ? listWatchlist(user.id) : listByStatus(user.id, status)
+    load
       .then(setItems)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
