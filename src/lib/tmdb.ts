@@ -179,7 +179,14 @@ export async function searchMulti(query: string): Promise<MediaItem[]> {
   for (const raw of [...itData.results, ...enData.results]) {
     if (raw.media_type !== 'movie' && raw.media_type !== 'tv') continue
     const key = `${raw.media_type}-${raw.id}`
-    if (!merged.has(key)) merged.set(key, { item: normalise(raw), pop: raw.popularity ?? 0 })
+    const existing = merged.get(key)
+    if (!existing) {
+      merged.set(key, { item: normalise(raw), pop: raw.popularity ?? 0 })
+    } else if (!isReadableTitle(existing.item.title) && isReadableTitle(raw.title ?? raw.name)) {
+      // La variante it-IT può tornare un titolo in script non leggibile
+      // (cirillico, CJK…): se quella en-US è leggibile, preferiamo questa.
+      merged.set(key, { item: normalise(raw), pop: existing.pop })
+    }
   }
 
   return [...merged.values()]
@@ -236,6 +243,12 @@ interface RawDetail extends RawMedia {
   'watch/providers'?: { results: Record<string, RawWatchRegion> }
   seasons?: RawSeason[]
   belongs_to_collection?: { id: number; name: string; poster_path?: string | null } | null
+  translations?: {
+    translations?: {
+      iso_639_1?: string
+      data?: { title?: string; name?: string; overview?: string }
+    }[]
+  }
 }
 
 interface RawSeason {
@@ -409,11 +422,25 @@ export async function getDetail(
   id: number,
 ): Promise<MediaDetail> {
   const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, {
-    append_to_response: 'credits,recommendations,videos,watch/providers',
+    append_to_response: 'credits,recommendations,videos,watch/providers,translations',
     include_video_language: 'it,en',
   })
 
   const base = normalise(raw, type)
+
+  // Ripiego sull'inglese quando il titolo/trama in italiano non esistono e
+  // l'originale è in uno script non leggibile (cirillico, CJK, …): meglio «The
+  // Last Ronin» che «Последний Ронин». Le traduzioni arrivano da TMDB stesso.
+  const enTr = raw.translations?.translations?.find((t) => t.iso_639_1 === 'en')?.data
+  const englishTitle = enTr?.title || enTr?.name || null
+  const englishOverview = enTr?.overview || null
+  const title =
+    !isReadableTitle(base.title) &&
+    !isReadableTitle(base.originalTitle) &&
+    isReadableTitle(englishTitle)
+      ? (englishTitle as string)
+      : base.title
+  const overview = base.overview?.trim() ? base.overview : englishOverview ?? base.overview
   const cast: CastMember[] = (raw.credits?.cast ?? []).slice(0, 12).map((c) => ({
     id: c.id,
     name: c.name,
@@ -468,6 +495,8 @@ export async function getDetail(
 
   return {
     ...base,
+    title,
+    overview,
     // L'endpoint dettaglio espone i generi come oggetti (`genres`), non come
     // `genre_ids` (presente solo in liste/ricerca). Ricaviamo qui gli id, così
     // i titoli salvati conservano i generi — servono al "Profilo di gusto".
