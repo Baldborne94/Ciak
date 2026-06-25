@@ -85,7 +85,11 @@ export async function addToList(
       { onConflict: 'list_id,tmdb_id,media_type' },
     )
   if (error) throw new Error(error.message)
-  await client().from('user_lists').update({ updated_at: new Date().toISOString() }).eq('id', listId)
+  const { error: touchErr } = await client()
+    .from('user_lists')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', listId)
+  if (touchErr) throw new Error(touchErr.message)
 }
 
 export async function removeFromList(

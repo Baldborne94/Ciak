@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getSeason } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
+import { useToast } from '../lib/toastCtx'
 import {
   epKey,
   listWatchedEpisodes,
@@ -21,6 +22,7 @@ export default function SeasonsSection({
   seasons: Season[]
 }) {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const firstReal = seasons.find((s) => s.seasonNumber > 0) ?? seasons[0]
   const [selected, setSelected] = useState<number>(firstReal?.seasonNumber ?? 1)
   const [episodes, setEpisodes] = useState<Episode[]>([])
@@ -54,29 +56,37 @@ export default function SeasonsSection({
   async function toggleEpisode(e: Episode) {
     if (!user) return
     const key = epKey(selected, e.episodeNumber)
+    const prev = watched // snapshot per il rollback
     const next = new Set(watched)
-    if (watched.has(key)) {
-      next.delete(key)
-      setWatched(next)
-      await unmarkEpisode(user.id, tvId, selected, e.episodeNumber).catch(() => {})
-    } else {
-      next.add(key)
-      setWatched(next)
-      await markEpisode(user.id, tvId, selected, e.episodeNumber).catch(() => {})
+    const removing = watched.has(key)
+    if (removing) next.delete(key)
+    else next.add(key)
+    setWatched(next)
+    try {
+      if (removing) await unmarkEpisode(user.id, tvId, selected, e.episodeNumber)
+      else await markEpisode(user.id, tvId, selected, e.episodeNumber)
+    } catch {
+      setWatched(prev) // ripristina: il DB non è cambiato
+      showToast('Non sono riuscito a salvare l’episodio. Riprova.', 'error')
     }
   }
 
   async function toggleSeason() {
     if (!user) return
+    const prev = watched // snapshot per il rollback
     const next = new Set(watched)
     if (allWatched) {
       for (const e of episodes) next.delete(epKey(selected, e.episodeNumber))
-      setWatched(next)
-      await unmarkSeason(user.id, tvId, selected).catch(() => {})
     } else {
       for (const e of episodes) next.add(epKey(selected, e.episodeNumber))
-      setWatched(next)
-      await markSeason(user.id, tvId, selected, episodes.map((e) => e.episodeNumber)).catch(() => {})
+    }
+    setWatched(next)
+    try {
+      if (allWatched) await unmarkSeason(user.id, tvId, selected)
+      else await markSeason(user.id, tvId, selected, episodes.map((e) => e.episodeNumber))
+    } catch {
+      setWatched(prev) // ripristina: il DB non è cambiato
+      showToast('Non sono riuscito a salvare la stagione. Riprova.', 'error')
     }
   }
 

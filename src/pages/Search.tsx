@@ -264,13 +264,20 @@ export default function Search() {
     }
     setLoading(true)
     setError(null)
+    // Flag di cancellazione: digitando in fretta più richieste partono in
+    // parallelo; senza questo, una risposta lenta di una query vecchia potrebbe
+    // sovrascrivere i risultati di quella corrente.
+    let cancelled = false
     const run =
-      mode === 'people' ? searchPerson(query).then(setPeople)
-      : mode === 'studios' ? searchCompany(query).then(setStudios)
-      : mode === 'collections' ? searchCollection(query).then(setCollections)
+      mode === 'people' ? searchPerson(query).then((r) => { if (!cancelled) setPeople(r) })
+      : mode === 'studios' ? searchCompany(query).then((r) => { if (!cancelled) setStudios(r) })
+      : mode === 'collections' ? searchCollection(query).then((r) => { if (!cancelled) setCollections(r) })
       // Titoli (anche anime/cartoni): cerca per nome; il filtro "kind" è applicato lato client.
-      : searchMulti(query).then(setTitles)
-    run.catch((e: Error) => setError(e.message)).finally(() => setLoading(false))
+      : searchMulti(query).then((r) => { if (!cancelled) setTitles(r) })
+    run
+      .catch((e: Error) => { if (!cancelled) setError(e.message) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [query, mode])
 
   useEffect(() => {

@@ -129,7 +129,7 @@ async function syncRatingToUserTitle(
     .eq('media_type', ref.mediaType)
     .maybeSingle()
 
-  await db.from('user_titles').upsert(
+  const { error } = await db.from('user_titles').upsert(
     {
       user_id: userId,
       tmdb_id: ref.tmdbId,
@@ -147,6 +147,7 @@ async function syncRatingToUserTitle(
     },
     { onConflict: 'user_id,tmdb_id,media_type' },
   )
+  if (error) throw new Error(error.message)
 }
 
 // Ricalcola il voto del titolo (user_titles.personal_rating) a partire dalle
@@ -175,10 +176,11 @@ async function resyncUserTitleRating(userId: string, ref: DiaryRef): Promise<voi
     .limit(1)
 
   const rating = (rows?.[0] as { rating: number } | undefined)?.rating ?? null
-  await db
+  const { error } = await db
     .from('user_titles')
     .update({ personal_rating: rating })
     .eq('id', (existing as { id: string }).id)
+  if (error) throw new Error(error.message)
 }
 
 export async function listDiary(userId: string): Promise<DiaryEntry[]> {
