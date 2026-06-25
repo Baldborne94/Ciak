@@ -27,10 +27,10 @@ export interface DecadeBucket {
 export interface YearInFilm {
   year: number
   count: number
-  ratedCount: number
   avgRating: number | null
-  // Come hai votato quell'anno: conteggio per stella (decrescente, solo > 0).
-  ratings: { star: number; count: number }[]
+  movies: number
+  series: number
+  fiveStars: number // quanti capolavori personali (voto pieno) quell'anno
 }
 
 export interface CinemaStats {
@@ -195,35 +195,34 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
     .map(([decade, count]) => ({ decade, count }))
     .sort((a, b) => a.decade - b.decade)
 
-  // "Il tuo anno in film": dal diario, raggruppato per anno di visione.
-  const yearMap = new Map<number, { count: number; sum: number; rated: WatchedRef[] }>()
+  // "Il tuo anno in film": recap per anno di visione (non duplica l'istogramma
+  // globale dei voti, ma riassume volume e composizione dell'anno).
+  const yearMap = new Map<
+    number,
+    { count: number; sum: number; rated: number; movies: number; series: number; fives: number }
+  >()
   for (const r of refs) {
     if (!r.watchedYear) continue
-    const y = yearMap.get(r.watchedYear) ?? { count: 0, sum: 0, rated: [] }
+    const y = yearMap.get(r.watchedYear) ?? { count: 0, sum: 0, rated: 0, movies: 0, series: 0, fives: 0 }
     y.count++
+    if (r.type === 'movie') y.movies++
+    else y.series++
     if (r.rating != null) {
       y.sum += r.rating
-      y.rated.push(r)
+      y.rated++
+      if (r.rating === 5) y.fives++
     }
     yearMap.set(r.watchedYear, y)
   }
   const yearsInFilm: YearInFilm[] = [...yearMap.entries()]
-    .map(([year, v]) => {
-      // Distribuzione dei voti dell'anno: più robusta del singolo "migliore"
-      // quando si danno tanti voti pieni.
-      const buckets = new Map<number, number>()
-      for (const r of v.rated) buckets.set(r.rating as number, (buckets.get(r.rating as number) ?? 0) + 1)
-      const ratings = [...buckets.entries()]
-        .map(([star, count]) => ({ star, count }))
-        .sort((a, b) => b.star - a.star)
-      return {
-        year,
-        count: v.count,
-        ratedCount: v.rated.length,
-        avgRating: v.rated.length ? Math.round((v.sum / v.rated.length) * 100) / 100 : null,
-        ratings,
-      }
-    })
+    .map(([year, v]) => ({
+      year,
+      count: v.count,
+      avgRating: v.rated ? Math.round((v.sum / v.rated) * 100) / 100 : null,
+      movies: v.movies,
+      series: v.series,
+      fiveStars: v.fives,
+    }))
     .sort((a, b) => b.year - a.year)
 
   return {

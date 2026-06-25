@@ -138,6 +138,17 @@ export default function TitleDetail() {
               </p>
             )}
 
+            {/* Raccolta/saga: chiarisce quando un titolo è parte di un insieme
+                (es. Planet Terror / Death Proof dentro Grindhouse). */}
+            {detail.collection && (
+              <Link
+                to={`/collection/${detail.collection.id}`}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg border border-projector/30 bg-projector/5 px-3 py-1.5 text-sm text-projector transition hover:bg-projector/10"
+              >
+                🎬 Fa parte di: <span className="font-semibold">{detail.collection.name}</span> →
+              </Link>
+            )}
+
             <p className="mt-5 max-w-2xl text-zinc-300">
               {detail.overview || 'Nessuna trama disponibile.'}
             </p>
