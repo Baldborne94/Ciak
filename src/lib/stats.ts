@@ -28,7 +28,10 @@ export interface YearInFilm {
   year: number
   count: number
   avgRating: number | null
-  topTitle: { title: string; rating: number | null } | null
+  // Voto massimo dell'anno e tutti i titoli che lo hanno preso (con "+N" se molti).
+  topRating: number | null
+  topTitles: string[]
+  topCount: number
 }
 
 export interface CinemaStats {
@@ -194,25 +197,31 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
     .sort((a, b) => a.decade - b.decade)
 
   // "Il tuo anno in film": dal diario, raggruppato per anno di visione.
-  const yearMap = new Map<number, { count: number; sum: number; rated: number; top: WatchedRef | null }>()
+  const yearMap = new Map<number, { count: number; sum: number; rated: WatchedRef[] }>()
   for (const r of refs) {
     if (!r.watchedYear) continue
-    const y = yearMap.get(r.watchedYear) ?? { count: 0, sum: 0, rated: 0, top: null }
+    const y = yearMap.get(r.watchedYear) ?? { count: 0, sum: 0, rated: [] }
     y.count++
     if (r.rating != null) {
       y.sum += r.rating
-      y.rated++
-      if (!y.top || (y.top.rating ?? 0) < r.rating) y.top = r
+      y.rated.push(r)
     }
     yearMap.set(r.watchedYear, y)
   }
   const yearsInFilm: YearInFilm[] = [...yearMap.entries()]
-    .map(([year, v]) => ({
-      year,
-      count: v.count,
-      avgRating: v.rated ? Math.round((v.sum / v.rated) * 100) / 100 : null,
-      topTitle: v.top ? { title: v.top.title, rating: v.top.rating } : null,
-    }))
+    .map(([year, v]) => {
+      // I "migliori" dell'anno: tutti i titoli col voto massimo (spesso più 5★).
+      const topRating = v.rated.length ? Math.max(...v.rated.map((r) => r.rating as number)) : null
+      const tops = topRating != null ? v.rated.filter((r) => r.rating === topRating) : []
+      return {
+        year,
+        count: v.count,
+        avgRating: v.rated.length ? Math.round((v.sum / v.rated.length) * 100) / 100 : null,
+        topRating,
+        topTitles: tops.slice(0, 4).map((r) => r.title),
+        topCount: tops.length,
+      }
+    })
     .sort((a, b) => b.year - a.year)
 
   return {

@@ -1,8 +1,64 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { computeStats, type CinemaStats, type CountItem } from '../lib/stats'
+
+// Ritratto sintetico: una frase + chip salienti, derivati dagli aggregati.
+function Portrait({ stats }: { stats: CinemaStats }) {
+  const genre = stats.topGenres[0]
+  const director = stats.topDirectors.find((d) => d.count > 1) ?? stats.topDirectors[0]
+  const actor = stats.topActors.find((a) => a.count > 1) ?? stats.topActors[0]
+  const favDecade = stats.decades.length
+    ? [...stats.decades].sort((a, b) => b.count - a.count)[0]
+    : null
+
+  // Frase costruita solo coi pezzi disponibili (con evidenziati come nodi React,
+  // niente HTML grezzo dai dati TMDB), così resta sempre sensata.
+  const hl = (s: string) => <span className="text-projector">{s}</span>
+  const segments: ReactNode[] = []
+  if (genre) segments.push(<>ti lasci conquistare dai titoli {hl(genre.name.toLowerCase())}</>)
+  if (favDecade) segments.push(<>con un debole per gli {hl(`anni ${favDecade.decade}`)}</>)
+  if (director && director.count > 1) segments.push(<>torni spesso da {hl(director.name)}</>)
+
+  const chips: { icon: string; label: string; value: string }[] = []
+  if (genre) chips.push({ icon: '🎭', label: 'Genere feticcio', value: genre.name })
+  if (favDecade) chips.push({ icon: '📅', label: 'Decennio preferito', value: `Anni ${favDecade.decade}` })
+  if (director && director.count > 1) chips.push({ icon: '🎥', label: 'Regista ricorrente', value: director.name })
+  if (actor && actor.count > 1) chips.push({ icon: '🌟', label: 'Attore ricorrente', value: actor.name })
+
+  return (
+    <div className="rounded-2xl border border-projector/30 bg-gradient-to-br from-projector/10 to-theatre-900/40 p-6">
+      <p className="text-xs font-semibold uppercase tracking-widest text-projector/80">Il tuo ritratto</p>
+      <p className="mt-2 font-display text-xl leading-relaxed text-zinc-100 sm:text-2xl">
+        {segments.length === 0 ? (
+          'Continua a guardare e segnare titoli: il tuo ritratto cinefilo prenderà forma.'
+        ) : (
+          <>
+            Da quello che guardi,{' '}
+            {segments.map((seg, i) => (
+              <span key={i}>
+                {seg}
+                {i < segments.length - 1 ? ', ' : '.'}
+              </span>
+            ))}
+          </>
+        )}
+      </p>
+      {chips.length > 0 && (
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {chips.map((c) => (
+            <div key={c.label} className="rounded-xl border border-theatre-800 bg-theatre-950/40 p-3">
+              <div className="text-xl">{c.icon}</div>
+              <p className="mt-1 text-[11px] uppercase tracking-wider text-zinc-500">{c.label}</p>
+              <p className="line-clamp-1 text-sm font-semibold text-zinc-200" title={c.value}>{c.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function StatCard({ value, label, icon }: { value: string; label: string; icon: string }) {
   return (
@@ -98,15 +154,33 @@ function YearsInFilm({ stats }: { stats: CinemaStats }) {
       <h3 className="mb-4 font-display text-lg tracking-wide text-zinc-100">🎞️ Il tuo anno in film</h3>
       <div className="space-y-3">
         {stats.yearsInFilm.map((y) => (
-          <div key={y.year} className="flex items-center justify-between gap-3 border-b border-theatre-800/60 pb-3 last:border-0 last:pb-0">
-            <div>
+          <div key={y.year} className="flex items-start justify-between gap-3 border-b border-theatre-800/60 pb-3 last:border-0 last:pb-0">
+            <div className="shrink-0">
               <p className="font-display text-2xl tracking-wide text-projector">{y.year}</p>
               <p className="text-xs text-zinc-500">{y.count} visioni{y.avgRating != null && ` · media ${y.avgRating}`}</p>
             </div>
-            {y.topTitle && (
-              <div className="max-w-[60%] text-right">
-                <p className="text-[11px] uppercase tracking-wider text-zinc-600">Il migliore</p>
-                <p className="line-clamp-1 text-sm text-zinc-300">{y.topTitle.title}</p>
+            {y.topTitles.length > 0 && (
+              <div className="max-w-[65%] text-right">
+                <p className="text-[11px] uppercase tracking-wider text-zinc-600">
+                  {y.topCount > 1 ? `I migliori` : 'Il migliore'}
+                  {y.topRating != null && <span className="ml-1 text-amber-400">{y.topRating}★</span>}
+                </p>
+                <div className="mt-1 flex flex-wrap justify-end gap-1.5">
+                  {y.topTitles.map((t) => (
+                    <span
+                      key={t}
+                      className="max-w-full truncate rounded-full border border-theatre-700 bg-theatre-950/40 px-2 py-0.5 text-xs text-zinc-300"
+                      title={t}
+                    >
+                      {t}
+                    </span>
+                  ))}
+                  {y.topCount > y.topTitles.length && (
+                    <span className="rounded-full px-2 py-0.5 text-xs text-zinc-500">
+                      +{y.topCount - y.topTitles.length}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -153,6 +227,8 @@ export default function StatsPage() {
         />
       ) : (
         <div className="space-y-6">
+          <Portrait stats={stats} />
+
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <StatCard icon="🎬" value={String(stats.movies)} label="Film visti" />
             <StatCard icon="📺" value={String(stats.series)} label="Serie viste" />
