@@ -153,38 +153,38 @@ function YearsInFilm({ stats }: { stats: CinemaStats }) {
     <div className="rounded-2xl border border-theatre-800 bg-theatre-900/60 p-5">
       <h3 className="mb-4 font-display text-lg tracking-wide text-zinc-100">🎞️ Il tuo anno in film</h3>
       <div className="space-y-3">
-        {stats.yearsInFilm.map((y) => (
-          <div key={y.year} className="flex items-start justify-between gap-3 border-b border-theatre-800/60 pb-3 last:border-0 last:pb-0">
-            <div className="shrink-0">
-              <p className="font-display text-2xl tracking-wide text-projector">{y.year}</p>
-              <p className="text-xs text-zinc-500">{y.count} visioni{y.avgRating != null && ` · media ${y.avgRating}`}</p>
-            </div>
-            {y.topTitles.length > 0 && (
-              <div className="max-w-[65%] text-right">
-                <p className="text-[11px] uppercase tracking-wider text-zinc-600">
-                  {y.topCount > 1 ? `I migliori` : 'Il migliore'}
-                  {y.topRating != null && <span className="ml-1 text-amber-400">{y.topRating}★</span>}
+        {stats.yearsInFilm.map((y) => {
+          const maxBucket = y.ratings.length ? Math.max(...y.ratings.map((r) => r.count)) : 0
+          return (
+            <div key={y.year} className="flex items-start justify-between gap-4 border-b border-theatre-800/60 pb-4 last:border-0 last:pb-0">
+              <div className="shrink-0">
+                <p className="font-display text-2xl tracking-wide text-projector">{y.year}</p>
+                <p className="text-xs text-zinc-500">
+                  {y.count} visioni{y.avgRating != null && ` · media ${y.avgRating}`}
                 </p>
-                <div className="mt-1 flex flex-wrap justify-end gap-1.5">
-                  {y.topTitles.map((t) => (
-                    <span
-                      key={t}
-                      className="max-w-full truncate rounded-full border border-theatre-700 bg-theatre-950/40 px-2 py-0.5 text-xs text-zinc-300"
-                      title={t}
-                    >
-                      {t}
-                    </span>
-                  ))}
-                  {y.topCount > y.topTitles.length && (
-                    <span className="rounded-full px-2 py-0.5 text-xs text-zinc-500">
-                      +{y.topCount - y.topTitles.length}
-                    </span>
-                  )}
-                </div>
               </div>
-            )}
-          </div>
-        ))}
+              {y.ratings.length > 0 && (
+                <div className="w-44 shrink-0 sm:w-56">
+                  <p className="mb-1 text-right text-[11px] uppercase tracking-wider text-zinc-600">Come hai votato</p>
+                  <div className="space-y-1">
+                    {y.ratings.map((r) => (
+                      <div key={r.star} className="flex items-center gap-2">
+                        <span className="w-9 shrink-0 text-right text-xs text-amber-400">{r.star}★</span>
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-theatre-800">
+                          <div
+                            className="h-full rounded-full bg-amber-400/80"
+                            style={{ width: `${maxBucket ? (r.count / maxBucket) * 100 : 0}%` }}
+                          />
+                        </div>
+                        <span className="w-6 shrink-0 text-right text-xs text-zinc-500">{r.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

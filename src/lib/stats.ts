@@ -27,11 +27,10 @@ export interface DecadeBucket {
 export interface YearInFilm {
   year: number
   count: number
+  ratedCount: number
   avgRating: number | null
-  // Voto massimo dell'anno e tutti i titoli che lo hanno preso (con "+N" se molti).
-  topRating: number | null
-  topTitles: string[]
-  topCount: number
+  // Come hai votato quell'anno: conteggio per stella (decrescente, solo > 0).
+  ratings: { star: number; count: number }[]
 }
 
 export interface CinemaStats {
@@ -210,16 +209,19 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
   }
   const yearsInFilm: YearInFilm[] = [...yearMap.entries()]
     .map(([year, v]) => {
-      // I "migliori" dell'anno: tutti i titoli col voto massimo (spesso più 5★).
-      const topRating = v.rated.length ? Math.max(...v.rated.map((r) => r.rating as number)) : null
-      const tops = topRating != null ? v.rated.filter((r) => r.rating === topRating) : []
+      // Distribuzione dei voti dell'anno: più robusta del singolo "migliore"
+      // quando si danno tanti voti pieni.
+      const buckets = new Map<number, number>()
+      for (const r of v.rated) buckets.set(r.rating as number, (buckets.get(r.rating as number) ?? 0) + 1)
+      const ratings = [...buckets.entries()]
+        .map(([star, count]) => ({ star, count }))
+        .sort((a, b) => b.star - a.star)
       return {
         year,
         count: v.count,
+        ratedCount: v.rated.length,
         avgRating: v.rated.length ? Math.round((v.sum / v.rated.length) * 100) / 100 : null,
-        topRating,
-        topTitles: tops.slice(0, 4).map((r) => r.title),
-        topCount: tops.length,
+        ratings,
       }
     })
     .sort((a, b) => b.year - a.year)

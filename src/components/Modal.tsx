@@ -13,24 +13,29 @@ export default function Modal({
   children: ReactNode
 }) {
   const panelRef = useRef<HTMLDivElement>(null)
+  // onClose spesso è una funzione inline (cambia a ogni render del genitore):
+  // la teniamo in una ref così l'effetto sotto gira UNA volta sola al montaggio
+  // e non ruba il focus a ogni battitura.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   useEffect(() => {
     const panel = panelRef.current
-    // Sposta il focus sul primo elemento interattivo (o sul pannello stesso).
-    const focusables = panel?.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
-    )
-    ;(focusables && focusables.length ? focusables[0] : panel)?.focus()
+    const focusablesSelector =
+      'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+
+    // Sposta il focus sul primo elemento interattivo (o sul pannello stesso),
+    // una sola volta all'apertura.
+    const initial = panel?.querySelectorAll<HTMLElement>(focusablesSelector)
+    ;(initial && initial.length ? initial[0] : panel)?.focus()
 
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') {
-        onClose()
+        onCloseRef.current()
         return
       }
       if (e.key !== 'Tab' || !panel) return
-      const items = panel.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])',
-      )
+      const items = panel.querySelectorAll<HTMLElement>(focusablesSelector)
       if (items.length === 0) return
       const first = items[0]
       const last = items[items.length - 1]
@@ -46,7 +51,8 @@ export default function Modal({
 
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+    // Eseguito una sola volta: niente dipendenze (onClose letto via ref).
+  }, [])
 
   return (
     <div
