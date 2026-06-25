@@ -3,18 +3,52 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
-import { deleteList, getList, getListItems, removeFromList } from '../lib/lists'
+import { useToast } from '../lib/toastCtx'
+import { deleteList, getList, getListItems, removeFromList, setListPublic } from '../lib/lists'
 import { posterUrl } from '../lib/tmdb'
 import type { UserList, UserListItem } from '../lib/types'
 
 export default function CustomListPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
+  const { showToast } = useToast()
   const navigate = useNavigate()
   const [list, setList] = useState<UserList | null>(null)
   const [items, setItems] = useState<UserListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [updatingVisibility, setUpdatingVisibility] = useState(false)
+
+  const shareUrl = id ? `${window.location.origin}/lista/${id}` : ''
+
+  async function toggleVisibility() {
+    if (!id || !list) return
+    const next = !list.is_public
+    setUpdatingVisibility(true)
+    setList({ ...list, is_public: next }) // ottimistico
+    try {
+      await setListPublic(id, next)
+      if (next) {
+        await copyShareLink()
+      } else {
+        showToast('Lista resa privata.', 'info')
+      }
+    } catch (e) {
+      setList({ ...list, is_public: !next }) // rollback
+      showToast(`Non sono riuscito ad aggiornare la visibilità: ${(e as Error).message}`)
+    } finally {
+      setUpdatingVisibility(false)
+    }
+  }
+
+  async function copyShareLink() {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      showToast('Link copiato negli appunti!', 'success')
+    } catch {
+      showToast(`Link condivisibile: ${shareUrl}`, 'info')
+    }
+  }
 
   useEffect(() => {
     if (!id || !user) return
@@ -47,10 +81,32 @@ export default function CustomListPage() {
   return (
     <div>
       <PageHeader eyebrow="Lista personale" title={list.name} subtitle={list.description ?? undefined}>
-        <button onClick={onDelete} className="btn-ghost text-curtain-light">
-          🗑️ Elimina lista
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={toggleVisibility}
+            disabled={updatingVisibility}
+            className="btn-ghost"
+            title={list.is_public ? 'Chiunque con il link può vederla' : 'Solo tu puoi vederla'}
+          >
+            {list.is_public ? '🌍 Pubblica' : '🔒 Privata'}
+          </button>
+          <button onClick={onDelete} className="btn-ghost text-curtain-light">
+            🗑️ Elimina lista
+          </button>
+        </div>
       </PageHeader>
+
+      {list.is_public && (
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-projector/30 bg-projector/5 px-4 py-3">
+          <span className="text-sm text-zinc-300">🔗 Lista condivisibile:</span>
+          <code className="flex-1 truncate rounded bg-theatre-950/60 px-2 py-1 text-xs text-projector">
+            {shareUrl}
+          </code>
+          <button onClick={copyShareLink} className="btn-primary px-3 py-1.5 text-sm">
+            Copia link
+          </button>
+        </div>
+      )}
 
       {items.length === 0 ? (
         <EmptyState

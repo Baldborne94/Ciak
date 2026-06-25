@@ -19,11 +19,11 @@ const lists = [
   { to: '/liste', label: 'Liste personali' },
 ]
 
-// "Trofei" è temporaneamente nascosto: la feature verrà rifatta meglio in
-// futuro. La pagina e la lib restano nel codice ma non sono raggiungibili.
 const trailing = [
   { to: '/ai', label: '✨ AI' },
   { to: '/in-arrivo', label: 'In arrivo' },
+  { to: '/statistiche', label: '📊 Statistiche' },
+  { to: '/trophies', label: '🏆 Trofei' },
   { to: '/profilo', label: 'Profilo' },
 ]
 
@@ -70,10 +70,13 @@ export default function Navbar() {
           >
             <button
               onClick={() => setListsOpen((o) => !o)}
+              onKeyDown={(e) => e.key === 'Escape' && setListsOpen(false)}
+              aria-haspopup="true"
+              aria-expanded={listsOpen}
               className="flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-100"
             >
               Le mie liste
-              <span className="text-xs">▾</span>
+              <span className="text-xs" aria-hidden="true">▾</span>
             </button>
             {listsOpen && (
               <ul className="absolute left-0 top-full z-40 w-44 overflow-hidden rounded-lg border border-theatre-800 bg-theatre-900 py-1 shadow-reel">

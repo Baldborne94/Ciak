@@ -51,6 +51,15 @@ export async function createList(
   return data as UserList
 }
 
+// Rende una lista pubblica (condivisibile via link) o di nuovo privata.
+export async function setListPublic(id: string, isPublic: boolean): Promise<void> {
+  const { error } = await client()
+    .from('user_lists')
+    .update({ is_public: isPublic })
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
 export async function deleteList(id: string): Promise<void> {
   const { error } = await client().from('user_lists').delete().eq('id', id)
   if (error) throw new Error(error.message)

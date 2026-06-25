@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
 import Modal from './Modal'
 import StarRating from './StarRating'
-import { addDiaryEntry, type DiaryRef } from '../lib/diary'
+import { addDiaryEntry, countDiaryViewings, type DiaryRef } from '../lib/diary'
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10)
@@ -18,6 +18,15 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
+  // Visioni già registrate: se > 0, questa è una rivisione.
+  const [priorViewings, setPriorViewings] = useState(0)
+
+  useEffect(() => {
+    if (!open || !user) return
+    countDiaryViewings(user.id, item.tmdbId, item.mediaType)
+      .then(setPriorViewings)
+      .catch(() => setPriorViewings(0))
+  }, [open, user, item.tmdbId, item.mediaType])
 
   if (!user) return null
 
@@ -57,6 +66,12 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
             <p className="py-3 text-center text-sm text-projector">✓ Aggiunto al diario!</p>
           ) : (
             <div className="space-y-4">
+              {priorViewings > 0 && (
+                <div className="rounded-md border border-projector/30 bg-projector/5 px-3 py-2 text-xs text-projector">
+                  🔁 Rivisione · sarà la tua visione n.{priorViewings + 1}. Registrane una nuova con
+                  una data diversa.
+                </div>
+              )}
               <div>
                 <label className="text-xs uppercase tracking-wider text-zinc-500">Visto il</label>
                 <input
@@ -73,13 +88,16 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
                   <StarRating value={rating || null} onChange={(v) => setRating(v ?? 0)} size="lg" />
                 </div>
               </div>
-              <textarea
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Due parole su questa visione…"
-                rows={3}
-                className="w-full resize-none rounded-md border border-theatre-700 bg-theatre-900 px-2 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:border-projector/50 focus:outline-none"
-              />
+              <div>
+                <label className="text-xs uppercase tracking-wider text-zinc-500">La tua recensione</label>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Cosa ti ha lasciato? Scrivi quanto vuoi…"
+                  rows={6}
+                  className="mt-1 w-full resize-y rounded-md border border-theatre-700 bg-theatre-900 px-2 py-1.5 text-sm leading-relaxed text-zinc-200 placeholder:text-zinc-600 focus:border-projector/50 focus:outline-none"
+                />
+              </div>
               <button onClick={save} disabled={saving} className="btn-primary w-full py-2 text-sm">
                 {saving ? 'Salvo…' : 'Salva nel diario'}
               </button>

@@ -14,7 +14,7 @@ function ContinueCard({ c }: { c: ContinueItem }) {
   const pct = c.totalEpisodes > 0 ? Math.round((c.watchedCount / c.totalEpisodes) * 100) : 0
   return (
     <Link
-      to={`/title/tv/${c.tvId}`}
+      to={`/title/tv/${c.tvId}?season=${c.season}&episode=${c.episode}#episodi`}
       className="group w-40 shrink-0 overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
     >
       <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
