@@ -9,6 +9,8 @@ import {
   markSeason,
   unmarkEpisode,
   unmarkSeason,
+  syncSeriesStatus,
+  type SeriesRef,
 } from '../lib/episodes'
 import type { Episode, Season } from '../lib/types'
 
@@ -17,12 +19,19 @@ const STILL_BASE = 'https://image.tmdb.org/t/p/w300'
 export default function SeasonsSection({
   tvId,
   seasons,
+  series,
 }: {
   tvId: number
   seasons: Season[]
+  series: SeriesRef
 }) {
   const { user } = useAuth()
   const { showToast } = useToast()
+  // Episodi totali della serie (escludendo gli "Speciali", stagione 0): serve a
+  // capire quando la serie è completa e va segnata "Vista".
+  const totalEpisodes = seasons
+    .filter((s) => s.seasonNumber > 0)
+    .reduce((sum, s) => sum + s.episodeCount, 0)
   const firstReal = seasons.find((s) => s.seasonNumber > 0) ?? seasons[0]
   const [selected, setSelected] = useState<number>(firstReal?.seasonNumber ?? 1)
   const [episodes, setEpisodes] = useState<Episode[]>([])
@@ -65,6 +74,8 @@ export default function SeasonsSection({
     try {
       if (removing) await unmarkEpisode(user.id, tvId, selected, e.episodeNumber)
       else await markEpisode(user.id, tvId, selected, e.episodeNumber)
+      // Allinea lo stato della serie (In corso / Vista) al progresso reale.
+      await syncSeriesStatus(user.id, series, next.size, totalEpisodes).catch(() => {})
     } catch {
       setWatched(prev) // ripristina: il DB non è cambiato
       showToast('Non sono riuscito a salvare l’episodio. Riprova.', 'error')
@@ -84,6 +95,8 @@ export default function SeasonsSection({
     try {
       if (allWatched) await unmarkSeason(user.id, tvId, selected)
       else await markSeason(user.id, tvId, selected, episodes.map((e) => e.episodeNumber))
+      // Allinea lo stato della serie (In corso / Vista) al progresso reale.
+      await syncSeriesStatus(user.id, series, next.size, totalEpisodes).catch(() => {})
     } catch {
       setWatched(prev) // ripristina: il DB non è cambiato
       showToast('Non sono riuscito a salvare la stagione. Riprova.', 'error')

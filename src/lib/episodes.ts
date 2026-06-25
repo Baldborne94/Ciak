@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
 import { getDetail, displayTitle } from './tmdb'
+import { upsertUserTitle } from './userTitles'
+import type { TitleStatus } from './types'
 
 function client() {
   if (!supabase) {
@@ -86,6 +88,55 @@ export async function unmarkSeason(
     .eq('tv_id', tvId)
     .eq('season_number', season)
   if (error) throw new Error(error.message)
+}
+
+// Tiene allineato lo stato della serie in user_titles con il progresso reale
+// degli episodi: appena segni un episodio la serie entra in "In corso", e
+// quando hai visto tutti gli episodi disponibili diventa "Vista". Senza questo,
+// il tracking episodi vivrebbe isolato — niente "In corso", niente conteggio
+// "viste", nessun apporto al profilo di gusto o ai trofei.
+export interface SeriesRef {
+  tmdbId: number
+  title: string
+  posterPath: string | null
+  genreIds: number[]
+}
+
+// Stato della serie in funzione del progresso. null = non toccare (0 visti).
+// Esportata a parte così la logica è testabile senza Supabase.
+export function seriesStatusFor(
+  watchedCount: number,
+  totalEpisodes: number,
+): TitleStatus | null {
+  if (watchedCount <= 0) return null
+  return totalEpisodes > 0 && watchedCount >= totalEpisodes ? 'watched' : 'in_progress'
+}
+
+export async function syncSeriesStatus(
+  userId: string,
+  ref: SeriesRef,
+  watchedCount: number,
+  totalEpisodes: number,
+): Promise<void> {
+  // 0 episodi visti: non tocchiamo lo stato (non vogliamo declassare una serie
+  // già segnata "vista" a mano, né creare righe fantasma).
+  const status = seriesStatusFor(watchedCount, totalEpisodes)
+  if (!status) return
+  await upsertUserTitle(
+    userId,
+    {
+      tmdbId: ref.tmdbId,
+      mediaType: 'tv',
+      title: ref.title,
+      posterPath: ref.posterPath,
+      genreIds: ref.genreIds,
+    },
+    {
+      status,
+      // Segna la data solo al completamento; in corso resta quella esistente.
+      watched_at: status === 'watched' ? new Date().toISOString() : undefined,
+    },
+  )
 }
 
 export interface ContinueItem {

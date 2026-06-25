@@ -317,7 +317,16 @@ export default function TitleDetail() {
 
       {/* Seasons & episodes (TV only) */}
       {detail.mediaType === 'tv' && detail.seasons.length > 0 && (
-        <SeasonsSection tvId={detail.id} seasons={detail.seasons} />
+        <SeasonsSection
+          tvId={detail.id}
+          seasons={detail.seasons}
+          series={{
+            tmdbId: detail.id,
+            title: displayTitle(detail),
+            posterPath: detail.posterPath,
+            genreIds: detail.genreIds,
+          }}
+        />
       )}
 
       {/* Cast */}

@@ -58,7 +58,7 @@ Una sola pagina con schede (catalogo/entità) e, separati, gli **strumenti AI**:
 - Backdrop, locandina, trama, generi, voto; **titolo originale** + 🇮🇹 italiano se diverso
 - **📺 Dove guardarlo** (streaming Italia): piattaforme in abbonamento / noleggio / acquisto + link JustWatch
 - **🎬 Trailer** YouTube integrato
-- **📺 Stagioni ed episodi** (serie/anime): selettore stagione + episodi in ordine (titolo, data, durata, voto, trama)
+- **📺 Stagioni ed episodi** (serie/anime): selettore stagione + episodi in ordine (titolo, data, durata, voto, trama). Segnando episodi/stagioni la serie entra automaticamente in **In corso** e diventa **Vista** al completamento (sync con `user_titles`); il salvataggio fa rollback con avviso se fallisce
 - **Scheda tecnica**: regista/creatore, lingua originale, stato, paese, stagioni/episodi, durata, budget e incassi
 - **Studi** e **cast** cliccabili; raccomandazioni TMDB; link sito ufficiale
 
@@ -187,7 +187,7 @@ src/
 - **`user_diary`** — registro di visione (data, voto, nota).
 
 ### `schema_v5_episodes.sql` — tracking episodi
-- **`user_episodes`** — singoli episodi segnati come visti (serie/anime).
+- **`user_episodes`** — singoli episodi segnati come visti (serie/anime). Il progresso è sincronizzato con `user_titles` (`syncSeriesStatus`): serie in corso → `in_progress`, serie completata → `watched`.
 
 ### `schema_v6_alerts.sql` — avvisi uscite
 - **`user_alerts`** — titoli per cui ricevere una notifica all'uscita.
@@ -327,7 +327,7 @@ Il tema attivo persiste in `localStorage`.
 
 ### Idee in coda (da valutare)
 - ✅ ~~Stagioni/episodi in ordine~~ → fatto
-- ✅ ~~Tracking episodi~~ → fatto (`user_episodes`)
+- ✅ ~~Tracking episodi~~ → fatto (`user_episodes`); progresso sincronizzato con lo stato della serie (In corso / Vista)
 - ✅ ~~Aggiornare `@anthropic-ai/sdk`~~ → fatto (0.105.x)
 - ✅ ~~Errori di salvataggio non silenziosi~~ → fatto (sistema toast + `ToastHost`)
 - ✅ ~~Cancellare una voce di diario rimuove il voto sincronizzato in `user_titles`~~ → fatto
