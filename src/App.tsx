@@ -15,6 +15,7 @@ const TasteProfile = lazy(() => import('./pages/TasteProfile'))
 const ListsPage = lazy(() => import('./pages/ListsPage'))
 const CustomListPage = lazy(() => import('./pages/CustomListPage'))
 const PublicListPage = lazy(() => import('./pages/PublicListPage'))
+const PublicWatchlistPage = lazy(() => import('./pages/PublicWatchlistPage'))
 const DiaryPage = lazy(() => import('./pages/DiaryPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
 const TrophiesPage = lazy(() => import('./pages/TrophiesPage'))
@@ -40,8 +41,9 @@ export default function App() {
         <Route path="collection/:id" element={<CollectionPage />} />
         <Route path="title/:mediaType/:id" element={<TitleDetail />} />
         <Route path="login" element={<Login />} />
-        {/* Vista pubblica di una lista condivisa: niente login richiesto. */}
+        {/* Viste pubbliche condivise: niente login richiesto. */}
         <Route path="lista/:id" element={<PublicListPage />} />
+        <Route path="watchlist/:userId" element={<PublicWatchlistPage />} />
         {/* "Visti" è confluito nel Diario: vecchi link reindirizzano. */}
         <Route path="lists/watched" element={<Navigate to="/diario" replace />} />
         <Route
