@@ -16,11 +16,14 @@ function todayKey(): string {
 export function setAiCreditsLeft(n: number): void {
   const key = todayKey()
   localStorage.setItem(key, String(Math.max(0, n)))
-  // Tidy up old days' counters.
-  for (let i = localStorage.length - 1; i >= 0; i--) {
+  // Tidy up old days' counters. Raccolgo prima le chiavi e poi le rimuovo: così
+  // non muto localStorage mentre lo sto iterando con key(i).
+  const stale: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i)
-    if (k && k.startsWith(PREFIX) && k !== key) localStorage.removeItem(k)
+    if (k && k.startsWith(PREFIX) && k !== key) stale.push(k)
   }
+  for (const k of stale) localStorage.removeItem(k)
 }
 
 // Best-known remaining credits for today (full limit until the server tells us).

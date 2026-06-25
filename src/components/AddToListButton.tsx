@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { useToast } from '../lib/toastCtx'
 import Modal from './Modal'
 import {
   addToList,
@@ -14,6 +15,7 @@ import type { UserList } from '../lib/types'
 
 export default function AddToListButton({ item }: { item: ListItemRef }) {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const [open, setOpen] = useState(false)
   const [lists, setLists] = useState<UserList[]>([])
   const [inLists, setInLists] = useState<Set<string>>(new Set())
@@ -41,23 +43,29 @@ export default function AddToListButton({ item }: { item: ListItemRef }) {
     if (!user) return
     const has = inLists.has(listId)
     const next = new Set(inLists)
-    if (has) {
-      await removeFromList(listId, item.tmdbId, item.mediaType)
-      next.delete(listId)
-    } else {
-      await addToList(user.id, listId, item)
-      next.add(listId)
+    if (has) next.delete(listId)
+    else next.add(listId)
+    setInLists(next) // aggiornamento ottimistico
+    try {
+      if (has) await removeFromList(listId, item.tmdbId, item.mediaType)
+      else await addToList(user.id, listId, item)
+    } catch (e) {
+      setInLists(inLists) // rollback: il DB non è cambiato
+      showToast(`Errore: ${(e as Error).message}`, 'error')
     }
-    setInLists(next)
   }
 
   async function create() {
     if (!user || !newName.trim()) return
-    const list = await createList(user.id, newName.trim(), null)
-    await addToList(user.id, list.id, item)
-    setNewName('')
-    setLists((prev) => [{ ...list, item_count: 1 }, ...prev])
-    setInLists((prev) => new Set(prev).add(list.id))
+    try {
+      const list = await createList(user.id, newName.trim(), null)
+      await addToList(user.id, list.id, item)
+      setNewName('')
+      setLists((prev) => [{ ...list, item_count: 1 }, ...prev])
+      setInLists((prev) => new Set(prev).add(list.id))
+    } catch (e) {
+      showToast(`Non sono riuscito a creare la lista: ${(e as Error).message}`, 'error')
+    }
   }
 
   return (
