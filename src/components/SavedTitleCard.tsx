@@ -20,7 +20,13 @@ export default function SavedTitleCard({
         to={`/title/${type}/${record.tmdb_id}`}
         className="group block"
       >
-        <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
+        <div className="relative aspect-[2/3] w-full overflow-hidden bg-theatre-800">
+          {/* Film già visto rimesso in watchlist per una rivisione. */}
+          {record.rewatch && record.status === 'watched' && (
+            <span className="absolute right-2 top-2 z-10 rounded-full bg-theatre-950/80 px-2 py-0.5 text-xs text-projector">
+              🔁 Da rivedere
+            </span>
+          )}
           {poster ? (
             <img
               src={poster}

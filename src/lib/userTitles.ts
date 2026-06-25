@@ -64,7 +64,7 @@ export async function getUserTitle(
 export async function upsertUserTitle(
   userId: string,
   ref: TitleRef,
-  patch: Partial<Pick<UserTitle, 'status' | 'is_favorite' | 'personal_rating' | 'notes' | 'watched_at'>>,
+  patch: Partial<Pick<UserTitle, 'status' | 'is_favorite' | 'personal_rating' | 'notes' | 'watched_at' | 'rewatch'>>,
 ): Promise<UserTitle> {
   const existing = await getUserTitle(userId, ref.tmdbId, ref.mediaType)
 
@@ -85,6 +85,7 @@ export async function upsertUserTitle(
     notes: patch.notes !== undefined ? patch.notes : (existing?.notes ?? null),
     watched_at:
       patch.watched_at !== undefined ? patch.watched_at : (existing?.watched_at ?? null),
+    rewatch: patch.rewatch !== undefined ? patch.rewatch : (existing?.rewatch ?? false),
   }
 
   const { data, error } = await client()
@@ -111,6 +112,21 @@ export async function listByStatus(
     .select('*')
     .eq('user_id', userId)
     .eq('status', status)
+    .order('updated_at', { ascending: false })
+
+  if (error) throw new Error(error.message)
+  return (data ?? []) as UserTitle[]
+}
+
+// La watchlist "Da vedere" include sia i titoli con stato to_watch sia quelli
+// già visti ma marcati "Da rivedere" (rewatch), così un film visto può tornare
+// in lista senza perdere lo stato "Visto".
+export async function listWatchlist(userId: string): Promise<UserTitle[]> {
+  const { data, error } = await client()
+    .from(TABLE)
+    .select('*')
+    .eq('user_id', userId)
+    .or('status.eq.to_watch,rewatch.eq.true')
     .order('updated_at', { ascending: false })
 
   if (error) throw new Error(error.message)

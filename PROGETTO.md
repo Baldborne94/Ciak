@@ -75,6 +75,7 @@ Una sola pagina con schede (catalogo/entità) e, separati, gli **strumenti AI**:
 - **🌍 Liste condivisibili** — rendi pubblica una lista e condividila con un link (`/lista/:id`, sola lettura, niente login per chi la apre)
 - **🎟️ Watchlist condivisibile** — anche la lista fissa **Da vedere** ha un link pubblico opt-in (`/watchlist/:userId`, sola lettura); resta privata finché non la condividi
 - **📖 Diario di visione** — registra cosa guardi e quando (data, voto, **recensione lunga**, rivisioni con badge 🔁); voto modificabile dal diario, niente doppioni dello stesso film nello stesso giorno. **Filtri e ricerca**: per testo (titolo/recensione), anno di visione e voto minimo
+- **🔁 Da rivedere** — un film già «Visto» può tornare nella watchlist «Da vedere» senza perdere lo stato, per programmare una rivisione (flag `rewatch` su `user_titles`)
 - **🌙 Non so cosa vedere stasera** — l'AI sceglie in base a umore + tempo a disposizione
 
 ### ❤️ Preferiti (a sezioni)
@@ -142,6 +143,7 @@ supabase/
   schema_v11_identity.sql   Identità cinefila: nickname/avatar/tema su user_profile
   schema_v12_public_lists.sql  Liste condivisibili: is_public + RLS lettura pubblica
   schema_v13_public_watchlist.sql  Watchlist "Da vedere" condivisibile: watchlist_public + get_public_watchlist()
+  schema_v14_rewatch.sql    "Da rivedere": flag rewatch su user_titles
 src/
   components/
     Layout, Navbar, MediaCard/Grid, MediaRow (caroselli con frecce),
@@ -255,7 +257,7 @@ src/
 
 ### 1. Supabase
 1. Crea un progetto (piano free = 2 progetti per account).
-2. SQL Editor → esegui **in ordine, tutti**: `schema.sql`, `schema_v2_achievements.sql`, `schema_v3_entities.sql`, `schema_v4_lists_diary.sql`, `schema_v5_episodes.sql`, `schema_v6_alerts.sql`, `schema_v7_push.sql`, `schema_v8_song_cache.sql`, `schema_v9_ai_usage.sql`, `schema_v10_half_star_ratings.sql`, `schema_v11_identity.sql`, `schema_v12_public_lists.sql`, `schema_v13_public_watchlist.sql`.
+2. SQL Editor → esegui **in ordine, tutti**: `schema.sql`, `schema_v2_achievements.sql`, `schema_v3_entities.sql`, `schema_v4_lists_diary.sql`, `schema_v5_episodes.sql`, `schema_v6_alerts.sql`, `schema_v7_push.sql`, `schema_v8_song_cache.sql`, `schema_v9_ai_usage.sql`, `schema_v10_half_star_ratings.sql`, `schema_v11_identity.sql`, `schema_v12_public_lists.sql`, `schema_v13_public_watchlist.sql`, `schema_v14_rewatch.sql`.
    > ⚠️ Saltare uno script causa errori **404** sulle tabelle mancanti (es. `user_song_cache`, `ai_usage`). Eseguili tutti.
 3. Project Settings → API → copia **Project URL** e **Legacy anon key**.
 5. (Opzionale) Authentication → URL Configuration → **Site URL** = `https://ciak.vercel.app` e Additional Redirect URLs = `https://ciak.vercel.app/**`.

@@ -5,7 +5,7 @@ import SavedTitleCard from '../components/SavedTitleCard'
 import { ScrollRow } from '../components/MediaRow'
 import { posterUrl } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
-import { getStats, listByStatus, type UserStats } from '../lib/userTitles'
+import { getStats, listByStatus, listWatchlist, type UserStats } from '../lib/userTitles'
 import { getContinueWatching, type ContinueItem } from '../lib/episodes'
 import type { UserTitle } from '../lib/types'
 
@@ -82,7 +82,7 @@ export default function Dashboard() {
       return
     }
     getStats(user.id).then(setStats).catch(() => setStats(null))
-    listByStatus(user.id, 'to_watch').then(setWatchlist).catch(() => setWatchlist([]))
+    listWatchlist(user.id).then(setWatchlist).catch(() => setWatchlist([]))
     listByStatus(user.id, 'in_progress').then(setInProgress).catch(() => setInProgress([]))
     getContinueWatching(user.id).then(setContinueList).catch(() => setContinueList([]))
   }, [user])
