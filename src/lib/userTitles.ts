@@ -8,6 +8,7 @@ import {
 } from './achievements'
 import type {
   MediaItem,
+  MediaType,
   TitleStatus,
   TmdbType,
   UserTitle,
@@ -193,6 +194,40 @@ export async function getStats(userId: string): Promise<UserStats> {
     toWatch: rows.filter((r) => r.status === 'to_watch').length,
     inProgress: rows.filter((r) => r.status === 'in_progress').length,
   }
+}
+
+// ── Condivisione watchlist "Da vedere" ──────────────────────────────────────
+
+// Stato di condivisione della watchlist del proprietario (true = link pubblico).
+export async function getWatchlistPublic(userId: string): Promise<boolean> {
+  const { data } = await client()
+    .from('user_profile')
+    .select('watchlist_public')
+    .eq('user_id', userId)
+    .maybeSingle()
+  return (data as { watchlist_public: boolean } | null)?.watchlist_public ?? false
+}
+
+export async function setWatchlistPublic(userId: string, isPublic: boolean): Promise<void> {
+  const { error } = await client()
+    .from('user_profile')
+    .upsert({ user_id: userId, watchlist_public: isPublic })
+  if (error) throw new Error(error.message)
+}
+
+export interface PublicWatchlistItem {
+  tmdb_id: number
+  media_type: MediaType
+  title: string
+  poster_path: string | null
+}
+
+// Watchlist pubblica di un altro utente (via funzione SECURITY DEFINER): torna
+// vuota se l'utente non esiste o non ha attivato la condivisione.
+export async function getPublicWatchlist(targetUserId: string): Promise<PublicWatchlistItem[]> {
+  const { data, error } = await client().rpc('get_public_watchlist', { target: targetUserId })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as PublicWatchlistItem[]
 }
 
 // ── Achievements ──────────────────────────────────────────────────────────────

@@ -73,6 +73,7 @@ Una sola pagina con schede (catalogo/entità) e, separati, gli **strumenti AI**:
 - Liste fisse: **Visto**, **Da vedere**, **In corso**, **Abbandonato** (dalla scheda titolo)
 - **🗂️ Liste personali tematiche** create da te ("Neo-noir", "Da vedere con lei"…) — "Aggiungi a lista" dalla scheda
 - **🌍 Liste condivisibili** — rendi pubblica una lista e condividila con un link (`/lista/:id`, sola lettura, niente login per chi la apre)
+- **🎟️ Watchlist condivisibile** — anche la lista fissa **Da vedere** ha un link pubblico opt-in (`/watchlist/:userId`, sola lettura); resta privata finché non la condividi
 - **📖 Diario di visione** — registra cosa guardi e quando (data, voto, **recensione lunga**, rivisioni con badge 🔁); voto modificabile dal diario, niente doppioni dello stesso film nello stesso giorno. **Filtri e ricerca**: per testo (titolo/recensione), anno di visione e voto minimo
 - **🌙 Non so cosa vedere stasera** — l'AI sceglie in base a umore + tempo a disposizione
 
@@ -137,6 +138,7 @@ supabase/
   schema_v10_half_star_ratings.sql  Voti a mezza stella (0.5–5.0): personal_rating/rating → numeric
   schema_v11_identity.sql   Identità cinefila: nickname/avatar/tema su user_profile
   schema_v12_public_lists.sql  Liste condivisibili: is_public + RLS lettura pubblica
+  schema_v13_public_watchlist.sql  Watchlist "Da vedere" condivisibile: watchlist_public + get_public_watchlist()
 src/
   components/
     Layout, Navbar, MediaCard/Grid, MediaRow (caroselli con frecce),
@@ -207,6 +209,10 @@ src/
 ### `schema_v12_public_lists.sql` — liste condivisibili
 - **`user_lists.is_public`** — flag di visibilità. Policy RLS aggiuntive di sola lettura: chiunque può leggere le liste (e i loro elementi) marcate pubbliche; il proprietario mantiene pieno accesso.
 
+### `schema_v13_public_watchlist.sql` — watchlist condivisibile
+- **`user_profile.watchlist_public`** — opt-in per condividere la lista "Da vedere".
+- **`get_public_watchlist(target uuid)`** — funzione `SECURITY DEFINER` che restituisce i titoli `to_watch` (campi minimi) solo se il proprietario ha attivato la condivisione.
+
 ### `schema_v6_alerts.sql` — avvisi uscite
 - **`user_alerts`** — titoli per cui ricevere una notifica all'uscita.
 
@@ -245,7 +251,7 @@ src/
 
 ### 1. Supabase
 1. Crea un progetto (piano free = 2 progetti per account).
-2. SQL Editor → esegui **in ordine, tutti**: `schema.sql`, `schema_v2_achievements.sql`, `schema_v3_entities.sql`, `schema_v4_lists_diary.sql`, `schema_v5_episodes.sql`, `schema_v6_alerts.sql`, `schema_v7_push.sql`, `schema_v8_song_cache.sql`, `schema_v9_ai_usage.sql`, `schema_v10_half_star_ratings.sql`, `schema_v11_identity.sql`, `schema_v12_public_lists.sql`.
+2. SQL Editor → esegui **in ordine, tutti**: `schema.sql`, `schema_v2_achievements.sql`, `schema_v3_entities.sql`, `schema_v4_lists_diary.sql`, `schema_v5_episodes.sql`, `schema_v6_alerts.sql`, `schema_v7_push.sql`, `schema_v8_song_cache.sql`, `schema_v9_ai_usage.sql`, `schema_v10_half_star_ratings.sql`, `schema_v11_identity.sql`, `schema_v12_public_lists.sql`, `schema_v13_public_watchlist.sql`.
    > ⚠️ Saltare uno script causa errori **404** sulle tabelle mancanti (es. `user_song_cache`, `ai_usage`). Eseguili tutti.
 3. Project Settings → API → copia **Project URL** e **Legacy anon key**.
 5. (Opzionale) Authentication → URL Configuration → **Site URL** = `https://ciak.vercel.app` e Additional Redirect URLs = `https://ciak.vercel.app/**`.
@@ -344,7 +350,7 @@ Il tema attivo persiste in `localStorage`.
 23. ✅ "Non so cosa vedere stasera" (AI per umore + tempo)
 24. ✅ Statistiche cinefile (ore, generi, registi/attori, decenni, anno in film)
 25. ✅ Recensioni lunghe + rivisioni nel diario
-26. ✅ Liste condivisibili via link pubblico
+26. ✅ Liste condivisibili via link pubblico (liste personali + watchlist "Da vedere")
 27. ✅ Pass di accessibilità (focus trap modali, ARIA dropdown)
 28. ✅ Deep-link episodio dalla card "Riprendi a guardare"
 29. ✅ Filtri e ricerca nel diario (testo, anno, voto minimo)

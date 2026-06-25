@@ -3,7 +3,8 @@ import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
-import { listByStatus } from '../lib/userTitles'
+import { useToast } from '../lib/toastCtx'
+import { getWatchlistPublic, listByStatus, setWatchlistPublic } from '../lib/userTitles'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
 const COPY: Record<TitleStatus, { subtitle: string; icon: string }> = {
@@ -21,10 +22,16 @@ const COPY: Record<TitleStatus, { subtitle: string; icon: string }> = {
 
 export default function ListPage({ status }: { status: TitleStatus }) {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const copy = COPY[status]
   const [items, setItems] = useState<UserTitle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Condivisione: disponibile solo per la watchlist "Da vedere".
+  const shareable = status === 'to_watch'
+  const [isPublic, setIsPublic] = useState(false)
+  const [updatingShare, setUpdatingShare] = useState(false)
+  const shareUrl = user ? `${window.location.origin}/watchlist/${user.id}` : ''
 
   useEffect(() => {
     if (!user) return
@@ -36,13 +43,67 @@ export default function ListPage({ status }: { status: TitleStatus }) {
       .finally(() => setLoading(false))
   }, [user, status])
 
+  useEffect(() => {
+    if (!user || !shareable) return
+    getWatchlistPublic(user.id).then(setIsPublic).catch(() => setIsPublic(false))
+  }, [user, shareable])
+
+  async function copyShareLink() {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      showToast('Link copiato negli appunti!', 'success')
+    } catch {
+      showToast(`Link condivisibile: ${shareUrl}`, 'info')
+    }
+  }
+
+  async function toggleShare() {
+    if (!user) return
+    const next = !isPublic
+    setUpdatingShare(true)
+    setIsPublic(next) // ottimistico
+    try {
+      await setWatchlistPublic(user.id, next)
+      if (next) await copyShareLink()
+      else showToast('Watchlist resa privata.', 'info')
+    } catch (e) {
+      setIsPublic(!next) // rollback
+      showToast(`Non sono riuscito ad aggiornare la condivisione: ${(e as Error).message}`)
+    } finally {
+      setUpdatingShare(false)
+    }
+  }
+
   return (
     <div>
       <PageHeader
         eyebrow="Le tue liste"
         title={STATUS_LABELS[status]}
         subtitle={copy.subtitle}
-      />
+      >
+        {shareable && (
+          <button
+            onClick={toggleShare}
+            disabled={updatingShare}
+            className="btn-ghost"
+            title={isPublic ? 'Chiunque con il link può vederla' : 'Solo tu puoi vederla'}
+          >
+            {isPublic ? '🌍 Pubblica' : '🔒 Condividi'}
+          </button>
+        )}
+      </PageHeader>
+
+      {shareable && isPublic && (
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-projector/30 bg-projector/5 px-4 py-3">
+          <span className="text-sm text-zinc-300">🔗 Watchlist condivisibile:</span>
+          <code className="flex-1 truncate rounded bg-theatre-950/60 px-2 py-1 text-xs text-projector">
+            {shareUrl}
+          </code>
+          <button onClick={copyShareLink} className="btn-primary px-3 py-1.5 text-sm">
+            Copia link
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <Loader label="Apro la tua collezione…" />
