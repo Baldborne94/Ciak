@@ -14,7 +14,10 @@ const AiToolsPage = lazy(() => import('./pages/AiToolsPage'))
 const TasteProfile = lazy(() => import('./pages/TasteProfile'))
 const ListsPage = lazy(() => import('./pages/ListsPage'))
 const CustomListPage = lazy(() => import('./pages/CustomListPage'))
+const PublicListPage = lazy(() => import('./pages/PublicListPage'))
 const DiaryPage = lazy(() => import('./pages/DiaryPage'))
+const StatsPage = lazy(() => import('./pages/StatsPage'))
+const TrophiesPage = lazy(() => import('./pages/TrophiesPage'))
 const UpcomingPage = lazy(() => import('./pages/UpcomingPage'))
 const GenrePage = lazy(() => import('./pages/GenrePage'))
 const PersonPage = lazy(() => import('./pages/PersonPage'))
@@ -37,6 +40,8 @@ export default function App() {
         <Route path="collection/:id" element={<CollectionPage />} />
         <Route path="title/:mediaType/:id" element={<TitleDetail />} />
         <Route path="login" element={<Login />} />
+        {/* Vista pubblica di una lista condivisa: niente login richiesto. */}
+        <Route path="lista/:id" element={<PublicListPage />} />
         {/* "Visti" è confluito nel Diario: vecchi link reindirizzano. */}
         <Route path="lists/watched" element={<Navigate to="/diario" replace />} />
         <Route
@@ -95,6 +100,14 @@ export default function App() {
             </RequireAuth>
           }
         />
+        <Route
+          path="statistiche"
+          element={
+            <RequireAuth>
+              <StatsPage />
+            </RequireAuth>
+          }
+        />
         {/* Anime/Cartoni ora vivono dentro Cerca → Titoli; i vecchi URL reindirizzano. */}
         <Route path="anime" element={<Navigate to="/search?mode=anime" replace />} />
         <Route path="cartoons" element={<Navigate to="/search?mode=cartoons" replace />} />
@@ -118,8 +131,14 @@ export default function App() {
             </RequireAuth>
           }
         />
-        {/* "Trofei" temporaneamente nascosto; verrà rifatto in futuro. */}
-        <Route path="trophies" element={<Navigate to="/" replace />} />
+        <Route
+          path="trophies"
+          element={
+            <RequireAuth>
+              <TrophiesPage />
+            </RequireAuth>
+          }
+        />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<NotFound />} />
       </Route>

@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { getSeason } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
@@ -33,7 +34,19 @@ export default function SeasonsSection({
     .filter((s) => s.seasonNumber > 0)
     .reduce((sum, s) => sum + s.episodeCount, 0)
   const firstReal = seasons.find((s) => s.seasonNumber > 0) ?? seasons[0]
-  const [selected, setSelected] = useState<number>(firstReal?.seasonNumber ?? 1)
+
+  // Deep-link da "Riprendi a guardare": ?season=&episode= preseleziona la
+  // stagione e fa scorrere/evidenziare l'episodio da riprendere.
+  const [searchParams] = useSearchParams()
+  const deepSeason = Number(searchParams.get('season')) || null
+  const deepEpisode = Number(searchParams.get('episode')) || null
+  const hasDeepSeason = deepSeason != null && seasons.some((s) => s.seasonNumber === deepSeason)
+
+  const [selected, setSelected] = useState<number>(
+    hasDeepSeason ? (deepSeason as number) : (firstReal?.seasonNumber ?? 1),
+  )
+  const sectionRef = useRef<HTMLElement>(null)
+  const didScrollRef = useRef(false)
   const [episodes, setEpisodes] = useState<Episode[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -56,6 +69,15 @@ export default function SeasonsSection({
     }
     listWatchedEpisodes(user.id, tvId).then(setWatched).catch(() => setWatched(new Set()))
   }, [user, tvId])
+
+  // Una volta caricati gli episodi della stagione richiesta, scorri alla sezione
+  // (una sola volta) così l'episodio da riprendere è subito visibile.
+  useEffect(() => {
+    if (!deepEpisode || didScrollRef.current) return
+    if (episodes.length === 0 || selected !== deepSeason) return
+    didScrollRef.current = true
+    sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [episodes, selected, deepSeason, deepEpisode])
 
   if (seasons.length === 0) return null
 
@@ -104,7 +126,7 @@ export default function SeasonsSection({
   }
 
   return (
-    <section>
+    <section ref={sectionRef} id="episodi" className="scroll-mt-20">
       <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
         📺 Stagioni ed episodi
       </h2>
@@ -155,13 +177,17 @@ export default function SeasonsSection({
         <div className="space-y-3">
           {episodes.map((e) => {
             const isWatched = watched.has(epKey(selected, e.episodeNumber))
+            const isTarget =
+              selected === deepSeason && e.episodeNumber === deepEpisode
             return (
               <div
                 key={e.id}
                 className={`flex gap-4 rounded-xl border p-3 transition ${
-                  isWatched
-                    ? 'border-projector/30 bg-projector/5'
-                    : 'border-theatre-800 bg-theatre-900/50'
+                  isTarget
+                    ? 'border-projector ring-1 ring-projector/50 bg-projector/10'
+                    : isWatched
+                      ? 'border-projector/30 bg-projector/5'
+                      : 'border-theatre-800 bg-theatre-900/50'
                 }`}
               >
                 <div className="hidden h-20 w-36 shrink-0 overflow-hidden rounded-md bg-theatre-800 sm:block">

@@ -188,6 +188,7 @@ export interface UserList {
   user_id: string
   name: string
   description: string | null
+  is_public: boolean
   created_at: string
   updated_at: string
   item_count?: number

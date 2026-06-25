@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
@@ -27,6 +27,10 @@ export default function DiaryPage() {
   const [watched, setWatched] = useState<UserTitle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Filtri: ricerca testuale (titolo/recensione), anno di visione, voto minimo.
+  const [query, setQuery] = useState('')
+  const [yearFilter, setYearFilter] = useState('all')
+  const [minRating, setMinRating] = useState(0)
 
   useEffect(() => {
     if (!user) return
@@ -65,8 +69,38 @@ export default function DiaryPage() {
     }
   }
 
+  // Quante voci ha ogni opera nel diario: > 1 significa rivisioni. Calcolato sul
+  // diario completo (non sui filtri) così il conteggio resta corretto.
+  const viewingsByTitle = entries.reduce<Record<string, number>>((acc, e) => {
+    const k = `${e.tmdb_id}:${e.media_type}`
+    acc[k] = (acc[k] ?? 0) + 1
+    return acc
+  }, {})
+
+  // Anni disponibili per il filtro, dal più recente.
+  const years = useMemo(() => {
+    const set = new Set(entries.map((e) => e.watched_on.slice(0, 4)))
+    return [...set].sort((a, b) => b.localeCompare(a))
+  }, [entries])
+
+  // Applica i filtri alle voci datate.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return entries.filter((e) => {
+      if (yearFilter !== 'all' && e.watched_on.slice(0, 4) !== yearFilter) return false
+      if (minRating > 0 && (e.rating ?? 0) < minRating) return false
+      if (q) {
+        const hay = `${e.title} ${e.note ?? ''}`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      return true
+    })
+  }, [entries, query, yearFilter, minRating])
+
+  const filtersActive = query.trim() !== '' || yearFilter !== 'all' || minRating > 0
+
   // Group by date.
-  const groups = entries.reduce<Record<string, DiaryEntry[]>>((acc, e) => {
+  const groups = filtered.reduce<Record<string, DiaryEntry[]>>((acc, e) => {
     ;(acc[e.watched_on] ??= []).push(e)
     return acc
   }, {})
@@ -74,10 +108,19 @@ export default function DiaryPage() {
 
   // Titoli segnati "Visto" che non hanno una voce nel diario: li mostriamo a
   // parte così non spariscono ora che "Visti" e "Diario" sono un'unica sezione.
+  // Con i filtri per anno/voto attivi li nascondiamo (non hanno data né voto qui);
+  // la ricerca testuale invece li filtra per titolo.
   const inDiary = new Set(entries.map((e) => `${e.tmdb_id}:${e.media_type}`))
-  const watchedOnly = watched.filter((w) => !inDiary.has(`${w.tmdb_id}:${w.media_type}`))
+  const q = query.trim().toLowerCase()
+  const showWatchedOnly = yearFilter === 'all' && minRating === 0
+  const watchedOnly = !showWatchedOnly
+    ? []
+    : watched
+        .filter((w) => !inDiary.has(`${w.tmdb_id}:${w.media_type}`))
+        .filter((w) => !q || w.title.toLowerCase().includes(q))
 
-  const isEmpty = entries.length === 0 && watchedOnly.length === 0
+  const isEmpty = entries.length === 0 && watched.length === 0
+  const noMatches = !isEmpty && dates.length === 0 && watchedOnly.length === 0
 
   return (
     <div>
@@ -86,6 +129,64 @@ export default function DiaryPage() {
         title="Visti & Diario"
         subtitle="Tutto ciò che hai guardato: le visioni datate in ordine di data e i titoli segnati come visti. Tocca le stelle per cambiare il voto."
       />
+
+      {!loading && !error && !isEmpty && (
+        <div className="mb-8 flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[12rem]">
+            <label htmlFor="diary-search" className="text-xs uppercase tracking-wider text-zinc-500">
+              Cerca
+            </label>
+            <input
+              id="diary-search"
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Titolo o testo della recensione…"
+              className="input-cine mt-1 w-full py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label htmlFor="diary-year" className="text-xs uppercase tracking-wider text-zinc-500">
+              Anno
+            </label>
+            <select
+              id="diary-year"
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              className="input-cine mt-1 py-2 text-sm"
+            >
+              <option value="all">Tutti</option>
+              {years.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="diary-rating" className="text-xs uppercase tracking-wider text-zinc-500">
+              Voto minimo
+            </label>
+            <select
+              id="diary-rating"
+              value={minRating}
+              onChange={(e) => setMinRating(Number(e.target.value))}
+              className="input-cine mt-1 py-2 text-sm"
+            >
+              <option value={0}>Qualsiasi</option>
+              {[1, 2, 3, 4, 4.5, 5].map((r) => (
+                <option key={r} value={r}>{r}★ e oltre</option>
+              ))}
+            </select>
+          </div>
+          {filtersActive && (
+            <button
+              onClick={() => { setQuery(''); setYearFilter('all'); setMinRating(0) }}
+              className="btn-ghost py-2 text-sm"
+            >
+              Azzera filtri
+            </button>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <Loader label="Sfoglio il diario…" />
@@ -96,6 +197,12 @@ export default function DiaryPage() {
           title="Ancora niente da mostrare"
           message="Apri la scheda di un titolo: segnalo come «Visto» o usa «Segna nel diario» per registrare quando l'hai guardato."
           icon="📖"
+        />
+      ) : noMatches ? (
+        <EmptyState
+          title="Nessun risultato"
+          message="Nessuna voce del diario corrisponde ai filtri. Prova ad allargare la ricerca."
+          icon="🔍"
         />
       ) : (
         <div className="space-y-10">
@@ -123,12 +230,22 @@ export default function DiaryPage() {
                         </div>
                       </Link>
                       <div className="flex-1">
-                        <Link
-                          to={`/title/${type}/${e.tmdb_id}`}
-                          className="font-semibold text-zinc-100 hover:text-projector"
-                        >
-                          {e.title}
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/title/${type}/${e.tmdb_id}`}
+                            className="font-semibold text-zinc-100 hover:text-projector"
+                          >
+                            {e.title}
+                          </Link>
+                          {viewingsByTitle[`${e.tmdb_id}:${e.media_type}`] > 1 && (
+                            <span
+                              className="rounded-full border border-projector/30 bg-projector/5 px-2 py-0.5 text-[11px] text-projector"
+                              title={`${viewingsByTitle[`${e.tmdb_id}:${e.media_type}`]} visioni registrate`}
+                            >
+                              🔁 rivisto
+                            </span>
+                          )}
+                        </div>
                         <div className="mt-0.5">
                           <StarRating
                             value={e.rating}
@@ -136,7 +253,11 @@ export default function DiaryPage() {
                             size="sm"
                           />
                         </div>
-                        {e.note && <p className="mt-1 text-sm text-zinc-400">{e.note}</p>}
+                        {e.note && (
+                          <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-zinc-400">
+                            {e.note}
+                          </p>
+                        )}
                       </div>
                       <button
                         onClick={() => remove(e)}

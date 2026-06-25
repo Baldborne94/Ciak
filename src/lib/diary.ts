@@ -183,6 +183,23 @@ async function resyncUserTitleRating(userId: string, ref: DiaryRef): Promise<voi
   if (error) throw new Error(error.message)
 }
 
+// Quante volte una stessa opera è stata registrata nel diario (visioni in date
+// diverse = rivisioni). Serve a mostrare "rivisto N volte" / numerare la visione.
+export async function countDiaryViewings(
+  userId: string,
+  tmdbId: number,
+  mediaType: MediaType,
+): Promise<number> {
+  const { count, error } = await client()
+    .from('user_diary')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+  if (error) throw new Error(error.message)
+  return count ?? 0
+}
+
 export async function listDiary(userId: string): Promise<DiaryEntry[]> {
   const { data, error } = await client()
     .from('user_diary')
