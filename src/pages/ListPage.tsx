@@ -6,7 +6,6 @@ import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
 import { getWatchlistPublic, listByStatus, listWatchlist, setWatchlistPublic } from '../lib/userTitles'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
-import { useScrollRestoration } from '../lib/useScrollRestoration'
 
 const COPY: Record<TitleStatus, { subtitle: string; icon: string }> = {
   watched: { subtitle: 'Tutti i titoli che hai già guardato.', icon: '✅' },
@@ -33,8 +32,6 @@ export default function ListPage({ status }: { status: TitleStatus }) {
   const [isPublic, setIsPublic] = useState(false)
   const [updatingShare, setUpdatingShare] = useState(false)
   const shareUrl = user ? `${window.location.origin}/watchlist/${user.id}` : ''
-
-  useScrollRestoration(!loading, `list-${status}`)
 
   useEffect(() => {
     if (!user) return

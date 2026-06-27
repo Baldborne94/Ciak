@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
-import { useScrollRestoration } from '../lib/useScrollRestoration'
 import SavedTitleCard from '../components/SavedTitleCard'
 import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
@@ -97,7 +96,6 @@ function TitlesTab() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sort, setSort] = useState<SortKey>('rating')
-  useScrollRestoration(!loading, 'favorites-titles')
 
   useEffect(() => {
     if (!user) return

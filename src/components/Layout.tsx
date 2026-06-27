@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Navbar from './Navbar'
+import ScrollManager from './ScrollManager'
 import AchievementToast from './AchievementToast'
 import ToastHost from './ToastHost'
 import InstallPrompt from './InstallPrompt'
@@ -14,6 +15,7 @@ export default function Layout() {
   const { pathname } = useLocation()
   return (
     <div className="flex min-h-screen flex-col">
+      <ScrollManager />
       <Navbar />
       <main className="container-cine flex-1 py-8">
         <ErrorBoundary key={pathname}>
