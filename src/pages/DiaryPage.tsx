@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
+import { useScrollRestoration } from '../lib/useScrollRestoration'
 import SavedTitleCard from '../components/SavedTitleCard'
 import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
@@ -31,6 +32,8 @@ export default function DiaryPage() {
   const [query, setQuery] = useState('')
   const [yearFilter, setYearFilter] = useState('all')
   const [minRating, setMinRating] = useState(0)
+
+  useScrollRestoration(!loading)
 
   useEffect(() => {
     if (!user) return
