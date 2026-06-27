@@ -4,6 +4,7 @@ import { useAuth } from '../lib/auth'
 import {
   getUserTitle,
   upsertUserTitle,
+  deleteUserTitle,
   checkAndUnlockAchievements,
   type TitleRef,
 } from '../lib/userTitles'
@@ -69,7 +70,40 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
     }
   }
 
+  // Rimuove del tutto il titolo dalla collezione (non esiste uno stato "nessuno":
+  // la riga ha sempre uno stato, quindi deselezionare = togliere il titolo).
+  async function remove() {
+    if (!user || !record) return
+    const wouldLose = record.is_favorite || record.personal_rating
+    if (
+      wouldLose &&
+      !window.confirm(
+        'Vuoi togliere questo titolo dalla tua collezione? Perderai anche voto e preferito.',
+      )
+    ) {
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await deleteUserTitle(user.id, record.id)
+      setRecord(null)
+      showToast('Titolo rimosso dalla tua collezione.', 'info')
+    } catch (e) {
+      setError((e as Error).message)
+      showToast(`Rimozione non riuscita: ${(e as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function setStatus(status: TitleStatus) {
+    // Cliccando di nuovo lo stato già attivo lo si deseleziona: il titolo
+    // esce dalle liste.
+    if (record?.status === status) {
+      remove()
+      return
+    }
     apply({
       status,
       // Stamp the watch date the first time it's marked as seen.
@@ -90,12 +124,14 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
               key={status}
               onClick={() => setStatus(status)}
               disabled={saving || loading}
+              title={active ? 'Clicca di nuovo per togliere il titolo dalle liste' : undefined}
               className={
                 active
                   ? 'btn bg-projector text-theatre-950'
                   : 'btn-ghost'
               }
             >
+              {active && '✓ '}
               {STATUS_LABELS[status]}
             </button>
           )
