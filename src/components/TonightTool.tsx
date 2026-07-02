@@ -37,6 +37,9 @@ async function resolveSuggestion(s: Suggestion): Promise<ResolvedSuggestion> {
           if (norm(r.title) === target || norm(r.originalTitle ?? '') === target) score += 10
           else if (norm(r.title).includes(target) || target.includes(norm(r.title))) score += 4
           if (s.year && r.releaseDate?.slice(0, 4) === String(s.year)) score += 5
+          // Use vote average as tiebreaker so a well-known film beats an obscure
+          // namesake (e.g. the A24 "Talk to Me" vs a 0.0-rated Lebanese short).
+          score += r.voteAverage * 0.1
           return { r, score }
         })
         .sort((a, b) => b.score - a.score)
@@ -69,6 +72,14 @@ const MOODS = [
   { value: 'mind-bending, da ripensarci dopo', label: '🌀 Mind-bending' },
   { value: 'dark e disturbante', label: '🩸 Dark' },
   { value: 'cult e di culto', label: '🎟️ Cult' },
+  { value: 'folklore, leggende, fiabe dark, folk horror', label: '🌿 Folklore' },
+  { value: 'storico, epoche passate, costume, storia', label: '⚔️ Storico' },
+  { value: 'western, cow-boy, frontiera', label: '🤠 Western' },
+  { value: 'bellico, guerra, conflitti militari', label: '💣 Bellico' },
+  { value: 'supereroi, fumetti, universi Marvel e DC', label: '🦸 Supereroi' },
+  { value: 'distopia, futuro oscuro, totalitarismo', label: '🌑 Distopia' },
+  { value: 'survival, sopravvivenza, disastri', label: '🏕️ Survival' },
+  { value: 'spionaggio, agenti segreti, spy thriller', label: '🕵️ Spionaggio' },
 ]
 
 const TIMES = [
