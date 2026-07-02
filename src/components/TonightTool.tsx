@@ -72,6 +72,14 @@ const MOODS = [
   { value: 'mind-bending, da ripensarci dopo', label: '🌀 Mind-bending' },
   { value: 'dark e disturbante', label: '🩸 Dark' },
   { value: 'cult e di culto', label: '🎟️ Cult' },
+  { value: 'folklore, leggende, fiabe dark, folk horror', label: '🌿 Folklore' },
+  { value: 'storico, epoche passate, costume, storia', label: '⚔️ Storico' },
+  { value: 'western, cow-boy, frontiera', label: '🤠 Western' },
+  { value: 'bellico, guerra, conflitti militari', label: '💣 Bellico' },
+  { value: 'supereroi, fumetti, universi Marvel e DC', label: '🦸 Supereroi' },
+  { value: 'distopia, futuro oscuro, totalitarismo', label: '🌑 Distopia' },
+  { value: 'survival, sopravvivenza, disastri', label: '🏕️ Survival' },
+  { value: 'spionaggio, agenti segreti, spy thriller', label: '🕵️ Spionaggio' },
 ]
 
 const TIMES = [
