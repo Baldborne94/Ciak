@@ -37,6 +37,9 @@ async function resolveSuggestion(s: Suggestion): Promise<ResolvedSuggestion> {
           if (norm(r.title) === target || norm(r.originalTitle ?? '') === target) score += 10
           else if (norm(r.title).includes(target) || target.includes(norm(r.title))) score += 4
           if (s.year && r.releaseDate?.slice(0, 4) === String(s.year)) score += 5
+          // Use vote average as tiebreaker so a well-known film beats an obscure
+          // namesake (e.g. the A24 "Talk to Me" vs a 0.0-rated Lebanese short).
+          score += r.voteAverage * 0.1
           return { r, score }
         })
         .sort((a, b) => b.score - a.score)
