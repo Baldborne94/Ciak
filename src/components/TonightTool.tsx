@@ -27,23 +27,35 @@ interface ResolvedSuggestion {
 // match esatto del titolo e l'anno, per evitare omonimi o scambi di media.
 async function resolveSuggestion(s: Suggestion): Promise<ResolvedSuggestion> {
   const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+  function pickBest(items: Awaited<ReturnType<typeof searchMulti>>, target: string) {
+    return items
+      .map((r) => {
+        let score = 0
+        if (norm(r.title) === target || norm(r.originalTitle ?? '') === target) score += 10
+        else if (norm(r.title).includes(target) || target.includes(norm(r.title))) score += 4
+        if (s.year && r.releaseDate?.slice(0, 4) === String(s.year)) score += 5
+        // Use vote average as tiebreaker so a well-known film beats an obscure
+        // namesake (e.g. the A24 "Talk to Me" vs a 0.0-rated Lebanese short).
+        score += r.voteAverage * 0.1
+        return { r, score }
+      })
+      .sort((a, b) => b.score - a.score)[0]?.r ?? items[0]
+  }
+
   try {
     const items = await searchMulti(s.title)
     if (items.length > 0) {
-      const target = norm(s.title)
-      const ranked = items
-        .map((r) => {
-          let score = 0
-          if (norm(r.title) === target || norm(r.originalTitle ?? '') === target) score += 10
-          else if (norm(r.title).includes(target) || target.includes(norm(r.title))) score += 4
-          if (s.year && r.releaseDate?.slice(0, 4) === String(s.year)) score += 5
-          // Use vote average as tiebreaker so a well-known film beats an obscure
-          // namesake (e.g. the A24 "Talk to Me" vs a 0.0-rated Lebanese short).
-          score += r.voteAverage * 0.1
-          return { r, score }
-        })
-        .sort((a, b) => b.score - a.score)
-      return { suggestion: s, item: ranked[0]?.r ?? items[0] }
+      return { suggestion: s, item: pickBest(items, norm(s.title)) }
+    }
+    // Fallback: if the title contains " - " (e.g. Italian subtitle added by AI),
+    // retry with just the base title which is more likely to match TMDB.
+    const base = s.title.split(/\s*[-:]\s*/)[0].trim()
+    if (base && base !== s.title) {
+      const fallbackItems = await searchMulti(base)
+      if (fallbackItems.length > 0) {
+        return { suggestion: s, item: pickBest(fallbackItems, norm(base)) }
+      }
     }
   } catch {
     // ricerca TMDB non riuscita: si mostra comunque il testo dell'AI.
