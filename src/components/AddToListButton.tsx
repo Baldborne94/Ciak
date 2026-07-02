@@ -30,7 +30,7 @@ export default function AddToListButton({ item }: { item: ListItemRef }) {
       listIdsContaining(user.id, item.tmdbId, item.mediaType),
     ])
       .then(([ls, ids]) => {
-        setLists(ls)
+        setLists([...ls].sort((a, b) => a.name.localeCompare(b.name, 'it')))
         setInLists(ids)
       })
       .catch(() => {})
@@ -61,7 +61,7 @@ export default function AddToListButton({ item }: { item: ListItemRef }) {
       const list = await createList(user.id, newName.trim(), null)
       await addToList(user.id, list.id, item)
       setNewName('')
-      setLists((prev) => [{ ...list, item_count: 1 }, ...prev])
+      setLists((prev) => [...prev, { ...list, item_count: 1 }].sort((a, b) => a.name.localeCompare(b.name, 'it')))
       setInLists((prev) => new Set(prev).add(list.id))
     } catch (e) {
       showToast(`Non sono riuscito a creare la lista: ${(e as Error).message}`, 'error')
