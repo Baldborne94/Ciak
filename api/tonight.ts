@@ -99,10 +99,14 @@ Regole:
 - Rispetta l'umore richiesto. Se ne sono indicati più di uno, trova titoli che li
   combinino bene insieme.
 - Tieni conto dei suoi gusti (generi, registi, temi) dai titoli preferiti e visti.
-- Suggerisci titoli reali ed esistenti. Non ripetere titoli già visti o già preferiti.
-- Il campo "title" deve contenere SOLO il titolo ufficiale del film/serie, senza
-  sottotitoli inventati, commenti o testo aggiuntivo. Il campo "length" deve
-  contenere SOLO la durata (es. "≈110 min" o "3 episodi ≈120 min"), nient'altro.
+- DIVIETO ASSOLUTO: non suggerire MAI titoli presenti nella lista "GIÀ VISTI" o
+  "PREFERITI". Non nominarli nemmeno nella spiegazione. Se non hai abbastanza titoli
+  validi esclusi i già visti, proponi meno suggerimenti ma tutti nuovi.
+- Il campo "title" deve contenere il titolo ORIGINALE del film/serie (in inglese o
+  nella lingua originale), esattamente come appare su TMDB/IMDb. NON usare
+  traduzioni italiane: scrivi "The Green Knight" non "La Leggenda del Cavaliere
+  Verde", "The Wailing" non "La Voce del Male". Senza sottotitoli aggiuntivi.
+- Il campo "length" deve contenere SOLO la durata (es. "≈110 min" o "3 ep ≈120 min").
 - Scrivi spiegazioni brevi, calorose e in italiano.
 
 Rispondi ESCLUSIVAMENTE con un oggetto JSON valido, senza testo prima o dopo, nella forma:
