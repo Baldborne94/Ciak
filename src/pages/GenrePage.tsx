@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { useParams, Link, useLocation, useNavigationType } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { discoverByGenre, getGenres, isTmdbConfigured } from '../lib/tmdb'
 import { LANGUAGES, COUNTRIES, YEARS } from '../lib/filters'
+import { getPageState, setPageState } from '../lib/pageStateCache'
 import type { MediaItem, TmdbType } from '../lib/types'
 
 const SORTS: { value: string; label: string }[] = [
@@ -16,23 +17,49 @@ const SORTS: { value: string; label: string }[] = [
 
 const selectClass = 'input-cine w-auto py-2 text-sm'
 
+interface GenrePageCache {
+  items: MediaItem[]
+  page: number
+  totalPages: number
+  sort: string
+  year: string
+  language: string
+  country: string
+}
+
 export default function GenrePage() {
   const { type, genreId } = useParams<{ type: TmdbType; genreId: string }>()
-  const [items, setItems] = useState<MediaItem[]>([])
+  const location = useLocation()
+  const navType = useNavigationType()
+
+  // Restore from cache when navigating back, so items are immediately available
+  // for ScrollManager to restore the scroll position without a fresh API fetch.
+  const cached = navType === 'POP' ? getPageState<GenrePageCache>(location.key) : undefined
+
+  const [items, setItems] = useState<MediaItem[]>(cached?.items ?? [])
   const [genreName, setGenreName] = useState('')
-  const [sort, setSort] = useState('popularity.desc')
-  const [year, setYear] = useState('')
-  const [language, setLanguage] = useState('')
-  const [country, setCountry] = useState('')
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [loading, setLoading] = useState(true)
+  const [sort, setSort] = useState(cached?.sort ?? 'popularity.desc')
+  const [year, setYear] = useState(cached?.year ?? '')
+  const [language, setLanguage] = useState(cached?.language ?? '')
+  const [country, setCountry] = useState(cached?.country ?? '')
+  const [page, setPage] = useState(cached?.page ?? 1)
+  const [totalPages, setTotalPages] = useState(cached?.totalPages ?? 1)
+  const [loading, setLoading] = useState(!cached)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // True only for the very first render cycle when we restored from cache.
+  // After that, filter changes must trigger fresh API calls.
+  const restoredFromCache = useRef(!!cached)
 
   const t = (type ?? 'movie') as TmdbType
   const gid = Number(genreId)
   const filters = { year, language, country }
+
+  // Persist state to cache whenever it changes so a subsequent POP can restore it.
+  useEffect(() => {
+    if (items.length === 0) return
+    setPageState<GenrePageCache>(location.key, { items, page, totalPages, sort, year, language, country })
+  }, [location.key, items, page, totalPages, sort, year, language, country])
 
   useEffect(() => {
     if (!isTmdbConfigured || !genreId) return
@@ -61,6 +88,12 @@ export default function GenrePage() {
   }, [t, gid, sort, year, language, country])
 
   useEffect(() => {
+    // Skip the very first fetch when we restored from cache (back navigation).
+    // Subsequent calls (filter changes) must still go through.
+    if (restoredFromCache.current) {
+      restoredFromCache.current = false
+      return
+    }
     load()
   }, [load])
 

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useSearchParams, useLocation, useNavigationType } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
@@ -31,6 +31,7 @@ import type {
   Genre,
   TmdbType,
 } from '../lib/types'
+import { getPageState, setPageState } from '../lib/pageStateCache'
 
 // Gli strumenti AI (Canzone, Foto) vivono ora nell'hub "/ai"; qui Cerca fa
 // solo ricerca nel catalogo: titoli, persone, studi, saghe.
@@ -150,20 +151,39 @@ function CollectionCard({ c }: { c: Collection }) {
   )
 }
 
+interface BrowseListCache { items: MediaItem[]; page: number; totalPages: number }
+
 // Paginated browse list for anime / cartoons.
 function BrowseList({
   fetcher,
+  cacheKey,
 }: {
   fetcher: (page: number) => Promise<{ items: MediaItem[]; totalPages: number }>
+  cacheKey: string
 }) {
-  const [items, setItems] = useState<MediaItem[]>([])
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [loading, setLoading] = useState(true)
+  const location = useLocation()
+  const navType = useNavigationType()
+  const fullKey = `${location.key}:${cacheKey}`
+  const cached = navType === 'POP' ? getPageState<BrowseListCache>(fullKey) : undefined
+  const restoredFromCache = useRef(!!cached)
+
+  const [items, setItems] = useState<MediaItem[]>(cached?.items ?? [])
+  const [page, setPage] = useState(cached?.page ?? 1)
+  const [totalPages, setTotalPages] = useState(cached?.totalPages ?? 1)
+  const [loading, setLoading] = useState(!cached)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (items.length === 0) return
+    setPageState<BrowseListCache>(fullKey, { items, page, totalPages })
+  }, [fullKey, items, page, totalPages])
+
+  useEffect(() => {
+    if (restoredFromCache.current) {
+      restoredFromCache.current = false
+      return
+    }
     setLoading(true)
     setError(null)
     setItems([])
@@ -209,8 +229,17 @@ function BrowseList({
   )
 }
 
+interface SearchCache {
+  titles: MediaItem[]
+  people: Person[]
+  studios: Company[]
+  collections: Collection[]
+}
+
 export default function Search() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const navType = useNavigationType()
   const [params, setParams] = useSearchParams()
   const query = params.get('q') ?? ''
   const rawMode = params.get('mode')
@@ -223,14 +252,19 @@ export default function Search() {
     else if (rawMode === 'image') navigate('/ai?tab=image', { replace: true })
   }, [rawMode, navigate])
 
+  // Restore search results from cache on back navigation so items are
+  // immediately available for ScrollManager to restore the scroll position.
+  const cached = navType === 'POP' ? getPageState<SearchCache>(location.key) : undefined
+  const restoredFromCache = useRef(!!cached)
+
   const [input, setInput] = useState(query)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [titles, setTitles] = useState<MediaItem[]>([])
-  const [people, setPeople] = useState<Person[]>([])
-  const [studios, setStudios] = useState<Company[]>([])
-  const [collections, setCollections] = useState<Collection[]>([])
+  const [titles, setTitles] = useState<MediaItem[]>(cached?.titles ?? [])
+  const [people, setPeople] = useState<Person[]>(cached?.people ?? [])
+  const [studios, setStudios] = useState<Company[]>(cached?.studios ?? [])
+  const [collections, setCollections] = useState<Collection[]>(cached?.collections ?? [])
 
   const [kind, setKind] = useState<Kind>(
     rawMode === 'anime' || rawMode === 'cartoons' ? rawMode : 'all',
@@ -253,7 +287,18 @@ export default function Search() {
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
   const isAnimationKind = kind === 'anime' || kind === 'cartoons'
 
+  // Persist search results to cache whenever they change.
   useEffect(() => {
+    if (!titles.length && !people.length && !studios.length && !collections.length) return
+    setPageState<SearchCache>(location.key, { titles, people, studios, collections })
+  }, [location.key, titles, people, studios, collections])
+
+  useEffect(() => {
+    // Skip the initial fetch when we just restored results from cache.
+    if (restoredFromCache.current) {
+      restoredFromCache.current = false
+      return
+    }
     if (!query.trim()) {
       setTitles([]); setPeople([]); setStudios([]); setCollections([])
       return
@@ -519,7 +564,7 @@ export default function Search() {
           isAnimationKind ? (
             kind === 'anime' ? (
               <div className="space-y-12">
-                <BrowseList fetcher={getAnime} />
+                <BrowseList fetcher={getAnime} cacheKey="anime" />
                 <div>
                   <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">
                     😏 Pervertito
@@ -527,11 +572,11 @@ export default function Search() {
                   <p className="mb-4 text-sm text-zinc-500">
                     Ecchi, fan-service, harem e hentai: tutto ciò che è «sus», nel suo angolo.
                   </p>
-                  <BrowseList fetcher={getPervertitoAnime} />
+                  <BrowseList fetcher={getPervertitoAnime} cacheKey="anime-pervertito" />
                 </div>
               </div>
             ) : (
-              <BrowseList fetcher={getCartoons} />
+              <BrowseList fetcher={getCartoons} cacheKey="cartoons" />
             )
           ) : (
           <div className="space-y-10">
