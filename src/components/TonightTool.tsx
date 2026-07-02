@@ -92,6 +92,7 @@ const MOODS = [
   { value: 'distopia, futuro oscuro, totalitarismo', label: '🌑 Distopia' },
   { value: 'survival, sopravvivenza, disastri', label: '🏕️ Survival' },
   { value: 'spionaggio, agenti segreti, spy thriller', label: '🕵️ Spionaggio' },
+  { value: 'animazione, cartoni animati, anime', label: '🎨 Animazione' },
 ]
 
 const TIMES = [
