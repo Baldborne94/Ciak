@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
 import { ScrollRow } from '../components/MediaRow'
 import MediaGrid from '../components/MediaGrid'
-import { posterUrl, getRecommendations, getRecentReleases } from '../lib/tmdb'
+import { posterUrl, getRecommendations, getRecentReleases, discoverByGenres } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { listByStatus, listWatchlist, listFavorites } from '../lib/userTitles'
 import { getContinueWatching, type ContinueItem } from '../lib/episodes'
@@ -74,27 +74,48 @@ function RecRow({ items }: { items: MediaItem[] }) {
   )
 }
 
-// Picks the most frequent genre IDs from a list of user titles.
-function topGenreIds(titles: UserTitle[], limit = 3): number[] {
-  const counts = new Map<number, number>()
-  for (const t of titles) {
-    for (const g of t.genre_ids ?? []) counts.set(g, (counts.get(g) ?? 0) + 1)
-  }
-  return [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([id]) => id)
+const ANIME_GENRE_ID = 16
+
+// Genre frequency map: favorites count double (stronger signal), watched once.
+function genreWeights(favs: UserTitle[], watched: UserTitle[]): Map<number, number> {
+  const w = new Map<number, number>()
+  for (const t of favs) for (const g of t.genre_ids ?? []) w.set(g, (w.get(g) ?? 0) + 2)
+  for (const t of watched) for (const g of t.genre_ids ?? []) w.set(g, (w.get(g) ?? 0) + 1)
+  return w
 }
 
-const ANIME_GENRE_ID = 16 // Animation genre on TMDB
+// Score a candidate by genre affinity + quality (vote average as tiebreaker).
+function scoreItem(item: MediaItem, weights: Map<number, number>): number {
+  return item.genreIds.reduce((s, g) => s + (weights.get(g) ?? 0), 0) + item.voteAverage * 0.5
+}
+
+// Top genre IDs weighted by user taste (for recent releases and discover fallback).
+function topGenreIds(favs: UserTitle[], watched: UserTitle[], limit = 3): number[] {
+  const w = genreWeights(favs, watched)
+  return [...w.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id]) => id)
+}
+
+// Seeds: favorites + high-rated watched (≥4 stars) for a given media type,
+// sorted by composite score, deduplicated, capped at 6 per type.
+function buildSeeds(favs: UserTitle[], watched: UserTitle[], type: TmdbType): UserTitle[] {
+  const highRated = watched.filter((t) => t.media_type === type && (t.personal_rating ?? 0) >= 4)
+  const favsByType = favs.filter((t) => t.media_type === type)
+  const seen = new Set<number>()
+  const merged: UserTitle[] = []
+  for (const t of [...favsByType, ...highRated]) {
+    if (!seen.has(t.tmdb_id)) { seen.add(t.tmdb_id); merged.push(t) }
+  }
+  return merged
+    .map((t) => ({ t, score: (t.is_favorite ? 3 : 0) + (t.personal_rating ?? 0) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6)
+    .map(({ t }) => t)
+}
 
 function dedup(items: MediaItem[], seen: Set<number>, watchedIds: Set<number>): MediaItem[] {
   const out: MediaItem[] = []
   for (const item of items) {
-    if (!seen.has(item.id) && !watchedIds.has(item.id)) {
-      seen.add(item.id)
-      out.push(item)
-    }
+    if (!seen.has(item.id) && !watchedIds.has(item.id)) { seen.add(item.id); out.push(item) }
   }
   return out
 }
@@ -132,48 +153,62 @@ export default function Dashboard() {
       listByStatus(user.id, 'watched'),
     ]).then(async ([favs, watched]) => {
       const watchedIds = new Set(watched.map((t) => t.tmdb_id))
+      const weights = genreWeights(favs, watched)
 
-      // Recommendations: fetch from top 3 favorites for each media type separately.
-      const movieFavs = favs.filter((t) => t.media_type === 'movie').slice(0, 3)
-      const tvFavs = favs.filter((t) => t.media_type === 'tv').slice(0, 3)
-      // If no TV favorites, fall back to top 2 from any type.
-      const tvSources = tvFavs.length > 0 ? tvFavs : favs.slice(0, 2)
-      const movieSources = movieFavs.length > 0 ? movieFavs : favs.slice(0, 2)
+      // Seeds: favorites + high-rated watched (≥4★), up to 6 per type.
+      const movieSeeds = buildSeeds(favs, watched, 'movie')
+      const tvSeeds = buildSeeds(favs, watched, 'tv')
 
-      const [movieRecs, tvRecs] = await Promise.all([
-        movieSources.length > 0
-          ? Promise.all(movieSources.map((t) => getRecommendations(t.media_type as TmdbType, t.tmdb_id)))
-          : Promise.resolve([]),
-        tvSources.length > 0
-          ? Promise.all(tvSources.map((t) => getRecommendations('tv', t.tmdb_id)))
-          : Promise.resolve([]),
+      // Fetch TMDB recommendations for each seed in parallel.
+      const [rawMovieRecs, rawTvRecs] = await Promise.all([
+        movieSeeds.length > 0
+          ? Promise.all(movieSeeds.map((t) => getRecommendations('movie', t.tmdb_id)))
+          : Promise.resolve([[] as MediaItem[]]),
+        tvSeeds.length > 0
+          ? Promise.all(tvSeeds.map((t) => getRecommendations('tv', t.tmdb_id)))
+          : Promise.resolve([[] as MediaItem[]]),
       ])
 
+      // Flatten, dedup, filter watched, then sort by genre-affinity score.
       const seenMovies = new Set<number>()
-      const allMovieRecs = dedup((movieRecs as MediaItem[][]).flat(), seenMovies, watchedIds)
-      setRecFilms(allMovieRecs.filter((i) => i.mediaType === 'movie').slice(0, 20))
+      const topMovies = dedup(rawMovieRecs.flat(), seenMovies, watchedIds)
+        .sort((a, b) => scoreItem(b, weights) - scoreItem(a, weights))
 
       const seenTv = new Set<number>()
-      const allTvRecs = dedup((tvRecs as MediaItem[][]).flat(), seenTv, watchedIds)
+      const topTv = dedup(rawTvRecs.flat(), seenTv, watchedIds)
+        .sort((a, b) => scoreItem(b, weights) - scoreItem(a, weights))
 
-      // Anime: Japanese animation (genre 16 + originalLanguage ja)
-      const anime = allTvRecs.filter(
-        (i) => i.originalLanguage === 'ja' && i.genreIds.includes(ANIME_GENRE_ID),
-      )
-      // Cartoni: non-Japanese animation (genre 16, other languages)
-      const cartoni = allTvRecs.filter(
-        (i) => i.genreIds.includes(ANIME_GENRE_ID) && i.originalLanguage !== 'ja',
-      )
-      // Serie: remaining TV (no animation genre)
-      const serie = allTvRecs.filter((i) => !i.genreIds.includes(ANIME_GENRE_ID))
+      // Genre-discover fallback: if seed recs are thin, fill from top genres.
+      const topGenres = topGenreIds(favs, watched, 3)
+      const MIN = 8
+
+      let films = topMovies.filter((i) => i.mediaType === 'movie')
+      if (films.length < MIN && topGenres.length > 0) {
+        const fallback = await discoverByGenres('movie', topGenres)
+        const extra = dedup(fallback, seenMovies, watchedIds)
+          .sort((a, b) => scoreItem(b, weights) - scoreItem(a, weights))
+        films = [...films, ...extra]
+      }
+      setRecFilms(films.slice(0, 20))
+
+      const anime = topTv.filter((i) => i.originalLanguage === 'ja' && i.genreIds.includes(ANIME_GENRE_ID))
+      const cartoni = topTv.filter((i) => i.genreIds.includes(ANIME_GENRE_ID) && i.originalLanguage !== 'ja')
+      let serie = topTv.filter((i) => !i.genreIds.includes(ANIME_GENRE_ID))
+
+      if (serie.length < MIN && topGenres.length > 0) {
+        const fallback = await discoverByGenres('tv', topGenres)
+        const extra = dedup(fallback, seenTv, watchedIds)
+          .filter((i) => !i.genreIds.includes(ANIME_GENRE_ID))
+          .sort((a, b) => scoreItem(b, weights) - scoreItem(a, weights))
+        serie = [...serie, ...extra]
+      }
 
       setRecAnime(anime.slice(0, 20))
       setRecCartoni(cartoni.slice(0, 20))
       setRecSerie(serie.slice(0, 20))
 
-      // Recent releases: use top genres from favorites + watched for personalization.
-      const allTitles = [...favs, ...watched]
-      const genres = topGenreIds(allTitles)
+      // Recent releases: top genres from favorites + watched.
+      const genres = topGenreIds(favs, watched, 3)
       const [movies, tv] = await Promise.all([
         getRecentReleases('movie', genres),
         getRecentReleases('tv', genres),

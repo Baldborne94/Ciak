@@ -892,6 +892,22 @@ export async function getRecommendations(
   }
 }
 
+// Genre-based discover (no date filter) — used as recommendation fallback when
+// seed-based recs don't produce enough results for a section.
+export async function discoverByGenres(
+  type: TmdbType,
+  genreIds: number[] = [],
+): Promise<MediaItem[]> {
+  if (genreIds.length === 0) return []
+  const data = await tmdbFetch<{ results: RawMedia[] }>(`/discover/${type}`, {
+    sort_by: 'vote_average.desc',
+    'vote_count.gte': '200',
+    with_genres: genreIds.slice(0, 3).join('|'),
+    page: '1',
+  })
+  return (data.results ?? []).slice(0, 20).map((r) => normalise(r, type))
+}
+
 // Recent popular releases (last 90 days) for "Nuove uscite" on Dashboard.
 export async function getRecentReleases(
   type: TmdbType,
