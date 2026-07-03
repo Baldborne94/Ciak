@@ -48,7 +48,7 @@ export interface MediaDetail extends MediaItem {
   numberOfSeasons: number | null
   numberOfEpisodes: number | null
   // Directors / creators, derived from crew
-  directors: string[]
+  directors: { id: number; name: string }[]
   // YouTube trailer key, if available
   trailerKey: string | null
   // Where to watch (region IT)

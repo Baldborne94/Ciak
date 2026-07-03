@@ -134,7 +134,17 @@ export default function TitleDetail() {
                 <span className="text-zinc-500">
                   {detail.mediaType === 'tv' ? 'Creata da: ' : 'Regia: '}
                 </span>
-                <span className="text-zinc-200">{detail.directors.join(', ')}</span>
+                {detail.directors.map((d, i) => (
+                  <span key={d.id}>
+                    {i > 0 && <span className="text-zinc-500">, </span>}
+                    <Link
+                      to={`/person/${d.id}`}
+                      className="text-zinc-200 hover:text-projector transition-colors"
+                    >
+                      {d.name}
+                    </Link>
+                  </span>
+                ))}
               </p>
             )}
 
