@@ -48,6 +48,32 @@ function SectionTitle({ icon, title, action }: { icon: string; title: string; ac
   )
 }
 
+function RecRow({ items }: { items: MediaItem[] }) {
+  return (
+    <ScrollRow>
+      {items.map((item) => (
+        <Link
+          key={item.id}
+          to={`/title/${item.mediaType}/${item.id}`}
+          className="group w-36 shrink-0 overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
+        >
+          <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
+            {posterUrl(item.posterPath) ? (
+              <img src={posterUrl(item.posterPath)!} alt={item.title} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
+            )}
+          </div>
+          <div className="p-2">
+            <p className="line-clamp-2 text-xs font-semibold text-zinc-100">{item.title}</p>
+            <p className="text-[11px] text-zinc-500">{item.releaseDate?.slice(0, 4)}</p>
+          </div>
+        </Link>
+      ))}
+    </ScrollRow>
+  )
+}
+
 // Picks the most frequent genre IDs from a list of user titles.
 function topGenreIds(titles: UserTitle[], limit = 3): number[] {
   const counts = new Map<number, number>()
@@ -60,11 +86,27 @@ function topGenreIds(titles: UserTitle[], limit = 3): number[] {
     .map(([id]) => id)
 }
 
+const ANIME_GENRE_ID = 16 // Animation genre on TMDB
+
+function dedup(items: MediaItem[], seen: Set<number>, watchedIds: Set<number>): MediaItem[] {
+  const out: MediaItem[] = []
+  for (const item of items) {
+    if (!seen.has(item.id) && !watchedIds.has(item.id)) {
+      seen.add(item.id)
+      out.push(item)
+    }
+  }
+  return out
+}
+
 export default function Dashboard() {
   const { user } = useAuth()
   const [watchlist, setWatchlist] = useState<UserTitle[]>([])
   const [continueList, setContinueList] = useState<ContinueItem[]>([])
-  const [recommended, setRecommended] = useState<MediaItem[]>([])
+  const [recFilms, setRecFilms] = useState<MediaItem[]>([])
+  const [recSerie, setRecSerie] = useState<MediaItem[]>([])
+  const [recAnime, setRecAnime] = useState<MediaItem[]>([])
+  const [recCartoni, setRecCartoni] = useState<MediaItem[]>([])
   const [recentMovies, setRecentMovies] = useState<MediaItem[]>([])
   const [recentTv, setRecentTv] = useState<MediaItem[]>([])
 
@@ -72,7 +114,10 @@ export default function Dashboard() {
     if (!user) {
       setWatchlist([])
       setContinueList([])
-      setRecommended([])
+      setRecFilms([])
+      setRecSerie([])
+      setRecAnime([])
+      setRecCartoni([])
       setRecentMovies([])
       setRecentTv([])
       return
@@ -88,24 +133,43 @@ export default function Dashboard() {
     ]).then(async ([favs, watched]) => {
       const watchedIds = new Set(watched.map((t) => t.tmdb_id))
 
-      // Recommendations: pull from top 2 favorites, deduplicate, filter watched.
-      const recSources = favs.slice(0, 2)
-      if (recSources.length > 0) {
-        const nested = await Promise.all(
-          recSources.map((t) => getRecommendations(t.media_type as TmdbType, t.tmdb_id))
-        )
-        const seen = new Set<number>()
-        const recs: MediaItem[] = []
-        for (const batch of nested) {
-          for (const item of batch) {
-            if (!seen.has(item.id) && !watchedIds.has(item.id)) {
-              seen.add(item.id)
-              recs.push(item)
-            }
-          }
-        }
-        setRecommended(recs.slice(0, 20))
-      }
+      // Recommendations: fetch from top 3 favorites for each media type separately.
+      const movieFavs = favs.filter((t) => t.media_type === 'movie').slice(0, 3)
+      const tvFavs = favs.filter((t) => t.media_type === 'tv').slice(0, 3)
+      // If no TV favorites, fall back to top 2 from any type.
+      const tvSources = tvFavs.length > 0 ? tvFavs : favs.slice(0, 2)
+      const movieSources = movieFavs.length > 0 ? movieFavs : favs.slice(0, 2)
+
+      const [movieRecs, tvRecs] = await Promise.all([
+        movieSources.length > 0
+          ? Promise.all(movieSources.map((t) => getRecommendations(t.media_type as TmdbType, t.tmdb_id)))
+          : Promise.resolve([]),
+        tvSources.length > 0
+          ? Promise.all(tvSources.map((t) => getRecommendations('tv', t.tmdb_id)))
+          : Promise.resolve([]),
+      ])
+
+      const seenMovies = new Set<number>()
+      const allMovieRecs = dedup((movieRecs as MediaItem[][]).flat(), seenMovies, watchedIds)
+      setRecFilms(allMovieRecs.filter((i) => i.mediaType === 'movie').slice(0, 20))
+
+      const seenTv = new Set<number>()
+      const allTvRecs = dedup((tvRecs as MediaItem[][]).flat(), seenTv, watchedIds)
+
+      // Anime: Japanese animation (genre 16 + originalLanguage ja)
+      const anime = allTvRecs.filter(
+        (i) => i.originalLanguage === 'ja' && i.genreIds.includes(ANIME_GENRE_ID),
+      )
+      // Cartoni: non-Japanese animation (genre 16, other languages)
+      const cartoni = allTvRecs.filter(
+        (i) => i.genreIds.includes(ANIME_GENRE_ID) && i.originalLanguage !== 'ja',
+      )
+      // Serie: remaining TV (no animation genre)
+      const serie = allTvRecs.filter((i) => !i.genreIds.includes(ANIME_GENRE_ID))
+
+      setRecAnime(anime.slice(0, 20))
+      setRecCartoni(cartoni.slice(0, 20))
+      setRecSerie(serie.slice(0, 20))
 
       // Recent releases: use top genres from favorites + watched for personalization.
       const allTitles = [...favs, ...watched]
@@ -167,31 +231,29 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* Personalized recommendations */}
-        {user && recommended.length > 0 && (
+        {/* Personalized recommendations — split by type */}
+        {user && recFilms.length > 0 && (
           <section>
-            <SectionTitle icon="🎯" title="Raccomandati per te" />
-            <ScrollRow>
-              {recommended.map((item) => (
-                <Link
-                  key={item.id}
-                  to={`/title/${item.mediaType}/${item.id}`}
-                  className="group w-36 shrink-0 overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
-                >
-                  <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
-                    {posterUrl(item.posterPath) ? (
-                      <img src={posterUrl(item.posterPath)!} alt={item.title} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
-                    )}
-                  </div>
-                  <div className="p-2">
-                    <p className="line-clamp-2 text-xs font-semibold text-zinc-100">{item.title}</p>
-                    <p className="text-[11px] text-zinc-500">{item.releaseDate?.slice(0, 4)}</p>
-                  </div>
-                </Link>
-              ))}
-            </ScrollRow>
+            <SectionTitle icon="🎯" title="Film consigliati" />
+            <RecRow items={recFilms} />
+          </section>
+        )}
+        {user && recSerie.length > 0 && (
+          <section>
+            <SectionTitle icon="📺" title="Serie consigliate" />
+            <RecRow items={recSerie} />
+          </section>
+        )}
+        {user && recAnime.length > 0 && (
+          <section>
+            <SectionTitle icon="⛩️" title="Anime consigliati" />
+            <RecRow items={recAnime} />
+          </section>
+        )}
+        {user && recCartoni.length > 0 && (
+          <section>
+            <SectionTitle icon="🎨" title="Cartoni consigliati" />
+            <RecRow items={recCartoni} />
           </section>
         )}
 
@@ -222,7 +284,7 @@ export default function Dashboard() {
         )}
 
         {/* Empty state */}
-        {user && watchlist.length === 0 && continueList.length === 0 && recommended.length === 0 && (
+        {user && watchlist.length === 0 && continueList.length === 0 && recFilms.length === 0 && recSerie.length === 0 && recAnime.length === 0 && recCartoni.length === 0 && (
           <section className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
             <p className="text-zinc-300">
               La tua sala è ancora vuota. Esplora il catalogo e aggiungi i titoli che vuoi vedere.
