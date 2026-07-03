@@ -878,3 +878,38 @@ export async function discoverByCompany(
     totalPages: data.total_pages,
   }
 }
+
+// Recommendations for a specific title (used on Dashboard for "Per te").
+export async function getRecommendations(
+  type: TmdbType,
+  id: number,
+): Promise<MediaItem[]> {
+  try {
+    const data = await tmdbFetch<{ results: RawMedia[] }>(`/${type}/${id}/recommendations`)
+    return (data.results ?? []).slice(0, 20).map((r) => normalise(r, type))
+  } catch {
+    return []
+  }
+}
+
+// Recent popular releases (last 90 days) for "Nuove uscite" on Dashboard.
+export async function getRecentReleases(
+  type: TmdbType,
+  genreIds: number[] = [],
+): Promise<MediaItem[]> {
+  const since = new Date()
+  since.setDate(since.getDate() - 90)
+  const dateStr = since.toISOString().slice(0, 10)
+  const params: Record<string, string> = {
+    sort_by: 'popularity.desc',
+    [`${type === 'movie' ? 'primary_release_date' : 'first_air_date'}.gte`]: dateStr,
+    'vote_count.gte': '20',
+    page: '1',
+  }
+  if (genreIds.length > 0) params.with_genres = genreIds.slice(0, 3).join('|')
+  const data = await tmdbFetch<{ results: RawMedia[] }>(
+    `/discover/${type}`,
+    params,
+  )
+  return (data.results ?? []).slice(0, 20).map((r) => normalise(r, type))
+}
