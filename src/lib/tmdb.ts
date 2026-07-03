@@ -457,10 +457,10 @@ export async function getDetail(
   }))
 
   // Directors for movies; creators for TV
-  const directors =
+  const directorsRaw: { id: number; name: string }[] =
     type === 'tv'
-      ? (raw.created_by ?? []).map((c) => c.name)
-      : crewRaw.filter((c) => c.job === 'Director').map((c) => c.name)
+      ? (raw.created_by ?? []).map((c) => ({ id: c.id, name: c.name }))
+      : crewRaw.filter((c) => c.job === 'Director').map((c) => ({ id: c.id, name: c.name }))
 
   const productionCompanies: Company[] = (raw.production_companies ?? []).map((c) => ({
     id: c.id,
@@ -517,7 +517,7 @@ export async function getDetail(
     homepage: raw.homepage ?? null,
     numberOfSeasons: raw.number_of_seasons ?? null,
     numberOfEpisodes: raw.number_of_episodes ?? null,
-    directors: [...new Set(directors)],
+    directors: directorsRaw.filter((d, i, arr) => arr.findIndex((x) => x.id === d.id) === i),
     trailerKey: trailer?.key ?? null,
     watchProviders,
     collection: raw.belongs_to_collection

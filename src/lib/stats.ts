@@ -175,7 +175,7 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
     enrichedCount++
     const ref = toEnrich[i]
     for (const g of d.genres) genreCount.set(g.name, (genreCount.get(g.name) ?? 0) + 1)
-    for (const name of d.directors) directorCount.set(name, (directorCount.get(name) ?? 0) + 1)
+    for (const dir of d.directors) directorCount.set(dir.name, (directorCount.get(dir.name) ?? 0) + 1)
     for (const c of d.cast.slice(0, 5)) actorCount.set(c.name, (actorCount.get(c.name) ?? 0) + 1)
     if (ref.type === 'movie' && d.runtime) filmMinutes += d.runtime
     const year = d.releaseDate ? Number(d.releaseDate.slice(0, 4)) : NaN
