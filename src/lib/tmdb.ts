@@ -586,6 +586,7 @@ export interface DiscoverFilters {
   year?: string
   language?: string
   country?: string
+  minVote?: string
 }
 
 export async function discoverByGenre(
@@ -599,13 +600,16 @@ export async function discoverByGenre(
     with_genres: String(genreId),
     sort_by: sortBy,
     page: String(page),
-    'vote_count.gte': sortBy.startsWith('vote_average') ? '200' : '0',
+    // Require a minimum vote count so rating-based filters/sorts aren't skewed by
+    // titles with a handful of votes; bump it when filtering by minimum rating.
+    'vote_count.gte': sortBy.startsWith('vote_average') || filters.minVote ? '200' : '0',
   }
   if (filters.year) {
     params[type === 'tv' ? 'first_air_date_year' : 'primary_release_year'] = filters.year
   }
   if (filters.language) params.with_original_language = filters.language
   if (filters.country) params.with_origin_country = filters.country
+  if (filters.minVote) params['vote_average.gte'] = filters.minVote
 
   return discoverReadable(type, params)
 }

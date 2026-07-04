@@ -22,6 +22,7 @@ import {
   isTmdbConfigured,
 } from '../lib/tmdb'
 import { MediaRow } from '../components/MediaRow'
+import { FilterBar, FilterGroup, ChipGroup, RatingSlider, filterSelectClass } from '../components/FilterBar'
 import { LANGUAGES, YEARS } from '../lib/filters'
 import type {
   MediaItem,
@@ -503,42 +504,17 @@ export default function Search() {
         </button>
       </form>
 
-      {/* Title-mode filters — type (incl. anime/cartoons) always, rating when searching */}
+      {/* Title-mode filters — always visible, applied to search results and idle browse alike */}
       {mode === 'titles' && (
-        <div className="mb-8 flex flex-wrap items-center gap-4 rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs uppercase tracking-wider text-zinc-500">Tipo</span>
-            <div className="flex flex-wrap gap-1">
-              {KIND_FILTERS.map((f) => (
-                <button
-                  key={f.value}
-                  onClick={() => setKind(f.value)}
-                  className={`rounded-md px-3 py-1.5 text-sm transition ${
-                    kind === f.value
-                      ? 'bg-projector text-theatre-950'
-                      : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs uppercase tracking-wider text-zinc-500">Voto minimo</span>
-            <input
-              type="range" min={0} max={9} step={1} value={minRating}
-              onChange={(e) => setMinRating(Number(e.target.value))}
-              className="accent-projector"
-            />
-            <span className="w-8 text-sm font-semibold text-projector">
-              {minRating > 0 ? `${minRating}+` : '—'}
-            </span>
-          </div>
+        <FilterBar>
+          <FilterGroup label="Tipo">
+            <ChipGroup options={KIND_FILTERS} value={kind} onChange={setKind} />
+          </FilterGroup>
+          <RatingSlider value={minRating} onChange={setMinRating} />
           <select
             value={titleYear}
             onChange={(e) => setTitleYear(e.target.value)}
-            className="input-cine w-auto py-1.5 text-sm"
+            className={filterSelectClass}
           >
             <option value="">Anno: qualsiasi</option>
             {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
@@ -546,7 +522,7 @@ export default function Search() {
           <select
             value={titleLang}
             onChange={(e) => setTitleLang(e.target.value)}
-            className="input-cine w-auto py-1.5 text-sm"
+            className={filterSelectClass}
           >
             <option value="">Lingua: qualsiasi</option>
             {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
@@ -554,14 +530,22 @@ export default function Search() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="input-cine w-auto py-1.5 text-sm"
+            className={filterSelectClass}
           >
             <option value="relevance">Ordina: popolarità</option>
             <option value="date_desc">Più recenti</option>
             <option value="date_asc">Più vecchi</option>
             <option value="rating_desc">Voto più alto</option>
           </select>
-        </div>
+          {(kind !== 'all' || minRating > 0 || titleYear || titleLang || sortBy !== 'relevance') && (
+            <button
+              onClick={() => { setKind('all'); setMinRating(0); setTitleYear(''); setTitleLang(''); setSortBy('relevance') }}
+              className="text-sm text-projector/80 hover:text-projector"
+            >
+              ✕ Azzera
+            </button>
+          )}
+        </FilterBar>
       )}
 
       {/* People-mode role filter */}

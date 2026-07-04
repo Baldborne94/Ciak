@@ -1,10 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import MediaGrid from '../components/MediaGrid'
-import { ErrorState, Loader } from '../components/States'
+import { EmptyState, ErrorState, Loader } from '../components/States'
 import { getPersonDetail, profileUrl, isTmdbConfigured } from '../lib/tmdb'
 import EntityFavoriteButton from '../components/EntityFavoriteButton'
-import type { PersonDetail } from '../lib/types'
+import { FilterBar, ChipGroup, RatingSlider, filterSelectClass } from '../components/FilterBar'
+import { YEARS } from '../lib/filters'
+import type { MediaItem, PersonDetail } from '../lib/types'
+
+type CreditKind = 'all' | 'movie' | 'tv'
+const KIND_OPTS: { value: CreditKind; label: string }[] = [
+  { value: 'all', label: 'Tutti' },
+  { value: 'movie', label: 'Film' },
+  { value: 'tv', label: 'Serie TV' },
+]
 
 function calcAge(birthday: string): number {
   const diff = Date.now() - new Date(birthday).getTime()
@@ -17,6 +26,12 @@ export default function PersonPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Filmography filters (client-side: credits are already loaded).
+  const [kind, setKind] = useState<CreditKind>('all')
+  const [minVote, setMinVote] = useState(0)
+  const [year, setYear] = useState('')
+  const [sort, setSort] = useState<'popularity' | 'date_desc' | 'date_asc' | 'rating_desc'>('popularity')
+
   useEffect(() => {
     if (!id) return
     if (!isTmdbConfigured) {
@@ -25,11 +40,35 @@ export default function PersonPage() {
       return
     }
     setLoading(true)
+    // Reset filters when navigating to a different person.
+    setKind('all'); setMinVote(0); setYear(''); setSort('popularity')
     getPersonDetail(Number(id))
       .then(setPerson)
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [id])
+
+  const credits = person?.credits ?? []
+  const filteredCredits = useMemo(() => {
+    const list = credits.filter((c: MediaItem) => {
+      if (kind !== 'all' && c.mediaType !== kind) return false
+      if (c.voteAverage < minVote) return false
+      if (year && c.releaseDate?.slice(0, 4) !== year) return false
+      return true
+    })
+    const byDate = (a: MediaItem, b: MediaItem, dir: 'asc' | 'desc') => {
+      if (!a.releaseDate && !b.releaseDate) return 0
+      if (!a.releaseDate) return 1
+      if (!b.releaseDate) return -1
+      return dir === 'asc'
+        ? a.releaseDate.localeCompare(b.releaseDate)
+        : b.releaseDate.localeCompare(a.releaseDate)
+    }
+    if (sort === 'date_desc') return [...list].sort((a, b) => byDate(a, b, 'desc'))
+    if (sort === 'date_asc') return [...list].sort((a, b) => byDate(a, b, 'asc'))
+    if (sort === 'rating_desc') return [...list].sort((a, b) => b.voteAverage - a.voteAverage)
+    return list
+  }, [credits, kind, minVote, year, sort])
 
   if (loading) return <Loader label="Carico il profilo…" />
   if (error) return <ErrorState title="Profilo non disponibile" message={error} />
@@ -92,12 +131,36 @@ export default function PersonPage() {
         </div>
       </div>
 
-      {person.credits.length > 0 && (
+      {credits.length > 0 && (
         <section>
           <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
-            🎬 Filmografia ({person.credits.length})
+            🎬 Filmografia ({filteredCredits.length}{filteredCredits.length !== credits.length ? ` di ${credits.length}` : ''})
           </h2>
-          <MediaGrid items={person.credits} />
+
+          <FilterBar>
+            <ChipGroup options={KIND_OPTS} value={kind} onChange={setKind} />
+            <RatingSlider value={minVote} onChange={setMinVote} />
+            <select value={year} onChange={(e) => setYear(e.target.value)} className={filterSelectClass}>
+              <option value="">Anno: qualsiasi</option>
+              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as typeof sort)}
+              className={filterSelectClass}
+            >
+              <option value="popularity">Ordina: popolarità</option>
+              <option value="date_desc">Più recenti</option>
+              <option value="date_asc">Più vecchi</option>
+              <option value="rating_desc">Voto più alto</option>
+            </select>
+          </FilterBar>
+
+          {filteredCredits.length === 0 ? (
+            <EmptyState title="Nessun titolo" message="Nessun titolo con i filtri attuali." />
+          ) : (
+            <MediaGrid items={filteredCredits} />
+          )}
         </section>
       )}
 
