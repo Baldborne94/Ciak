@@ -287,6 +287,21 @@ export default function Search() {
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
   const isAnimationKind = kind === 'anime' || kind === 'cartoons'
 
+  // Debounced auto-search: update URL params 400ms after the user stops typing.
+  useEffect(() => {
+    const trimmed = input.trim()
+    if (trimmed === query) return // no actual change
+    const timer = setTimeout(() => {
+      setParams((prev) => {
+        const next = new URLSearchParams(prev)
+        if (trimmed) next.set('q', trimmed)
+        else next.delete('q')
+        return next
+      })
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [input, query]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Persist search results to cache whenever they change.
   useEffect(() => {
     if (!titles.length && !people.length && !studios.length && !collections.length) return
@@ -464,8 +479,8 @@ export default function Search() {
             </button>
           )}
         </div>
-        <button type="submit" className="btn-primary whitespace-nowrap">
-          🔍 Cerca
+        <button type="submit" className="btn-ghost whitespace-nowrap px-4">
+          🔍
         </button>
       </form>
 
