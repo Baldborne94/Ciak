@@ -157,9 +157,11 @@ interface BrowseListCache { items: MediaItem[]; page: number; totalPages: number
 function BrowseList({
   fetcher,
   cacheKey,
+  filterFn,
 }: {
   fetcher: (page: number) => Promise<{ items: MediaItem[]; totalPages: number }>
   cacheKey: string
+  filterFn?: (items: MediaItem[]) => MediaItem[]
 }) {
   const location = useLocation()
   const navType = useNavigationType()
@@ -215,9 +217,14 @@ function BrowseList({
   if (error) return <ErrorState title="Catalogo non disponibile" message={error} />
   if (items.length === 0) return <EmptyState title="Nessun titolo" message="Riprova più tardi." />
 
+  const visible = filterFn ? filterFn(items) : items
+
   return (
     <>
-      <MediaGrid items={items} />
+      {visible.length === 0
+        ? <EmptyState title="Nessun titolo" message="Nessun risultato con i filtri attuali." />
+        : <MediaGrid items={visible} />
+      }
       {page < totalPages && (
         <div className="mt-8 flex justify-center">
           <button onClick={loadMore} disabled={loadingMore} className="btn-primary">
@@ -371,9 +378,9 @@ export default function Search() {
     [previewTitles, kind],
   )
 
-  const filteredTitles = useMemo(() => {
-    const base = isAnimationKind ? filterKind(kind as 'anime' | 'cartoons', titles) : titles
-    const list = base.filter((r) => {
+  // Shared filter + sort logic — applied to both search results and idle previews.
+  function applyFilters(items: MediaItem[]): MediaItem[] {
+    const list = items.filter((r) => {
       if ((kind === 'movie' || kind === 'tv') && r.mediaType !== kind) return false
       if (r.voteAverage < minRating) return false
       if (titleYear && r.releaseDate?.slice(0, 4) !== titleYear) return false
@@ -393,7 +400,19 @@ export default function Search() {
     if (sortBy === 'date_asc') return [...list].sort((a, b) => byDate(a, b, 'asc'))
     if (sortBy === 'rating_desc') return [...list].sort((a, b) => b.voteAverage - a.voteAverage)
     return list
+  }
+
+  const filteredTitles = useMemo(() => {
+    const base = isAnimationKind ? filterKind(kind as 'anime' | 'cartoons', titles) : titles
+    return applyFilters(base)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [titles, kind, isAnimationKind, minRating, titleYear, titleLang, sortBy])
+
+  const filteredTrending = useMemo(
+    () => applyFilters(trendingPreview),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [trendingPreview, kind, minRating, titleYear, titleLang, sortBy],
+  )
 
   const filteredPeople = useMemo(() => {
     const dept = ROLES.find((r) => r.value === role)?.dept
@@ -505,47 +524,43 @@ export default function Search() {
               ))}
             </div>
           </div>
-          {query.trim() && (
-            <>
-              <div className="flex items-center gap-2">
-                <span className="text-xs uppercase tracking-wider text-zinc-500">Voto minimo</span>
-                <input
-                  type="range" min={0} max={9} step={1} value={minRating}
-                  onChange={(e) => setMinRating(Number(e.target.value))}
-                  className="accent-projector"
-                />
-                <span className="w-8 text-sm font-semibold text-projector">
-                  {minRating > 0 ? `${minRating}+` : '—'}
-                </span>
-              </div>
-              <select
-                value={titleYear}
-                onChange={(e) => setTitleYear(e.target.value)}
-                className="input-cine w-auto py-1.5 text-sm"
-              >
-                <option value="">Anno: qualsiasi</option>
-                {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-              </select>
-              <select
-                value={titleLang}
-                onChange={(e) => setTitleLang(e.target.value)}
-                className="input-cine w-auto py-1.5 text-sm"
-              >
-                <option value="">Lingua: qualsiasi</option>
-                {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-              </select>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="input-cine w-auto py-1.5 text-sm"
-              >
-                <option value="relevance">Ordina: rilevanza</option>
-                <option value="date_desc">Più recenti</option>
-                <option value="date_asc">Più vecchi</option>
-                <option value="rating_desc">Voto più alto</option>
-              </select>
-            </>
-          )}
+          <div className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wider text-zinc-500">Voto minimo</span>
+            <input
+              type="range" min={0} max={9} step={1} value={minRating}
+              onChange={(e) => setMinRating(Number(e.target.value))}
+              className="accent-projector"
+            />
+            <span className="w-8 text-sm font-semibold text-projector">
+              {minRating > 0 ? `${minRating}+` : '—'}
+            </span>
+          </div>
+          <select
+            value={titleYear}
+            onChange={(e) => setTitleYear(e.target.value)}
+            className="input-cine w-auto py-1.5 text-sm"
+          >
+            <option value="">Anno: qualsiasi</option>
+            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+          <select
+            value={titleLang}
+            onChange={(e) => setTitleLang(e.target.value)}
+            className="input-cine w-auto py-1.5 text-sm"
+          >
+            <option value="">Lingua: qualsiasi</option>
+            {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+          </select>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+            className="input-cine w-auto py-1.5 text-sm"
+          >
+            <option value="relevance">Ordina: popolarità</option>
+            <option value="date_desc">Più recenti</option>
+            <option value="date_asc">Più vecchi</option>
+            <option value="rating_desc">Voto più alto</option>
+          </select>
         </div>
       )}
 
@@ -579,7 +594,7 @@ export default function Search() {
           isAnimationKind ? (
             kind === 'anime' ? (
               <div className="space-y-12">
-                <BrowseList fetcher={getAnime} cacheKey="anime" />
+                <BrowseList fetcher={getAnime} cacheKey="anime" filterFn={applyFilters} />
                 <div>
                   <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">
                     😏 Pervertito
@@ -587,21 +602,21 @@ export default function Search() {
                   <p className="mb-4 text-sm text-zinc-500">
                     Ecchi, fan-service, harem e hentai: tutto ciò che è «sus», nel suo angolo.
                   </p>
-                  <BrowseList fetcher={getPervertitoAnime} cacheKey="anime-pervertito" />
+                  <BrowseList fetcher={getPervertitoAnime} cacheKey="anime-pervertito" filterFn={applyFilters} />
                 </div>
               </div>
             ) : (
-              <BrowseList fetcher={getCartoons} cacheKey="cartoons" />
+              <BrowseList fetcher={getCartoons} cacheKey="cartoons" filterFn={applyFilters} />
             )
           ) : (
           <div className="space-y-10">
-            {trendingPreview.length > 0 && (
+            {filteredTrending.length > 0 && (
               <div>
                 <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
                   🔥 Di tendenza ora
                   {kind === 'movie' ? ' · Film' : kind === 'tv' ? ' · Serie TV' : ''}
                 </h2>
-                <MediaRow items={trendingPreview} />
+                <MediaRow items={filteredTrending} />
               </div>
             )}
             <div>
