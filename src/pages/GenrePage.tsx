@@ -6,6 +6,7 @@ import { EmptyState, ErrorState, Loader } from '../components/States'
 import { discoverByGenre, getGenres, isTmdbConfigured } from '../lib/tmdb'
 import { LANGUAGES, COUNTRIES, YEARS } from '../lib/filters'
 import { getPageState, setPageState } from '../lib/pageStateCache'
+import { FilterBar, RatingSlider, filterSelectClass } from '../components/FilterBar'
 import type { MediaItem, TmdbType } from '../lib/types'
 
 const SORTS: { value: string; label: string }[] = [
@@ -15,7 +16,7 @@ const SORTS: { value: string; label: string }[] = [
   { value: 'revenue.desc', label: 'Maggiori incassi' },
 ]
 
-const selectClass = 'input-cine w-auto py-2 text-sm'
+const selectClass = filterSelectClass
 
 interface GenrePageCache {
   items: MediaItem[]
@@ -25,6 +26,7 @@ interface GenrePageCache {
   year: string
   language: string
   country: string
+  minVote: number
 }
 
 export default function GenrePage() {
@@ -42,6 +44,7 @@ export default function GenrePage() {
   const [year, setYear] = useState(cached?.year ?? '')
   const [language, setLanguage] = useState(cached?.language ?? '')
   const [country, setCountry] = useState(cached?.country ?? '')
+  const [minVote, setMinVote] = useState(cached?.minVote ?? 0)
   const [page, setPage] = useState(cached?.page ?? 1)
   const [totalPages, setTotalPages] = useState(cached?.totalPages ?? 1)
   const [loading, setLoading] = useState(!cached)
@@ -53,13 +56,13 @@ export default function GenrePage() {
 
   const t = (type ?? 'movie') as TmdbType
   const gid = Number(genreId)
-  const filters = { year, language, country }
+  const filters = { year, language, country, minVote: minVote > 0 ? String(minVote) : undefined }
 
   // Persist state to cache whenever it changes so a subsequent POP can restore it.
   useEffect(() => {
     if (items.length === 0) return
-    setPageState<GenrePageCache>(location.key, { items, page, totalPages, sort, year, language, country })
-  }, [location.key, items, page, totalPages, sort, year, language, country])
+    setPageState<GenrePageCache>(location.key, { items, page, totalPages, sort, year, language, country, minVote })
+  }, [location.key, items, page, totalPages, sort, year, language, country, minVote])
 
   useEffect(() => {
     if (!isTmdbConfigured || !genreId) return
@@ -78,14 +81,14 @@ export default function GenrePage() {
     setError(null)
     setItems([])
     setPage(1)
-    discoverByGenre(t, gid, 1, sort, { year, language, country })
+    discoverByGenre(t, gid, 1, sort, { year, language, country, minVote: minVote > 0 ? String(minVote) : undefined })
       .then(({ items: newItems, totalPages: tp }) => {
         setItems(newItems)
         setTotalPages(tp)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [t, gid, sort, year, language, country])
+  }, [t, gid, sort, year, language, country, minVote])
 
   useEffect(() => {
     // Skip the very first fetch when we restored from cache (back navigation).
@@ -111,7 +114,7 @@ export default function GenrePage() {
     }
   }
 
-  const hasFilters = year || language || country
+  const hasFilters = year || language || country || minVote > 0
 
   return (
     <div>
@@ -128,8 +131,8 @@ export default function GenrePage() {
       </PageHeader>
 
       {/* Advanced filters */}
-      <div className="mb-8 flex flex-wrap items-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
-        <span className="text-xs uppercase tracking-wider text-zinc-500">Filtri</span>
+      <FilterBar>
+        <RatingSlider value={minVote} onChange={setMinVote} />
         <select value={year} onChange={(e) => setYear(e.target.value)} className={selectClass}>
           <option value="">Anno: qualsiasi</option>
           {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
@@ -144,13 +147,13 @@ export default function GenrePage() {
         </select>
         {hasFilters && (
           <button
-            onClick={() => { setYear(''); setLanguage(''); setCountry('') }}
+            onClick={() => { setYear(''); setLanguage(''); setCountry(''); setMinVote(0) }}
             className="text-sm text-projector/80 hover:text-projector"
           >
             ✕ Azzera
           </button>
         )}
-      </div>
+      </FilterBar>
 
       {loading ? (
         <Loader label="Sfoglio il catalogo…" />
