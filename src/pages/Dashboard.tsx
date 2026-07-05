@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { ScrollRow } from '../components/MediaRow'
@@ -150,7 +150,7 @@ export default function Dashboard() {
   const [continueList, setContinueList] = useState<ContinueItem[]>([])
   const [sagaNext, setSagaNext] = useState<MediaItem[]>([])
   const [flashbacks, setFlashbacks] = useState<{ entry: DiaryEntry; yearsAgo: number }[]>([])
-  const [nextTrophy, setNextTrophy] = useState<NextAchievement | null>(null)
+  const [allTitles, setAllTitles] = useState<UserTitle[]>([])
 
   useEffect(() => {
     if (!user) {
@@ -158,7 +158,7 @@ export default function Dashboard() {
       setContinueList([])
       setSagaNext([])
       setFlashbacks([])
-      setNextTrophy(null)
+      setAllTitles([])
       return
     }
 
@@ -171,10 +171,8 @@ export default function Dashboard() {
       listByStatus(user.id, 'watched'),
       listAll(user.id),
     ]).then(([watched, all]) => {
+      setAllTitles(all)
       const knownIds = new Set(all.map((t) => t.tmdb_id))
-
-      // "Prossimo trofeo": closest still-locked achievement.
-      setNextTrophy(getNextAchievement(computeAchievementData(all)))
 
       // "Continua la saga": watched movies (most-recent first) → next unwatched
       // film in each collection they belong to.
@@ -188,6 +186,16 @@ export default function Dashboard() {
       }
     }).catch(() => {})
   }, [user])
+
+  // "Prossimo trofeo": closest still-locked achievement. Uses the episode-derived
+  // in-progress-series count (continue-watching) so "Binge Master" matches reality.
+  const nextTrophy: NextAchievement | null = useMemo(
+    () =>
+      allTitles.length > 0
+        ? getNextAchievement(computeAchievementData(allTitles, { inProgressSeries: continueList.length }))
+        : null,
+    [allTitles, continueList.length],
+  )
 
   const isEmpty =
     watchlist.length === 0 && continueList.length === 0 && sagaNext.length === 0 &&
