@@ -245,6 +245,59 @@ export function getEarnedIds(data: AchievementData): string[] {
   return ACHIEVEMENTS.filter((a) => a.check(data)).map((a) => a.id)
 }
 
+// Progress (current/target) toward each achievement's threshold — kept alongside
+// the definitions so "closest trophy" nudges stay in sync with the checks above.
+const PROGRESS: Record<string, (d: AchievementData) => { current: number; target: number }> = {
+  first_watch: (d) => ({ current: d.totalWatched, target: 1 }),
+  ten_watched: (d) => ({ current: d.totalWatched, target: 10 }),
+  twentyfive_watched: (d) => ({ current: d.totalWatched, target: 25 }),
+  fifty_watched: (d) => ({ current: d.totalWatched, target: 50 }),
+  hundred_watched: (d) => ({ current: d.totalWatched, target: 100 }),
+  horror_fan: (d) => ({ current: d.genreCounts[G.horror] ?? 0, target: 5 }),
+  action_fan: (d) => ({ current: d.genreCounts[G.action] ?? 0, target: 5 }),
+  scifi_fan: (d) => ({ current: d.genreCounts[G.scifi] ?? 0, target: 5 }),
+  romance_fan: (d) => ({ current: d.genreCounts[G.romance] ?? 0, target: 3 }),
+  comedy_fan: (d) => ({ current: d.genreCounts[G.comedy] ?? 0, target: 5 }),
+  fantasy_fan: (d) => ({ current: d.genreCounts[G.fantasy] ?? 0, target: 5 }),
+  crime_fan: (d) => ({ current: (d.genreCounts[G.crime] ?? 0) + (d.genreCounts[G.mystery] ?? 0), target: 5 }),
+  thriller_fan: (d) => ({ current: d.genreCounts[G.thriller] ?? 0, target: 5 }),
+  anime_fan: (d) => ({ current: d.genreCounts[G.animation] ?? 0, target: 5 }),
+  western_fan: (d) => ({ current: d.genreCounts[G.western] ?? 0, target: 3 }),
+  history_fan: (d) => ({ current: (d.genreCounts[G.history] ?? 0) + (d.genreCounts[G.drama] ?? 0), target: 5 }),
+  collector: (d) => ({ current: d.totalFavorites, target: 15 }),
+  critic: (d) => ({ current: d.totalRatings, target: 10 }),
+  perfectionist: (d) => ({ current: d.fiveStarCount, target: 5 }),
+  reviewer: (d) => ({ current: d.withNotes, target: 5 }),
+  binge_master: (d) => ({ current: d.inProgress, target: 3 }),
+}
+
+export interface NextAchievement {
+  achievement: Achievement
+  current: number
+  target: number
+}
+
+// The still-locked achievement closest to completion — a friendly nudge for the
+// home. Returns null once everything is unlocked.
+export function getNextAchievement(data: AchievementData): NextAchievement | null {
+  const earned = new Set(getEarnedIds(data))
+  let best: NextAchievement | null = null
+  let bestRatio = -1
+  for (const a of ACHIEVEMENTS) {
+    if (earned.has(a.id)) continue
+    const p = PROGRESS[a.id]
+    if (!p) continue
+    const { current, target } = p(data)
+    if (target <= 0) continue
+    const ratio = Math.min(current / target, 0.999)
+    if (ratio > bestRatio) {
+      bestRatio = ratio
+      best = { achievement: a, current, target }
+    }
+  }
+  return best
+}
+
 export const RARITY_STYLES: Record<AchievementRarity, string> = {
   bronze: 'border-amber-700/60 bg-amber-950/20 text-amber-400',
   silver: 'border-zinc-500/60 bg-zinc-800/20 text-zinc-300',
