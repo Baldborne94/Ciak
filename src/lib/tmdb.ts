@@ -783,6 +783,63 @@ export async function getCollection(id: number): Promise<CollectionDetail> {
   }
 }
 
+// Lightweight collection-membership lookup for a movie (no heavy appends).
+async function getMovieCollectionId(movieId: number): Promise<number | null> {
+  try {
+    const raw = await tmdbFetch<{
+      belongs_to_collection?: { id: number } | null
+    }>(`/movie/${movieId}`)
+    return raw.belongs_to_collection?.id ?? null
+  } catch {
+    return null
+  }
+}
+
+// "Continua la saga": given a sample of the user's watched movies, find the
+// collections they belong to and return the next *unwatched, already-released*
+// film in each — so the Dashboard can nudge the user to finish sagas they've
+// started. Bounded (samples watched movies, caps collections) to limit API load.
+export async function getSagaContinuations(
+  watchedMovieIds: number[],
+  knownIds: Set<number>,
+): Promise<MediaItem[]> {
+  const sample = watchedMovieIds.slice(0, 14)
+  const collectionIds = await Promise.all(sample.map(getMovieCollectionId))
+  const uniqueCollections = [...new Set(collectionIds.filter((c): c is number => c != null))].slice(0, 8)
+  if (uniqueCollections.length === 0) return []
+
+  const today = new Date().toISOString().slice(0, 10)
+  const nexts = await Promise.all(
+    uniqueCollections.map(async (cid) => {
+      try {
+        const col = await getCollection(cid) // items sorted chronologically
+        // First film in the saga the user hasn't got, already released, with art.
+        return (
+          col.items.find(
+            (f) =>
+              !knownIds.has(f.id) &&
+              !!f.releaseDate &&
+              f.releaseDate <= today &&
+              !!f.posterPath,
+          ) ?? null
+        )
+      } catch {
+        return null
+      }
+    }),
+  )
+
+  const seen = new Set<number>()
+  const out: MediaItem[] = []
+  for (const n of nexts) {
+    if (n && !seen.has(n.id)) {
+      seen.add(n.id)
+      out.push(n)
+    }
+  }
+  return out
+}
+
 // Collections related to a saga, from TMDB recommendations for the saga's
 // films grouped by the collection the recommended films belong to. Note:
 // recommendations are genre-based ("who liked X also liked Y"), so results
