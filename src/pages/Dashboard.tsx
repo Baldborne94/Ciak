@@ -1,14 +1,14 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
 import { ScrollRow } from '../components/MediaRow'
 import MediaGrid from '../components/MediaGrid'
-import { posterUrl, getRecommendations, getRecentReleases, discoverByGenres } from '../lib/tmdb'
+import { posterUrl, getRecentReleases, getSagaContinuations } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
-import { listByStatus, listWatchlist, listFavorites } from '../lib/userTitles'
+import { listByStatus, listWatchlist, listFavorites, listAll } from '../lib/userTitles'
 import { getContinueWatching, type ContinueItem } from '../lib/episodes'
-import type { MediaItem, TmdbType, UserTitle } from '../lib/types'
+import type { MediaItem, UserTitle } from '../lib/types'
 
 function ContinueCard({ c }: { c: ContinueItem }) {
   const poster = posterUrl(c.posterPath)
@@ -48,7 +48,7 @@ function SectionTitle({ icon, title, action }: { icon: string; title: string; ac
   )
 }
 
-function RecRow({ items }: { items: MediaItem[] }) {
+function MediaScrollRow({ items }: { items: MediaItem[] }) {
   return (
     <ScrollRow>
       {items.map((item) => (
@@ -74,60 +74,68 @@ function RecRow({ items }: { items: MediaItem[] }) {
   )
 }
 
-const ANIME_GENRE_ID = 16
+// "Scegli per me": pesca a caso un titolo dalla watchlist per decidere in fretta.
+function ChooseForMe({ watchlist }: { watchlist: UserTitle[] }) {
+  const [index, setIndex] = useState(() => Math.floor(Math.random() * watchlist.length))
+  const pick = watchlist[index] ?? watchlist[0]
 
-// Genre frequency map: favorites count double (stronger signal), watched once.
-function genreWeights(favs: UserTitle[], watched: UserTitle[]): Map<number, number> {
+  function reroll() {
+    if (watchlist.length < 2) return
+    let next = index
+    while (next === index) next = Math.floor(Math.random() * watchlist.length)
+    setIndex(next)
+  }
+
+  if (!pick) return null
+  const poster = posterUrl(pick.poster_path)
+
+  return (
+    <div className="flex flex-wrap items-center gap-5 rounded-2xl border border-projector/30 bg-gradient-to-br from-projector/10 via-theatre-900/60 to-theatre-900/40 p-5">
+      <Link
+        to={`/title/${pick.media_type}/${pick.tmdb_id}`}
+        className="group h-40 w-28 shrink-0 overflow-hidden rounded-xl border border-theatre-800 bg-theatre-800"
+      >
+        {poster ? (
+          <img src={poster} alt={pick.title} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
+        )}
+      </Link>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs uppercase tracking-wider text-projector/80">Dalla tua lista «Da vedere»</p>
+        <Link to={`/title/${pick.media_type}/${pick.tmdb_id}`}>
+          <h3 className="mt-1 font-display text-2xl tracking-wide text-zinc-100 hover:text-projector">
+            {pick.title}
+          </h3>
+        </Link>
+        <p className="mt-1 text-sm text-zinc-400">
+          {pick.media_type === 'tv' ? 'Serie TV' : 'Film'} · in attesa nella tua watchlist
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Link to={`/title/${pick.media_type}/${pick.tmdb_id}`} className="btn-primary">
+            Guardalo →
+          </Link>
+          {watchlist.length > 1 && (
+            <button onClick={reroll} className="btn-ghost">🎲 Rigira</button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Genre frequency map (favorites count double) → top genres for "Nuove uscite".
+function topGenreIds(titles: UserTitle[], limit = 3): number[] {
   const w = new Map<number, number>()
-  for (const t of favs) for (const g of t.genre_ids ?? []) w.set(g, (w.get(g) ?? 0) + 2)
-  for (const t of watched) for (const g of t.genre_ids ?? []) w.set(g, (w.get(g) ?? 0) + 1)
-  return w
-}
-
-// Score a candidate by genre affinity + quality (vote average as tiebreaker).
-function scoreItem(item: MediaItem, weights: Map<number, number>): number {
-  return item.genreIds.reduce((s, g) => s + (weights.get(g) ?? 0), 0) + item.voteAverage * 0.5
-}
-
-// Top genre IDs weighted by user taste (for recent releases and discover fallback).
-function topGenreIds(favs: UserTitle[], watched: UserTitle[], limit = 3): number[] {
-  const w = genreWeights(favs, watched)
+  for (const t of titles) for (const g of t.genre_ids ?? []) w.set(g, (w.get(g) ?? 0) + 1)
   return [...w.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id]) => id)
-}
-
-// Seeds: favorites + high-rated watched (≥4 stars) for a given media type,
-// sorted by composite score, deduplicated, capped at 6 per type.
-function buildSeeds(favs: UserTitle[], watched: UserTitle[], type: TmdbType): UserTitle[] {
-  const highRated = watched.filter((t) => t.media_type === type && (t.personal_rating ?? 0) >= 4)
-  const favsByType = favs.filter((t) => t.media_type === type)
-  const seen = new Set<number>()
-  const merged: UserTitle[] = []
-  for (const t of [...favsByType, ...highRated]) {
-    if (!seen.has(t.tmdb_id)) { seen.add(t.tmdb_id); merged.push(t) }
-  }
-  return merged
-    .map((t) => ({ t, score: (t.is_favorite ? 3 : 0) + (t.personal_rating ?? 0) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 6)
-    .map(({ t }) => t)
-}
-
-function dedup(items: MediaItem[], seen: Set<number>, watchedIds: Set<number>): MediaItem[] {
-  const out: MediaItem[] = []
-  for (const item of items) {
-    if (!seen.has(item.id) && !watchedIds.has(item.id)) { seen.add(item.id); out.push(item) }
-  }
-  return out
 }
 
 export default function Dashboard() {
   const { user } = useAuth()
   const [watchlist, setWatchlist] = useState<UserTitle[]>([])
   const [continueList, setContinueList] = useState<ContinueItem[]>([])
-  const [recFilms, setRecFilms] = useState<MediaItem[]>([])
-  const [recSerie, setRecSerie] = useState<MediaItem[]>([])
-  const [recAnime, setRecAnime] = useState<MediaItem[]>([])
-  const [recCartoni, setRecCartoni] = useState<MediaItem[]>([])
+  const [sagaNext, setSagaNext] = useState<MediaItem[]>([])
   const [recentMovies, setRecentMovies] = useState<MediaItem[]>([])
   const [recentTv, setRecentTv] = useState<MediaItem[]>([])
 
@@ -135,10 +143,7 @@ export default function Dashboard() {
     if (!user) {
       setWatchlist([])
       setContinueList([])
-      setRecFilms([])
-      setRecSerie([])
-      setRecAnime([])
-      setRecCartoni([])
+      setSagaNext([])
       setRecentMovies([])
       setRecentTv([])
       return
@@ -147,79 +152,38 @@ export default function Dashboard() {
     listWatchlist(user.id).then(setWatchlist).catch(() => setWatchlist([]))
     getContinueWatching(user.id).then(setContinueList).catch(() => setContinueList([]))
 
-    // Build personalized sections from favorites + watched.
+    // Personalized sections from the user's own library.
     Promise.all([
       listFavorites(user.id),
       listByStatus(user.id, 'watched'),
-    ]).then(async ([favs, watched]) => {
-      const watchedIds = new Set(watched.map((t) => t.tmdb_id))
-      const weights = genreWeights(favs, watched)
+      listAll(user.id),
+    ]).then(async ([favs, watched, all]) => {
+      const knownIds = new Set(all.map((t) => t.tmdb_id))
 
-      // Seeds: favorites + high-rated watched (≥4★), up to 6 per type.
-      const movieSeeds = buildSeeds(favs, watched, 'movie')
-      const tvSeeds = buildSeeds(favs, watched, 'tv')
-
-      // Fetch TMDB recommendations for each seed in parallel.
-      const [rawMovieRecs, rawTvRecs] = await Promise.all([
-        movieSeeds.length > 0
-          ? Promise.all(movieSeeds.map((t) => getRecommendations('movie', t.tmdb_id)))
-          : Promise.resolve([[] as MediaItem[]]),
-        tvSeeds.length > 0
-          ? Promise.all(tvSeeds.map((t) => getRecommendations('tv', t.tmdb_id)))
-          : Promise.resolve([[] as MediaItem[]]),
-      ])
-
-      // Flatten, dedup, filter watched, then sort by genre-affinity score.
-      const seenMovies = new Set<number>()
-      const topMovies = dedup(rawMovieRecs.flat(), seenMovies, watchedIds)
-        .sort((a, b) => scoreItem(b, weights) - scoreItem(a, weights))
-
-      const seenTv = new Set<number>()
-      const topTv = dedup(rawTvRecs.flat(), seenTv, watchedIds)
-        .sort((a, b) => scoreItem(b, weights) - scoreItem(a, weights))
-
-      // Genre-discover fallback: if seed recs are thin, fill from top genres.
-      const topGenres = topGenreIds(favs, watched, 3)
-      const MIN = 8
-
-      let films = topMovies.filter((i) => i.mediaType === 'movie')
-      if (films.length < MIN && topGenres.length > 0) {
-        const fallback = await discoverByGenres('movie', topGenres)
-        const extra = dedup(fallback, seenMovies, watchedIds)
-          .sort((a, b) => scoreItem(b, weights) - scoreItem(a, weights))
-        films = [...films, ...extra]
-      }
-      setRecFilms(films.slice(0, 20))
-
-      const anime = topTv.filter((i) => i.originalLanguage === 'ja' && i.genreIds.includes(ANIME_GENRE_ID))
-      const cartoni = topTv.filter((i) => i.genreIds.includes(ANIME_GENRE_ID) && i.originalLanguage !== 'ja')
-      let serie = topTv.filter((i) => !i.genreIds.includes(ANIME_GENRE_ID))
-
-      if (serie.length < MIN && topGenres.length > 0) {
-        const fallback = await discoverByGenres('tv', topGenres)
-        const extra = dedup(fallback, seenTv, watchedIds)
-          .filter((i) => !i.genreIds.includes(ANIME_GENRE_ID))
-          .sort((a, b) => scoreItem(b, weights) - scoreItem(a, weights))
-        serie = [...serie, ...extra]
+      // "Continua la saga": watched movies (most-recent first) → next unwatched
+      // film in each collection they belong to.
+      const watchedMovieIds = watched
+        .filter((t) => t.media_type === 'movie')
+        .map((t) => t.tmdb_id)
+      if (watchedMovieIds.length > 0) {
+        getSagaContinuations(watchedMovieIds, knownIds)
+          .then(setSagaNext)
+          .catch(() => setSagaNext([]))
       }
 
-      setRecAnime(anime.slice(0, 20))
-      setRecCartoni(cartoni.slice(0, 20))
-      setRecSerie(serie.slice(0, 20))
-
-      // Recent releases: top genres from favorites + watched.
-      const genres = topGenreIds(favs, watched, 3)
+      // Recent releases personalized by the user's most-watched genres.
+      const genres = topGenreIds([...favs, ...watched])
       const [movies, tv] = await Promise.all([
         getRecentReleases('movie', genres),
         getRecentReleases('tv', genres),
       ])
-      setRecentMovies(movies.filter((m) => !watchedIds.has(m.id)).slice(0, 20))
-      setRecentTv(tv.filter((t) => !watchedIds.has(t.id)).slice(0, 20))
+      setRecentMovies(movies.filter((m) => !knownIds.has(m.id)).slice(0, 20))
+      setRecentTv(tv.filter((t) => !knownIds.has(t.id)).slice(0, 20))
     }).catch(() => {})
   }, [user])
 
   // Merge and interleave recent movies + tv for the "Nuove uscite" grid.
-  const recentMixed = (() => {
+  const recentMixed = useMemo(() => {
     const out: MediaItem[] = []
     const len = Math.max(recentMovies.length, recentTv.length)
     for (let i = 0; i < len; i++) {
@@ -227,14 +191,17 @@ export default function Dashboard() {
       if (recentTv[i]) out.push(recentTv[i])
     }
     return out.slice(0, 20)
-  })()
+  }, [recentMovies, recentTv])
+
+  const isEmpty =
+    watchlist.length === 0 && continueList.length === 0 && sagaNext.length === 0
 
   return (
     <div>
       <PageHeader
         eyebrow="La tua sala"
         title="Bentornato al cinema"
-        subtitle="I tuoi titoli e i suggerimenti su misura per te."
+        subtitle="Il tuo archivio, le tue liste e cosa vedere adesso."
       />
 
       <div className="space-y-12">
@@ -256,6 +223,14 @@ export default function Dashboard() {
           </section>
         )}
 
+        {/* Choose for me — quick pick from the watchlist */}
+        {user && watchlist.length > 0 && (
+          <section>
+            <SectionTitle icon="🎲" title="Scegli per me" />
+            <ChooseForMe watchlist={watchlist} />
+          </section>
+        )}
+
         {/* Resume watching */}
         {user && continueList.length > 0 && (
           <section>
@@ -266,29 +241,14 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* Personalized recommendations — split by type */}
-        {user && recFilms.length > 0 && (
+        {/* Continue the saga — next unwatched film in sagas you've started */}
+        {user && sagaNext.length > 0 && (
           <section>
-            <SectionTitle icon="🎯" title="Film consigliati" />
-            <RecRow items={recFilms} />
-          </section>
-        )}
-        {user && recSerie.length > 0 && (
-          <section>
-            <SectionTitle icon="📺" title="Serie consigliate" />
-            <RecRow items={recSerie} />
-          </section>
-        )}
-        {user && recAnime.length > 0 && (
-          <section>
-            <SectionTitle icon="⛩️" title="Anime consigliati" />
-            <RecRow items={recAnime} />
-          </section>
-        )}
-        {user && recCartoni.length > 0 && (
-          <section>
-            <SectionTitle icon="🎨" title="Cartoni consigliati" />
-            <RecRow items={recCartoni} />
+            <SectionTitle icon="🎬" title="Continua la saga" />
+            <p className="-mt-3 mb-4 text-sm text-zinc-500">
+              Il prossimo capitolo delle saghe che hai iniziato ma non ancora finito.
+            </p>
+            <MediaScrollRow items={sagaNext} />
           </section>
         )}
 
@@ -319,7 +279,7 @@ export default function Dashboard() {
         )}
 
         {/* Empty state */}
-        {user && watchlist.length === 0 && continueList.length === 0 && recFilms.length === 0 && recSerie.length === 0 && recAnime.length === 0 && recCartoni.length === 0 && (
+        {user && isEmpty && (
           <section className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
             <p className="text-zinc-300">
               La tua sala è ancora vuota. Esplora il catalogo e aggiungi i titoli che vuoi vedere.
