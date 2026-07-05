@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
-import SavedTitleCard from '../components/SavedTitleCard'
 import { ScrollRow } from '../components/MediaRow'
 import MediaGrid from '../components/MediaGrid'
 import { posterUrl, getRecentReleases, getSagaContinuations } from '../lib/tmdb'
@@ -249,24 +248,6 @@ export default function Dashboard() {
               Il prossimo capitolo delle saghe che hai iniziato ma non ancora finito.
             </p>
             <MediaScrollRow items={sagaNext} />
-          </section>
-        )}
-
-        {/* Watchlist */}
-        {user && watchlist.length > 0 && (
-          <section>
-            <SectionTitle
-              icon="🎟️"
-              title="Da vedere"
-              action={
-                <Link to="/lists/watchlist" className="text-sm text-projector/70 hover:text-projector">
-                  Vedi tutti →
-                </Link>
-              }
-            />
-            <ScrollRow>
-              {watchlist.map((r) => <SavedTitleCard key={r.id} record={r} />)}
-            </ScrollRow>
           </section>
         )}
 
