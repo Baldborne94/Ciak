@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { ScrollRow } from '../components/MediaRow'
-import MediaGrid from '../components/MediaGrid'
-import { posterUrl, getRecentReleases, getSagaContinuations } from '../lib/tmdb'
+import { posterUrl, getSagaContinuations } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
-import { listByStatus, listWatchlist, listFavorites, listAll } from '../lib/userTitles'
+import { listByStatus, listWatchlist, listAll } from '../lib/userTitles'
+import { listDiary } from '../lib/diary'
+import { computeAchievementData, getNextAchievement, RARITY_STYLES, type NextAchievement } from '../lib/achievements'
 import { getContinueWatching, type ContinueItem } from '../lib/episodes'
-import type { MediaItem, UserTitle } from '../lib/types'
+import type { DiaryEntry, MediaItem, UserTitle } from '../lib/types'
 
 function ContinueCard({ c }: { c: ContinueItem }) {
   const poster = posterUrl(c.posterPath)
@@ -123,11 +124,24 @@ function ChooseForMe({ watchlist }: { watchlist: UserTitle[] }) {
   )
 }
 
-// Genre frequency map (favorites count double) → top genres for "Nuove uscite".
-function topGenreIds(titles: UserTitle[], limit = 3): number[] {
-  const w = new Map<number, number>()
-  for (const t of titles) for (const g of t.genre_ids ?? []) w.set(g, (w.get(g) ?? 0) + 1)
-  return [...w.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([id]) => id)
+// Diary entries watched on today's date (MM-DD) in a previous year — a nostalgic
+// "un anno fa" flashback. Deduplicated by title, most-years-ago first.
+function onThisDayFlashbacks(diary: DiaryEntry[]): { entry: DiaryEntry; yearsAgo: number }[] {
+  const now = new Date()
+  const md = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const currentYear = now.getFullYear()
+  const seen = new Set<number>()
+  const out: { entry: DiaryEntry; yearsAgo: number }[] = []
+  for (const e of diary) {
+    if (!e.watched_on || e.watched_on.slice(5, 10) !== md) continue
+    const year = Number(e.watched_on.slice(0, 4))
+    const yearsAgo = currentYear - year
+    if (yearsAgo < 1) continue // only past years
+    if (seen.has(e.tmdb_id)) continue
+    seen.add(e.tmdb_id)
+    out.push({ entry: e, yearsAgo })
+  }
+  return out.sort((a, b) => b.yearsAgo - a.yearsAgo)
 }
 
 export default function Dashboard() {
@@ -135,29 +149,32 @@ export default function Dashboard() {
   const [watchlist, setWatchlist] = useState<UserTitle[]>([])
   const [continueList, setContinueList] = useState<ContinueItem[]>([])
   const [sagaNext, setSagaNext] = useState<MediaItem[]>([])
-  const [recentMovies, setRecentMovies] = useState<MediaItem[]>([])
-  const [recentTv, setRecentTv] = useState<MediaItem[]>([])
+  const [flashbacks, setFlashbacks] = useState<{ entry: DiaryEntry; yearsAgo: number }[]>([])
+  const [nextTrophy, setNextTrophy] = useState<NextAchievement | null>(null)
 
   useEffect(() => {
     if (!user) {
       setWatchlist([])
       setContinueList([])
       setSagaNext([])
-      setRecentMovies([])
-      setRecentTv([])
+      setFlashbacks([])
+      setNextTrophy(null)
       return
     }
 
     listWatchlist(user.id).then(setWatchlist).catch(() => setWatchlist([]))
     getContinueWatching(user.id).then(setContinueList).catch(() => setContinueList([]))
+    listDiary(user.id).then((d) => setFlashbacks(onThisDayFlashbacks(d))).catch(() => setFlashbacks([]))
 
     // Personalized sections from the user's own library.
     Promise.all([
-      listFavorites(user.id),
       listByStatus(user.id, 'watched'),
       listAll(user.id),
-    ]).then(async ([favs, watched, all]) => {
+    ]).then(([watched, all]) => {
       const knownIds = new Set(all.map((t) => t.tmdb_id))
+
+      // "Prossimo trofeo": closest still-locked achievement.
+      setNextTrophy(getNextAchievement(computeAchievementData(all)))
 
       // "Continua la saga": watched movies (most-recent first) → next unwatched
       // film in each collection they belong to.
@@ -169,31 +186,12 @@ export default function Dashboard() {
           .then(setSagaNext)
           .catch(() => setSagaNext([]))
       }
-
-      // Recent releases personalized by the user's most-watched genres.
-      const genres = topGenreIds([...favs, ...watched])
-      const [movies, tv] = await Promise.all([
-        getRecentReleases('movie', genres),
-        getRecentReleases('tv', genres),
-      ])
-      setRecentMovies(movies.filter((m) => !knownIds.has(m.id)).slice(0, 20))
-      setRecentTv(tv.filter((t) => !knownIds.has(t.id)).slice(0, 20))
     }).catch(() => {})
   }, [user])
 
-  // Merge and interleave recent movies + tv for the "Nuove uscite" grid.
-  const recentMixed = useMemo(() => {
-    const out: MediaItem[] = []
-    const len = Math.max(recentMovies.length, recentTv.length)
-    for (let i = 0; i < len; i++) {
-      if (recentMovies[i]) out.push(recentMovies[i])
-      if (recentTv[i]) out.push(recentTv[i])
-    }
-    return out.slice(0, 20)
-  }, [recentMovies, recentTv])
-
   const isEmpty =
-    watchlist.length === 0 && continueList.length === 0 && sagaNext.length === 0
+    watchlist.length === 0 && continueList.length === 0 && sagaNext.length === 0 &&
+    flashbacks.length === 0 && !nextTrophy
 
   return (
     <div>
@@ -251,11 +249,63 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* Recent releases personalized by genre */}
-        {user && recentMixed.length > 0 && (
+        {/* On this day — diary flashback */}
+        {user && flashbacks.length > 0 && (
           <section>
-            <SectionTitle icon="🆕" title="Nuove uscite per te" />
-            <MediaGrid items={recentMixed} />
+            <SectionTitle icon="📅" title="Un anno fa guardavi…" />
+            <ScrollRow>
+              {flashbacks.map(({ entry, yearsAgo }) => (
+                <Link
+                  key={entry.id}
+                  to={`/title/${entry.media_type}/${entry.tmdb_id}`}
+                  className="group w-36 shrink-0 overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
+                >
+                  <div className="relative aspect-[2/3] w-full overflow-hidden bg-theatre-800">
+                    {posterUrl(entry.poster_path) ? (
+                      <img src={posterUrl(entry.poster_path)!} alt={entry.title} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
+                    )}
+                    <span className="absolute right-1.5 top-1.5 rounded-full bg-theatre-950/80 px-2 py-0.5 text-[11px] font-semibold text-projector">
+                      {yearsAgo === 1 ? '1 anno fa' : `${yearsAgo} anni fa`}
+                    </span>
+                  </div>
+                  <div className="p-2">
+                    <p className="line-clamp-2 text-xs font-semibold text-zinc-100">{entry.title}</p>
+                  </div>
+                </Link>
+              ))}
+            </ScrollRow>
+          </section>
+        )}
+
+        {/* Next trophy — closest locked achievement */}
+        {user && nextTrophy && (
+          <section>
+            <SectionTitle icon="🏆" title="Prossimo trofeo" />
+            <Link
+              to="/trophies"
+              className={`flex flex-wrap items-center gap-5 rounded-2xl border p-5 transition hover:-translate-y-0.5 ${RARITY_STYLES[nextTrophy.achievement.rarity]}`}
+            >
+              <span className="text-5xl">{nextTrophy.achievement.avatar}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-display text-xl tracking-wide text-zinc-100">
+                  {nextTrophy.achievement.emoji} {nextTrophy.achievement.title}
+                </p>
+                <p className="mt-0.5 text-sm text-zinc-400">{nextTrophy.achievement.subtitle}</p>
+                <div className="mt-3 flex items-center gap-3">
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-theatre-800">
+                    <div
+                      className="h-full rounded-full bg-projector transition-all"
+                      style={{ width: `${Math.round((nextTrophy.current / nextTrophy.target) * 100)}%` }}
+                    />
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold text-zinc-200">
+                    {nextTrophy.current}/{nextTrophy.target}
+                  </span>
+                </div>
+              </div>
+            </Link>
           </section>
         )}
 
