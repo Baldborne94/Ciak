@@ -222,6 +222,10 @@ export function computeAchievementData(
     notes: string | null
     genre_ids: number[]
   }[],
+  // Series actually in progress, derived from episode tracking (continue-watching).
+  // More accurate than the status flag, which can go stale when a series' episode
+  // count grows on TMDB after it was marked "watched". Falls back to the flag.
+  opts?: { inProgressSeries?: number },
 ): AchievementData {
   const watched = titles.filter((t) => t.status === 'watched')
   const genreCounts: Record<number, number> = {}
@@ -236,7 +240,7 @@ export function computeAchievementData(
     totalRatings: titles.filter((t) => t.personal_rating != null).length,
     fiveStarCount: titles.filter((t) => t.personal_rating === 5).length,
     withNotes: titles.filter((t) => !!t.notes?.trim()).length,
-    inProgress: titles.filter((t) => t.status === 'in_progress').length,
+    inProgress: opts?.inProgressSeries ?? titles.filter((t) => t.status === 'in_progress').length,
     genreCounts,
   }
 }

@@ -9,6 +9,7 @@ import {
   getActiveAchievementId,
   setActiveAchievement,
 } from '../lib/userTitles'
+import { getContinueWatching } from '../lib/episodes'
 import { useAchievementsCtx, achievementById } from '../lib/achievementsCtx'
 import {
   ACHIEVEMENTS,
@@ -119,11 +120,18 @@ export default function TrophiesPage() {
 
   useEffect(() => {
     if (!user) { setLoading(false); return }
-    Promise.all([
-      checkAndUnlockAchievements(user.id),
-      getUnlockedAchievementIds(user.id),
-      getActiveAchievementId(user.id),
-    ])
+    // Count series actually in progress (episode-derived) so "Binge Master"
+    // unlocks based on what you're really following, not the stale status flag.
+    getContinueWatching(user.id)
+      .then((c) => c.length)
+      .catch(() => 0)
+      .then((inProgressSeries) =>
+        Promise.all([
+          checkAndUnlockAchievements(user.id, { inProgressSeries }),
+          getUnlockedAchievementIds(user.id),
+          getActiveAchievementId(user.id),
+        ]),
+      )
       .then(([newOnes, ids, active]) => {
         if (newOnes.length > 0) notify(newOnes)
         setUnlockedIds(new Set(ids))

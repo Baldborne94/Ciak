@@ -250,6 +250,7 @@ export async function getPublicWatchlist(targetUserId: string): Promise<PublicWa
 
 export async function checkAndUnlockAchievements(
   userId: string,
+  opts?: { inProgressSeries?: number },
 ): Promise<Achievement[]> {
   const db = client()
 
@@ -260,7 +261,7 @@ export async function checkAndUnlockAchievements(
 
   if (!titles) return []
 
-  const data = computeAchievementData(titles)
+  const data = computeAchievementData(titles, opts)
   const earnedIds = getEarnedIds(data)
 
   const { data: already } = await db
