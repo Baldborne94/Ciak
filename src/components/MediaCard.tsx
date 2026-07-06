@@ -5,6 +5,7 @@ import { posterUrl, displayTitle } from '../lib/tmdb'
 import { useLibrary } from '../lib/libraryCtx'
 import { useAuth } from '../lib/auth'
 import { upsertUserTitle, refFromMedia } from '../lib/userTitles'
+import StarRating from './StarRating'
 
 // Badge shown on a card when the title is already in the user's collection.
 const LIB_BADGE: Record<TitleStatus, { label: string; cls: string }> = {
@@ -75,6 +76,22 @@ function QuickActions({ item }: { item: MediaItem }) {
               })
             }
           />
+          {/* Quick rating — setting a vote also marks the title as watched. */}
+          <div className="border-t border-theatre-800 px-3 py-2">
+            <StarRating
+              value={lib?.rating ?? null}
+              size="sm"
+              showValue={false}
+              onChange={(v) =>
+                run({
+                  personal_rating: v,
+                  ...(v != null && lib?.status !== 'watched'
+                    ? { status: 'watched' as TitleStatus, watched_at: new Date().toISOString() }
+                    : {}),
+                })
+              }
+            />
+          </div>
         </div>
       )}
     </div>

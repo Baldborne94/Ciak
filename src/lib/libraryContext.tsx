@@ -19,7 +19,11 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       .then((titles) => {
         const m = new Map<string, LibraryEntry>()
         for (const t of titles) {
-          m.set(libKey(t.media_type, t.tmdb_id), { status: t.status, isFavorite: t.is_favorite })
+          m.set(libKey(t.media_type, t.tmdb_id), {
+            status: t.status,
+            isFavorite: t.is_favorite,
+            rating: t.personal_rating,
+          })
         }
         setIndex(m)
       })
