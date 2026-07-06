@@ -51,8 +51,10 @@ export interface MediaDetail extends MediaItem {
   directors: { id: number; name: string }[]
   // YouTube trailer key, if available
   trailerKey: string | null
-  // Where to watch (region IT)
+  // Where to watch (region IT) — kept for convenience; see watchProvidersByCountry.
   watchProviders: WatchProviders | null
+  // Where to watch across countries (IT first), for the country picker.
+  watchProvidersByCountry: CountryProviders[]
   // TV seasons (empty for movies)
   seasons: Season[]
   // Raccolta/saga di cui il film fa parte (es. "Grindhouse Collection"), se presente.
@@ -91,6 +93,13 @@ export interface WatchProviders {
   flatrate: Provider[]
   rent: Provider[]
   buy: Provider[]
+}
+
+// Watch providers for a single country, for the "Dove guardarlo" country picker.
+export interface CountryProviders {
+  code: string // ISO 3166-1 (e.g. "IT", "US")
+  name: string // localized country name (Italian)
+  providers: WatchProviders
 }
 
 export interface CastMember {

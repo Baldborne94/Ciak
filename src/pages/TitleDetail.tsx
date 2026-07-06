@@ -42,6 +42,11 @@ export default function TitleDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showTrailer, setShowTrailer] = useState(false)
+  // Selected country for "Dove guardarlo" ('' = default to first, i.e. Italy).
+  const [watchCountry, setWatchCountry] = useState('')
+
+  // Reset the chosen country when navigating to a different title.
+  useEffect(() => { setWatchCountry('') }, [mediaType, id])
 
   useEffect(() => {
     if (!mediaType || !id) return
@@ -195,24 +200,40 @@ export default function TitleDetail() {
         </div>
       </div>
 
-      {/* Where to watch (Italy) */}
-      {detail.watchProviders &&
-        (detail.watchProviders.flatrate.length > 0 ||
-          detail.watchProviders.rent.length > 0 ||
-          detail.watchProviders.buy.length > 0) && (
+      {/* Where to watch — country picker (Italy + abroad) */}
+      {detail.watchProvidersByCountry.length > 0 && (() => {
+        const countries = detail.watchProvidersByCountry
+        const selected =
+          countries.find((c) => c.code === watchCountry) ?? countries[0]
+        const p = selected.providers
+        return (
           <section>
-            <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
-              📺 Dove guardarlo{' '}
-              <span className="text-sm font-normal text-zinc-500">in Italia</span>
-            </h2>
-            <div className="space-y-4">
-              <ProvidersGroup label="In abbonamento" items={detail.watchProviders.flatrate} />
-              <ProvidersGroup label="Noleggio" items={detail.watchProviders.rent} />
-              <ProvidersGroup label="Acquisto" items={detail.watchProviders.buy} />
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-display text-2xl tracking-wide text-zinc-100">
+                📺 Dove guardarlo{' '}
+                <span className="text-sm font-normal text-zinc-500">in {selected.name}</span>
+              </h2>
+              {countries.length > 1 && (
+                <select
+                  value={selected.code}
+                  onChange={(e) => setWatchCountry(e.target.value)}
+                  className="input-cine w-auto py-1.5 text-sm"
+                  aria-label="Scegli il paese"
+                >
+                  {countries.map((c) => (
+                    <option key={c.code} value={c.code}>{c.name}</option>
+                  ))}
+                </select>
+              )}
             </div>
-            {detail.watchProviders.link && (
+            <div className="space-y-4">
+              <ProvidersGroup label="In abbonamento" items={p.flatrate} />
+              <ProvidersGroup label="Noleggio" items={p.rent} />
+              <ProvidersGroup label="Acquisto" items={p.buy} />
+            </div>
+            {p.link && (
               <a
-                href={detail.watchProviders.link}
+                href={p.link}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-4 inline-block text-sm text-projector/80 hover:text-projector"
@@ -221,7 +242,8 @@ export default function TitleDetail() {
               </a>
             )}
           </section>
-        )}
+        )
+      })()}
 
       {/* Trailer */}
       {detail.trailerKey && (
