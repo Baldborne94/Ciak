@@ -5,6 +5,7 @@ import App from './App.tsx'
 import { AuthProvider } from './lib/auth.tsx'
 import { AchievementsProvider } from './lib/achievementsContext.tsx'
 import { ToastProvider } from './lib/toastContext.tsx'
+import { LibraryProvider } from './lib/libraryContext.tsx'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
@@ -13,7 +14,9 @@ createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <ToastProvider>
           <AchievementsProvider>
-            <App />
+            <LibraryProvider>
+              <App />
+            </LibraryProvider>
           </AchievementsProvider>
         </ToastProvider>
       </AuthProvider>

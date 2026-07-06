@@ -33,6 +33,7 @@ import type {
   TmdbType,
 } from '../lib/types'
 import { getPageState, setPageState } from '../lib/pageStateCache'
+import { usePersistedState } from '../lib/usePersistedState'
 
 // Gli strumenti AI (Canzone, Foto) vivono ora nell'hub "/ai"; qui Cerca fa
 // solo ricerca nel catalogo: titoli, persone, studi, saghe.
@@ -287,6 +288,8 @@ export default function Search() {
   // Genre to browse anime/cartoons by (null = all). TV genres, minus Animation.
   const [tvGenres, setTvGenres] = useState<Genre[]>([])
   const [browseGenre, setBrowseGenre] = useState<number | null>(null)
+  // Recent search terms (persisted), shown as quick chips when the field is empty.
+  const [recentSearches, setRecentSearches] = usePersistedState<string[]>('ciak.search.recents', [])
 
   // Idle previews
   const [previewTitles, setPreviewTitles] = useState<MediaItem[]>([])
@@ -314,6 +317,13 @@ export default function Search() {
     }, 400)
     return () => clearTimeout(timer)
   }, [input, query]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Remember committed searches (most recent first, deduped, capped at 8).
+  useEffect(() => {
+    const q = query.trim()
+    if (!q) return
+    setRecentSearches((prev) => [q, ...prev.filter((t) => t.toLowerCase() !== q.toLowerCase())].slice(0, 8))
+  }, [query]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist search results to cache whenever they change.
   useEffect(() => {
@@ -494,6 +504,14 @@ export default function Search() {
     setParams(next)
   }
 
+  // Re-run a saved recent search immediately.
+  function runRecent(term: string) {
+    setInput(term)
+    const next = new URLSearchParams(params)
+    next.set('q', term)
+    setParams(next)
+  }
+
   return (
     <div>
       <PageHeader
@@ -553,6 +571,28 @@ export default function Search() {
           🔍
         </button>
       </form>
+
+      {/* Recent searches — quick chips when the field is empty */}
+      {!query.trim() && recentSearches.length > 0 && (
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <span className="text-xs uppercase tracking-wider text-zinc-500">Ricerche recenti</span>
+          {recentSearches.map((term) => (
+            <button
+              key={term}
+              onClick={() => runRecent(term)}
+              className="rounded-full border border-theatre-700 bg-theatre-900/60 px-3 py-1 text-sm text-zinc-300 transition hover:border-projector/40 hover:text-projector"
+            >
+              {term}
+            </button>
+          ))}
+          <button
+            onClick={() => setRecentSearches([])}
+            className="text-xs text-zinc-500 hover:text-zinc-300"
+          >
+            ✕ Cancella
+          </button>
+        </div>
+      )}
 
       {/* Title-mode filters. Tipo is always available (also lets you switch to
           Anime/Cartoni browse); the refinement filters only show when there's
