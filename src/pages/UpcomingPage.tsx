@@ -4,7 +4,7 @@ import PageHeader from '../components/PageHeader'
 import AlertButton from '../components/AlertButton'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
-import { alertIds, personalizedUpcoming } from '../lib/alerts'
+import { alertIds, personalizedUpcoming, upcomingFromFollowedPeople, type PersonUpcoming } from '../lib/alerts'
 import { posterUrl, displayTitle, isTmdbConfigured } from '../lib/tmdb'
 import type { MediaItem } from '../lib/types'
 
@@ -19,7 +19,7 @@ function daysUntil(iso?: string | null): number | null {
   return Math.round(ms / 86400000)
 }
 
-function UpcomingCard({ item, alerted }: { item: MediaItem; alerted: boolean }) {
+function UpcomingCard({ item, alerted, people }: { item: MediaItem; alerted: boolean; people?: string[] }) {
   const poster = posterUrl(item.posterPath)
   const type = item.mediaType === 'movie' ? 'movie' : 'tv'
   const d = daysUntil(item.releaseDate)
@@ -41,6 +41,11 @@ function UpcomingCard({ item, alerted }: { item: MediaItem; alerted: boolean }) 
         <div className="px-2 pt-2">
           <p className="line-clamp-1 text-sm font-semibold text-zinc-100">{displayTitle(item)}</p>
           <p className="text-xs text-zinc-500">{formatDate(item.releaseDate)}</p>
+          {people && people.length > 0 && (
+            <p className="line-clamp-1 text-[11px] text-projector/80" title={people.join(', ')}>
+              👤 {people.join(', ')}
+            </p>
+          )}
         </div>
       </Link>
       <div className="p-2 pt-1">
@@ -62,6 +67,7 @@ function UpcomingCard({ item, alerted }: { item: MediaItem; alerted: boolean }) 
 export default function UpcomingPage() {
   const { user } = useAuth()
   const [items, setItems] = useState<MediaItem[]>([])
+  const [followed, setFollowed] = useState<PersonUpcoming[]>([])
   const [ids, setIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -77,6 +83,8 @@ export default function UpcomingPage() {
       return
     }
     setLoading(true)
+    // Followed-people releases load in parallel but don't block/error the page.
+    upcomingFromFollowedPeople(user.id).then(setFollowed).catch(() => setFollowed([]))
     Promise.all([personalizedUpcoming(user.id), alertIds(user.id)])
       .then(([up, set]) => {
         setItems(up)
@@ -106,17 +114,43 @@ export default function UpcomingPage() {
         <Loader label="Cerco le prossime uscite…" />
       ) : error ? (
         <ErrorState title="Uscite non disponibili" message={error} />
-      ) : items.length === 0 ? (
-        <EmptyState
-          title="Nessuna uscita su misura"
-          message="Segna qualche titolo come visto o preferito: userò i tuoi generi per trovare le uscite più adatte."
-          icon="🔮"
-        />
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {items.map((item) => (
-            <UpcomingCard key={key(item)} item={item} alerted={ids.has(key(item))} />
-          ))}
+        <div className="space-y-12">
+          {/* Releases from directors/actors the user follows */}
+          {followed.length > 0 && (
+            <section>
+              <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
+                🌟 Dai registi e attori che segui
+              </h2>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                {followed.map(({ item, people }) => (
+                  <UpcomingCard key={key(item)} item={item} alerted={ids.has(key(item))} people={people} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Personalized by genre */}
+          <section>
+            {followed.length > 0 && (
+              <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
+                🔮 Su misura per i tuoi generi
+              </h2>
+            )}
+            {items.length === 0 ? (
+              <EmptyState
+                title="Nessuna uscita su misura"
+                message="Segna qualche titolo come visto o preferito: userò i tuoi generi per trovare le uscite più adatte."
+                icon="🔮"
+              />
+            ) : (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                {items.map((item) => (
+                  <UpcomingCard key={key(item)} item={item} alerted={ids.has(key(item))} />
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       )}
     </div>

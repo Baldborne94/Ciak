@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
-import { getUpcoming } from './tmdb'
+import { getUpcoming, getPersonDetail } from './tmdb'
 import { listAll } from './userTitles'
+import { listEntities } from './entities'
 import type { MediaItem, MediaType, UserAlert } from './types'
 
 function client() {
@@ -88,6 +89,49 @@ export async function markNotified(userId: string, ids: string[]): Promise<void>
     .eq('user_id', userId)
     .in('id', ids)
   if (error) throw new Error(error.message)
+}
+
+export interface PersonUpcoming {
+  item: MediaItem
+  people: string[] // followed people involved in this title
+}
+
+// Upcoming / just-released titles from the directors & actors the user follows
+// (favorited people). Recent window of 30 days so "appena uscito" shows too;
+// excludes anything already in the user's library.
+export async function upcomingFromFollowedPeople(userId: string, limit = 24): Promise<PersonUpcoming[]> {
+  const people = await listEntities(userId, 'person')
+  if (people.length === 0) return []
+
+  const library = await listAll(userId)
+  const known = new Set(library.map((t) => `${t.media_type}-${t.tmdb_id}`))
+  const since = new Date()
+  since.setDate(since.getDate() - 30)
+  const sinceStr = since.toISOString().slice(0, 10)
+
+  // Cap the number of TMDB person lookups to keep the page snappy.
+  const details = await Promise.all(
+    people.slice(0, 12).map((p) =>
+      getPersonDetail(p.entityId).then((d) => ({ name: p.name, credits: d.credits })).catch(() => null),
+    ),
+  )
+
+  const byId = new Map<number, { item: MediaItem; people: Set<string> }>()
+  for (const entry of details) {
+    if (!entry) continue
+    for (const c of entry.credits) {
+      if (!c.releaseDate || c.releaseDate < sinceStr) continue // only recent/future
+      if (known.has(`${c.mediaType}-${c.id}`)) continue // already tracked
+      const found = byId.get(c.id)
+      if (found) found.people.add(entry.name)
+      else byId.set(c.id, { item: c, people: new Set([entry.name]) })
+    }
+  }
+
+  return [...byId.values()]
+    .sort((a, b) => (a.item.releaseDate ?? '').localeCompare(b.item.releaseDate ?? ''))
+    .slice(0, limit)
+    .map((v) => ({ item: v.item, people: [...v.people] }))
 }
 
 // Upcoming releases ranked by how well they match the user's taste (genres of
