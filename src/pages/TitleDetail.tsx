@@ -227,9 +227,9 @@ export default function TitleDetail() {
               )}
             </div>
             <div className="space-y-4">
-              <ProvidersGroup label="In abbonamento" items={p.flatrate} />
-              <ProvidersGroup label="Noleggio" items={p.rent} />
-              <ProvidersGroup label="Acquisto" items={p.buy} />
+              <ProvidersGroup label="In abbonamento" items={p.flatrate} link={p.link} />
+              <ProvidersGroup label="Noleggio" items={p.rent} link={p.link} />
+              <ProvidersGroup label="Acquisto" items={p.buy} link={p.link} />
             </div>
             {p.link && (
               <a
@@ -440,25 +440,41 @@ function Info({ label, value }: { label: string; value: string }) {
   )
 }
 
-function ProvidersGroup({ label, items }: { label: string; items: Provider[] }) {
+function ProvidersGroup({ label, items, link }: { label: string; items: Provider[]; link?: string | null }) {
   if (items.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-3">
       <span className="w-28 text-xs uppercase tracking-wider text-zinc-500">{label}</span>
       {items.map((p) => {
         const logo = logoUrl(p.logoPath)
-        return logo ? (
+        const inner = logo ? (
           <img
-            key={p.id}
             src={logo}
             alt={p.name}
             title={p.name}
             className="h-10 w-10 rounded-lg border border-theatre-700 object-cover"
           />
         ) : (
-          <span key={p.id} className="rounded-lg bg-theatre-800 px-2 py-1 text-xs text-zinc-300">
+          <span className="rounded-lg bg-theatre-800 px-2 py-1 text-xs text-zinc-300">
             {p.name}
           </span>
+        )
+        // TMDB doesn't expose per-service deep links, only JustWatch's aggregated
+        // page for the title/country — clicking a provider opens that, where the
+        // real link through to the service lives.
+        return link ? (
+          <a
+            key={p.id}
+            href={link}
+            target="_blank"
+            rel="noreferrer"
+            title={`Guarda su ${p.name} →`}
+            className="transition hover:-translate-y-0.5 hover:opacity-90"
+          >
+            {inner}
+          </a>
+        ) : (
+          <div key={p.id}>{inner}</div>
         )
       })}
     </div>
