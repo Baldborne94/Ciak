@@ -112,7 +112,7 @@ export async function upcomingFromFollowedPeople(userId: string, limit = 24): Pr
   // Cap the number of TMDB person lookups to keep the page snappy.
   const details = await Promise.all(
     people.slice(0, 12).map((p) =>
-      getPersonDetail(p.entityId).then((d) => ({ name: p.name, credits: d.credits })).catch(() => null),
+      getPersonDetail(p.entity_id).then((d) => ({ name: p.name, credits: d.credits })).catch(() => null),
     ),
   )
 
