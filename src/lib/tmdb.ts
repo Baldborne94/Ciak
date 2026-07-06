@@ -240,6 +240,7 @@ interface RawDetail extends RawMedia {
   tagline?: string
   credits?: RawCredits
   recommendations?: { results: RawMedia[] }
+  similar?: { results: RawMedia[] }
   original_title?: string
   original_name?: string
   original_language?: string
@@ -430,12 +431,46 @@ export async function resolveSuggestions(
   return items
 }
 
+// "Se ti è piaciuto, guarda anche": TMDB's raw /recommendations feed is noisy
+// and genre-agnostic, so we merge it with /similar and re-rank by how much each
+// candidate actually overlaps with THIS title — shared genres weigh most, items
+// present in both feeds get a bonus, and obscure/low-vote titles are downranked.
+function buildRecommendations(raw: RawDetail, type: TmdbType): MediaItem[] {
+  const currentGenres = new Set((raw.genres ?? []).map((g) => g.id))
+  const recs = raw.recommendations?.results ?? []
+  const sims = raw.similar?.results ?? []
+  const inRec = new Set(recs.map((r) => r.id))
+  const inSim = new Set(sims.map((r) => r.id))
+
+  const byId = new Map<number, RawMedia>()
+  for (const r of [...recs, ...sims]) {
+    if (r.id !== raw.id && !byId.has(r.id)) byId.set(r.id, r)
+  }
+
+  const scored = [...byId.values()].map((r) => {
+    const genreOverlap = (r.genre_ids ?? []).filter((g) => currentGenres.has(g)).length
+    let score = genreOverlap * 2.5
+    if (inRec.has(r.id) && inSim.has(r.id)) score += 3 // corroborated by both feeds
+    score += Math.min(r.vote_average ?? 0, 10) * 0.3
+    if ((r.vote_count ?? 0) < 20) score -= 2.5 // cut obscure noise
+    if (!r.poster_path) score -= 1.5
+    return { r, score, genreOverlap }
+  })
+
+  const ranked = scored.sort((a, b) => b.score - a.score)
+  // Prefer items that share a genre (or are corroborated by both feeds); if that
+  // leaves too few, top up with the next best-scored so the row stays full.
+  const relevant = ranked.filter((s) => s.genreOverlap > 0 || (inRec.has(s.r.id) && inSim.has(s.r.id)))
+  const chosen = relevant.length >= 6 ? relevant : ranked
+  return chosen.slice(0, 12).map((s) => normalise(s.r, type))
+}
+
 export async function getDetail(
   type: TmdbType,
   id: number,
 ): Promise<MediaDetail> {
   const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, {
-    append_to_response: 'credits,recommendations,videos,watch/providers,translations',
+    append_to_response: 'credits,recommendations,similar,videos,watch/providers,translations',
     include_video_language: 'it,en',
   })
 
@@ -481,9 +516,7 @@ export async function getDetail(
     logoPath: c.logo_path ?? null,
   }))
 
-  const recommendations = (raw.recommendations?.results ?? [])
-    .slice(0, 12)
-    .map((r) => normalise(r, type))
+  const recommendations = buildRecommendations(raw, type)
 
   // Best YouTube trailer: prefer official Trailer, then any trailer/teaser.
   const videos = (raw.videos?.results ?? []).filter((v) => v.site === 'YouTube')
