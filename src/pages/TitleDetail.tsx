@@ -477,6 +477,7 @@ function Info({ label, value }: { label: string; value: string }) {
 function serviceSearchUrl(providerName: string, query: string): string | null {
   const n = providerName.toLowerCase()
   const q = encodeURIComponent(query)
+  // Global / US
   if (n.includes('netflix')) return `https://www.netflix.com/search?q=${q}`
   if (n.includes('disney')) return `https://www.disneyplus.com/search?q=${q}`
   if (n.includes('prime video') || n.includes('amazon')) return `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${q}`
@@ -484,8 +485,18 @@ function serviceSearchUrl(providerName: string, query: string): string | null {
   if (n.includes('paramount')) return `https://www.paramountplus.com/search/?q=${q}`
   if (n.includes('crunchyroll')) return `https://www.crunchyroll.com/search?q=${q}`
   if (n.includes('max') || n.includes('hbo')) return `https://play.max.com/search?q=${q}`
-  if (n.includes('rai')) return `https://www.raiplay.it/ricerca.html?q=${q}`
+  if (n.includes('hulu')) return `https://www.hulu.com/search?q=${q}`
+  if (n.includes('peacock')) return `https://www.peacocktv.com/search?q=${q}`
+  if (n.includes('shudder')) return `https://www.shudder.com/search?q=${q}`
+  if (n.includes('mubi')) return `https://mubi.com/en/search/films?query=${q}`
+  if (n.includes('tubi')) return `https://tubitv.com/search/${q}`
+  if (n.includes('pluto')) return `https://pluto.tv/en/search/details?query=${q}`
+  if (n.includes('plex')) return `https://watch.plex.tv/search?query=${q}`
   if (n.includes('youtube')) return `https://www.youtube.com/results?search_query=${q}`
+  // Italia
+  if (n.includes('rai')) return `https://www.raiplay.it/ricerca.html?q=${q}`
+  // Everything else (Shudder-like niche or login-gated services without a stable
+  // public search URL) falls back to the JustWatch page for the title.
   return null
 }
 
