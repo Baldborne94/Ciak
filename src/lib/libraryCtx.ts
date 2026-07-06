@@ -6,6 +6,7 @@ import type { TitleStatus } from './types'
 export interface LibraryEntry {
   status: TitleStatus
   isFavorite: boolean
+  rating: number | null
 }
 
 export interface LibraryCtxValue {
