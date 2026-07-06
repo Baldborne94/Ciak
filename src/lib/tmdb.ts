@@ -12,7 +12,7 @@ import type {
   PersonDetail,
   Provider,
   TmdbType,
-  WatchProviders,
+  CountryProviders,
 } from './types'
 
 const API_BASE = 'https://api.themoviedb.org/3'
@@ -38,6 +38,19 @@ export function backdropUrl(
 
 export function profileUrl(path: string | null): string | null {
   return path ? `${IMG_BASE}/w185${path}` : null
+}
+
+// Localized (Italian) country name for an ISO 3166-1 code, e.g. "US" → "Stati
+// Uniti". Falls back to the raw code if the runtime lacks Intl.DisplayNames.
+const regionNames = typeof Intl !== 'undefined' && 'DisplayNames' in Intl
+  ? new Intl.DisplayNames(['it'], { type: 'region' })
+  : null
+function countryName(code: string): string {
+  try {
+    return regionNames?.of(code) ?? code
+  } catch {
+    return code
+  }
 }
 
 // Languages written in Latin script — readable as-is. For everything else
@@ -480,18 +493,31 @@ export async function getDetail(
     videos.find((v) => v.type === 'Teaser') ??
     videos[0]
 
-  // Where to watch — Italy region.
-  const region = raw['watch/providers']?.results?.IT
+  // Where to watch — all countries TMDB has data for, IT first.
   const mapProviders = (list?: RawProvider[]): Provider[] =>
     (list ?? []).map((p) => ({ id: p.provider_id, name: p.provider_name, logoPath: p.logo_path ?? null }))
-  const watchProviders: WatchProviders | null = region
-    ? {
+  const regions = raw['watch/providers']?.results ?? {}
+  const watchProvidersByCountry: CountryProviders[] = Object.entries(regions)
+    .map(([code, region]): CountryProviders => ({
+      code,
+      name: countryName(code),
+      providers: {
         link: region.link ?? null,
         flatrate: mapProviders(region.flatrate),
         rent: mapProviders(region.rent),
         buy: mapProviders(region.buy),
-      }
-    : null
+      },
+    }))
+    // Drop countries with no actual streaming/rent/buy options.
+    .filter((c) => c.providers.flatrate.length || c.providers.rent.length || c.providers.buy.length)
+    .sort((a, b) => {
+      if (a.code === 'IT') return -1
+      if (b.code === 'IT') return 1
+      return a.name.localeCompare(b.name, 'it')
+    })
+  const watchProviders = watchProvidersByCountry.find((c) => c.code === 'IT')?.providers
+    ?? watchProvidersByCountry[0]?.providers
+    ?? null
 
   return {
     ...base,
@@ -520,6 +546,7 @@ export async function getDetail(
     directors: directorsRaw.filter((d, i, arr) => arr.findIndex((x) => x.id === d.id) === i),
     trailerKey: trailer?.key ?? null,
     watchProviders,
+    watchProvidersByCountry,
     collection: raw.belongs_to_collection
       ? {
           id: raw.belongs_to_collection.id,
