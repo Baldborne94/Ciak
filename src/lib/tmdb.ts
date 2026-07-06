@@ -12,7 +12,6 @@ import type {
   PersonDetail,
   Provider,
   TmdbType,
-  WatchProviders,
   CountryProviders,
 } from './types'
 
