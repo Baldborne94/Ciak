@@ -207,9 +207,23 @@ export async function searchMulti(query: string): Promise<MediaItem[]> {
     .map((e) => e.item)
 }
 
+// TMDB leaves several TV genres in English even with language=it-IT; override
+// those by their (stable) genre id so the UI is fully Italian.
+const GENRE_IT: Record<number, string> = {
+  10759: 'Azione e Avventura',
+  10762: 'Per bambini',
+  10763: 'Notiziari',
+  10764: 'Reality',
+  10765: 'Fantascienza e Fantasy',
+  10766: 'Soap opera',
+  10767: 'Talk show',
+  10768: 'Guerra e Politica',
+  80: 'Poliziesco',
+}
+
 export async function getGenres(type: TmdbType): Promise<Genre[]> {
   const data = await tmdbFetch<{ genres: Genre[] }>(`/genre/${type}/list`)
-  return data.genres
+  return data.genres.map((g) => (GENRE_IT[g.id] ? { ...g, name: GENRE_IT[g.id] } : g))
 }
 
 interface RawCredits {
