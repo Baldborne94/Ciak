@@ -504,46 +504,53 @@ export default function Search() {
         </button>
       </form>
 
-      {/* Title-mode filters — always visible, applied to search results and idle browse alike */}
+      {/* Title-mode filters. Tipo is always available (also lets you switch to
+          Anime/Cartoni browse); the refinement filters only show when there's
+          something to filter — an active search, or the anime/cartoons lists —
+          so the idle "Di tendenza" view stays clean. */}
       {mode === 'titles' && (
         <FilterBar>
           <FilterGroup label="Tipo">
             <ChipGroup options={KIND_FILTERS} value={kind} onChange={setKind} />
           </FilterGroup>
-          <RatingSlider value={minRating} onChange={setMinRating} />
-          <select
-            value={titleYear}
-            onChange={(e) => setTitleYear(e.target.value)}
-            className={filterSelectClass}
-          >
-            <option value="">Anno: qualsiasi</option>
-            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <select
-            value={titleLang}
-            onChange={(e) => setTitleLang(e.target.value)}
-            className={filterSelectClass}
-          >
-            <option value="">Lingua: qualsiasi</option>
-            {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-          </select>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className={filterSelectClass}
-          >
-            <option value="relevance">Ordina: popolarità</option>
-            <option value="date_desc">Più recenti</option>
-            <option value="date_asc">Più vecchi</option>
-            <option value="rating_desc">Voto più alto</option>
-          </select>
-          {(kind !== 'all' || minRating > 0 || titleYear || titleLang || sortBy !== 'relevance') && (
-            <button
-              onClick={() => { setKind('all'); setMinRating(0); setTitleYear(''); setTitleLang(''); setSortBy('relevance') }}
-              className="text-sm text-projector/80 hover:text-projector"
-            >
-              ✕ Azzera
-            </button>
+          {(query.trim() !== '' || isAnimationKind) && (
+            <>
+              <RatingSlider value={minRating} onChange={setMinRating} />
+              <select
+                value={titleYear}
+                onChange={(e) => setTitleYear(e.target.value)}
+                className={filterSelectClass}
+              >
+                <option value="">Anno: qualsiasi</option>
+                {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <select
+                value={titleLang}
+                onChange={(e) => setTitleLang(e.target.value)}
+                className={filterSelectClass}
+              >
+                <option value="">Lingua: qualsiasi</option>
+                {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </select>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                className={filterSelectClass}
+              >
+                <option value="relevance">Ordina: popolarità</option>
+                <option value="date_desc">Più recenti</option>
+                <option value="date_asc">Più vecchi</option>
+                <option value="rating_desc">Voto più alto</option>
+              </select>
+              {(minRating > 0 || titleYear || titleLang || sortBy !== 'relevance') && (
+                <button
+                  onClick={() => { setMinRating(0); setTitleYear(''); setTitleLang(''); setSortBy('relevance') }}
+                  className="text-sm text-projector/80 hover:text-projector"
+                >
+                  ✕ Azzera
+                </button>
+              )}
+            </>
           )}
         </FilterBar>
       )}
