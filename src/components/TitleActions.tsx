@@ -9,6 +9,7 @@ import {
   type TitleRef,
 } from '../lib/userTitles'
 import { useToast } from '../lib/toastCtx'
+import { useLibrary } from '../lib/libraryCtx'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
 const STATUS_ORDER: TitleStatus[] = [
@@ -21,6 +22,7 @@ const STATUS_ORDER: TitleStatus[] = [
 export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
   const { user } = useAuth()
   const { showToast } = useToast()
+  const { refresh: refreshLibrary } = useLibrary()
   const [record, setRecord] = useState<UserTitle | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -59,6 +61,7 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
     try {
       const next = await upsertUserTitle(user.id, titleRef, patch)
       setRecord(next)
+      refreshLibrary() // keep the "già in libreria" badges current
       // I trofei sono nascosti: continuiamo a registrare gli sblocchi nel DB
       // (utili per la versione futura) ma senza mostrare il toast.
       checkAndUnlockAchievements(user.id).catch(() => {})
@@ -88,6 +91,7 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
     try {
       await deleteUserTitle(user.id, record.id)
       setRecord(null)
+      refreshLibrary() // remove the badge from cards immediately
       showToast('Titolo rimosso dalla tua collezione.', 'info')
     } catch (e) {
       setError((e as Error).message)
