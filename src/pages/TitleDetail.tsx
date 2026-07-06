@@ -45,7 +45,7 @@ export default function TitleDetail() {
   // Selected country for "Dove guardarlo" ('' = default to first, i.e. Italy).
   const [watchCountry, setWatchCountry] = useState('')
   // Sort for the "Se ti è piaciuto, guarda anche" list.
-  const [recSort, setRecSort] = useState<'default' | 'date_desc' | 'rating_desc'>('default')
+  const [recSort, setRecSort] = useState<'default' | 'date_desc' | 'date_asc' | 'rating_desc'>('default')
 
   // Reset per-title UI state when navigating to a different title.
   useEffect(() => { setWatchCountry(''); setRecSort('default') }, [mediaType, id])
@@ -55,6 +55,9 @@ export default function TitleDetail() {
     const recs = detail?.recommendations ?? []
     if (recSort === 'date_desc') {
       return [...recs].sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
+    }
+    if (recSort === 'date_asc') {
+      return [...recs].sort((a, b) => (a.releaseDate || '9999').localeCompare(b.releaseDate || '9999'))
     }
     if (recSort === 'rating_desc') {
       return [...recs].sort((a, b) => b.voteAverage - a.voteAverage)
@@ -443,6 +446,7 @@ export default function TitleDetail() {
             >
               <option value="default">Ordina: pertinenza</option>
               <option value="date_desc">Più recenti</option>
+              <option value="date_asc">Meno recenti</option>
               <option value="rating_desc">Voto più alto</option>
             </select>
           </div>

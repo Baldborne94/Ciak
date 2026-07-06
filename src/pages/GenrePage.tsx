@@ -122,15 +122,9 @@ export default function GenrePage() {
         eyebrow={t === 'tv' ? 'Serie TV per genere' : 'Film per genere'}
         title={genreName || 'Genere'}
         subtitle="Sfoglia i titoli e affina con i filtri avanzati."
-      >
-        <select value={sort} onChange={(e) => setSort(e.target.value)} className={selectClass}>
-          {SORTS.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
-        </select>
-      </PageHeader>
+      />
 
-      {/* Advanced filters */}
+      {/* Advanced filters — sort lives here with the rest, in one row */}
       <FilterBar>
         <RatingSlider value={minVote} onChange={setMinVote} />
         <select value={year} onChange={(e) => setYear(e.target.value)} className={selectClass}>
@@ -144,6 +138,11 @@ export default function GenrePage() {
         <select value={country} onChange={(e) => setCountry(e.target.value)} className={selectClass}>
           <option value="">Paese: qualsiasi</option>
           {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+        <select value={sort} onChange={(e) => setSort(e.target.value)} className={selectClass}>
+          {SORTS.map((s) => (
+            <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
         </select>
         {hasFilters && (
           <button
