@@ -227,9 +227,9 @@ export default function TitleDetail() {
               )}
             </div>
             <div className="space-y-4">
-              <ProvidersGroup label="In abbonamento" items={p.flatrate} link={p.link} />
-              <ProvidersGroup label="Noleggio" items={p.rent} link={p.link} />
-              <ProvidersGroup label="Acquisto" items={p.buy} link={p.link} />
+              <ProvidersGroup label="In abbonamento" items={p.flatrate} link={p.link} title={detail.title} />
+              <ProvidersGroup label="Noleggio" items={p.rent} link={p.link} title={detail.title} />
+              <ProvidersGroup label="Acquisto" items={p.buy} link={p.link} title={detail.title} />
             </div>
             {p.link && (
               <a
@@ -440,7 +440,36 @@ function Info({ label, value }: { label: string; value: string }) {
   )
 }
 
-function ProvidersGroup({ label, items, link }: { label: string; items: Provider[]; link?: string | null }) {
+// Known streaming services → a URL that opens the service (app on mobile via
+// universal links, site on desktop) with the title pre-searched. TMDB has no
+// per-title deep link, so a search inside the service is the closest we can get;
+// unknown services fall back to the JustWatch page. Matched by provider name.
+function serviceSearchUrl(providerName: string, query: string): string | null {
+  const n = providerName.toLowerCase()
+  const q = encodeURIComponent(query)
+  if (n.includes('netflix')) return `https://www.netflix.com/search?q=${q}`
+  if (n.includes('disney')) return `https://www.disneyplus.com/search?q=${q}`
+  if (n.includes('prime video') || n.includes('amazon')) return `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${q}`
+  if (n.includes('apple')) return `https://tv.apple.com/search?term=${q}`
+  if (n.includes('paramount')) return `https://www.paramountplus.com/search/?q=${q}`
+  if (n.includes('crunchyroll')) return `https://www.crunchyroll.com/search?q=${q}`
+  if (n.includes('max') || n.includes('hbo')) return `https://play.max.com/search?q=${q}`
+  if (n.includes('rai')) return `https://www.raiplay.it/ricerca.html?q=${q}`
+  if (n.includes('youtube')) return `https://www.youtube.com/results?search_query=${q}`
+  return null
+}
+
+function ProvidersGroup({
+  label,
+  items,
+  link,
+  title,
+}: {
+  label: string
+  items: Provider[]
+  link?: string | null
+  title?: string
+}) {
   if (items.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -459,13 +488,13 @@ function ProvidersGroup({ label, items, link }: { label: string; items: Provider
             {p.name}
           </span>
         )
-        // TMDB doesn't expose per-service deep links, only JustWatch's aggregated
-        // page for the title/country — clicking a provider opens that, where the
-        // real link through to the service lives.
-        return link ? (
+        // Prefer opening the service directly (title pre-searched); otherwise
+        // fall back to the JustWatch page for the title/country.
+        const href = (title && serviceSearchUrl(p.name, title)) || link
+        return href ? (
           <a
             key={p.id}
-            href={link}
+            href={href}
             target="_blank"
             rel="noreferrer"
             title={`Guarda su ${p.name} →`}
