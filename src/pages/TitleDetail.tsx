@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ErrorState, Loader } from '../components/States'
 import MediaGrid from '../components/MediaGrid'
@@ -44,9 +44,23 @@ export default function TitleDetail() {
   const [showTrailer, setShowTrailer] = useState(false)
   // Selected country for "Dove guardarlo" ('' = default to first, i.e. Italy).
   const [watchCountry, setWatchCountry] = useState('')
+  // Sort for the "Se ti è piaciuto, guarda anche" list.
+  const [recSort, setRecSort] = useState<'default' | 'date_desc' | 'rating_desc'>('default')
 
-  // Reset the chosen country when navigating to a different title.
-  useEffect(() => { setWatchCountry('') }, [mediaType, id])
+  // Reset per-title UI state when navigating to a different title.
+  useEffect(() => { setWatchCountry(''); setRecSort('default') }, [mediaType, id])
+
+  // Recommendations sorted by the chosen order ('default' keeps our relevance rank).
+  const sortedRecs = useMemo(() => {
+    const recs = detail?.recommendations ?? []
+    if (recSort === 'date_desc') {
+      return [...recs].sort((a, b) => (b.releaseDate ?? '').localeCompare(a.releaseDate ?? ''))
+    }
+    if (recSort === 'rating_desc') {
+      return [...recs].sort((a, b) => b.voteAverage - a.voteAverage)
+    }
+    return recs
+  }, [detail, recSort])
 
   useEffect(() => {
     if (!mediaType || !id) return
@@ -417,10 +431,22 @@ export default function TitleDetail() {
       {/* Recommendations */}
       {detail.recommendations.length > 0 && (
         <section>
-          <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
-            🍿 Se ti è piaciuto, guarda anche
-          </h2>
-          <MediaGrid items={detail.recommendations} />
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="font-display text-2xl tracking-wide text-zinc-100">
+              🍿 Se ti è piaciuto, guarda anche
+            </h2>
+            <select
+              value={recSort}
+              onChange={(e) => setRecSort(e.target.value as typeof recSort)}
+              className="input-cine w-auto py-1.5 text-sm"
+              aria-label="Ordina i consigliati"
+            >
+              <option value="default">Ordina: pertinenza</option>
+              <option value="date_desc">Più recenti</option>
+              <option value="rating_desc">Voto più alto</option>
+            </select>
+          </div>
+          <MediaGrid items={sortedRecs} />
         </section>
       )}
 
