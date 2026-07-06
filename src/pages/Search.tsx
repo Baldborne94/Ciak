@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams, useLocation, useNavigationType } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
@@ -283,8 +283,10 @@ export default function Search() {
   const [sortBy, setSortBy] = useState<'relevance' | 'date_desc' | 'date_asc' | 'rating_desc'>('relevance')
   const [role, setRole] = useState('all')
 
-  const [genreType, setGenreType] = useState<TmdbType>('movie')
   const [genres, setGenres] = useState<Genre[]>([])
+  // Genre to browse anime/cartoons by (null = all). TV genres, minus Animation.
+  const [tvGenres, setTvGenres] = useState<Genre[]>([])
+  const [browseGenre, setBrowseGenre] = useState<number | null>(null)
 
   // Idle previews
   const [previewTitles, setPreviewTitles] = useState<MediaItem[]>([])
@@ -294,6 +296,9 @@ export default function Search() {
 
   const activeMode = MODES.find((m) => m.value === mode) ?? MODES[0]
   const isAnimationKind = kind === 'anime' || kind === 'cartoons'
+  // "Sfoglia per genere" follows the Tipo selector (no separate Film/Serie toggle):
+  // Serie TV → tv genres, everything else (Tutti/Film) → movie genres.
+  const genreBrowseType: TmdbType = kind === 'tv' ? 'tv' : 'movie'
 
   // Debounced auto-search: update URL params 400ms after the user stops typing.
   useEffect(() => {
@@ -349,9 +354,54 @@ export default function Search() {
   }, [query, mode])
 
   useEffect(() => {
-    if (mode !== 'titles' || !isTmdbConfigured) return
-    getGenres(genreType).then(setGenres).catch(() => setGenres([]))
-  }, [genreType, mode])
+    if (mode !== 'titles' || isAnimationKind || !isTmdbConfigured) return
+    getGenres(genreBrowseType).then(setGenres).catch(() => setGenres([]))
+  }, [genreBrowseType, isAnimationKind, mode])
+
+  // TV genres for the anime/cartoons "Sfoglia per genere" row (Animation implied).
+  useEffect(() => {
+    if (!isAnimationKind || !isTmdbConfigured || tvGenres.length > 0) return
+    getGenres('tv').then((gs) => setTvGenres(gs.filter((g) => g.id !== 16))).catch(() => {})
+  }, [isAnimationKind, tvGenres.length])
+
+  // Reset the chosen anime/cartoon genre when leaving that browse mode.
+  useEffect(() => { if (!isAnimationKind) setBrowseGenre(null) }, [isAnimationKind])
+
+  // Fetchers that carry the selected genre; memoized so BrowseList only refetches
+  // when the genre actually changes.
+  const animeFetcher = useCallback(
+    (page: number) => getAnime(page, browseGenre ?? undefined),
+    [browseGenre],
+  )
+  const cartoonFetcher = useCallback(
+    (page: number) => getCartoons(page, browseGenre ?? undefined),
+    [browseGenre],
+  )
+
+  // Genre chips for the anime/cartoons browse (filter the list in place).
+  const animeGenreChips = (
+    <div className="mb-6 flex flex-wrap gap-2">
+      <button
+        onClick={() => setBrowseGenre(null)}
+        className={`rounded-md px-3 py-1.5 text-sm transition ${
+          browseGenre === null ? 'bg-projector text-theatre-950' : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
+        }`}
+      >
+        Tutti
+      </button>
+      {tvGenres.map((g) => (
+        <button
+          key={g.id}
+          onClick={() => setBrowseGenre(g.id)}
+          className={`rounded-md px-3 py-1.5 text-sm transition ${
+            browseGenre === g.id ? 'bg-projector text-theatre-950' : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
+          }`}
+        >
+          {g.name}
+        </button>
+      ))}
+    </div>
+  )
 
   // Idle previews — loaded lazily only for the active tab, once.
   useEffect(() => {
@@ -583,9 +633,20 @@ export default function Search() {
       ) : !query.trim() ? (
         mode === 'titles' ? (
           isAnimationKind ? (
-            kind === 'anime' ? (
-              <div className="space-y-12">
-                <BrowseList fetcher={getAnime} cacheKey="anime" filterFn={applyFilters} />
+            // Anime / Cartoni: browse by genre (chips filter the list in place).
+            <div className="space-y-12">
+              <div>
+                <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
+                  🎭 Sfoglia per genere
+                </h2>
+                {animeGenreChips}
+                {kind === 'anime' ? (
+                  <BrowseList fetcher={animeFetcher} cacheKey={`anime:${browseGenre ?? 'all'}`} filterFn={applyFilters} />
+                ) : (
+                  <BrowseList fetcher={cartoonFetcher} cacheKey={`cartoons:${browseGenre ?? 'all'}`} filterFn={applyFilters} />
+                )}
+              </div>
+              {kind === 'anime' && (
                 <div>
                   <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">
                     😏 Pervertito
@@ -595,10 +656,8 @@ export default function Search() {
                   </p>
                   <BrowseList fetcher={getPervertitoAnime} cacheKey="anime-pervertito" filterFn={applyFilters} />
                 </div>
-              </div>
-            ) : (
-              <BrowseList fetcher={getCartoons} cacheKey="cartoons" filterFn={applyFilters} />
-            )
+              )}
+            </div>
           ) : (
           <div className="space-y-10">
             {filteredTrending.length > 0 && (
@@ -611,31 +670,17 @@ export default function Search() {
               </div>
             )}
             <div>
-              <div className="mb-4 flex items-center gap-2">
-                <span className="font-display text-xl tracking-wide text-zinc-100">
-                  🎭 Sfoglia per genere
+              <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
+                🎭 Sfoglia per genere
+                <span className="ml-2 text-sm font-normal text-zinc-500">
+                  {genreBrowseType === 'tv' ? 'Serie TV' : 'Film'}
                 </span>
-                <div className="ml-auto flex gap-1">
-                  {(['movie', 'tv'] as TmdbType[]).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setGenreType(t)}
-                      className={`rounded-md px-3 py-1.5 text-sm transition ${
-                        genreType === t
-                          ? 'bg-projector text-theatre-950'
-                          : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
-                      }`}
-                    >
-                      {t === 'movie' ? 'Film' : 'Serie TV'}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              </h2>
               <div className="flex flex-wrap gap-3">
                 {genres.map((g) => (
                   <Link
                     key={g.id}
-                    to={`/genre/${genreType}/${g.id}`}
+                    to={`/genre/${genreBrowseType}/${g.id}`}
                     className="rounded-xl border border-theatre-700 bg-theatre-900/60 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:-translate-y-0.5 hover:border-projector/40 hover:text-projector"
                   >
                     {g.name}
