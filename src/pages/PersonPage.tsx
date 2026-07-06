@@ -151,7 +151,7 @@ export default function PersonPage() {
             >
               <option value="popularity">Ordina: popolarità</option>
               <option value="date_desc">Più recenti</option>
-              <option value="date_asc">Più vecchi</option>
+              <option value="date_asc">Meno recenti</option>
               <option value="rating_desc">Voto più alto</option>
             </select>
           </FilterBar>

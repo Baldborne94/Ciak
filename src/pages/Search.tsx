@@ -629,7 +629,7 @@ export default function Search() {
               >
                 <option value="relevance">Ordina: popolarità</option>
                 <option value="date_desc">Più recenti</option>
-                <option value="date_asc">Più vecchi</option>
+                <option value="date_asc">Meno recenti</option>
                 <option value="rating_desc">Voto più alto</option>
               </select>
               {(minRating > 0 || titleYear || titleLang || sortBy !== 'relevance') && (

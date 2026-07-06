@@ -142,7 +142,17 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
         })}
 
         <button
-          onClick={() => apply({ is_favorite: !record?.is_favorite })}
+          onClick={() => {
+            const turningOn = !record?.is_favorite
+            // Aggiungere ai preferiti implica averlo visto: se non è già "Visto",
+            // lo segna come visto (con data). Togliere il preferito non tocca lo stato.
+            apply({
+              is_favorite: turningOn,
+              ...(turningOn && record?.status !== 'watched'
+                ? { status: 'watched' as TitleStatus, watched_at: record?.watched_at ?? new Date().toISOString() }
+                : {}),
+            })
+          }}
           disabled={saving || loading}
           className={
             record?.is_favorite
