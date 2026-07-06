@@ -364,10 +364,11 @@ async function discoverReadable(
   return { items, totalPages: it.total_pages }
 }
 
-export async function getAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
+export async function getAnime(page = 1, genreId?: number): Promise<{ items: MediaItem[]; totalPages: number }> {
   const suggestive = await getSuggestiveKeywordIds()
   return discoverReadable('tv', {
-    with_genres: '16',
+    // Animation (16) AND, optionally, a second genre to browse by (comma = AND).
+    with_genres: genreId ? `16,${genreId}` : '16',
     with_original_language: 'ja',
     sort_by: 'popularity.desc',
     include_adult: 'false',
@@ -395,9 +396,9 @@ export async function getPervertitoAnime(page = 1): Promise<{ items: MediaItem[]
 
 // Western animated TV series (Scooby-Doo, Tom & Jerry, …): genre Animation,
 // English original language to exclude Japanese anime.
-export async function getCartoons(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
+export async function getCartoons(page = 1, genreId?: number): Promise<{ items: MediaItem[]; totalPages: number }> {
   return discoverReadable('tv', {
-    with_genres: '16',
+    with_genres: genreId ? `16,${genreId}` : '16',
     with_original_language: 'en',
     sort_by: 'popularity.desc',
     'vote_count.gte': '20',
