@@ -146,7 +146,19 @@ export default function TonightTool() {
         watched: watched.map(toSummary),
       })
       const resolved = await Promise.all((data.suggestions ?? []).map(resolveSuggestion))
-      setResults(resolved)
+
+      // Il prompt chiede all'AI di non suggerire titoli già visti/preferiti, ma è
+      // un vincolo testuale: non garantito al 100%. Una volta risolto il
+      // suggerimento a un titolo TMDB reale, scartiamo qui — con l'id certo —
+      // quelli che risultano già visti o preferiti, invece di fidarci solo del
+      // modello.
+      const seenIds = new Set(
+        [...watched, ...favorites].map((t) => `${t.media_type}-${t.tmdb_id}`),
+      )
+      const filtered = resolved.filter(
+        ({ item }) => !item || !seenIds.has(`${item.mediaType}-${item.id}`),
+      )
+      setResults(filtered)
     } catch (e) {
       setError((e as Error).message)
     } finally {
