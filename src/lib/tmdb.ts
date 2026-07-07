@@ -161,7 +161,11 @@ function normalise(raw: RawMedia, fallbackType?: TmdbType): MediaItem {
 // ── Public API ───────────────────────────────────────────────────────────
 
 export async function getTrending(): Promise<MediaItem[]> {
-  const data = await tmdbFetch<{ results: RawMedia[] }>('/trending/all/week')
+  const [data, enData] = await Promise.all([
+    tmdbFetch<{ results: RawMedia[] }>('/trending/all/week'),
+    tmdbFetch<{ results: RawMedia[] }>('/trending/all/week', { language: 'en-US' }),
+  ])
+  patchReadableTitles(data.results, enData.results)
   return data.results
     .filter((r) => r.media_type === 'movie' || r.media_type === 'tv')
     .map((r) => normalise(r))
@@ -355,6 +359,22 @@ async function getSuggestiveKeywordIds(): Promise<string[]> {
   return suggestiveIdsCache
 }
 
+// When the localized (it-IT) title is in a non-readable script (CJK, Hangul,
+// Cyrillic…), patch it in place with the English title, matched by id — so
+// foreign titles TMDB hasn't translated to Italian at least show in English
+// instead of the raw script.
+function patchReadableTitles(itResults: RawMedia[], enResults: RawMedia[]): void {
+  const enTitle = new Map<number, string>()
+  for (const r of enResults) enTitle.set(r.id, (r.title ?? r.name) ?? '')
+  for (const r of itResults) {
+    if (isReadableTitle(r.title ?? r.name)) continue
+    const e = enTitle.get(r.id)
+    if (!isReadableTitle(e)) continue
+    if (r.title !== undefined) r.title = e
+    else r.name = e
+  }
+}
+
 // Discover with a readable title: fetch IT (for poster/overview) + EN, and when
 // the localized title is in a non-Latin script use the English one instead.
 async function discoverReadable(
@@ -365,17 +385,8 @@ async function discoverReadable(
     tmdbFetch<{ results: RawMedia[]; total_pages: number }>(`/discover/${type}`, params),
     tmdbFetch<{ results: RawMedia[] }>(`/discover/${type}`, { ...params, language: 'en-US' }),
   ])
-  const enTitle = new Map<number, string>()
-  for (const r of en.results) enTitle.set(r.id, (r.title ?? r.name) ?? '')
-  const items = it.results.map((r) => {
-    const item = normalise(r, type)
-    if (!isReadableTitle(item.title)) {
-      const e = enTitle.get(item.id)
-      if (isReadableTitle(e)) item.title = e!
-    }
-    return item
-  })
-  return { items, totalPages: it.total_pages }
+  patchReadableTitles(it.results, en.results)
+  return { items: it.results.map((r) => normalise(r, type)), totalPages: it.total_pages }
 }
 
 export async function getAnime(page = 1, genreId?: number): Promise<{ items: MediaItem[]; totalPages: number }> {
@@ -1001,14 +1012,16 @@ export async function discoverByCompany(
   companyId: number,
   page = 1,
 ): Promise<{ items: MediaItem[]; totalPages: number }> {
-  const data = await tmdbFetch<{ results: RawMedia[]; total_pages: number }>(
-    '/discover/movie',
-    {
-      with_companies: String(companyId),
-      sort_by: 'popularity.desc',
-      page: String(page),
-    },
-  )
+  const params = {
+    with_companies: String(companyId),
+    sort_by: 'popularity.desc',
+    page: String(page),
+  }
+  const [data, enData] = await Promise.all([
+    tmdbFetch<{ results: RawMedia[]; total_pages: number }>('/discover/movie', params),
+    tmdbFetch<{ results: RawMedia[] }>('/discover/movie', { ...params, language: 'en-US' }),
+  ])
+  patchReadableTitles(data.results, enData.results)
   return {
     items: data.results.map((r) => normalise(r, 'movie')),
     totalPages: data.total_pages,
@@ -1021,7 +1034,11 @@ export async function getRecommendations(
   id: number,
 ): Promise<MediaItem[]> {
   try {
-    const data = await tmdbFetch<{ results: RawMedia[] }>(`/${type}/${id}/recommendations`)
+    const [data, enData] = await Promise.all([
+      tmdbFetch<{ results: RawMedia[] }>(`/${type}/${id}/recommendations`),
+      tmdbFetch<{ results: RawMedia[] }>(`/${type}/${id}/recommendations`, { language: 'en-US' }),
+    ])
+    patchReadableTitles(data.results, enData.results)
     return (data.results ?? []).slice(0, 20).map((r) => normalise(r, type))
   } catch {
     return []
@@ -1035,12 +1052,17 @@ export async function discoverByGenres(
   genreIds: number[] = [],
 ): Promise<MediaItem[]> {
   if (genreIds.length === 0) return []
-  const data = await tmdbFetch<{ results: RawMedia[] }>(`/discover/${type}`, {
+  const params = {
     sort_by: 'vote_average.desc',
     'vote_count.gte': '200',
     with_genres: genreIds.slice(0, 3).join('|'),
     page: '1',
-  })
+  }
+  const [data, enData] = await Promise.all([
+    tmdbFetch<{ results: RawMedia[] }>(`/discover/${type}`, params),
+    tmdbFetch<{ results: RawMedia[] }>(`/discover/${type}`, { ...params, language: 'en-US' }),
+  ])
+  patchReadableTitles(data.results, enData.results)
   return (data.results ?? []).slice(0, 20).map((r) => normalise(r, type))
 }
 
@@ -1059,9 +1081,10 @@ export async function getRecentReleases(
     page: '1',
   }
   if (genreIds.length > 0) params.with_genres = genreIds.slice(0, 3).join('|')
-  const data = await tmdbFetch<{ results: RawMedia[] }>(
-    `/discover/${type}`,
-    params,
-  )
+  const [data, enData] = await Promise.all([
+    tmdbFetch<{ results: RawMedia[] }>(`/discover/${type}`, params),
+    tmdbFetch<{ results: RawMedia[] }>(`/discover/${type}`, { ...params, language: 'en-US' }),
+  ])
+  patchReadableTitles(data.results, enData.results)
   return (data.results ?? []).slice(0, 20).map((r) => normalise(r, type))
 }
