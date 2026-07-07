@@ -5,6 +5,7 @@ import { posterUrl, displayTitle } from '../lib/tmdb'
 import { useLibrary } from '../lib/libraryCtx'
 import { useAuth } from '../lib/auth'
 import { upsertUserTitle, refFromMedia } from '../lib/userTitles'
+import { quickRate } from '../lib/diary'
 import StarRating from './StarRating'
 
 // Badge shown on a card when the title is already in the user's collection.
@@ -33,6 +34,33 @@ function QuickActions({ item }: { item: MediaItem }) {
       refresh()
     } catch {
       /* best-effort: la scheda del titolo resta la via completa */
+    } finally {
+      setBusy(false)
+      setOpen(false)
+    }
+  }
+
+  // Quick rating: mark watched (if needed) then record the vote in the diary so
+  // it appears, dated, in "Visti & Diario" — not just as a bare user_titles rating.
+  async function rate(v: number | null) {
+    if (!user) return
+    setBusy(true)
+    try {
+      if (v != null && lib?.status !== 'watched' && lib?.status !== 'in_progress') {
+        await upsertUserTitle(user.id, refFromMedia(item), {
+          status: 'watched',
+          watched_at: new Date().toISOString(),
+        })
+      }
+      await quickRate(user.id, {
+        tmdbId: item.id,
+        mediaType: item.mediaType,
+        title: item.title,
+        posterPath: item.posterPath,
+      }, v)
+      refresh()
+    } catch {
+      /* best-effort */
     } finally {
       setBusy(false)
       setOpen(false)
@@ -76,21 +104,9 @@ function QuickActions({ item }: { item: MediaItem }) {
               })
             }
           />
-          {/* Quick rating — setting a vote also marks the title as watched. */}
+          {/* Quick rating — records the vote in the diary and marks it watched. */}
           <div className="border-t border-theatre-800 px-3 py-2">
-            <StarRating
-              value={lib?.rating ?? null}
-              size="sm"
-              showValue={false}
-              onChange={(v) =>
-                run({
-                  personal_rating: v,
-                  ...(v != null && lib?.status !== 'watched'
-                    ? { status: 'watched' as TitleStatus, watched_at: new Date().toISOString() }
-                    : {}),
-                })
-              }
-            />
+            <StarRating value={lib?.rating ?? null} size="sm" showValue={false} onChange={(v) => rate(v)} />
           </div>
         </div>
       )}

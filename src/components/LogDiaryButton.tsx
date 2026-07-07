@@ -3,49 +3,105 @@ import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
 import Modal from './Modal'
 import StarRating from './StarRating'
-import { addDiaryEntry, countDiaryViewings, type DiaryRef } from '../lib/diary'
+import {
+  addDiaryEntry,
+  updateDiaryEntry,
+  getLatestDiaryEntry,
+  countDiaryViewings,
+  type DiaryRef,
+} from '../lib/diary'
+import type { DiaryEntry } from '../lib/types'
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10)
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso + 'T00:00:00').toLocaleDateString('it-IT', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
 }
 
 export default function LogDiaryButton({ item }: { item: DiaryRef }) {
   const { user } = useAuth()
   const { showToast } = useToast()
   const [open, setOpen] = useState(false)
+  // La visione più recente già registrata (se c'è): permette di modificarla
+  // invece di forzare sempre una nuova rivisione.
+  const [existing, setExisting] = useState<DiaryEntry | null>(null)
+  const [priorViewings, setPriorViewings] = useState(0)
+  const [mode, setMode] = useState<'edit' | 'new'>('new')
   const [date, setDate] = useState(todayISO())
   const [rating, setRating] = useState(0)
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
-  // Visioni già registrate: se > 0, questa è una rivisione.
-  const [priorViewings, setPriorViewings] = useState(0)
 
   useEffect(() => {
     if (!open || !user) return
-    countDiaryViewings(user.id, item.tmdbId, item.mediaType)
-      .then(setPriorViewings)
-      .catch(() => setPriorViewings(0))
+    Promise.all([
+      getLatestDiaryEntry(user.id, item.tmdbId, item.mediaType),
+      countDiaryViewings(user.id, item.tmdbId, item.mediaType),
+    ])
+      .then(([latest, count]) => {
+        setPriorViewings(count)
+        setExisting(latest)
+        if (latest) {
+          // Predefinito: modifica la visione esistente (magari solo per aggiungere
+          // la recensione dimenticata), mantenendo data e voto.
+          setMode('edit')
+          setDate(latest.watched_on)
+          setRating(latest.rating ?? 0)
+          setNote(latest.note ?? '')
+        } else {
+          setMode('new')
+          setDate(todayISO())
+          setRating(0)
+          setNote('')
+        }
+      })
+      .catch(() => {})
   }, [open, user, item.tmdbId, item.mediaType])
 
   if (!user) return null
+
+  function chooseEdit() {
+    if (!existing) return
+    setMode('edit')
+    setDate(existing.watched_on)
+    setRating(existing.rating ?? 0)
+    setNote(existing.note ?? '')
+  }
+
+  function chooseNew() {
+    setMode('new')
+    setDate(todayISO())
+    setRating(existing?.rating ?? 0) // punto di partenza; modificabile
+    setNote('')
+  }
 
   async function save() {
     if (!user) return
     setSaving(true)
     try {
-      await addDiaryEntry(user.id, item, {
-        watchedOn: date,
-        rating: rating || null,
-        note: note.trim() || null,
-      })
+      if (mode === 'edit' && existing) {
+        await updateDiaryEntry(user.id, existing, {
+          rating: rating || null,
+          note: note.trim() || null,
+        })
+      } else {
+        await addDiaryEntry(user.id, item, {
+          watchedOn: date,
+          rating: rating || null,
+          note: note.trim() || null,
+        })
+      }
       setDone(true)
       setTimeout(() => {
         setOpen(false)
         setDone(false)
-        setRating(0)
-        setNote('')
-        setDate(todayISO())
       }, 1200)
     } catch (e) {
       showToast(`Non sono riuscito a salvare nel diario: ${(e as Error).message}`)
@@ -53,6 +109,11 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
       setSaving(false)
     }
   }
+
+  const toggleCls = (active: boolean) =>
+    `flex-1 rounded-md px-3 py-2 text-sm transition ${
+      active ? 'bg-projector text-theatre-950' : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
+    }`
 
   return (
     <>
@@ -63,25 +124,48 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
       {open && (
         <Modal title="Segna nel diario" onClose={() => setOpen(false)}>
           {done ? (
-            <p className="py-3 text-center text-sm text-projector">✓ Aggiunto al diario!</p>
+            <p className="py-3 text-center text-sm text-projector">✓ Salvato nel diario!</p>
           ) : (
             <div className="space-y-4">
-              {priorViewings > 0 && (
-                <div className="rounded-md border border-projector/30 bg-projector/5 px-3 py-2 text-xs text-projector">
-                  🔁 Rivisione · sarà la tua visione n.{priorViewings + 1}. Registrane una nuova con
-                  una data diversa.
+              {/* Se il titolo è già nel diario, scegli tu: modificare la visione
+                  esistente o registrarne una nuova (rivisione). */}
+              {existing && (
+                <div className="flex gap-2">
+                  <button onClick={chooseEdit} className={toggleCls(mode === 'edit')}>
+                    ✏️ Modifica visione
+                  </button>
+                  <button onClick={chooseNew} className={toggleCls(mode === 'new')}>
+                    🔁 Nuova visione
+                  </button>
                 </div>
               )}
-              <div>
-                <label className="text-xs uppercase tracking-wider text-zinc-500">Visto il</label>
-                <input
-                  type="date"
-                  value={date}
-                  max={todayISO()}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="input-cine mt-1 py-2 text-sm"
-                />
-              </div>
+
+              {mode === 'edit' && existing ? (
+                <p className="text-xs text-zinc-500">
+                  Stai modificando la visione del{' '}
+                  <span className="text-zinc-300">{formatDate(existing.watched_on)}</span>. Puoi
+                  aggiornare voto e recensione senza cambiarne la data.
+                </p>
+              ) : (
+                <>
+                  {priorViewings > 0 && (
+                    <div className="rounded-md border border-projector/30 bg-projector/5 px-3 py-2 text-xs text-projector">
+                      🔁 Rivisione · sarà la tua visione n.{priorViewings + 1}.
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-xs uppercase tracking-wider text-zinc-500">Visto il</label>
+                    <input
+                      type="date"
+                      value={date}
+                      max={todayISO()}
+                      onChange={(e) => setDate(e.target.value)}
+                      className="input-cine mt-1 py-2 text-sm"
+                    />
+                  </div>
+                </>
+              )}
+
               <div>
                 <label className="text-xs uppercase tracking-wider text-zinc-500">Voto</label>
                 <div className="mt-1">
@@ -99,7 +183,7 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
                 />
               </div>
               <button onClick={save} disabled={saving} className="btn-primary w-full py-2 text-sm">
-                {saving ? 'Salvo…' : 'Salva nel diario'}
+                {saving ? 'Salvo…' : mode === 'edit' ? 'Salva modifiche' : 'Salva nel diario'}
               </button>
             </div>
           )}
