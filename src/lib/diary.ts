@@ -89,6 +89,46 @@ export async function addDiaryEntry(
   return data
 }
 
+// La visione più recente registrata per un titolo (o null se non nel diario).
+export async function getLatestDiaryEntry(
+  userId: string,
+  tmdbId: number,
+  mediaType: MediaType,
+): Promise<DiaryEntry | null> {
+  const { data, error } = await client()
+    .from('user_diary')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('tmdb_id', tmdbId)
+    .eq('media_type', mediaType)
+    .order('watched_on', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (error) throw new Error(error.message)
+  return (data?.[0] as DiaryEntry | undefined) ?? null
+}
+
+// Voto rapido (dalla card "+"): aggiorna il voto della visione più recente se
+// esiste, altrimenti registra una visione di oggi. Non crea una nuova voce per
+// una rivisione — quello resta una scelta esplicita nel dialog del diario.
+export async function quickRate(
+  userId: string,
+  ref: DiaryRef,
+  rating: number | null,
+): Promise<void> {
+  const latest = await getLatestDiaryEntry(userId, ref.tmdbId, ref.mediaType)
+  if (latest) {
+    await updateDiaryEntry(userId, latest, { rating })
+    return
+  }
+  if (rating == null) return // niente da registrare
+  await addDiaryEntry(userId, ref, {
+    watchedOn: new Date().toISOString().slice(0, 10),
+    rating,
+    note: null,
+  })
+}
+
 // Modifica una voce di diario esistente (es. correggere il voto dal diario).
 export async function updateDiaryEntry(
   userId: string,
