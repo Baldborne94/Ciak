@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
 import { listFavorites, refFromMedia, upsertUserTitle } from '../lib/userTitles'
+import { getLatestRatingsMap, resyncUserTitleRating } from '../lib/diary'
 import { listEntities } from '../lib/entities'
 import { profileUrl, logoUrl } from '../lib/tmdb'
 import type { SavedEntity, UserTitle } from '../lib/types'
@@ -101,8 +102,25 @@ function TitlesTab() {
     if (!user) return
     setLoading(true)
     setError(null)
-    listFavorites(user.id)
-      .then(setItems)
+    Promise.all([listFavorites(user.id), getLatestRatingsMap(user.id).catch(() => new Map<string, number>())])
+      .then(([favs, diaryRatings]) => {
+        // Ripara qui i preferiti il cui voto è rimasto null in user_titles pur
+        // avendo una visione votata nel diario (es. per un vecchio disallineamento):
+        // mostriamo subito il voto giusto e lo persistiamo in background.
+        const repaired = favs.map((r) => {
+          if (r.personal_rating != null) return r
+          const diaryRating = diaryRatings.get(`${r.media_type}-${r.tmdb_id}`)
+          if (diaryRating == null) return r
+          resyncUserTitleRating(user.id, {
+            tmdbId: r.tmdb_id,
+            mediaType: r.media_type,
+            title: r.title,
+            posterPath: r.poster_path,
+          }).catch(() => {})
+          return { ...r, personal_rating: diaryRating }
+        })
+        setItems(repaired)
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [user])

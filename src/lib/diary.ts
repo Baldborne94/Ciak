@@ -193,7 +193,9 @@ async function syncRatingToUserTitle(
 // Ricalcola il voto del titolo (user_titles.personal_rating) a partire dalle
 // visioni rimaste nel diario: vince quella più recente che ha un voto, altrimenti
 // il voto viene azzerato. Non crea schede dal nulla: aggiorna solo righe esistenti.
-async function resyncUserTitleRating(userId: string, ref: DiaryRef): Promise<void> {
+// Esportata così le pagine (Preferiti) possono ri-sincronizzare un titolo il cui
+// voto in user_titles è rimasto null nonostante una visione votata nel diario.
+export async function resyncUserTitleRating(userId: string, ref: DiaryRef): Promise<void> {
   const db = client()
 
   const { data: existing } = await db
@@ -249,6 +251,26 @@ export async function listDiary(userId: string): Promise<DiaryEntry[]> {
     .order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
   return (data ?? []) as DiaryEntry[]
+}
+
+// Voto più recente (per titolo) tra tutte le visioni votate nel diario, chiave
+// "mediaType-tmdbId". Usata per far scoprire e riparare i titoli il cui voto in
+// user_titles è rimasto null nonostante una visione votata nel diario.
+export async function getLatestRatingsMap(userId: string): Promise<Map<string, number>> {
+  const { data, error } = await client()
+    .from('user_diary')
+    .select('tmdb_id, media_type, rating')
+    .eq('user_id', userId)
+    .not('rating', 'is', null)
+    .order('watched_on', { ascending: false })
+  if (error) throw new Error(error.message)
+
+  const map = new Map<string, number>()
+  for (const row of (data ?? []) as { tmdb_id: number; media_type: MediaType; rating: number }[]) {
+    const key = `${row.media_type}-${row.tmdb_id}`
+    if (!map.has(key)) map.set(key, row.rating) // già ordinato per data desc: il primo è il più recente
+  }
+  return map
 }
 
 export async function deleteDiaryEntry(userId: string, entry: DiaryEntry): Promise<void> {
