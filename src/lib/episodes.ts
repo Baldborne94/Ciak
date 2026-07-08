@@ -143,6 +143,7 @@ export interface ContinueItem {
   tvId: number
   title: string
   posterPath: string | null
+  genreIds: number[]
   season: number
   episode: number
   watchedCount: number
@@ -151,18 +152,34 @@ export interface ContinueItem {
 
 // Series the user is watching → the next unwatched episode for each, most
 // recently watched first. Used by the homepage "Riprendi a guardare" row.
+// Excludes series the user has marked "Abbandonato" — dismissing one there
+// hides it here without deleting the watched-episode history, so it can be
+// picked back up later (see resumeAbandonedSeries).
 export async function getContinueWatching(userId: string, limit = 8): Promise<ContinueItem[]> {
-  const { data, error } = await client()
-    .from('user_episodes')
-    .select('tv_id, season_number, episode_number, watched_at')
-    .eq('user_id', userId)
-    .order('watched_at', { ascending: false })
-  if (error) throw new Error(error.message)
+  const [episodesRes, abandonedRes] = await Promise.all([
+    client()
+      .from('user_episodes')
+      .select('tv_id, season_number, episode_number, watched_at')
+      .eq('user_id', userId)
+      .order('watched_at', { ascending: false }),
+    client()
+      .from('user_titles')
+      .select('tmdb_id')
+      .eq('user_id', userId)
+      .eq('media_type', 'tv')
+      .eq('status', 'abandoned'),
+  ])
+  if (episodesRes.error) throw new Error(episodesRes.error.message)
 
-  const rows = (data ?? []) as { tv_id: number; season_number: number; episode_number: number }[]
+  const abandonedIds = new Set(
+    ((abandonedRes.data ?? []) as { tmdb_id: number }[]).map((r) => r.tmdb_id),
+  )
+
+  const rows = (episodesRes.data ?? []) as { tv_id: number; season_number: number; episode_number: number }[]
   const order: number[] = []
   const watchedByTv = new Map<number, Set<string>>()
   for (const r of rows) {
+    if (abandonedIds.has(r.tv_id)) continue
     if (!watchedByTv.has(r.tv_id)) {
       watchedByTv.set(r.tv_id, new Set())
       order.push(r.tv_id)
@@ -194,6 +211,7 @@ export async function getContinueWatching(userId: string, limit = 8): Promise<Co
           tvId,
           title: displayTitle(detail),
           posterPath: detail.posterPath,
+          genreIds: detail.genreIds,
           season: next.season,
           episode: next.episode,
           watchedCount: watched.size,
@@ -205,4 +223,18 @@ export async function getContinueWatching(userId: string, limit = 8): Promise<Co
     }),
   )
   return results.filter((x): x is ContinueItem => x !== null)
+}
+
+// Marca una serie come "Abbandonato": esce da "Riprendi a guardare" senza
+// perdere gli episodi visti, così ripristinandola (status → in_progress) si
+// riparte da dove si era interrotta.
+export async function abandonSeries(
+  userId: string,
+  ref: { tmdbId: number; title: string; posterPath: string | null; genreIds: number[] },
+): Promise<void> {
+  await upsertUserTitle(
+    userId,
+    { tmdbId: ref.tmdbId, mediaType: 'tv', title: ref.title, posterPath: ref.posterPath, genreIds: ref.genreIds },
+    { status: 'abandoned' },
+  )
 }

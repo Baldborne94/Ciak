@@ -66,6 +66,14 @@ export default function App() {
           }
         />
         <Route
+          path="lists/abandoned"
+          element={
+            <RequireAuth>
+              <ListPage status="abandoned" />
+            </RequireAuth>
+          }
+        />
+        <Route
           path="favorites"
           element={
             <RequireAuth>
