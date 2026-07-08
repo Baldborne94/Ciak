@@ -881,34 +881,39 @@ async function getMovieCollectionId(movieId: number): Promise<number | null> {
   }
 }
 
+export interface SagaContinuation {
+  collectionId: number
+  item: MediaItem
+}
+
 // "Continua la saga": given a sample of the user's watched movies, find the
 // collections they belong to and return the next *unwatched, already-released*
 // film in each — so the Dashboard can nudge the user to finish sagas they've
-// started. Bounded (samples watched movies, caps collections) to limit API load.
+// started. Bounded (samples watched movies, caps collections) to limit API load,
+// but wide enough to cover most libraries so older watches aren't missed.
 export async function getSagaContinuations(
   watchedMovieIds: number[],
   knownIds: Set<number>,
-): Promise<MediaItem[]> {
-  const sample = watchedMovieIds.slice(0, 14)
+): Promise<SagaContinuation[]> {
+  const sample = watchedMovieIds.slice(0, 60)
   const collectionIds = await Promise.all(sample.map(getMovieCollectionId))
-  const uniqueCollections = [...new Set(collectionIds.filter((c): c is number => c != null))].slice(0, 8)
+  const uniqueCollections = [...new Set(collectionIds.filter((c): c is number => c != null))].slice(0, 20)
   if (uniqueCollections.length === 0) return []
 
   const today = new Date().toISOString().slice(0, 10)
   const nexts = await Promise.all(
-    uniqueCollections.map(async (cid) => {
+    uniqueCollections.map(async (cid): Promise<SagaContinuation | null> => {
       try {
         const col = await getCollection(cid) // items sorted chronologically
         // First film in the saga the user hasn't got, already released, with art.
-        return (
-          col.items.find(
-            (f) =>
-              !knownIds.has(f.id) &&
-              !!f.releaseDate &&
-              f.releaseDate <= today &&
-              !!f.posterPath,
-          ) ?? null
+        const next = col.items.find(
+          (f) =>
+            !knownIds.has(f.id) &&
+            !!f.releaseDate &&
+            f.releaseDate <= today &&
+            !!f.posterPath,
         )
+        return next ? { collectionId: cid, item: next } : null
       } catch {
         return null
       }
@@ -916,10 +921,10 @@ export async function getSagaContinuations(
   )
 
   const seen = new Set<number>()
-  const out: MediaItem[] = []
+  const out: SagaContinuation[] = []
   for (const n of nexts) {
-    if (n && !seen.has(n.id)) {
-      seen.add(n.id)
+    if (n && !seen.has(n.item.id)) {
+      seen.add(n.item.id)
       out.push(n)
     }
   }

@@ -2,14 +2,15 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { ScrollRow } from '../components/MediaRow'
-import { posterUrl, getSagaContinuations } from '../lib/tmdb'
+import { posterUrl, getSagaContinuations, type SagaContinuation } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { listByStatus, listWatchlist, listAll } from '../lib/userTitles'
 import { listDiary } from '../lib/diary'
 import { computeAchievementData, getNextAchievement, RARITY_STYLES, type NextAchievement } from '../lib/achievements'
 import { getContinueWatching, abandonSeries, type ContinueItem } from '../lib/episodes'
 import { useToast } from '../lib/toastCtx'
-import type { DiaryEntry, MediaItem, UserTitle } from '../lib/types'
+import { usePersistedState } from '../lib/usePersistedState'
+import type { DiaryEntry, UserTitle } from '../lib/types'
 
 function ContinueCard({ c, onAbandon }: { c: ContinueItem; onAbandon: (c: ContinueItem) => void }) {
   const poster = posterUrl(c.posterPath)
@@ -57,29 +58,35 @@ function SectionTitle({ icon, title, action }: { icon: string; title: string; ac
   )
 }
 
-function MediaScrollRow({ items }: { items: MediaItem[] }) {
+// "Continua la saga" card — dismissable: se non ti interessa continuarla, la
+// nascondi (per collectionId, salvato in locale) senza che ricompaia.
+function SagaCard({ saga, onDismiss }: { saga: SagaContinuation; onDismiss: (collectionId: number) => void }) {
+  const { item } = saga
   return (
-    <ScrollRow>
-      {items.map((item) => (
-        <Link
-          key={item.id}
-          to={`/title/${item.mediaType}/${item.id}`}
-          className="group w-36 shrink-0 overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
-        >
-          <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
-            {posterUrl(item.posterPath) ? (
-              <img src={posterUrl(item.posterPath)!} alt={item.title} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
-            )}
-          </div>
-          <div className="p-2">
-            <p className="line-clamp-2 text-xs font-semibold text-zinc-100">{item.title}</p>
-            <p className="text-[11px] text-zinc-500">{item.releaseDate?.slice(0, 4)}</p>
-          </div>
-        </Link>
-      ))}
-    </ScrollRow>
+    <div className="group/card relative w-36 shrink-0 overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40">
+      <button
+        type="button"
+        aria-label="Non mi interessa continuare questa saga"
+        title="Non proporre più questa saga"
+        onClick={(e) => { e.preventDefault(); onDismiss(saga.collectionId) }}
+        className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-theatre-950/85 text-sm text-zinc-300 opacity-0 backdrop-blur transition hover:bg-theatre-800 hover:text-curtain-light group-hover/card:opacity-100"
+      >
+        ✕
+      </button>
+      <Link to={`/title/${item.mediaType}/${item.id}`} className="block">
+        <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
+          {posterUrl(item.posterPath) ? (
+            <img src={posterUrl(item.posterPath)!} alt={item.title} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
+          )}
+        </div>
+        <div className="p-2">
+          <p className="line-clamp-2 text-xs font-semibold text-zinc-100">{item.title}</p>
+          <p className="text-[11px] text-zinc-500">{item.releaseDate?.slice(0, 4)}</p>
+        </div>
+      </Link>
+    </div>
   )
 }
 
@@ -158,9 +165,15 @@ export default function Dashboard() {
   const { showToast } = useToast()
   const [watchlist, setWatchlist] = useState<UserTitle[]>([])
   const [continueList, setContinueList] = useState<ContinueItem[]>([])
-  const [sagaNext, setSagaNext] = useState<MediaItem[]>([])
+  const [sagaNext, setSagaNext] = useState<SagaContinuation[]>([])
   const [flashbacks, setFlashbacks] = useState<{ entry: DiaryEntry; yearsAgo: number }[]>([])
   const [allTitles, setAllTitles] = useState<UserTitle[]>([])
+  // Saghe che l'utente ha scartato ("non mi interessa continuarla"): persistito
+  // in locale per collection id, così non ricompaiono più.
+  const [dismissedSagas, setDismissedSagas] = usePersistedState<number[]>(
+    'ciak.dashboard.dismissedSagas',
+    [],
+  )
 
   useEffect(() => {
     if (!user) {
@@ -207,8 +220,13 @@ export default function Dashboard() {
     [allTitles, continueList.length],
   )
 
+  const visibleSagas = useMemo(
+    () => sagaNext.filter((s) => !dismissedSagas.includes(s.collectionId)),
+    [sagaNext, dismissedSagas],
+  )
+
   const isEmpty =
-    watchlist.length === 0 && continueList.length === 0 && sagaNext.length === 0 &&
+    watchlist.length === 0 && continueList.length === 0 && visibleSagas.length === 0 &&
     flashbacks.length === 0 && !nextTrophy
 
   async function handleAbandon(c: ContinueItem) {
@@ -227,6 +245,11 @@ export default function Dashboard() {
       setContinueList((prev) => [...prev, c])
       showToast(`Non sono riuscito a segnarla come abbandonata: ${(e as Error).message}`)
     }
+  }
+
+  function handleDismissSaga(collectionId: number) {
+    setDismissedSagas((prev) => (prev.includes(collectionId) ? prev : [...prev, collectionId]))
+    showToast('Non ti proporrò più questa saga.', 'info')
   }
 
   return (
@@ -275,13 +298,18 @@ export default function Dashboard() {
         )}
 
         {/* Continue the saga — next unwatched film in sagas you've started */}
-        {user && sagaNext.length > 0 && (
+        {user && visibleSagas.length > 0 && (
           <section>
             <SectionTitle icon="🎬" title="Continua la saga" />
             <p className="-mt-3 mb-4 text-sm text-zinc-500">
               Il prossimo capitolo delle saghe che hai iniziato ma non ancora finito.
+              <span className="text-zinc-600"> · passa il mouse e tocca ✕ per non vederla più.</span>
             </p>
-            <MediaScrollRow items={sagaNext} />
+            <ScrollRow>
+              {visibleSagas.map((s) => (
+                <SagaCard key={s.collectionId} saga={s} onDismiss={handleDismissSaga} />
+              ))}
+            </ScrollRow>
           </section>
         )}
 
