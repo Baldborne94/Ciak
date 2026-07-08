@@ -4,7 +4,13 @@ import SavedTitleCard from '../components/SavedTitleCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
-import { getWatchlistPublic, listByStatus, listWatchlist, setWatchlistPublic } from '../lib/userTitles'
+import {
+  getWatchlistPublic,
+  listByStatus,
+  listWatchlist,
+  setWatchlistPublic,
+  upsertUserTitle,
+} from '../lib/userTitles'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
 const COPY: Record<TitleStatus, { subtitle: string; icon: string }> = {
@@ -56,6 +62,33 @@ export default function ListPage({ status }: { status: TitleStatus }) {
       showToast('Link copiato negli appunti!', 'success')
     } catch {
       showToast(`Link condivisibile: ${shareUrl}`, 'info')
+    }
+  }
+
+  // Recupera una serie/film abbandonato: torna "In corso" (o "Da vedere" per i
+  // film) e sparisce da questa lista, come chiesto per poterla riprendere.
+  async function resume(record: UserTitle) {
+    if (!user) return
+    // In pratica user_titles.media_type è sempre 'movie' o 'tv' (anime/cartoni
+    // sono serie TV filtrate lato client): normalizziamo per TitleRef/TmdbType.
+    const isTv = record.media_type === 'tv'
+    setItems((prev) => prev.filter((r) => r.id !== record.id)) // ottimistico
+    try {
+      await upsertUserTitle(
+        user.id,
+        {
+          tmdbId: record.tmdb_id,
+          mediaType: isTv ? 'tv' : 'movie',
+          title: record.title,
+          posterPath: record.poster_path,
+          genreIds: record.genre_ids,
+        },
+        { status: isTv ? 'in_progress' : 'to_watch' },
+      )
+      showToast('Ripreso! Lo trovi di nuovo tra i tuoi titoli attivi.', 'success')
+    } catch (e) {
+      setItems((prev) => [...prev, record])
+      showToast(`Non sono riuscito a riprenderlo: ${(e as Error).message}`)
     }
   }
 
@@ -120,7 +153,13 @@ export default function ListPage({ status }: { status: TitleStatus }) {
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {items.map((record) => (
-            <SavedTitleCard key={record.id} record={record} />
+            <SavedTitleCard key={record.id} record={record}>
+              {status === 'abandoned' && (
+                <button onClick={() => resume(record)} className="btn-ghost w-full py-1.5 text-sm">
+                  ▶️ Riprendi
+                </button>
+              )}
+            </SavedTitleCard>
           ))}
         </div>
       )}

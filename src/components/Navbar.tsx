@@ -14,6 +14,7 @@ const primary = [
 const lists = [
   { to: '/lists/watchlist', label: 'Da vedere' },
   { to: '/lists/in-progress', label: 'In corso' },
+  { to: '/lists/abandoned', label: 'Abbandonati' },
   { to: '/diario', label: 'Visti & Diario' },
   { to: '/favorites', label: 'Preferiti' },
   { to: '/liste', label: 'Liste personali' },

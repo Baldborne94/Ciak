@@ -7,33 +7,42 @@ import { useAuth } from '../lib/auth'
 import { listByStatus, listWatchlist, listAll } from '../lib/userTitles'
 import { listDiary } from '../lib/diary'
 import { computeAchievementData, getNextAchievement, RARITY_STYLES, type NextAchievement } from '../lib/achievements'
-import { getContinueWatching, type ContinueItem } from '../lib/episodes'
+import { getContinueWatching, abandonSeries, type ContinueItem } from '../lib/episodes'
+import { useToast } from '../lib/toastCtx'
 import type { DiaryEntry, MediaItem, UserTitle } from '../lib/types'
 
-function ContinueCard({ c }: { c: ContinueItem }) {
+function ContinueCard({ c, onAbandon }: { c: ContinueItem; onAbandon: (c: ContinueItem) => void }) {
   const poster = posterUrl(c.posterPath)
   const pct = c.totalEpisodes > 0 ? Math.round((c.watchedCount / c.totalEpisodes) * 100) : 0
   return (
-    <Link
-      to={`/title/tv/${c.tvId}?season=${c.season}&episode=${c.episode}#episodi`}
-      className="group w-40 shrink-0 overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40"
-    >
-      <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
-        {poster ? (
-          <img src={poster} alt={c.title} loading="lazy" className="h-full w-full object-cover transition group-hover:scale-105" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
-        )}
-      </div>
-      <div className="p-2">
-        <p className="line-clamp-1 text-sm font-semibold text-zinc-100">{c.title}</p>
-        <p className="text-xs text-projector">▶ S{c.season} · E{c.episode}</p>
-        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-theatre-800">
-          <div className="h-full rounded-full bg-projector" style={{ width: `${pct}%` }} />
+    <div className="group/card relative w-40 shrink-0 overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900 transition hover:-translate-y-1 hover:border-projector/40">
+      <button
+        type="button"
+        aria-label="Rimuovi da Riprendi a guardare"
+        title="Segna come abbandonata"
+        onClick={(e) => { e.preventDefault(); onAbandon(c) }}
+        className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-theatre-950/85 text-sm text-zinc-300 opacity-0 backdrop-blur transition hover:bg-theatre-800 hover:text-curtain-light group-hover/card:opacity-100"
+      >
+        ✕
+      </button>
+      <Link to={`/title/tv/${c.tvId}?season=${c.season}&episode=${c.episode}#episodi`} className="block">
+        <div className="aspect-[2/3] w-full overflow-hidden bg-theatre-800">
+          {poster ? (
+            <img src={poster} alt={c.title} loading="lazy" className="h-full w-full object-cover transition group-hover/card:scale-105" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-3xl opacity-30">🎞️</div>
+          )}
         </div>
-        <p className="mt-0.5 text-[11px] text-zinc-500">{c.watchedCount}/{c.totalEpisodes} episodi</p>
-      </div>
-    </Link>
+        <div className="p-2">
+          <p className="line-clamp-1 text-sm font-semibold text-zinc-100">{c.title}</p>
+          <p className="text-xs text-projector">▶ S{c.season} · E{c.episode}</p>
+          <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-theatre-800">
+            <div className="h-full rounded-full bg-projector" style={{ width: `${pct}%` }} />
+          </div>
+          <p className="mt-0.5 text-[11px] text-zinc-500">{c.watchedCount}/{c.totalEpisodes} episodi</p>
+        </div>
+      </Link>
+    </div>
   )
 }
 
@@ -146,6 +155,7 @@ function onThisDayFlashbacks(diary: DiaryEntry[]): { entry: DiaryEntry; yearsAgo
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const [watchlist, setWatchlist] = useState<UserTitle[]>([])
   const [continueList, setContinueList] = useState<ContinueItem[]>([])
   const [sagaNext, setSagaNext] = useState<MediaItem[]>([])
@@ -201,6 +211,24 @@ export default function Dashboard() {
     watchlist.length === 0 && continueList.length === 0 && sagaNext.length === 0 &&
     flashbacks.length === 0 && !nextTrophy
 
+  async function handleAbandon(c: ContinueItem) {
+    if (!user) return
+    // Aggiornamento ottimistico: sparisce subito da "Riprendi a guardare".
+    setContinueList((prev) => prev.filter((x) => x.tvId !== c.tvId))
+    try {
+      await abandonSeries(user.id, {
+        tmdbId: c.tvId,
+        title: c.title,
+        posterPath: c.posterPath,
+        genreIds: c.genreIds,
+      })
+      showToast('Serie segnata come abbandonata. La trovi in «Abbandonati».', 'info')
+    } catch (e) {
+      setContinueList((prev) => [...prev, c])
+      showToast(`Non sono riuscito a segnarla come abbandonata: ${(e as Error).message}`)
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -241,7 +269,7 @@ export default function Dashboard() {
           <section>
             <SectionTitle icon="📺" title="Riprendi a guardare" />
             <ScrollRow>
-              {continueList.map((c) => <ContinueCard key={c.tvId} c={c} />)}
+              {continueList.map((c) => <ContinueCard key={c.tvId} c={c} onAbandon={handleAbandon} />)}
             </ScrollRow>
           </section>
         )}
