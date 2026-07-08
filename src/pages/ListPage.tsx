@@ -69,18 +69,21 @@ export default function ListPage({ status }: { status: TitleStatus }) {
   // film) e sparisce da questa lista, come chiesto per poterla riprendere.
   async function resume(record: UserTitle) {
     if (!user) return
+    // In pratica user_titles.media_type è sempre 'movie' o 'tv' (anime/cartoni
+    // sono serie TV filtrate lato client): normalizziamo per TitleRef/TmdbType.
+    const isTv = record.media_type === 'tv'
     setItems((prev) => prev.filter((r) => r.id !== record.id)) // ottimistico
     try {
       await upsertUserTitle(
         user.id,
         {
           tmdbId: record.tmdb_id,
-          mediaType: record.media_type,
+          mediaType: isTv ? 'tv' : 'movie',
           title: record.title,
           posterPath: record.poster_path,
           genreIds: record.genre_ids,
         },
-        { status: record.media_type === 'tv' ? 'in_progress' : 'to_watch' },
+        { status: isTv ? 'in_progress' : 'to_watch' },
       )
       showToast('Ripreso! Lo trovi di nuovo tra i tuoi titoli attivi.', 'success')
     } catch (e) {
