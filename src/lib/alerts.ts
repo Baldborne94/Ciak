@@ -112,7 +112,12 @@ export async function upcomingFromFollowedPeople(userId: string, limit = 24): Pr
   // Cap the number of TMDB person lookups to keep the page snappy.
   const details = await Promise.all(
     people.slice(0, 12).map((p) =>
-      getPersonDetail(p.entity_id).then((d) => ({ name: p.name, credits: d.credits })).catch(() => null),
+      getPersonDetail(p.entity_id).then((d) => ({
+        name: p.name,
+        credits: d.credits,
+        department: d.department,
+        mainCastKeys: new Set(d.mainCastKeys),
+      })).catch(() => null),
     ),
   )
 
@@ -127,6 +132,10 @@ export async function upcomingFromFollowedPeople(userId: string, limit = 24): Pr
       if (!c.releaseDate || c.releaseDate < sinceStr) continue // only recent/future
       const key = `${c.mediaType}-${c.id}`
       if (known.has(key)) continue // already tracked
+      // Per gli attori, mostra il titolo solo se sono nel cast principale (non
+      // un cameo/ruolo minore); registi/sceneggiatori ecc. non hanno questo
+      // concetto di "billing", quindi il loro credito basta da solo.
+      if (entry.department === 'Acting' && !entry.mainCastKeys.has(key)) continue
       const found = byId.get(key)
       if (found) found.people.add(entry.name)
       else byId.set(key, { item: c, people: new Set([entry.name]) })

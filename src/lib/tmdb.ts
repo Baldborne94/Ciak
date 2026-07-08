@@ -776,7 +776,23 @@ export async function searchPerson(query: string): Promise<Person[]> {
 // concerts, "making of", talk shows, news, reality.
 const NON_FILMOGRAPHY_GENRES = new Set([99, 10402, 10767, 10763, 10764])
 
-type RawCredit = RawMedia & { department?: string; job?: string }
+type RawCredit = RawMedia & { department?: string; job?: string; order?: number }
+
+// Billing order threshold (TMDB's cast "order", 0 = top-billed) below which we
+// consider someone "cast principale" — used to only surface upcoming titles
+// from a followed actor when they're actually a lead, not a cameo/minor role.
+const MAIN_CAST_ORDER_MAX = 9
+
+function mainCastKeys(cast: RawCredit[]): Set<string> {
+  const keys = new Set<string>()
+  for (const c of cast) {
+    if (c.media_type !== 'movie' && c.media_type !== 'tv') continue
+    if (typeof c.order === 'number' && c.order <= MAIN_CAST_ORDER_MAX) {
+      keys.add(`${c.media_type}-${c.id}`)
+    }
+  }
+  return keys
+}
 
 // Keep only the credits relevant to the person's primary role.
 function dedupeAndClean(pool: RawCredit[]): MediaItem[] {
@@ -827,6 +843,9 @@ export async function getPersonDetail(id: number): Promise<PersonDetail> {
     birthday: raw.birthday ?? null,
     placeOfBirth: raw.place_of_birth ?? null,
     credits: uniqueCredits,
+    // "mediaType-id" keys (billing order ≤ MAIN_CAST_ORDER_MAX in the acting
+    // credits) — lets callers show only titles where this person is a lead.
+    mainCastKeys: [...mainCastKeys(cast)],
   }
 }
 
