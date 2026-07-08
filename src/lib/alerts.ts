@@ -116,15 +116,20 @@ export async function upcomingFromFollowedPeople(userId: string, limit = 24): Pr
     ),
   )
 
-  const byId = new Map<number, { item: MediaItem; people: Set<string> }>()
+  // Keyed by "mediaType-id": TMDB numeric ids are only unique *within* a media
+  // type, so a movie and a tv show can share the same id — keying by id alone
+  // merged unrelated titles and misattributed one person's credit to another's
+  // title (e.g. a film wrongly tagged with an actor who isn't actually in it).
+  const byId = new Map<string, { item: MediaItem; people: Set<string> }>()
   for (const entry of details) {
     if (!entry) continue
     for (const c of entry.credits) {
       if (!c.releaseDate || c.releaseDate < sinceStr) continue // only recent/future
-      if (known.has(`${c.mediaType}-${c.id}`)) continue // already tracked
-      const found = byId.get(c.id)
+      const key = `${c.mediaType}-${c.id}`
+      if (known.has(key)) continue // already tracked
+      const found = byId.get(key)
       if (found) found.people.add(entry.name)
-      else byId.set(c.id, { item: c, people: new Set([entry.name]) })
+      else byId.set(key, { item: c, people: new Set([entry.name]) })
     }
   }
 
