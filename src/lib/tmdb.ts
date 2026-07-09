@@ -398,13 +398,32 @@ async function discoverReadable(
 // minute-to-minute freshness.
 const STABLE_BROWSE_SORT = 'vote_count.desc'
 
-export async function getAnime(page = 1, genreId?: number): Promise<{ items: MediaItem[]; totalPages: number }> {
+// Sort choice for the anime/cartoons browse — mirrors the "Ordina" dropdown so
+// the actual TMDB query comes back pre-sorted. This matters for "Carica altri":
+// if sorting only happened client-side on the accumulated list, every new page
+// would re-shuffle titles already on screen (looked like the list was being
+// "recreated" instead of continued). Sorting server-side means each page
+// arrives in final order and can simply be appended.
+export type BrowseSort = 'popular' | 'rating' | 'date_desc' | 'date_asc'
+
+function browseSortParam(sort: BrowseSort | undefined): string {
+  if (sort === 'rating') return 'vote_average.desc'
+  if (sort === 'date_desc') return 'first_air_date.desc'
+  if (sort === 'date_asc') return 'first_air_date.asc'
+  return STABLE_BROWSE_SORT
+}
+
+export async function getAnime(
+  page = 1,
+  genreId?: number,
+  sort?: BrowseSort,
+): Promise<{ items: MediaItem[]; totalPages: number }> {
   const suggestive = await getSuggestiveKeywordIds()
   return discoverReadable('tv', {
     // Animation (16) AND, optionally, a second genre to browse by (comma = AND).
     with_genres: genreId ? `16,${genreId}` : '16',
     with_original_language: 'ja',
-    sort_by: STABLE_BROWSE_SORT,
+    sort_by: browseSortParam(sort),
     include_adult: 'false',
     // Escludi hentai (198385) e tutto ciò che è ecchi/sus → va in "Pervertito".
     without_keywords: ['198385', ...suggestive].join(','),
@@ -430,11 +449,15 @@ export async function getPervertitoAnime(page = 1): Promise<{ items: MediaItem[]
 
 // Western animated TV series (Scooby-Doo, Tom & Jerry, …): genre Animation,
 // English original language to exclude Japanese anime.
-export async function getCartoons(page = 1, genreId?: number): Promise<{ items: MediaItem[]; totalPages: number }> {
+export async function getCartoons(
+  page = 1,
+  genreId?: number,
+  sort?: BrowseSort,
+): Promise<{ items: MediaItem[]; totalPages: number }> {
   return discoverReadable('tv', {
     with_genres: genreId ? `16,${genreId}` : '16',
     with_original_language: 'en',
-    sort_by: STABLE_BROWSE_SORT,
+    sort_by: browseSortParam(sort),
     'vote_count.gte': '20',
     page: String(page),
   })

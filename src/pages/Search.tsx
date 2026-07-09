@@ -20,6 +20,7 @@ import {
   logoUrl,
   posterUrl,
   isTmdbConfigured,
+  type BrowseSort,
 } from '../lib/tmdb'
 import { MediaRow } from '../components/MediaRow'
 import { FilterBar, FilterGroup, ChipGroup, RatingSlider, filterSelectClass } from '../components/FilterBar'
@@ -383,15 +384,25 @@ export default function Search() {
   // Reset the chosen anime/cartoon genre when leaving that browse mode.
   useEffect(() => { if (!isAnimationKind) setBrowseGenre(null) }, [isAnimationKind])
 
-  // Fetchers that carry the selected genre; memoized so BrowseList only refetches
-  // when the genre actually changes.
+  // Maps the shared "Ordina" selector to the TMDB-side BrowseSort so anime/
+  // cartoons pages arrive pre-sorted and "Carica altri" never needs a client
+  // re-sort of the whole accumulated list.
+  function toBrowseSort(s: typeof sortBy): BrowseSort {
+    if (s === 'date_desc') return 'date_desc'
+    if (s === 'date_asc') return 'date_asc'
+    if (s === 'rating_desc') return 'rating'
+    return 'popular'
+  }
+
+  // Fetchers that carry the selected genre and sort; memoized so BrowseList
+  // only refetches when one of them actually changes.
   const animeFetcher = useCallback(
-    (page: number) => getAnime(page, browseGenre ?? undefined),
-    [browseGenre],
+    (page: number) => getAnime(page, browseGenre ?? undefined, toBrowseSort(sortBy)),
+    [browseGenre, sortBy],
   )
   const cartoonFetcher = useCallback(
-    (page: number) => getCartoons(page, browseGenre ?? undefined),
-    [browseGenre],
+    (page: number) => getCartoons(page, browseGenre ?? undefined, toBrowseSort(sortBy)),
+    [browseGenre, sortBy],
   )
 
   // Genre chips for the anime/cartoons browse (filter the list in place).
@@ -445,15 +456,27 @@ export default function Search() {
     [previewTitles, kind],
   )
 
-  // Shared filter + sort logic — applied to both search results and idle previews.
+  function passesFilters(r: MediaItem): boolean {
+    if ((kind === 'movie' || kind === 'tv') && r.mediaType !== kind) return false
+    if (r.voteAverage < minRating) return false
+    if (titleYear && r.releaseDate?.slice(0, 4) !== titleYear) return false
+    if (titleLang && r.originalLanguage !== titleLang) return false
+    return true
+  }
+
+  // Filter only, no re-sort — for BrowseList (anime/cartoni), whose pages
+  // arrive already sorted server-side (see toBrowseSort below). Re-sorting the
+  // accumulated pages client-side on every "Carica altri" would reshuffle
+  // titles already on screen, making the list look "recreated" instead of
+  // continued.
+  function applyFiltersNoSort(items: MediaItem[]): MediaItem[] {
+    return items.filter(passesFilters)
+  }
+
+  // Shared filter + sort logic — applied to single-batch results (search,
+  // trending) where there's no pagination to worry about.
   function applyFilters(items: MediaItem[]): MediaItem[] {
-    const list = items.filter((r) => {
-      if ((kind === 'movie' || kind === 'tv') && r.mediaType !== kind) return false
-      if (r.voteAverage < minRating) return false
-      if (titleYear && r.releaseDate?.slice(0, 4) !== titleYear) return false
-      if (titleLang && r.originalLanguage !== titleLang) return false
-      return true
-    })
+    const list = items.filter(passesFilters)
     // Sort: relevance keeps the API order; date/rating sort explicitly (no-date last).
     const byDate = (a: MediaItem, b: MediaItem, dir: 'asc' | 'desc') => {
       if (!a.releaseDate && !b.releaseDate) return 0
@@ -687,9 +710,9 @@ export default function Search() {
                 </h2>
                 {animeGenreChips}
                 {kind === 'anime' ? (
-                  <BrowseList fetcher={animeFetcher} cacheKey={`anime:${browseGenre ?? 'all'}`} filterFn={applyFilters} />
+                  <BrowseList fetcher={animeFetcher} cacheKey={`anime:${browseGenre ?? 'all'}:${sortBy}`} filterFn={applyFiltersNoSort} />
                 ) : (
-                  <BrowseList fetcher={cartoonFetcher} cacheKey={`cartoons:${browseGenre ?? 'all'}`} filterFn={applyFilters} />
+                  <BrowseList fetcher={cartoonFetcher} cacheKey={`cartoons:${browseGenre ?? 'all'}:${sortBy}`} filterFn={applyFiltersNoSort} />
                 )}
               </div>
               {kind === 'anime' && (
@@ -700,7 +723,7 @@ export default function Search() {
                   <p className="mb-4 text-sm text-zinc-500">
                     Ecchi, fan-service, harem e hentai: tutto ciò che è «sus», nel suo angolo.
                   </p>
-                  <BrowseList fetcher={getPervertitoAnime} cacheKey="anime-pervertito" filterFn={applyFilters} />
+                  <BrowseList fetcher={getPervertitoAnime} cacheKey="anime-pervertito" filterFn={applyFiltersNoSort} />
                 </div>
               )}
             </div>
