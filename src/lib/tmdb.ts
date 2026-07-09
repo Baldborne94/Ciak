@@ -900,6 +900,30 @@ async function getMovieCollectionId(movieId: number): Promise<number | null> {
   }
 }
 
+// Lightweight release-year lookup for a batch of saved titles (user_titles
+// doesn't store a release date). Used to sort/filter personal lists — e.g. the
+// watchlist — by year without a full getDetail call per title. Best-effort:
+// items that fail to resolve just have a null year.
+export async function getReleaseYears(
+  refs: { tmdbId: number; mediaType: TmdbType }[],
+): Promise<Map<string, string | null>> {
+  const entries = await Promise.all(
+    refs.map(async (r) => {
+      const key = `${r.mediaType}-${r.tmdbId}`
+      try {
+        const raw = await tmdbFetch<{ release_date?: string; first_air_date?: string }>(
+          `/${r.mediaType}/${r.tmdbId}`,
+        )
+        const year = (raw.release_date || raw.first_air_date)?.slice(0, 4) ?? null
+        return [key, year] as const
+      } catch {
+        return [key, null] as const
+      }
+    }),
+  )
+  return new Map(entries)
+}
+
 export interface SagaContinuation {
   collectionId: number
   item: MediaItem
