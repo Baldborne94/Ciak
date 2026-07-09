@@ -136,6 +136,9 @@ export interface PersonDetail extends Person {
   birthday: string | null
   placeOfBirth: string | null
   credits: MediaItem[]
+  // "mediaType-id" keys among `credits` where this person is top-billed cast
+  // (order ≤ threshold) — only meaningful for acting credits.
+  mainCastKeys: string[]
 }
 
 // A movie collection / saga (e.g. "Harry Potter Collection").
