@@ -389,13 +389,22 @@ async function discoverReadable(
   return { items: it.results.map((r) => normalise(r, type)), totalPages: it.total_pages }
 }
 
+// "popularity.desc" is recalculated continuously by TMDB, so paginating by it
+// ("Carica altri") can reshuffle items between page fetches — the same title
+// can shift past the page boundary and reappear, or skip a slot entirely,
+// which reads as "disordered" duplicates once pages are appended client-side.
+// vote_count only grows, so it doesn't drift between two nearby requests —
+// used here for browse lists where stable pagination matters more than
+// minute-to-minute freshness.
+const STABLE_BROWSE_SORT = 'vote_count.desc'
+
 export async function getAnime(page = 1, genreId?: number): Promise<{ items: MediaItem[]; totalPages: number }> {
   const suggestive = await getSuggestiveKeywordIds()
   return discoverReadable('tv', {
     // Animation (16) AND, optionally, a second genre to browse by (comma = AND).
     with_genres: genreId ? `16,${genreId}` : '16',
     with_original_language: 'ja',
-    sort_by: 'popularity.desc',
+    sort_by: STABLE_BROWSE_SORT,
     include_adult: 'false',
     // Escludi hentai (198385) e tutto ciò che è ecchi/sus → va in "Pervertito".
     without_keywords: ['198385', ...suggestive].join(','),
@@ -413,7 +422,7 @@ export async function getPervertitoAnime(page = 1): Promise<{ items: MediaItem[]
     with_original_language: 'ja',
     with_keywords: keywords.join('|'), // ha almeno un keyword ecchi/hentai
     include_adult: 'true', // necessario per mostrare gli hentai
-    sort_by: 'popularity.desc',
+    sort_by: STABLE_BROWSE_SORT,
     'vote_count.gte': '5',
     page: String(page),
   })
@@ -425,7 +434,7 @@ export async function getCartoons(page = 1, genreId?: number): Promise<{ items: 
   return discoverReadable('tv', {
     with_genres: genreId ? `16,${genreId}` : '16',
     with_original_language: 'en',
-    sort_by: 'popularity.desc',
+    sort_by: STABLE_BROWSE_SORT,
     'vote_count.gte': '20',
     page: String(page),
   })

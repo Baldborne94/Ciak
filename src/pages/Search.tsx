@@ -206,7 +206,13 @@ function BrowseList({
     setLoadingMore(true)
     try {
       const { items: it } = await fetcher(next)
-      setItems((prev) => [...prev, ...it])
+      // De-dup safety net: TMDB's popularity/vote-based sort can still shift an
+      // item across the page boundary between two nearby requests, which would
+      // otherwise show the same card twice after "Carica altri".
+      setItems((prev) => {
+        const seen = new Set(prev.map((p) => `${p.mediaType}-${p.id}`))
+        return [...prev, ...it.filter((n) => !seen.has(`${n.mediaType}-${n.id}`))]
+      })
       setPage(next)
     } catch (e) {
       setError((e as Error).message)
