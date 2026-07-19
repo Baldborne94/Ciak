@@ -527,10 +527,23 @@ export async function getDetail(
   type: TmdbType,
   id: number,
 ): Promise<MediaDetail> {
-  const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, {
-    append_to_response: 'credits,recommendations,similar,videos,watch/providers,translations',
-    include_video_language: 'it,en',
-  })
+  const [raw, enRecs, enSims] = await Promise.all([
+    tmdbFetch<RawDetail>(`/${type}/${id}`, {
+      append_to_response: 'credits,recommendations,similar,videos,watch/providers,translations',
+      include_video_language: 'it,en',
+    }),
+    tmdbFetch<{ results: RawMedia[] }>(`/${type}/${id}/recommendations`, { language: 'en-US' })
+      .catch(() => ({ results: [] as RawMedia[] })),
+    tmdbFetch<{ results: RawMedia[] }>(`/${type}/${id}/similar`, { language: 'en-US' })
+      .catch(() => ({ results: [] as RawMedia[] })),
+  ])
+
+  // TMDB può lasciare i titoli stranieri non tradotti in it-IT (es. un film
+  // coreano resta in hangul): rimpiazza gli script non leggibili col titolo
+  // inglese nelle righe "Se ti è piaciuto, guarda anche".
+  const enRecPool = [...enRecs.results, ...enSims.results]
+  if (raw.recommendations?.results) patchReadableTitles(raw.recommendations.results, enRecPool)
+  if (raw.similar?.results) patchReadableTitles(raw.similar.results, enRecPool)
 
   const base = normalise(raw, type)
 
@@ -846,13 +859,24 @@ function dedupeAndClean(pool: RawCredit[]): MediaItem[] {
 }
 
 export async function getPersonDetail(id: number): Promise<PersonDetail> {
-  const raw = await tmdbFetch<
-    RawPerson & { combined_credits?: { cast?: RawCredit[]; crew?: RawCredit[] } }
-  >(`/person/${id}`, { append_to_response: 'combined_credits' })
+  const [raw, enCredits] = await Promise.all([
+    tmdbFetch<
+      RawPerson & { combined_credits?: { cast?: RawCredit[]; crew?: RawCredit[] } }
+    >(`/person/${id}`, { append_to_response: 'combined_credits' }),
+    tmdbFetch<{ cast?: RawCredit[]; crew?: RawCredit[] }>(`/person/${id}/combined_credits`, {
+      language: 'en-US',
+    }).catch(() => ({ cast: [] as RawCredit[], crew: [] as RawCredit[] })),
+  ])
 
   const dept = raw.known_for_department ?? 'Acting'
   const cast = raw.combined_credits?.cast ?? []
   const crew = raw.combined_credits?.crew ?? []
+
+  // Ripiego sull'inglese per i titoli che TMDB non traduce in italiano (script
+  // non leggibili): la filmografia mostra così un nome leggibile invece del raw.
+  const enCreditPool = [...(enCredits.cast ?? []), ...(enCredits.crew ?? [])]
+  patchReadableTitles(cast, enCreditPool)
+  patchReadableTitles(crew, enCreditPool)
 
   // Actors → where they acted (cast). Others → crew work in their department
   // (director → directed, composer → scored, writer → wrote).
@@ -905,7 +929,14 @@ export async function searchCollection(query: string): Promise<Collection[]> {
 }
 
 export async function getCollection(id: number): Promise<CollectionDetail> {
-  const raw = await tmdbFetch<RawCollection>(`/collection/${id}`)
+  const [raw, enRaw] = await Promise.all([
+    tmdbFetch<RawCollection>(`/collection/${id}`),
+    tmdbFetch<RawCollection>(`/collection/${id}`, { language: 'en-US' }).catch(
+      () => ({ id, name: '', parts: [] as RawMedia[] }) as RawCollection,
+    ),
+  ])
+  // Titoli stranieri non tradotti in it-IT → ripiego sul titolo inglese.
+  if (raw.parts) patchReadableTitles(raw.parts, enRaw.parts ?? [])
   const items = (raw.parts ?? [])
     .map((m) => normalise(m, 'movie'))
     // Chronological order by release date.
