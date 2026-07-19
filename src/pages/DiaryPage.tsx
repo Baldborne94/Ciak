@@ -6,7 +6,7 @@ import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { deleteDiaryEntry, listDiary, updateDiaryEntry } from '../lib/diary'
-import { listByStatus } from '../lib/userTitles'
+import { listByStatus, upsertUserTitle } from '../lib/userTitles'
 import { useToast } from '../lib/toastCtx'
 import { posterUrl } from '../lib/tmdb'
 import type { DiaryEntry, UserTitle } from '../lib/types'
@@ -18,6 +18,40 @@ function formatDate(iso: string): string {
     month: 'long',
     year: 'numeric',
   })
+}
+
+// `watched_at` è un timestamp (timestamptz): lo riportiamo alla data locale
+// YYYY-MM-DD così i titoli segnati "Visto" si allineano al giorno del diario.
+function localDay(iso: string): string {
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+// Voce unificata della timeline: o una visione datata del diario, o un titolo
+// segnato "Visto" (che porta con sé la data in `watched_at`). Così un film appena
+// segnato compare in cima, sotto la sua data, invece di finire in un blocco a parte.
+type TimelineItem =
+  | { kind: 'diary'; date: string; entry: DiaryEntry }
+  | { kind: 'watched'; date: string; record: UserTitle }
+
+function itemKey(it: TimelineItem): string {
+  return it.kind === 'diary' ? `d:${it.entry.id}` : `w:${it.record.id}`
+}
+function itemTmdbKey(it: TimelineItem): string {
+  return it.kind === 'diary'
+    ? `${it.entry.tmdb_id}:${it.entry.media_type}`
+    : `${it.record.tmdb_id}:${it.record.media_type}`
+}
+function itemRating(it: TimelineItem): number | null {
+  return it.kind === 'diary' ? it.entry.rating : it.record.personal_rating
+}
+function itemHaystack(it: TimelineItem): string {
+  return it.kind === 'diary'
+    ? `${it.entry.title} ${it.entry.note ?? ''}`.toLowerCase()
+    : it.record.title.toLowerCase()
 }
 
 export default function DiaryPage() {
@@ -69,6 +103,31 @@ export default function DiaryPage() {
     }
   }
 
+  // Voto di un titolo segnato "Visto" (senza voce nel diario): scrive su
+  // user_titles.personal_rating, con aggiornamento ottimistico.
+  async function changeWatchedRating(record: UserTitle, rating: number | null) {
+    if (!user) return
+    setWatched((prev) =>
+      prev.map((w) => (w.id === record.id ? { ...w, personal_rating: rating } : w)),
+    )
+    try {
+      await upsertUserTitle(
+        user.id,
+        {
+          tmdbId: record.tmdb_id,
+          mediaType: record.media_type === 'movie' ? 'movie' : 'tv',
+          title: record.title,
+          posterPath: record.poster_path,
+          genreIds: record.genre_ids ?? [],
+        },
+        { personal_rating: rating },
+      )
+    } catch (e) {
+      setWatched((prev) => prev.map((w) => (w.id === record.id ? record : w)))
+      showToast(`Voto non salvato: ${(e as Error).message}`)
+    }
+  }
+
   // Quante voci ha ogni opera nel diario: > 1 significa rivisioni. Calcolato sul
   // diario completo (non sui filtri) così il conteggio resta corretto.
   const viewingsByTitle = entries.reduce<Record<string, number>>((acc, e) => {
@@ -77,47 +136,77 @@ export default function DiaryPage() {
     return acc
   }, {})
 
-  // Anni disponibili per il filtro, dal più recente.
+  // Titoli segnati "Visto" senza una voce nel diario. Quelli con una data
+  // (`watched_at`) entrano nella timeline datata; quelli senza restano in un
+  // blocco "senza data" a parte (dati vecchi, prima che la data venisse salvata).
+  const inDiary = useMemo(
+    () => new Set(entries.map((e) => `${e.tmdb_id}:${e.media_type}`)),
+    [entries],
+  )
+  const watchedNotInDiary = useMemo(
+    () => watched.filter((w) => !inDiary.has(`${w.tmdb_id}:${w.media_type}`)),
+    [watched, inDiary],
+  )
+
+  // Timeline unificata: visioni del diario + titoli "Visto" datati, tutti con
+  // una data così compaiono nel punto giusto (in cima, se appena segnati).
+  const timeline = useMemo<TimelineItem[]>(() => {
+    const fromDiary: TimelineItem[] = entries.map((e) => ({
+      kind: 'diary',
+      date: e.watched_on,
+      entry: e,
+    }))
+    const fromWatched: TimelineItem[] = watchedNotInDiary
+      .filter((w) => w.watched_at)
+      .map((w) => ({ kind: 'watched', date: localDay(w.watched_at as string), record: w }))
+    return [...fromDiary, ...fromWatched]
+  }, [entries, watchedNotInDiary])
+
+  // Titoli "Visto" privi di data: nessun giorno a cui agganciarli.
+  const watchedUndated = useMemo(
+    () => watchedNotInDiary.filter((w) => !w.watched_at),
+    [watchedNotInDiary],
+  )
+
+  // Anni disponibili per il filtro, dal più recente (dall'intera timeline).
   const years = useMemo(() => {
-    const set = new Set(entries.map((e) => e.watched_on.slice(0, 4)))
+    const set = new Set(timeline.map((it) => it.date.slice(0, 4)))
     return [...set].sort((a, b) => b.localeCompare(a))
-  }, [entries])
+  }, [timeline])
 
   // Applica i filtri alle voci datate.
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return entries.filter((e) => {
-      if (yearFilter !== 'all' && e.watched_on.slice(0, 4) !== yearFilter) return false
-      if (minRating > 0 && (e.rating ?? 0) < minRating) return false
-      if (q) {
-        const hay = `${e.title} ${e.note ?? ''}`.toLowerCase()
-        if (!hay.includes(q)) return false
-      }
+    return timeline.filter((it) => {
+      if (yearFilter !== 'all' && it.date.slice(0, 4) !== yearFilter) return false
+      if (minRating > 0 && (itemRating(it) ?? 0) < minRating) return false
+      if (q && !itemHaystack(it).includes(q)) return false
       return true
     })
-  }, [entries, query, yearFilter, minRating])
+  }, [timeline, query, yearFilter, minRating])
 
   const filtersActive = query.trim() !== '' || yearFilter !== 'all' || minRating > 0
 
-  // Group by date.
-  const groups = filtered.reduce<Record<string, DiaryEntry[]>>((acc, e) => {
-    ;(acc[e.watched_on] ??= []).push(e)
+  // Group by date, ordinando i giorni dal più recente.
+  const groups = useMemo(() => {
+    const acc: Record<string, TimelineItem[]> = {}
+    for (const it of filtered) (acc[it.date] ??= []).push(it)
     return acc
-  }, {})
-  const dates = Object.keys(groups)
+  }, [filtered])
+  const dates = useMemo(
+    () => Object.keys(groups).sort((a, b) => b.localeCompare(a)),
+    [groups],
+  )
 
-  // Titoli segnati "Visto" che non hanno una voce nel diario: li mostriamo a
-  // parte così non spariscono ora che "Visti" e "Diario" sono un'unica sezione.
-  // Con i filtri per anno/voto attivi li nascondiamo (non hanno data né voto qui);
-  // la ricerca testuale invece li filtra per titolo.
-  const inDiary = new Set(entries.map((e) => `${e.tmdb_id}:${e.media_type}`))
+  // Il blocco "senza data" segue gli stessi filtri (testo + voto). Il filtro per
+  // anno lo nasconde: questi titoli non hanno un anno di visione.
   const q = query.trim().toLowerCase()
-  const showWatchedOnly = yearFilter === 'all' && minRating === 0
-  const watchedOnly = !showWatchedOnly
-    ? []
-    : watched
-        .filter((w) => !inDiary.has(`${w.tmdb_id}:${w.media_type}`))
-        .filter((w) => !q || w.title.toLowerCase().includes(q))
+  const watchedOnly =
+    yearFilter !== 'all'
+      ? []
+      : watchedUndated
+          .filter((w) => minRating === 0 || (w.personal_rating ?? 0) >= minRating)
+          .filter((w) => !q || w.title.toLowerCase().includes(q))
 
   const isEmpty = entries.length === 0 && watched.length === 0
   const noMatches = !isEmpty && dates.length === 0 && watchedOnly.length === 0
@@ -212,12 +301,58 @@ export default function DiaryPage() {
                 {formatDate(date)}
               </h2>
               <div className="space-y-3">
-                {groups[date].map((e) => {
+                {groups[date].map((it) => {
+                  if (it.kind === 'watched') {
+                    const w = it.record
+                    const poster = posterUrl(w.poster_path, 'w185')
+                    const type = w.media_type === 'movie' ? 'movie' : 'tv'
+                    return (
+                      <div
+                        key={itemKey(it)}
+                        className="group flex gap-4 rounded-xl border border-theatre-800 bg-theatre-900/60 p-3"
+                      >
+                        <Link to={`/title/${type}/${w.tmdb_id}`} className="shrink-0">
+                          <div className="h-24 w-16 overflow-hidden rounded-md bg-theatre-800">
+                            {poster ? (
+                              <img src={poster} alt={w.title} loading="lazy" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-2xl opacity-30">🎞️</div>
+                            )}
+                          </div>
+                        </Link>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Link
+                              to={`/title/${type}/${w.tmdb_id}`}
+                              className="font-semibold text-zinc-100 hover:text-projector"
+                            >
+                              {w.title}
+                            </Link>
+                            <span
+                              className="rounded-full border border-emerald-600/30 bg-emerald-600/5 px-2 py-0.5 text-[11px] text-emerald-400"
+                              title="Segnato come visto (senza recensione nel diario)"
+                            >
+                              ✓ Visto
+                            </span>
+                          </div>
+                          <div className="mt-0.5">
+                            <StarRating
+                              value={w.personal_rating}
+                              onChange={(v) => changeWatchedRating(w, v)}
+                              size="sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  const e = it.entry
                   const poster = posterUrl(e.poster_path, 'w185')
                   const type = e.media_type === 'movie' ? 'movie' : 'tv'
                   return (
                     <div
-                      key={e.id}
+                      key={itemKey(it)}
                       className="group flex gap-4 rounded-xl border border-theatre-800 bg-theatre-900/60 p-3"
                     >
                       <Link to={`/title/${type}/${e.tmdb_id}`} className="shrink-0">
@@ -237,10 +372,10 @@ export default function DiaryPage() {
                           >
                             {e.title}
                           </Link>
-                          {viewingsByTitle[`${e.tmdb_id}:${e.media_type}`] > 1 && (
+                          {viewingsByTitle[itemTmdbKey(it)] > 1 && (
                             <span
                               className="rounded-full border border-projector/30 bg-projector/5 px-2 py-0.5 text-[11px] text-projector"
-                              title={`${viewingsByTitle[`${e.tmdb_id}:${e.media_type}`]} visioni registrate`}
+                              title={`${viewingsByTitle[itemTmdbKey(it)]} visioni registrate`}
                             >
                               🔁 rivisto
                             </span>
