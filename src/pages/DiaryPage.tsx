@@ -5,7 +5,7 @@ import SavedTitleCard from '../components/SavedTitleCard'
 import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
-import { deleteDiaryEntry, listDiary, updateDiaryEntry } from '../lib/diary'
+import { addDiaryEntry, deleteDiaryEntry, listDiary, updateDiaryEntry } from '../lib/diary'
 import { listByStatus, upsertUserTitle } from '../lib/userTitles'
 import { useToast } from '../lib/toastCtx'
 import { posterUrl } from '../lib/tmdb'
@@ -18,6 +18,10 @@ function formatDate(iso: string): string {
     month: 'long',
     year: 'numeric',
   })
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10)
 }
 
 // `watched_at` è un timestamp (timestamptz): lo riportiamo alla data locale
@@ -103,27 +107,68 @@ export default function DiaryPage() {
     }
   }
 
-  // Voto di un titolo segnato "Visto" (senza voce nel diario): scrive su
-  // user_titles.personal_rating, con aggiornamento ottimistico.
-  async function changeWatchedRating(record: UserTitle, rating: number | null) {
+  // Voto di un titolo segnato "Visto" che non ha ancora una voce nel diario.
+  // Dare un voto = registrare la visione: creiamo la voce di diario (datata dal
+  // giorno in cui l'hai segnato visto) così il voto compare subito nella lista e
+  // la riga diventa una normale voce del diario (modificabile ed eliminabile).
+  async function rateWatched(record: UserTitle, rating: number | null) {
     if (!user) return
-    setWatched((prev) =>
-      prev.map((w) => (w.id === record.id ? { ...w, personal_rating: rating } : w)),
+
+    // Voto azzerato su un titolo senza voce di diario: aggiorniamo solo il voto
+    // in user_titles, la riga resta "Visto" senza data di visione registrata.
+    if (rating == null) {
+      const prev = record.personal_rating
+      setWatched((ws) =>
+        ws.map((w) => (w.id === record.id ? { ...w, personal_rating: null } : w)),
+      )
+      try {
+        await upsertUserTitle(
+          user.id,
+          {
+            tmdbId: record.tmdb_id,
+            mediaType: record.media_type === 'movie' ? 'movie' : 'tv',
+            title: record.title,
+            posterPath: record.poster_path,
+            genreIds: record.genre_ids ?? [],
+          },
+          { personal_rating: null },
+        )
+      } catch (e) {
+        setWatched((ws) =>
+          ws.map((w) => (w.id === record.id ? { ...w, personal_rating: prev } : w)),
+        )
+        showToast(`Voto non salvato: ${(e as Error).message}`)
+      }
+      return
+    }
+
+    // Feedback immediato sulle stelle mentre registriamo la visione.
+    setWatched((ws) =>
+      ws.map((w) => (w.id === record.id ? { ...w, personal_rating: rating } : w)),
     )
     try {
-      await upsertUserTitle(
+      const entry = await addDiaryEntry(
         user.id,
         {
           tmdbId: record.tmdb_id,
-          mediaType: record.media_type === 'movie' ? 'movie' : 'tv',
+          mediaType: record.media_type,
           title: record.title,
           posterPath: record.poster_path,
-          genreIds: record.genre_ids ?? [],
         },
-        { personal_rating: rating },
+        {
+          watchedOn: record.watched_at ? localDay(record.watched_at) : todayISO(),
+          rating,
+          note: null,
+        },
       )
+      // Ora è una voce del diario: la togliamo dai "Visto" e la aggiungiamo alle
+      // voci datate, così smette di essere una riga speciale e mostra il voto.
+      setEntries((prev) => [entry, ...prev])
+      setWatched((ws) => ws.filter((w) => w.id !== record.id))
     } catch (e) {
-      setWatched((prev) => prev.map((w) => (w.id === record.id ? record : w)))
+      setWatched((ws) =>
+        ws.map((w) => (w.id === record.id ? { ...w, personal_rating: record.personal_rating } : w)),
+      )
       showToast(`Voto non salvato: ${(e as Error).message}`)
     }
   }
@@ -338,7 +383,7 @@ export default function DiaryPage() {
                           <div className="mt-0.5">
                             <StarRating
                               value={w.personal_rating}
-                              onChange={(v) => changeWatchedRating(w, v)}
+                              onChange={(v) => rateWatched(w, v)}
                               size="sm"
                             />
                           </div>
