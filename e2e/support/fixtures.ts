@@ -112,6 +112,31 @@ export function movieDetail(id: number, title: string, over: Record<string, unkn
   }
 }
 
+export function personDetail(id: number, name: string, over: Record<string, unknown> = {}) {
+  return {
+    id,
+    name,
+    profile_path: `/person-${id}.jpg`,
+    known_for_department: 'Directing',
+    biography: `Biografia di ${name}.`,
+    birthday: '1970-03-15',
+    place_of_birth: 'Roma, Italia',
+    ...over,
+  }
+}
+
+export function collectionDetail(id: number, over: Record<string, unknown> = {}) {
+  return {
+    id,
+    name: `Saga ${id}`,
+    overview: 'Una saga di prova.',
+    poster_path: `/saga-${id}.jpg`,
+    backdrop_path: null,
+    parts: [movie(9001, 'Capitolo Uno'), movie(9002, 'Capitolo Due')],
+    ...over,
+  }
+}
+
 export const TV_GENRES = [
   { id: 16, name: 'Animazione' },
   { id: 35, name: 'Commedia' },

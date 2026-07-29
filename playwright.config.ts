@@ -12,7 +12,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Due worker anche in CI: la suite copre ogni schermata, in seriale sarebbe
+  // inutilmente lenta. I test sono indipendenti (ognuno ha i suoi mock).
+  workers: process.env.CI ? 2 : undefined,
   // In CI affianchiamo il report HTML a quello testuale: è ciò che il workflow
   // carica come artefatto quando un test fallisce.
   reporter: process.env.CI

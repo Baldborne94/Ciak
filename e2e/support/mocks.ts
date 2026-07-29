@@ -3,8 +3,10 @@ import {
   MOVIE_GENRES,
   TV_GENRES,
   browsePage,
+  collectionDetail,
   labelForDiscover,
   movieDetail,
+  personDetail,
   type RawMedia,
 } from './fixtures'
 
@@ -21,6 +23,14 @@ export interface TmdbOverrides {
   discover?: (page: number, params: URLSearchParams) => RawMedia[]
   discoverTotalPages?: number
   detail?: Record<string, unknown>
+  season?: Record<string, unknown>
+  person?: Record<string, unknown>
+  personCredits?: Record<string, unknown>
+  company?: Record<string, unknown>
+  collection?: Record<string, unknown>
+  searchPerson?: unknown[]
+  searchCompany?: unknown[]
+  searchCollection?: unknown[]
 }
 
 // Conta le chiamate a discover per verificare, ad esempio, che cambiare
@@ -75,6 +85,31 @@ export async function mockTmdb(page: Page, over: TmdbOverrides = {}): Promise<Tm
       return json(over.detail ?? movieDetail(id, `Titolo ${id}`))
     }
     if (/\/(recommendations|similar)$/.test(path)) return json({ results: [] })
+    if (/^\/tv\/\d+\/season\/\d+$/.test(path)) {
+      return json(over.season ?? { episodes: [] })
+    }
+
+    // Persone, studi e saghe.
+    const personMatch = /^\/person\/(\d+)$/.exec(path)
+    if (personMatch) {
+      return json(over.person ?? personDetail(Number(personMatch[1]), 'Regista Uno'))
+    }
+    if (/^\/person\/\d+\/combined_credits$/.test(path)) {
+      return json(over.personCredits ?? { cast: [], crew: [] })
+    }
+    const companyMatch = /^\/company\/(\d+)$/.exec(path)
+    if (companyMatch) {
+      return json(
+        over.company ?? { id: Number(companyMatch[1]), name: 'Studio Uno', logo_path: null },
+      )
+    }
+    const collectionMatch = /^\/collection\/(\d+)$/.exec(path)
+    if (collectionMatch) {
+      return json(over.collection ?? collectionDetail(Number(collectionMatch[1])))
+    }
+    if (path.startsWith('/search/person')) return json({ results: over.searchPerson ?? [] })
+    if (path.startsWith('/search/company')) return json({ results: over.searchCompany ?? [] })
+    if (path.startsWith('/search/collection')) return json({ results: over.searchCollection ?? [] })
 
     // Qualsiasi altro endpoint TMDB: risposta vuota ma valida.
     return json({ results: [], genres: [], total_pages: 1 })
@@ -98,9 +133,13 @@ export interface SupabaseTables {
   [table: string]: unknown[]
 }
 
-// Mock del backend Supabase: auth + tabelle REST. Di default ogni tabella è
-// vuota; passa `tables` per popolarne una.
-export async function mockSupabase(page: Page, tables: SupabaseTables = {}): Promise<void> {
+// Mock del backend Supabase: auth + tabelle REST + funzioni RPC. Di default
+// ogni tabella è vuota; passa `tables` (o `rpc`) per popolarle.
+export async function mockSupabase(
+  page: Page,
+  tables: SupabaseTables = {},
+  rpc: Record<string, unknown> = {},
+): Promise<void> {
   await page.route(`${SUPABASE}/**`, async (route: Route) => {
     const url = new URL(route.request().url())
     const path = url.pathname
@@ -109,6 +148,12 @@ export async function mockSupabase(page: Page, tables: SupabaseTables = {}): Pro
       if (path.endsWith('/user')) return route.fulfill({ json: E2E_USER })
       if (path.endsWith('/logout')) return route.fulfill({ status: 204, body: '' })
       return route.fulfill({ json: { user: E2E_USER } })
+    }
+
+    // Funzioni SECURITY DEFINER (es. watchlist pubblica di un altro utente).
+    if (path.startsWith('/rest/v1/rpc/')) {
+      const fn = path.replace('/rest/v1/rpc/', '')
+      return route.fulfill({ json: rpc[fn] ?? [] })
     }
 
     if (path.startsWith('/rest/v1/')) {
@@ -129,6 +174,26 @@ export async function mockSupabase(page: Page, tables: SupabaseTables = {}): Pro
     }
 
     return route.fulfill({ json: {} })
+  })
+}
+
+// Endpoint AI serverless (/api/*): risposte finte e istantanee, così le pagine
+// che li usano sono testabili senza chiave Anthropic né consumo di crediti.
+export async function mockAiApi(
+  page: Page,
+  responses: Record<string, unknown> = {},
+): Promise<void> {
+  await page.route('**/api/**', (route) => {
+    const path = new URL(route.request().url()).pathname
+    const preset: Record<string, unknown> = {
+      '/api/tonight': { suggestions: [] },
+      '/api/song-films': { films: [] },
+      '/api/identify': { guesses: [] },
+      '/api/saga-order': { order: [] },
+    }
+    return route.fulfill({
+      json: { ...(responses[path] ?? preset[path] ?? {}), aiCreditsLeft: 3 },
+    })
   })
 }
 

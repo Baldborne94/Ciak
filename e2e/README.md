@@ -34,10 +34,21 @@ fasulle: servono solo a far credere all'app di essere configurata.
 
 | File | Copre |
 | --- | --- |
+| `pages-public.spec.ts` | Ogni schermata raggiungibile senza login (home, cerca, genere, titolo, persona, studio, saga, guida, login, impostazioni, pagine condivise) |
+| `pages-auth.spec.ts` | Ogni schermata che richiede il login (preferiti, diario, statistiche, profilo di gusto, liste, in arrivo, trofei, AI, liste di stato) |
 | `browse.spec.ts` | Sfoglia anime/cartoni: "Carica altri", ordinamento, filtro per genere |
-| `navigation.spec.ts` | Home, accesso alle pagine personali, redirect, 404, ricerca → scheda titolo |
-| `support/mocks.ts` | Intercettazione TMDB/Supabase e login simulato |
+| `navigation.spec.ts` | Accesso alle pagine personali, redirect dei vecchi indirizzi, 404, ricerca → scheda titolo |
+| `routes-coverage.spec.ts` | **Guardia**: fallisce se una schermata di `App.tsx` non ha alcun test |
+| `support/mocks.ts` | Intercettazione TMDB/Supabase/AI e login simulato |
 | `support/fixtures.ts` | Dati finti, con titoli numerati per verificare l'ordine |
+
+### La guardia della copertura
+
+`routes-coverage.spec.ts` legge le rotte dichiarate in `src/App.tsx` e le
+confronta con gli indirizzi visitati dai test. Aggiungere una schermata senza
+scriverne il test fa fallire la CI con un messaggio che nomina la schermata
+mancante. È ciò che mantiene vera nel tempo l'affermazione "ogni schermata è
+coperta".
 
 I cataloghi finti usano titoli numerati (`Anime 1`, `Cartone 2`, …) così un
 test può affermare non solo *che* i titoli ci sono, ma che sono **nell'ordine
