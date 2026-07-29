@@ -59,14 +59,38 @@ test('un utente autenticato vede la sua watchlist, non il login', async ({ page 
   await expect(page.getByText('Fight Club')).toBeVisible()
 })
 
-test('le vecchie rotte anime/cartoni reindirizzano dentro Cerca', async ({ page }) => {
+test('i vecchi indirizzi continuano a funzionare (redirect)', async ({ page }) => {
+  // Cinque navigazioni in un test solo: in sviluppo ogni rotta nuova fa
+  // compilare a Vite il suo chunk, quindi serve più del budget predefinito.
+  test.slow()
   await mockTmdb(page)
+  // Autenticati: /diario e /ai sono pagine personali, e da ospite il redirect
+  // verrebbe seguito da un secondo salto al login — qui ci interessa verificare
+  // dove puntano i vecchi indirizzi, non il controllo d'accesso (già coperto).
+  await signIn(page)
 
+  // Anime/Cartoni sono confluiti in Cerca…
   await page.goto('/anime')
   await expect(page).toHaveURL(/\/search\?mode=anime$/)
-
   await page.goto('/cartoons')
   await expect(page).toHaveURL(/\/search\?mode=cartoons$/)
+
+  // …"Visti" nel Diario…
+  await page.goto('/lists/watched')
+  await expect(page).toHaveURL(/\/diario$/)
+
+  // …e gli strumenti AI nell'hub unico.
+  await page.goto('/recommendations')
+  await expect(page).toHaveURL(/\/ai\?tab=tonight$/)
+  await page.goto('/stasera')
+  await expect(page).toHaveURL(/\/ai\?tab=tonight$/)
+})
+
+test('/explore è un alias di Cerca', async ({ page }) => {
+  await mockTmdb(page)
+  await page.goto('/explore')
+
+  await expect(page.getByRole('heading', { name: 'Cerca & Esplora' })).toBeVisible()
 })
 
 test('un URL inesistente mostra la pagina 404, non una schermata bianca', async ({ page }) => {
