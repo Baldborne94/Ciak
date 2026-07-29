@@ -32,4 +32,11 @@ export default tseslint.config(
       globals: globals.node,
     },
   },
+  {
+    // I test E2E e la config di Playwright girano su Node.
+    files: ['e2e/**/*.ts', 'playwright.config.ts'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+  },
 )
