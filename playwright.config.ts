@@ -4,7 +4,8 @@ import { defineConfig, devices } from '@playwright/test'
 // chiamata a TMDB e Supabase è intercettata da e2e/support/mocks.ts, quindi
 // la suite è ermetica (nessuna rete, nessun account, risultati deterministici).
 const PORT = 4173
-const BASE_URL = `http://127.0.0.1:${PORT}`
+const HOST = '127.0.0.1'
+const BASE_URL = `http://${HOST}:${PORT}`
 
 export default defineConfig({
   testDir: './e2e',
@@ -12,7 +13,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: process.env.CI ? 'line' : 'list',
+  // In CI affianchiamo il report HTML a quello testuale: è ciò che il workflow
+  // carica come artefatto quando un test fallisce.
+  reporter: process.env.CI
+    ? [['line'], ['html', { open: 'never' }]]
+    : [['list']],
   use: {
     baseURL: BASE_URL,
     trace: 'on-first-retry',
@@ -32,7 +37,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npx vite --port ${PORT} --strictPort`,
+    // --host esplicito: senza, Vite ascolta su "localhost", che su alcune
+    // macchine CI risolve a ::1 (IPv6) mentre Playwright interroga 127.0.0.1,
+    // e l'attesa del server scade senza che nulla sia davvero rotto.
+    command: `npx vite --host ${HOST} --port ${PORT} --strictPort`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
