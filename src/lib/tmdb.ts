@@ -433,7 +433,10 @@ export async function getAnime(
 }
 
 // The "Pervertito" corner: ecchi / fan-service AND hentai anime.
-export async function getPervertitoAnime(page = 1): Promise<{ items: MediaItem[]; totalPages: number }> {
+export async function getPervertitoAnime(
+  page = 1,
+  sort?: BrowseSort,
+): Promise<{ items: MediaItem[]; totalPages: number }> {
   const suggestive = await getSuggestiveKeywordIds()
   const keywords = [...suggestive, '198385'] // ecchi/sus + hentai
   return discoverReadable('tv', {
@@ -441,7 +444,7 @@ export async function getPervertitoAnime(page = 1): Promise<{ items: MediaItem[]
     with_original_language: 'ja',
     with_keywords: keywords.join('|'), // ha almeno un keyword ecchi/hentai
     include_adult: 'true', // necessario per mostrare gli hentai
-    sort_by: STABLE_BROWSE_SORT,
+    sort_by: browseSortParam(sort),
     'vote_count.gte': '5',
     page: String(page),
   })

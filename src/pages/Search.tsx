@@ -85,6 +85,19 @@ const FAMOUS_STUDIOS = ['Pixar', 'Studio Ghibli', 'A24', 'Marvel Studios', 'Warn
 const FAMOUS_SAGAS = [1241, 10, 119, 86311, 328, 9485, 645, 295, 263, 10194]
 const FAMOUS_ACTORS = ['Al Pacino', 'Robert De Niro', 'Meryl Streep', 'Leonardo DiCaprio', 'Tom Hanks', 'Denzel Washington', 'Anthony Hopkins', 'Morgan Freeman', 'Cate Blanchett', 'Joaquin Phoenix', 'Christian Bale', 'Daniel Day-Lewis', 'Natalie Portman', 'Gary Oldman', 'Brad Pitt']
 
+// "Ordina" options for the Titoli tab (relevance keeps the API order).
+type TitleSort = 'relevance' | 'date_desc' | 'date_asc' | 'rating_desc'
+
+// Maps the shared "Ordina" selector to the TMDB-side BrowseSort so anime/
+// cartoons pages arrive pre-sorted and "Carica altri" never needs a client
+// re-sort of the whole accumulated list.
+function toBrowseSort(s: TitleSort): BrowseSort {
+  if (s === 'date_desc') return 'date_desc'
+  if (s === 'date_asc') return 'date_asc'
+  if (s === 'rating_desc') return 'rating'
+  return 'popular'
+}
+
 // Filter title search results down to anime (Japanese animation) or
 // cartoons (non-Japanese animation) using genre + original language.
 function filterKind(kind: 'anime' | 'cartoons', items: MediaItem[]): MediaItem[] {
@@ -288,7 +301,7 @@ export default function Search() {
   const [minRating, setMinRating] = useState(0)
   const [titleYear, setTitleYear] = useState('')
   const [titleLang, setTitleLang] = useState('')
-  const [sortBy, setSortBy] = useState<'relevance' | 'date_desc' | 'date_asc' | 'rating_desc'>('relevance')
+  const [sortBy, setSortBy] = useState<TitleSort>('relevance')
   const [role, setRole] = useState('all')
 
   const [genres, setGenres] = useState<Genre[]>([])
@@ -384,16 +397,6 @@ export default function Search() {
   // Reset the chosen anime/cartoon genre when leaving that browse mode.
   useEffect(() => { if (!isAnimationKind) setBrowseGenre(null) }, [isAnimationKind])
 
-  // Maps the shared "Ordina" selector to the TMDB-side BrowseSort so anime/
-  // cartoons pages arrive pre-sorted and "Carica altri" never needs a client
-  // re-sort of the whole accumulated list.
-  function toBrowseSort(s: typeof sortBy): BrowseSort {
-    if (s === 'date_desc') return 'date_desc'
-    if (s === 'date_asc') return 'date_asc'
-    if (s === 'rating_desc') return 'rating'
-    return 'popular'
-  }
-
   // Fetchers that carry the selected genre and sort; memoized so BrowseList
   // only refetches when one of them actually changes.
   const animeFetcher = useCallback(
@@ -403,6 +406,10 @@ export default function Search() {
   const cartoonFetcher = useCallback(
     (page: number) => getCartoons(page, browseGenre ?? undefined, toBrowseSort(sortBy)),
     [browseGenre, sortBy],
+  )
+  const pervertitoFetcher = useCallback(
+    (page: number) => getPervertitoAnime(page, toBrowseSort(sortBy)),
+    [sortBy],
   )
 
   // Genre chips for the anime/cartoons browse (filter the list in place).
@@ -723,7 +730,7 @@ export default function Search() {
                   <p className="mb-4 text-sm text-zinc-500">
                     Ecchi, fan-service, harem e hentai: tutto ciò che è «sus», nel suo angolo.
                   </p>
-                  <BrowseList fetcher={getPervertitoAnime} cacheKey="anime-pervertito" filterFn={applyFiltersNoSort} />
+                  <BrowseList fetcher={pervertitoFetcher} cacheKey={`anime-pervertito:${sortBy}`} filterFn={applyFiltersNoSort} />
                 </div>
               )}
             </div>
