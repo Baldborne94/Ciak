@@ -48,8 +48,8 @@ export default function PersonPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  const credits = person?.credits ?? []
   const filteredCredits = useMemo(() => {
+    const credits = person?.credits ?? []
     const list = credits.filter((c: MediaItem) => {
       if (kind !== 'all' && c.mediaType !== kind) return false
       if (c.voteAverage < minVote) return false
@@ -68,13 +68,14 @@ export default function PersonPage() {
     if (sort === 'date_asc') return [...list].sort((a, b) => byDate(a, b, 'asc'))
     if (sort === 'rating_desc') return [...list].sort((a, b) => b.voteAverage - a.voteAverage)
     return list
-  }, [credits, kind, minVote, year, sort])
+  }, [person, kind, minVote, year, sort])
 
   if (loading) return <Loader label="Carico il profilo…" />
   if (error) return <ErrorState title="Profilo non disponibile" message={error} />
   if (!person) return null
 
   const photo = profileUrl(person.profilePath)
+  const credits = person.credits
 
   return (
     <div className="space-y-10">
