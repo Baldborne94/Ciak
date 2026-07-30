@@ -96,18 +96,19 @@ export interface PersonUpcoming {
   people: string[] // followed people involved in this title
 }
 
-// Upcoming / just-released titles from the directors & actors the user follows
-// (favorited people). Recent window of 30 days so "appena uscito" shows too;
-// excludes anything already in the user's library.
+// Titoli ANCORA DA USCIRE dei registi e attori che l'utente segue (persone tra i
+// preferiti); esclude ciò che è già nella sua libreria.
+// Solo date da oggi in avanti: la pagina si chiama "In arrivo" e offre
+// «Avvisami», che su un film già uscito non vuol dire niente. Prima la finestra
+// arrivava a 30 giorni indietro per mostrare gli "appena usciti", ma finivano
+// sotto l'intestazione "Sta per uscire" — confondendo invece di informare.
 export async function upcomingFromFollowedPeople(userId: string, limit = 24): Promise<PersonUpcoming[]> {
   const people = await listEntities(userId, 'person')
   if (people.length === 0) return []
 
   const library = await listAll(userId)
   const known = new Set(library.map((t) => `${t.media_type}-${t.tmdb_id}`))
-  const since = new Date()
-  since.setDate(since.getDate() - 30)
-  const sinceStr = since.toISOString().slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
 
   // Cap the number of TMDB person lookups to keep the page snappy.
   const details = await Promise.all(
@@ -129,7 +130,7 @@ export async function upcomingFromFollowedPeople(userId: string, limit = 24): Pr
   for (const entry of details) {
     if (!entry) continue
     for (const c of entry.credits) {
-      if (!c.releaseDate || c.releaseDate < sinceStr) continue // only recent/future
+      if (!c.releaseDate || c.releaseDate < today) continue // solo da oggi in avanti
       const key = `${c.mediaType}-${c.id}`
       if (known.has(key)) continue // already tracked
       // Per gli attori, mostra il titolo solo se sono nel cast principale (non
