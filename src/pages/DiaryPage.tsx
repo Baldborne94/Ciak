@@ -6,7 +6,7 @@ import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { addDiaryEntry, deleteDiaryEntry, listDiary, updateDiaryEntry } from '../lib/diary'
-import { listByStatus, upsertUserTitle } from '../lib/userTitles'
+import { listAll, upsertUserTitle } from '../lib/userTitles'
 import { useToast } from '../lib/toastCtx'
 import { posterUrl } from '../lib/tmdb'
 import type { DiaryEntry, UserTitle } from '../lib/types'
@@ -49,8 +49,12 @@ function itemTmdbKey(it: TimelineItem): string {
     ? `${it.entry.tmdb_id}:${it.entry.media_type}`
     : `${it.record.tmdb_id}:${it.record.media_type}`
 }
-function itemRating(it: TimelineItem): number | null {
-  return it.kind === 'diary' ? it.entry.rating : it.record.personal_rating
+// Il voto da mostrare, riconciliando le due fonti: se questa visione non ha
+// stelle ma il titolo è votato nella sua scheda, mostriamo quel voto invece di
+// stelle vuote — le due pagine devono raccontare la stessa storia.
+function itemRating(it: TimelineItem, ratingByTitle?: Map<string, number>): number | null {
+  const own = it.kind === 'diary' ? it.entry.rating : it.record.personal_rating
+  return own ?? ratingByTitle?.get(itemTmdbKey(it)) ?? null
 }
 function itemHaystack(it: TimelineItem): string {
   return it.kind === 'diary'
@@ -62,7 +66,10 @@ export default function DiaryPage() {
   const { user } = useAuth()
   const { showToast } = useToast()
   const [entries, setEntries] = useState<DiaryEntry[]>([])
-  const [watched, setWatched] = useState<UserTitle[]>([])
+  // Tutte le righe di user_titles, non solo i "Visto": servono anche i voti dei
+  // titoli con altro stato, così una visione senza stelle può mostrare il voto
+  // che l'utente ha dato nella scheda.
+  const [titles, setTitles] = useState<UserTitle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   // Filtri: ricerca testuale (titolo/recensione), anno di visione, voto minimo.
@@ -73,12 +80,12 @@ export default function DiaryPage() {
   useEffect(() => {
     if (!user) return
     setLoading(true)
-    // Carichiamo sia il diario (visioni datate) sia i titoli segnati "Visto":
-    // così questa è l'unica pagina di tutto ciò che hai guardato.
-    Promise.all([listDiary(user.id), listByStatus(user.id, 'watched')])
-      .then(([diary, seen]) => {
+    // Carichiamo sia il diario (visioni datate) sia la collezione: così questa è
+    // l'unica pagina di tutto ciò che hai guardato, e i due lati si allineano.
+    Promise.all([listDiary(user.id), listAll(user.id)])
+      .then(([diary, all]) => {
         setEntries(diary)
-        setWatched(seen)
+        setTitles(all)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
@@ -111,6 +118,11 @@ export default function DiaryPage() {
   // Dare un voto = registrare la visione: creiamo la voce di diario (datata dal
   // giorno in cui l'hai segnato visto) così il voto compare subito nella lista e
   // la riga diventa una normale voce del diario (modificabile ed eliminabile).
+  // Aggiornamento ottimistico del voto di un titolo in collezione.
+  function patchTitleRating(id: string, personal_rating: number | null) {
+    setTitles((ts) => ts.map((t) => (t.id === id ? { ...t, personal_rating } : t)))
+  }
+
   async function rateWatched(record: UserTitle, rating: number | null) {
     if (!user) return
 
@@ -118,9 +130,7 @@ export default function DiaryPage() {
     // in user_titles, la riga resta "Visto" senza data di visione registrata.
     if (rating == null) {
       const prev = record.personal_rating
-      setWatched((ws) =>
-        ws.map((w) => (w.id === record.id ? { ...w, personal_rating: null } : w)),
-      )
+      patchTitleRating(record.id, null)
       try {
         await upsertUserTitle(
           user.id,
@@ -134,18 +144,14 @@ export default function DiaryPage() {
           { personal_rating: null },
         )
       } catch (e) {
-        setWatched((ws) =>
-          ws.map((w) => (w.id === record.id ? { ...w, personal_rating: prev } : w)),
-        )
+        patchTitleRating(record.id, prev)
         showToast(`Voto non salvato: ${(e as Error).message}`)
       }
       return
     }
 
     // Feedback immediato sulle stelle mentre registriamo la visione.
-    setWatched((ws) =>
-      ws.map((w) => (w.id === record.id ? { ...w, personal_rating: rating } : w)),
-    )
+    patchTitleRating(record.id, rating)
     try {
       const entry = await addDiaryEntry(
         user.id,
@@ -161,17 +167,31 @@ export default function DiaryPage() {
           note: null,
         },
       )
-      // Ora è una voce del diario: la togliamo dai "Visto" e la aggiungiamo alle
-      // voci datate, così smette di essere una riga speciale e mostra il voto.
+      // Ora è una voce del diario: aggiungendola alle voci datate la riga smette
+      // di essere un "Visto senza data" (esce da watchedNotInDiary da sola).
       setEntries((prev) => [entry, ...prev])
-      setWatched((ws) => ws.filter((w) => w.id !== record.id))
     } catch (e) {
-      setWatched((ws) =>
-        ws.map((w) => (w.id === record.id ? { ...w, personal_rating: record.personal_rating } : w)),
-      )
+      patchTitleRating(record.id, record.personal_rating)
       showToast(`Voto non salvato: ${(e as Error).message}`)
     }
   }
+
+  // I titoli segnati "Visto": alimentano la timeline come prima.
+  const watched = useMemo(() => titles.filter((t) => t.status === 'watched'), [titles])
+
+  // Voti e stato "visto" per titolo, chiave "tmdbId:mediaType". Sono il ponte fra
+  // la scheda del titolo e il diario: qui la pagina legge ciò che l'altra ha salvato.
+  const ratingByTitle = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const t of titles) {
+      if (t.personal_rating != null) map.set(`${t.tmdb_id}:${t.media_type}`, t.personal_rating)
+    }
+    return map
+  }, [titles])
+  const watchedKeys = useMemo(
+    () => new Set(watched.map((w) => `${w.tmdb_id}:${w.media_type}`)),
+    [watched],
+  )
 
   // Quante voci ha ogni opera nel diario: > 1 significa rivisioni. Calcolato sul
   // diario completo (non sui filtri) così il conteggio resta corretto.
@@ -224,11 +244,11 @@ export default function DiaryPage() {
     const q = query.trim().toLowerCase()
     return timeline.filter((it) => {
       if (yearFilter !== 'all' && it.date.slice(0, 4) !== yearFilter) return false
-      if (minRating > 0 && (itemRating(it) ?? 0) < minRating) return false
+      if (minRating > 0 && (itemRating(it, ratingByTitle) ?? 0) < minRating) return false
       if (q && !itemHaystack(it).includes(q)) return false
       return true
     })
-  }, [timeline, query, yearFilter, minRating])
+  }, [timeline, query, yearFilter, minRating, ratingByTitle])
 
   const filtersActive = query.trim() !== '' || yearFilter !== 'all' || minRating > 0
 
@@ -417,6 +437,14 @@ export default function DiaryPage() {
                           >
                             {e.title}
                           </Link>
+                          {watchedKeys.has(itemTmdbKey(it)) && (
+                            <span
+                              className="rounded-full border border-emerald-600/30 bg-emerald-600/5 px-2 py-0.5 text-[11px] text-emerald-400"
+                              title="Segnato come visto nella tua collezione"
+                            >
+                              ✓ Visto
+                            </span>
+                          )}
                           {viewingsByTitle[itemTmdbKey(it)] > 1 && (
                             <span
                               className="rounded-full border border-projector/30 bg-projector/5 px-2 py-0.5 text-[11px] text-projector"
@@ -428,7 +456,7 @@ export default function DiaryPage() {
                         </div>
                         <div className="mt-0.5">
                           <StarRating
-                            value={e.rating}
+                            value={itemRating(it, ratingByTitle)}
                             onChange={(v) => changeRating(e, v)}
                             size="sm"
                           />

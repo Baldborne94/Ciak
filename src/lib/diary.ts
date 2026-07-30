@@ -81,10 +81,14 @@ export async function addDiaryEntry(
   // sincronizzazione il profilo di gusto (che legge user_titles) non lo vede.
   if (fields.rating != null) {
     await syncRatingToUserTitle(userId, ref, fields.rating, fields.watchedOn).catch(() => {})
-  } else {
-    // Voto rimosso da questa visione: ricalcola dal resto del diario.
+  } else if (existing) {
+    // Voto togliato da una visione GIÀ registrata: ricalcola dal resto del diario.
+    // Solo in questo caso qualcosa è stato davvero rimosso.
     await resyncUserTitleRating(userId, ref).catch(() => {})
   }
+  // Visione NUOVA senza voto: non tocchiamo il voto del titolo. Ricalcolarlo dal
+  // diario (che qui non ha voti) azzererebbe un voto dato altrove — è così che
+  // i voti sparivano dai titoli segnati "Visto" e poi registrati nel diario.
 
   return data
 }
