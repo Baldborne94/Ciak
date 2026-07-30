@@ -42,6 +42,8 @@ che verifica che **le azioni facciano la cosa giusta**.
 | `title-actions.spec.ts` | I pulsanti della scheda titolo: stato, preferito, "da rivedere", rimozione dalla collezione |
 | `diary-and-lists.spec.ts` | Registrare/votare/modificare/eliminare una visione; creare, riempire, svuotare e condividere le liste |
 | `filters-and-alerts.spec.ts` | Filtri e ordinamenti (genere, ricerca, filmografia), ricerche recenti, avvisi di uscita, trofei |
+| `subgenres.spec.ts` | Sottogeneri: chip per genere, keyword inviate a TMDB in OR, ritorno a "Tutti", keyword sconosciute, esito vuoto |
+| `diary-sync.spec.ts` | Coerenza fra diario e scheda del titolo: voti che non si perdono, check "Visto", voto mostrato da entrambe le fonti |
 | `browse.spec.ts` | Sfoglia anime/cartoni: "Carica altri", ordinamento, filtro per genere |
 | `navigation.spec.ts` | Accesso alle pagine personali, redirect dei vecchi indirizzi, 404, ricerca → scheda titolo |
 | `routes-coverage.spec.ts` | **Guardia**: fallisce se una schermata di `App.tsx` non ha alcun test |
@@ -94,10 +96,15 @@ Preferisci i locator per **ruolo e testo visibile**
 validi quando cambia lo stile e falliscono quando cambia davvero ciò che
 l'utente vede.
 
-Due trappole già incontrate, per non ricascarci:
+Tre trappole già incontrate, per non ricascarci:
 
 - Il match dei nomi è **per sottostringa**: `name: '5 stelle'` cattura anche
   "0.5 stelle". Usa `exact: true` quando il nome può essere contenuto in un
   altro.
 - Le voci di elenco non sono sempre pulsanti: nel modale "Aggiungi a lista"
   sono caselle di spunta (`getByRole('checkbox', { name: … })`).
+- **L'ordine delle route conta**: in Playwright vince l'ultima registrata.
+  Una `page.route()` che ispeziona una richiesta va aggiunta **dopo**
+  `mockTmdb`, e deve chiudere con `route.fallback()` per lasciar rispondere il
+  mock. Registrandola prima si finisce a testare il mock generico invece del
+  proprio scenario — e il test passa senza verificare nulla.

@@ -3,7 +3,8 @@ import { useParams, Link, useLocation, useNavigationType } from 'react-router-do
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { discoverByGenre, getGenres, isTmdbConfigured } from '../lib/tmdb'
+import { discoverByGenre, getGenres, isTmdbConfigured, resolveKeywordIds } from '../lib/tmdb'
+import { subgenresFor } from '../lib/subgenres'
 import { LANGUAGES, COUNTRIES, YEARS } from '../lib/filters'
 import { getPageState, setPageState } from '../lib/pageStateCache'
 import { FilterBar, RatingSlider, filterSelectClass } from '../components/FilterBar'
@@ -27,6 +28,7 @@ interface GenrePageCache {
   language: string
   country: string
   minVote: number
+  subgenre: string
 }
 
 export default function GenrePage() {
@@ -45,6 +47,10 @@ export default function GenrePage() {
   const [language, setLanguage] = useState(cached?.language ?? '')
   const [country, setCountry] = useState(cached?.country ?? '')
   const [minVote, setMinVote] = useState(cached?.minVote ?? 0)
+  // Sottogenere scelto (etichetta, '' = tutto il genere) e le keyword TMDB
+  // risolte per esso, tenute come stringa così le dipendenze restano stabili.
+  const [subgenre, setSubgenre] = useState(cached?.subgenre ?? '')
+  const [keywordKey, setKeywordKey] = useState('')
   const [page, setPage] = useState(cached?.page ?? 1)
   const [totalPages, setTotalPages] = useState(cached?.totalPages ?? 1)
   const [loading, setLoading] = useState(!cached)
@@ -56,13 +62,43 @@ export default function GenrePage() {
 
   const t = (type ?? 'movie') as TmdbType
   const gid = Number(genreId)
-  const filters = { year, language, country, minVote: minVote > 0 ? String(minVote) : undefined }
+  const subgenres = subgenresFor(gid)
+  const keywordIds = keywordKey ? keywordKey.split(',') : undefined
+  const filters = {
+    year,
+    language,
+    country,
+    minVote: minVote > 0 ? String(minVote) : undefined,
+    keywordIds,
+  }
+
+  // Il sottogenere scelto va tradotto in id di keyword prima di poter filtrare.
+  useEffect(() => {
+    if (!subgenre || !isTmdbConfigured) {
+      setKeywordKey('')
+      return
+    }
+    const chosen = subgenres.find((s) => s.label === subgenre)
+    if (!chosen) {
+      setKeywordKey('')
+      return
+    }
+    let active = true
+    resolveKeywordIds(chosen.keywords)
+      .then((ids) => { if (active) setKeywordKey(ids.join(',')) })
+      .catch(() => { if (active) setKeywordKey('') })
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subgenre, gid])
+
+  // Cambiando genere (stessa pagina, id diverso) il sottogenere non è più valido.
+  useEffect(() => { setSubgenre('') }, [gid])
 
   // Persist state to cache whenever it changes so a subsequent POP can restore it.
   useEffect(() => {
     if (items.length === 0) return
-    setPageState<GenrePageCache>(location.key, { items, page, totalPages, sort, year, language, country, minVote })
-  }, [location.key, items, page, totalPages, sort, year, language, country, minVote])
+    setPageState<GenrePageCache>(location.key, { items, page, totalPages, sort, year, language, country, minVote, subgenre })
+  }, [location.key, items, page, totalPages, sort, year, language, country, minVote, subgenre])
 
   useEffect(() => {
     if (!isTmdbConfigured || !genreId) return
@@ -81,14 +117,20 @@ export default function GenrePage() {
     setError(null)
     setItems([])
     setPage(1)
-    discoverByGenre(t, gid, 1, sort, { year, language, country, minVote: minVote > 0 ? String(minVote) : undefined })
+    discoverByGenre(t, gid, 1, sort, {
+      year,
+      language,
+      country,
+      minVote: minVote > 0 ? String(minVote) : undefined,
+      keywordIds: keywordKey ? keywordKey.split(',') : undefined,
+    })
       .then(({ items: newItems, totalPages: tp }) => {
         setItems(newItems)
         setTotalPages(tp)
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [t, gid, sort, year, language, country, minVote])
+  }, [t, gid, sort, year, language, country, minVote, keywordKey])
 
   useEffect(() => {
     // Skip the very first fetch when we restored from cache (back navigation).
@@ -121,8 +163,45 @@ export default function GenrePage() {
       <PageHeader
         eyebrow={t === 'tv' ? 'Serie TV per genere' : 'Film per genere'}
         title={genreName || 'Genere'}
-        subtitle="Sfoglia i titoli e affina con i filtri avanzati."
+        subtitle={
+          subgenres.length > 0
+            ? 'Scegli un sottogenere per restringere il campo, poi affina con i filtri.'
+            : 'Sfoglia i titoli e affina con i filtri avanzati.'
+        }
       />
+
+      {/* Sottogeneri: restringono il genere via keyword TMDB (es. Guerra →
+          Antimilitarista). Presenti solo per i generi che ne hanno di curati. */}
+      {subgenres.length > 0 && (
+        <div className="mb-6">
+          <p className="mb-2 text-xs uppercase tracking-wider text-zinc-500">Sottogenere</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setSubgenre('')}
+              className={`rounded-md px-3 py-1.5 text-sm transition ${
+                subgenre === ''
+                  ? 'bg-projector text-theatre-950'
+                  : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
+              }`}
+            >
+              Tutti
+            </button>
+            {subgenres.map((s) => (
+              <button
+                key={s.label}
+                onClick={() => setSubgenre(s.label)}
+                className={`rounded-md px-3 py-1.5 text-sm transition ${
+                  subgenre === s.label
+                    ? 'bg-projector text-theatre-950'
+                    : 'bg-theatre-800 text-zinc-300 hover:bg-theatre-700'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Advanced filters — sort lives here with the rest, in one row */}
       <FilterBar>
@@ -159,7 +238,14 @@ export default function GenrePage() {
       ) : error ? (
         <ErrorState title="Catalogo non disponibile" message={error} />
       ) : items.length === 0 ? (
-        <EmptyState title="Nessun titolo" message="Prova a togliere qualche filtro o cambiare ordinamento." />
+        <EmptyState
+          title="Nessun titolo"
+          message={
+            subgenre
+              ? `Nessun titolo etichettato «${subgenre}» con questi filtri. Prova un altro sottogenere o torna a «Tutti».`
+              : 'Prova a togliere qualche filtro o cambiare ordinamento.'
+          }
+        />
       ) : (
         <>
           <MediaGrid items={items} />
