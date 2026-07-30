@@ -130,19 +130,122 @@ export async function mockTmdb(page: Page, over: TmdbOverrides = {}): Promise<Tm
 }
 
 export interface SupabaseTables {
-  [table: string]: unknown[]
+  [table: string]: Row[]
 }
 
-// Mock del backend Supabase: auth + tabelle REST + funzioni RPC. Di default
-// ogni tabella è vuota; passa `tables` (o `rpc`) per popolarle.
+export type Row = Record<string, unknown>
+
+// Ciò che il test può ispezionare dopo aver cliccato: lo stato corrente delle
+// tabelle (le scritture dell'app lo modificano davvero) e l'elenco delle
+// scritture ricevute, per verificare *cosa* è stato salvato.
+export interface SupabaseMock {
+  tables: SupabaseTables
+  writes: { table: string; method: string; body: Row[] }[]
+}
+
+// PostgREST codifica i filtri come "colonna=op.valore". Ne interpretiamo il
+// sottoinsieme che l'app usa davvero, così una GET filtrata torna le righe
+// giuste invece di tutta la tabella: senza questo, per esempio, la lista
+// "Da vedere" mostrerebbe anche i titoli già visti.
+const SKIP_PARAMS = new Set(['select', 'order', 'limit', 'offset', 'on_conflict', 'columns'])
+
+function sameValue(actual: unknown, expected: string): boolean {
+  if (expected === 'null') return actual === null || actual === undefined
+  if (expected === 'true') return actual === true
+  if (expected === 'false') return actual === false
+  return String(actual) === expected
+}
+
+function matchesCondition(row: Row, column: string, spec: string): boolean {
+  const [op, ...rest] = spec.split('.')
+  const value = rest.join('.')
+  const actual = row[column]
+  switch (op) {
+    case 'eq':
+      return sameValue(actual, value)
+    case 'neq':
+      return !sameValue(actual, value)
+    case 'is':
+      return sameValue(actual, value)
+    case 'not':
+      // "not.is.null" → nega la condizione che segue.
+      return !matchesCondition(row, column, value)
+    case 'in': {
+      const list = value.replace(/^\(|\)$/g, '').split(',').map((v) => v.replace(/^"|"$/g, ''))
+      return list.some((v) => sameValue(actual, v))
+    }
+    case 'gte':
+      return String(actual) >= value
+    case 'lte':
+      return String(actual) <= value
+    case 'gt':
+      return String(actual) > value
+    case 'lt':
+      return String(actual) < value
+    default:
+      return true
+  }
+}
+
+function matchesQuery(row: Row, params: URLSearchParams): boolean {
+  for (const [key, spec] of params.entries()) {
+    if (SKIP_PARAMS.has(key)) continue
+    if (key === 'or') {
+      // "or=(status.eq.to_watch,rewatch.eq.true)"
+      const parts = spec.replace(/^\(|\)$/g, '').split(',')
+      const anyMatch = parts.some((part) => {
+        const [col, ...opRest] = part.split('.')
+        return matchesCondition(row, col, opRest.join('.'))
+      })
+      if (!anyMatch) return false
+      continue
+    }
+    if (!matchesCondition(row, key, spec)) return false
+  }
+  return true
+}
+
+function applyOrder(rows: Row[], params: URLSearchParams): Row[] {
+  const order = params.get('order')
+  if (!order) return rows
+  const clauses = order.split(',').map((c) => {
+    const [column, ...mods] = c.split('.')
+    return { column, desc: mods.includes('desc'), nullsFirst: mods.includes('nullsfirst') }
+  })
+  return [...rows].sort((a, b) => {
+    for (const { column, desc, nullsFirst } of clauses) {
+      const av = a[column]
+      const bv = b[column]
+      const aNull = av === null || av === undefined
+      const bNull = bv === null || bv === undefined
+      if (aNull || bNull) {
+        if (aNull && bNull) continue
+        return (aNull ? 1 : -1) * (nullsFirst ? -1 : 1)
+      }
+      if (av === bv) continue
+      const cmp = String(av) < String(bv) ? -1 : 1
+      return desc ? -cmp : cmp
+    }
+    return 0
+  })
+}
+
+let idCounter = 0
+
+// Mock del backend Supabase: auth + tabelle REST (con filtri, ordinamenti e
+// scritture che modificano lo stato) + funzioni RPC. Di default ogni tabella è
+// vuota; passa `tables` (o `rpc`) per popolarle.
 export async function mockSupabase(
   page: Page,
   tables: SupabaseTables = {},
   rpc: Record<string, unknown> = {},
-): Promise<void> {
+): Promise<SupabaseMock> {
+  const mock: SupabaseMock = { tables, writes: [] }
+
   await page.route(`${SUPABASE}/**`, async (route: Route) => {
     const url = new URL(route.request().url())
     const path = url.pathname
+    const params = url.searchParams
 
     if (path.startsWith('/auth/v1')) {
       if (path.endsWith('/user')) return route.fulfill({ json: E2E_USER })
@@ -156,25 +259,81 @@ export async function mockSupabase(
       return route.fulfill({ json: rpc[fn] ?? [] })
     }
 
-    if (path.startsWith('/rest/v1/')) {
-      const table = path.replace('/rest/v1/', '').split('?')[0]
-      const method = route.request().method()
-      // Scritture: rispondiamo con l'eco della riga, come farebbe PostgREST.
-      if (method !== 'GET') {
-        const body = route.request().postDataJSON() as unknown
-        return route.fulfill({ json: Array.isArray(body) ? body : [body] })
-      }
-      const rows = tables[table] ?? []
-      // .maybeSingle()/.single() chiedono un oggetto, non un array.
-      const accept = route.request().headers()['accept'] ?? ''
-      if (accept.includes('vnd.pgrst.object')) {
-        return route.fulfill({ json: rows[0] ?? null })
-      }
-      return route.fulfill({ json: rows })
+    if (!path.startsWith('/rest/v1/')) return route.fulfill({ json: {} })
+
+    const table = path.replace('/rest/v1/', '').split('?')[0]
+    const method = route.request().method()
+    const headers = route.request().headers()
+    const wantsObject = (headers['accept'] ?? '').includes('vnd.pgrst.object')
+    mock.tables[table] ??= []
+    const rows = mock.tables[table]
+
+    const respond = (payload: Row[]) => {
+      if (wantsObject) return route.fulfill({ json: payload[0] ?? null })
+      return route.fulfill({ json: payload })
     }
 
-    return route.fulfill({ json: {} })
+    if (method === 'GET' || method === 'HEAD') {
+      let found = rows.filter((r) => matchesQuery(r, params))
+      found = applyOrder(found, params)
+      const limit = params.get('limit')
+      if (limit) found = found.slice(0, Number(limit))
+      // .select(…, { count: 'exact', head: true }) legge solo il totale.
+      if ((headers['prefer'] ?? '').includes('count=')) {
+        return route.fulfill({
+          json: method === 'HEAD' ? [] : found,
+          headers: { 'content-range': `0-${Math.max(0, found.length - 1)}/${found.length}` },
+        })
+      }
+      return respond(found)
+    }
+
+    const raw = route.request().postDataJSON() as Row | Row[] | null
+    const body: Row[] = raw == null ? [] : Array.isArray(raw) ? raw : [raw]
+    mock.writes.push({ table, method, body })
+
+    if (method === 'POST') {
+      // upsert: on_conflict indica le colonne che identificano la riga.
+      const conflict = params.get('on_conflict')?.split(',')
+      const saved: Row[] = []
+      for (const incoming of body) {
+        const existing = conflict
+          ? rows.find((r) => conflict.every((c) => String(r[c]) === String(incoming[c])))
+          : undefined
+        if (existing) {
+          Object.assign(existing, incoming, { updated_at: new Date().toISOString() })
+          saved.push(existing)
+        } else {
+          const created: Row = {
+            id: `mock-${++idCounter}`,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            ...incoming,
+          }
+          rows.push(created)
+          saved.push(created)
+        }
+      }
+      return respond(saved)
+    }
+
+    if (method === 'PATCH') {
+      const patch = body[0] ?? {}
+      const touched = rows.filter((r) => matchesQuery(r, params))
+      for (const r of touched) Object.assign(r, patch, { updated_at: new Date().toISOString() })
+      return respond(touched)
+    }
+
+    if (method === 'DELETE') {
+      const removed = rows.filter((r) => matchesQuery(r, params))
+      mock.tables[table] = rows.filter((r) => !removed.includes(r))
+      return respond(removed)
+    }
+
+    return respond([])
   })
+
+  return mock
 }
 
 // Endpoint AI serverless (/api/*): risposte finte e istantanee, così le pagine

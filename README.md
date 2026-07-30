@@ -60,7 +60,26 @@ Esegui [`supabase/schema.sql`](./supabase/schema.sql) nel SQL Editor di Supabase
 | `npm run build` | Type-check + build di produzione |
 | `npm run typecheck` | Solo type-check |
 | `npm run lint` | ESLint |
+| `npm test` | Test unitari (Vitest) sulla logica pura |
+| `npm run test:e2e` | Test end-to-end (Playwright) su un browser vero |
+| `npm run test:e2e:ui` | Gli stessi E2E in modalità interattiva |
 | `npm run preview` | Anteprima della build |
+
+## Test
+
+Due livelli, entrambi eseguiti dalla CI su ogni pull request:
+
+- **Unitari** (`src/lib/*.test.ts`) — logica pura: statistiche, avvisi, cache,
+  filtri, titoli leggibili.
+- **End-to-end** (`e2e/*.spec.ts`) — l'app in Chromium: ogni schermata si apre
+  e ogni azione principale (segnare uno stato, votare, registrare una visione,
+  creare liste, filtrare, chiedere un avviso) fa davvero ciò che promette.
+
+I test E2E sono **ermetici**: TMDB, Supabase e le immagini sono intercettati e
+sostituiti con dati finti, quindi non servono chiavi né account e i risultati
+non dipendono da cosa è popolare oggi. Una guardia
+(`e2e/routes-coverage.spec.ts`) fa fallire la CI se una schermata viene
+aggiunta senza il suo test. Dettagli in [`e2e/README.md`](./e2e/README.md).
 
 ## Struttura
 

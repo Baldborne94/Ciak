@@ -35,12 +35,23 @@ Sono gli stessi comandi della CI: se passano qui, passano lì.
 | | Dove | Cosa copre | Comando |
 | --- | --- | --- | --- |
 | Unitari (Vitest) | `src/lib/*.test.ts` | Logica pura: statistiche, filtri, cache, avvisi | `npm test` |
-| End-to-end (Playwright) | `e2e/*.spec.ts` | L'app in un browser vero: ogni schermata e i flussi principali | `npm run test:e2e` |
+| End-to-end (Playwright) | `e2e/*.spec.ts` | L'app in un browser vero: ogni schermata e ogni azione principale | `npm run test:e2e` |
 
 I test E2E sono **ermetici**: TMDB, Supabase e le immagini sono intercettati e
 sostituiti con dati finti (`e2e/support/mocks.ts`). Non servono chiavi né
 account, non si consumano quote API e i risultati non dipendono da cosa è
 popolare oggi. Dettagli in `e2e/README.md`.
+
+Il finto Supabase **ha memoria**: interpreta i filtri di PostgREST e applica le
+scritture, quindi un test può salvare qualcosa da una schermata e ritrovarlo in
+un'altra. `mockSupabase` torna `{ tables, writes }` per verificare *cosa* è
+stato salvato, non solo cosa appare a schermo.
+
+Due guardie automatiche, oltre ai test veri e propri:
+
+- `e2e/routes-coverage.spec.ts` fallisce se una rotta di `App.tsx` non ha
+  alcun test — è ciò che rende impossibile aggiungere una schermata scoperta.
+- La CI esegue lint, typecheck, unitari, build e E2E su ogni pull request.
 
 ## Convenzioni di codice
 
