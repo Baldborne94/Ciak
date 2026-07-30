@@ -122,7 +122,9 @@ describe('upcomingFromFollowedPeople', () => {
     expect(out.map((o) => o.item.title)).toEqual(['Serie omonima'])
   })
 
-  it('scarta uscite troppo vecchie o senza data', async () => {
+  it('mostra solo ciò che deve ancora uscire: niente date passate né mancanti', async () => {
+    // La pagina si chiama "In arrivo" e offre «Avvisami»: un titolo già uscito
+    // (anche di soli due giorni) non ci va, altrimenti l'intestazione mente.
     vi.mocked(listEntities).mockResolvedValue([entity(8, 'Regista')])
     vi.mocked(getPersonDetail).mockResolvedValue(
       personDetail({
@@ -130,12 +132,13 @@ describe('upcomingFromFollowedPeople', () => {
         credits: [
           mediaItem({ id: 40, title: 'Vecchio', releaseDate: daysFromNow(-60) }),
           mediaItem({ id: 41, title: 'Senza data', releaseDate: null }),
-          mediaItem({ id: 42, title: 'Appena uscito', releaseDate: daysFromNow(-10) }),
+          mediaItem({ id: 42, title: 'Uscito da poco', releaseDate: daysFromNow(-2) }),
+          mediaItem({ id: 43, title: 'In uscita', releaseDate: daysFromNow(7) }),
         ],
       }),
     )
     const out = await upcomingFromFollowedPeople('u1')
-    expect(out.map((o) => o.item.title)).toEqual(['Appena uscito'])
+    expect(out.map((o) => o.item.title)).toEqual(['In uscita'])
   })
 
   it('unisce più persone sullo stesso titolo e ordina per data di uscita', async () => {
