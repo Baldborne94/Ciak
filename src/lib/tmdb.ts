@@ -721,6 +721,41 @@ export interface DiscoverFilters {
   language?: string
   country?: string
   minVote?: string
+  // Id di keyword TMDB per il sottogenere: in OR fra loro (un titolo basta che
+  // abbia una delle varianti, es. "world war ii" oppure "wwii").
+  keywordIds?: string[]
+}
+
+// Nome di keyword → id TMDB. La ricerca costa una chiamata, quindi la memorizziamo
+// per tutta la sessione: i sottogeneri sono pochi e ricorrenti.
+const keywordIdCache = new Map<string, string | null>()
+
+// Risolve nomi di keyword ("anti-war") negli id numerici che /discover accetta.
+// I nomi che TMDB non conosce vengono semplicemente saltati.
+export async function resolveKeywordIds(names: string[]): Promise<string[]> {
+  const found = await Promise.all(
+    names.map(async (name) => {
+      const key = name.toLowerCase()
+      const cached = keywordIdCache.get(key)
+      if (cached !== undefined) return cached
+      try {
+        const data = await tmdbFetch<{ results: { id: number; name: string }[] }>(
+          '/search/keyword',
+          { query: name },
+        )
+        // Preferiamo la corrispondenza esatta: cercando "spy" TMDB propone anche
+        // decine di keyword che contengono la parola ma dicono altro.
+        const exact = data.results.find((r) => r.name.toLowerCase() === key)
+        const id = exact ? String(exact.id) : (data.results[0] ? String(data.results[0].id) : null)
+        keywordIdCache.set(key, id)
+        return id
+      } catch {
+        keywordIdCache.set(key, null)
+        return null
+      }
+    }),
+  )
+  return found.filter((id): id is string => id !== null)
 }
 
 export async function discoverByGenre(
@@ -744,6 +779,7 @@ export async function discoverByGenre(
   if (filters.language) params.with_original_language = filters.language
   if (filters.country) params.with_origin_country = filters.country
   if (filters.minVote) params['vote_average.gte'] = filters.minVote
+  if (filters.keywordIds?.length) params.with_keywords = filters.keywordIds.join('|')
 
   return discoverReadable(type, params)
 }

@@ -66,6 +66,11 @@ Due guardie automatiche, oltre ai test veri e propri:
 - Le liste sfogliabili paginate ordinano **lato server** (`sort_by` di TMDB) e
   si limitano ad accodare le pagine. Riordinare lato client l'elenco già
   accumulato fa "saltare" i titoli già a schermo a ogni "Carica altri".
+- I **sottogeneri** (`src/lib/subgenres.ts`) non esistono su TMDB: sono coppie
+  «etichetta italiana → keyword TMDB» risolte in id da `resolveKeywordIds` e
+  passate a `/discover` come `with_keywords`. Più keyword per lo stesso
+  sottogenere stanno in OR, perché i titoli non sono etichettati in modo
+  uniforme (`world war ii` e `wwii` convivono).
 - La chiave Anthropic vive **solo** lato server (`api/`), mai con prefisso
   `VITE_`.
 
