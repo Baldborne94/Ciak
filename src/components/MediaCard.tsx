@@ -6,6 +6,7 @@ import { useLibrary } from '../lib/libraryCtx'
 import { useAuth } from '../lib/auth'
 import { upsertUserTitle, refFromMedia } from '../lib/userTitles'
 import { quickRate } from '../lib/diary'
+import { useToast } from '../lib/toastCtx'
 import StarRating from './StarRating'
 
 // Badge shown on a card when the title is already in the user's collection.
@@ -20,6 +21,7 @@ const LIB_BADGE: Record<TitleStatus, { label: string; cls: string }> = {
 function QuickActions({ item }: { item: MediaItem }) {
   const { user } = useAuth()
   const { lookup, refresh } = useLibrary()
+  const { showToast } = useToast()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const lib = lookup(item.mediaType, item.id)
@@ -32,8 +34,11 @@ function QuickActions({ item }: { item: MediaItem }) {
     try {
       await upsertUserTitle(user.id, refFromMedia(item), patch)
       refresh()
-    } catch {
-      /* best-effort: la scheda del titolo resta la via completa */
+    } catch (e) {
+      // Un errore silenzioso qui è peggio dell'errore stesso: il menu si chiude,
+      // il badge non compare e sembra che l'app abbia semplicemente ignorato il
+      // clic. Meglio dirlo, così si capisce che c'è da riprovare.
+      showToast(`Non sono riuscito a salvare: ${(e as Error).message}`)
     } finally {
       setBusy(false)
       setOpen(false)
@@ -59,8 +64,8 @@ function QuickActions({ item }: { item: MediaItem }) {
         posterPath: item.posterPath,
       }, v)
       refresh()
-    } catch {
-      /* best-effort */
+    } catch (e) {
+      showToast(`Voto non salvato: ${(e as Error).message}`)
     } finally {
       setBusy(false)
       setOpen(false)
