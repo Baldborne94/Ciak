@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { mockTmdb, mockSupabase, mockAiApi, signIn } from './support/mocks'
+import { mockTmdb, mockSupabase, mockAiApi, signIn, E2E_USER } from './support/mocks'
 import { movie, movieDetail } from './support/fixtures'
 
 // Il badge "✓ Visto" sulle card viene dall'indice della libreria in memoria.
@@ -48,6 +48,44 @@ test('segnare "Visto" dalla scheda si riflette sulle card al ritorno', async ({ 
   await page.goBack()
 
   await expect(page.locator('.group', { hasText: 'Pearl' }).first().getByText('✓ Visto')).toBeVisible()
+})
+
+test('il badge compare anche oltre le prime 1000 righe della collezione', async ({ page }) => {
+  // Supabase tronca le risposte REST a 1000 righe: con una collezione grande,
+  // una query non paginata perde i titoli in fondo e il badge non compare pur
+  // essendo il titolo salvato — esattamente il caso segnalato.
+  const many = Array.from({ length: 1200 }, (_, i) => ({
+    id: `row-${String(i).padStart(5, '0')}`,
+    user_id: E2E_USER.id,
+    tmdb_id: 5000 + i,
+    media_type: 'movie',
+    title: `Riempitivo ${i}`,
+    poster_path: null,
+    status: 'watched',
+    is_favorite: false,
+    personal_rating: null,
+    notes: null,
+    watched_at: '2025-01-01T00:00:00Z',
+    genre_ids: [27],
+    rewatch: false,
+    created_at: '2025-01-01T00:00:00Z',
+    updated_at: '2025-01-01T00:00:00Z',
+  }))
+  // Bullet Train sta in fondo: con l'ordine per id finisce oltre la prima pagina.
+  many.push({
+    ...many[0],
+    id: 'row-99999',
+    tmdb_id: 101,
+    title: 'Bullet Train',
+  })
+
+  await mockTmdb(page, { discover: () => [movie(101, 'Bullet Train')] })
+  await mockSupabase(page, { user_titles: many })
+  await page.goto('/genre/movie/27')
+
+  const card = page.locator('.group', { hasText: 'Bullet Train' }).first()
+  await expect(card).toBeVisible()
+  await expect(card.getByText('✓ Visto')).toBeVisible()
 })
 
 test('se il salvataggio rapido fallisce l’utente lo viene a sapere', async ({ page }) => {
