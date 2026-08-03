@@ -232,6 +232,11 @@ function applyOrder(rows: Row[], params: URLSearchParams): Row[] {
 
 let idCounter = 0
 
+// Come Supabase, che tronca ogni risposta REST a max_rows (1000 di default).
+// Il finto backend lo imita, altrimenti un test non potrebbe accorgersi di una
+// query che dimentica di paginare.
+const SUPABASE_MAX_ROWS = 1000
+
 // Mock del backend Supabase: auth + tabelle REST (con filtri, ordinamenti e
 // scritture che modificano lo stato) + funzioni RPC. Di default ogni tabella è
 // vuota; passa `tables` (o `rpc`) per popolarle.
@@ -276,8 +281,15 @@ export async function mockSupabase(
     if (method === 'GET' || method === 'HEAD') {
       let found = rows.filter((r) => matchesQuery(r, params))
       found = applyOrder(found, params)
+      // .range(from, to) di supabase-js viaggia come offset+limit, non come
+      // header Range. Rispettarli è ciò che rende testabile il troncamento di
+      // Supabase, che ha già nascosto titoli salvati dalle card.
+      const offset = Number(params.get('offset') ?? '0')
       const limit = params.get('limit')
-      if (limit) found = found.slice(0, Number(limit))
+      found = found.slice(offset, limit ? offset + Number(limit) : undefined)
+      // Il tetto del server, applicato comunque: è il comportamento che una
+      // query senza paginazione non può aggirare.
+      found = found.slice(0, SUPABASE_MAX_ROWS)
       // .select(…, { count: 'exact', head: true }) legge solo il totale.
       if ((headers['prefer'] ?? '').includes('count=')) {
         return route.fulfill({

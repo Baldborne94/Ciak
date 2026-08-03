@@ -146,10 +146,30 @@ export async function listFavorites(userId: string): Promise<UserTitle[]> {
   return (data ?? []) as UserTitle[]
 }
 
+// Supabase tronca ogni risposta REST a un massimo di righe (1000 di default):
+// una `select()` secca su una collezione grande ne restituisce solo una parte,
+// e senza `order` la parte è pure arbitraria — cambia da una richiesta all'altra.
+// Il sintomo era subdolo: alcuni titoli non mostravano il badge "✓ Visto" sulle
+// card pur essendo salvati, e non sempre gli stessi.
+// Qui scorriamo tutte le pagine, con un ordine stabile perché la paginazione
+// abbia senso (senza, la pagina 2 può ripetere o saltare righe).
+const PAGE_SIZE = 1000
+
 export async function listAll(userId: string): Promise<UserTitle[]> {
-  const { data, error } = await client().from(TABLE).select('*').eq('user_id', userId)
-  if (error) throw new Error(error.message)
-  return (data ?? []) as UserTitle[]
+  const db = client()
+  const all: UserTitle[] = []
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await db
+      .from(TABLE)
+      .select('*')
+      .eq('user_id', userId)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) throw new Error(error.message)
+    const rows = (data ?? []) as UserTitle[]
+    all.push(...rows)
+    if (rows.length < PAGE_SIZE) return all
+  }
 }
 
 // I titoli salvati prima del fix sui generi hanno `genre_ids` vuoto: il
