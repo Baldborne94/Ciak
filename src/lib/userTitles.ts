@@ -158,7 +158,8 @@ const PAGE_SIZE = 1000
 export async function listAll(userId: string): Promise<UserTitle[]> {
   const db = client()
   const all: UserTitle[] = []
-  for (let from = 0; ; from += PAGE_SIZE) {
+  let from = 0
+  for (;;) {
     const { data, error } = await db
       .from(TABLE)
       .select('*')
@@ -167,8 +168,13 @@ export async function listAll(userId: string): Promise<UserTitle[]> {
       .range(from, from + PAGE_SIZE - 1)
     if (error) throw new Error(error.message)
     const rows = (data ?? []) as UserTitle[]
+    if (rows.length === 0) return all
     all.push(...rows)
-    if (rows.length < PAGE_SIZE) return all
+    // Avanziamo di quante righe sono ARRIVATE, non di quante ne abbiamo chieste:
+    // se il server ne concede meno per richiesta (max_rows più basso della
+    // pagina), fermarsi qui lascerebbe fuori il resto della collezione. Ci
+    // costa una richiesta in più alla fine, che torna vuota e chiude il ciclo.
+    from += rows.length
   }
 }
 
