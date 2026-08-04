@@ -27,7 +27,13 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         }
         setIndex(m)
       })
-      .catch(() => {})
+      .catch((e: Error) => {
+        // Se questa lettura fallisce, l'indice resta vuoto e SPARISCONO tutti i
+        // badge "✓ Visto" dalle card, senza che nulla lo segnali: un errore
+        // silenzioso qui si traveste da bug del salvataggio. Non interrompiamo
+        // la navigazione (i badge sono un di più), ma lasciamone traccia.
+        console.error('[Ciak] Indice della libreria non caricato:', e.message)
+      })
   }, [user])
 
   useEffect(() => { load() }, [load])

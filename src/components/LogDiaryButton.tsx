@@ -10,6 +10,7 @@ import {
   countDiaryViewings,
   type DiaryRef,
 } from '../lib/diary'
+import { getUserTitle } from '../lib/userTitles'
 import type { DiaryEntry } from '../lib/types'
 
 function todayISO() {
@@ -31,6 +32,9 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
   // La visione più recente già registrata (se c'è): permette di modificarla
   // invece di forzare sempre una nuova rivisione.
   const [existing, setExisting] = useState<DiaryEntry | null>(null)
+  // Voto già dato al titolo nella sua scheda (user_titles): può esistere anche
+  // senza nessuna visione registrata, e va mostrato lo stesso.
+  const [titleRating, setTitleRating] = useState<number | null>(null)
   const [priorViewings, setPriorViewings] = useState(0)
   const [mode, setMode] = useState<'edit' | 'new'>('new')
   const [date, setDate] = useState(todayISO())
@@ -44,21 +48,28 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
     Promise.all([
       getLatestDiaryEntry(user.id, item.tmdbId, item.mediaType),
       countDiaryViewings(user.id, item.tmdbId, item.mediaType),
+      // In pratica user_titles tiene solo 'movie'/'tv' (anime e cartoni sono
+      // serie): restringiamo esplicitamente per la ricerca della scheda.
+      getUserTitle(user.id, item.tmdbId, item.mediaType === 'tv' ? 'tv' : 'movie').catch(() => null),
     ])
-      .then(([latest, count]) => {
+      .then(([latest, count, title]) => {
         setPriorViewings(count)
         setExisting(latest)
+        setTitleRating(title?.personal_rating ?? null)
         if (latest) {
           // Predefinito: modifica la visione esistente (magari solo per aggiungere
-          // la recensione dimenticata), mantenendo data e voto.
+          // la recensione dimenticata), mantenendo data e voto. Se la visione non
+          // ha voto ma il titolo sì, mostriamo quello invece di stelle vuote.
           setMode('edit')
           setDate(latest.watched_on)
-          setRating(latest.rating ?? 0)
+          setRating(latest.rating ?? title?.personal_rating ?? 0)
           setNote(latest.note ?? '')
         } else {
           setMode('new')
           setDate(todayISO())
-          setRating(0)
+          // Nessuna visione registrata, ma il voto sulla scheda esiste: aprire il
+          // diario con le stelle vuote faceva sembrare perso un voto già dato.
+          setRating(title?.personal_rating ?? 0)
           setNote('')
         }
       })
@@ -71,14 +82,14 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
     if (!existing) return
     setMode('edit')
     setDate(existing.watched_on)
-    setRating(existing.rating ?? 0)
+    setRating(existing.rating ?? titleRating ?? 0)
     setNote(existing.note ?? '')
   }
 
   function chooseNew() {
     setMode('new')
     setDate(todayISO())
-    setRating(existing?.rating ?? 0) // punto di partenza; modificabile
+    setRating(existing?.rating ?? titleRating ?? 0) // punto di partenza; modificabile
     setNote('')
   }
 

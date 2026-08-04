@@ -87,6 +87,47 @@ test('togliere il voto da una visione già registrata aggiorna il titolo', async
     .toBeNull()
 })
 
+test('aprendo il diario si vede il voto già dato al titolo, anche senza visioni', async ({
+  page,
+}) => {
+  // Il dialogo leggeva il voto solo dal diario: con un voto sulla scheda ma
+  // nessuna visione registrata si apriva a stelle vuote, e sembrava perso.
+  await mockTmdb(page, { detail: movieDetail(550, 'Fight Club') })
+  await mockSupabase(page, { user_titles: [watchedTitle({ personal_rating: 4 })] })
+  await page.goto('/title/movie/550')
+
+  await page.getByRole('button', { name: /Segna nel diario/ }).click()
+
+  // Dentro il dialogo: "4/5" compare anche nella riga di stato della scheda.
+  await expect(page.getByRole('dialog').getByText('4/5')).toBeVisible()
+})
+
+test('il voto della scheda compare anche modificando una visione senza voto', async ({ page }) => {
+  await mockTmdb(page, { detail: movieDetail(550, 'Fight Club') })
+  await mockSupabase(page, {
+    user_titles: [watchedTitle({ personal_rating: 3.5 })],
+    user_diary: [
+      {
+        id: 'd1',
+        user_id: E2E_USER.id,
+        tmdb_id: 550,
+        media_type: 'movie',
+        title: 'Fight Club',
+        poster_path: '/p.jpg',
+        watched_on: '2025-03-01',
+        rating: null,
+        note: 'Recensione senza voto',
+        created_at: '2025-03-01T00:00:00Z',
+      },
+    ],
+  })
+  await page.goto('/title/movie/550')
+
+  await page.getByRole('button', { name: /Segna nel diario/ }).click()
+
+  await expect(page.getByRole('dialog').getByText('3.5/5')).toBeVisible()
+})
+
 test('nel diario un titolo segnato "Visto" mostra il check anche se ha una recensione', async ({
   page,
 }) => {
