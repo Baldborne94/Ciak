@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  fallbackReadableTitle,
   isReadableTitle,
   displayTitle,
   posterUrl,
@@ -72,5 +73,73 @@ describe('image URLs', () => {
     expect(backdropUrl(null)).toBeNull()
     expect(profileUrl(null)).toBeNull()
     expect(logoUrl(null)).toBeNull()
+  })
+})
+
+describe('fallbackReadableTitle', () => {
+  // Caso vero: 剑来院线剧场版 十三之争 (film cinese del 2026). TMDB non ha una
+  // traduzione inglese, ma il titolo internazionale della locandina è fra i
+  // titoli alternativi: senza pescarlo lì, la scheda resta illeggibile.
+  it('pesca il titolo internazionale dai titoli alternativi quando manca la traduzione inglese', () => {
+    expect(
+      fallbackReadableTitle(null, [
+        { iso_3166_1: 'CN', title: '剑来院线剧场版 十三之争' },
+        { iso_3166_1: 'US', title: 'The 13th Sword' },
+      ]),
+    ).toBe('The 13th Sword')
+  })
+
+  it('preferisce la traduzione inglese a tutto il resto', () => {
+    expect(
+      fallbackReadableTitle(
+        'The Last Ronin',
+        [{ iso_3166_1: 'US', title: 'Titolo alternativo' }],
+        [{ iso_639_1: 'fr', data: { title: 'Le Dernier Ronin' } }],
+      ),
+    ).toBe('The Last Ronin')
+  })
+
+  it('fra i titoli alternativi preferisce l edizione US/GB', () => {
+    expect(
+      fallbackReadableTitle(null, [
+        { iso_3166_1: 'BR', title: 'O Décimo Terceiro' },
+        { iso_3166_1: 'GB', title: 'The 13th Sword' },
+      ]),
+    ).toBe('The 13th Sword')
+  })
+
+  it('accetta un alternativo di qualsiasi paese se US/GB non ci sono', () => {
+    expect(fallbackReadableTitle(null, [{ iso_3166_1: 'BR', title: 'O Décimo Terceiro' }])).toBe(
+      'O Décimo Terceiro',
+    )
+  })
+
+  it('ignora gli alternativi ancora in script non leggibile', () => {
+    expect(
+      fallbackReadableTitle(null, [
+        { iso_3166_1: 'JP', title: '進撃の巨人' },
+        { iso_3166_1: 'KR', title: '오징어 게임' },
+      ]),
+    ).toBeNull()
+  })
+
+  it('ripiega su un altra traduzione quando non c e nient altro', () => {
+    // Un titolo francese è comunque più utile di una riga di ideogrammi.
+    expect(
+      fallbackReadableTitle(null, [], [
+        { iso_639_1: 'zh', data: { title: '剑来院线剧场版' } },
+        { iso_639_1: 'es', data: { title: 'La Decimotercera Espada' } },
+      ]),
+    ).toBe('La Decimotercera Espada')
+  })
+
+  it('usa "name" per le serie, dove il titolo non si chiama "title"', () => {
+    expect(fallbackReadableTitle(null, [], [{ iso_639_1: 'de', data: { name: 'Der Schwertmeister' } }])).toBe(
+      'Der Schwertmeister',
+    )
+  })
+
+  it('torna null quando davvero non esiste nulla di leggibile', () => {
+    expect(fallbackReadableTitle(null, [], [])).toBeNull()
   })
 })
