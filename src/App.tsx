@@ -27,6 +27,7 @@ const CollectionPage = lazy(() => import('./pages/CollectionPage'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Login = lazy(() => import('./pages/Login'))
 const GuidePage = lazy(() => import('./pages/GuidePage'))
+const SharedTitlePage = lazy(() => import('./pages/SharedTitlePage'))
 const NotFound = lazy(() => import('./pages/NotFound'))
 
 export default function App() {
@@ -47,6 +48,8 @@ export default function App() {
         {/* Viste pubbliche condivise: niente login richiesto. */}
         <Route path="lista/:id" element={<PublicListPage />} />
         <Route path="watchlist/:userId" element={<PublicWatchlistPage />} />
+        {/* Consiglio ricevuto da un altro utente: il link gira fuori dall'app. */}
+        <Route path="consiglia/:mediaType/:id" element={<SharedTitlePage />} />
         {/* "Visti" è confluito nel Diario: vecchi link reindirizzano. */}
         <Route path="lists/watched" element={<Navigate to="/diario" replace />} />
         <Route

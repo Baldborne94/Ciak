@@ -5,6 +5,7 @@ import MediaGrid from '../components/MediaGrid'
 import TitleActions from '../components/TitleActions'
 import AddToListButton from '../components/AddToListButton'
 import LogDiaryButton from '../components/LogDiaryButton'
+import ShareTitleButton from '../components/ShareTitleButton'
 import SeasonsSection from '../components/SeasonsSection'
 import {
   backdropUrl,
@@ -211,6 +212,11 @@ export default function TitleDetail() {
                   title: detail.title,
                   posterPath: detail.posterPath,
                 }}
+              />
+              <ShareTitleButton
+                tmdbId={detail.id}
+                mediaType={detail.mediaType}
+                title={detail.title}
               />
             </div>
           </div>
