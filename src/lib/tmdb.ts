@@ -72,6 +72,36 @@ export function isReadableTitle(s: string | null | undefined): boolean {
   return !NON_LATIN_SCRIPTS.test(s)
 }
 
+// Quando né il titolo italiano né l'originale sono leggibili, cerchiamo il
+// miglior titolo alternativo fra quelli che TMDB già conosce. Non traduciamo
+// noi: scegliamo, in ordine di attendibilità, fra ciò che il catalogo espone.
+//
+// L'inglese viene prima perché è la lingua in cui questi film circolano fuori
+// dal loro paese. Poi i titoli alternativi, dove finisce il titolo
+// internazionale quando manca una traduzione vera e propria — prima le edizioni
+// US/GB, poi qualunque altra leggibile (spesso è la stessa dicitura). Da ultimo
+// le altre traduzioni: un titolo francese o spagnolo resta comunque più utile
+// di una riga di ideogrammi per chi deve riconoscere il film.
+export function fallbackReadableTitle(
+  english: string | null | undefined,
+  alternatives: RawAltTitle[] = [],
+  translations: { iso_639_1?: string; data?: { title?: string; name?: string } }[] = [],
+): string | null {
+  if (isReadableTitle(english)) return english as string
+
+  const readableAlts = alternatives.filter((a) => isReadableTitle(a.title))
+  const international =
+    readableAlts.find((a) => a.iso_3166_1 === 'US' || a.iso_3166_1 === 'GB') ?? readableAlts[0]
+  if (international?.title) return international.title
+
+  for (const t of translations) {
+    const candidate = t.data?.title || t.data?.name
+    if (isReadableTitle(candidate)) return candidate as string
+  }
+
+  return null
+}
+
 // The best title to show: original if it's in a readable script, otherwise
 // the localized one — and never a non-readable script when a readable
 // alternative exists (so anime/foreign titles show their IT/EN name).
@@ -281,6 +311,18 @@ interface RawDetail extends RawMedia {
       data?: { title?: string; name?: string; overview?: string }
     }[]
   }
+  // I titoli alternativi stanno sotto "titles" per i film e "results" per le
+  // serie: è lì che vive il titolo internazionale quando TMDB non ha una vera
+  // traduzione (es. «The 13th Sword» per un film cinese del 2026).
+  alternative_titles?: {
+    titles?: RawAltTitle[]
+    results?: RawAltTitle[]
+  }
+}
+
+interface RawAltTitle {
+  iso_3166_1?: string
+  title?: string
 }
 
 interface RawSeason {
@@ -532,7 +574,8 @@ export async function getDetail(
 ): Promise<MediaDetail> {
   const [raw, enRecs, enSims] = await Promise.all([
     tmdbFetch<RawDetail>(`/${type}/${id}`, {
-      append_to_response: 'credits,recommendations,similar,videos,watch/providers,translations',
+      append_to_response:
+        'credits,recommendations,similar,videos,watch/providers,translations,alternative_titles',
       include_video_language: 'it,en',
     }),
     tmdbFetch<{ results: RawMedia[] }>(`/${type}/${id}/recommendations`, { language: 'en-US' })
@@ -553,14 +596,24 @@ export async function getDetail(
   // Ripiego sull'inglese quando il titolo/trama in italiano non esistono e
   // l'originale è in uno script non leggibile (cirillico, CJK, …): meglio «The
   // Last Ronin» che «Последний Ронин». Le traduzioni arrivano da TMDB stesso.
-  const enTr = raw.translations?.translations?.find((t) => t.iso_639_1 === 'en')?.data
-  const englishTitle = enTr?.title || enTr?.name || null
-  const englishOverview = enTr?.overview || null
+  const allTranslations = raw.translations?.translations ?? []
+  // TMDB può elencare più voci "en" (en-US, en-GB) e lasciarne alcune vuote:
+  // cerchiamo la prima che porti davvero un testo, invece di fermarci alla
+  // prima in elenco e concludere che l'inglese non esista.
+  const englishTitle =
+    allTranslations.find((t) => t.iso_639_1 === 'en' && (t.data?.title || t.data?.name))?.data
+      ?.title ??
+    allTranslations.find((t) => t.iso_639_1 === 'en' && t.data?.name)?.data?.name ??
+    null
+  const englishOverview =
+    allTranslations.find((t) => t.iso_639_1 === 'en' && t.data?.overview?.trim())?.data?.overview ??
+    null
+  const alternativeTitles =
+    raw.alternative_titles?.titles ?? raw.alternative_titles?.results ?? []
+  const readableFallback = fallbackReadableTitle(englishTitle, alternativeTitles, allTranslations)
   const title =
-    !isReadableTitle(base.title) &&
-    !isReadableTitle(base.originalTitle) &&
-    isReadableTitle(englishTitle)
-      ? (englishTitle as string)
+    !isReadableTitle(base.title) && !isReadableTitle(base.originalTitle) && readableFallback
+      ? readableFallback
       : base.title
   const overview = base.overview?.trim() ? base.overview : englishOverview ?? base.overview
   const cast: CastMember[] = (raw.credits?.cast ?? []).slice(0, 12).map((c) => ({
