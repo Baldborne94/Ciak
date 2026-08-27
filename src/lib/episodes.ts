@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { fetchAllRows } from './paged'
 import { getDetail, displayTitle } from './tmdb'
 import { upsertUserTitle } from './userTitles'
 import type { TitleStatus } from './types'
@@ -157,11 +158,22 @@ export interface ContinueItem {
 // picked back up later (see resumeAbandonedSeries).
 export async function getContinueWatching(userId: string, limit = 8): Promise<ContinueItem[]> {
   const [episodesRes, abandonedRes] = await Promise.all([
-    client()
-      .from('user_episodes')
-      .select('tv_id, season_number, episode_number, watched_at')
-      .eq('user_id', userId)
-      .order('watched_at', { ascending: false }),
+    // Paginata: una riga per episodio visto, quindi chi guarda molte serie
+    // supera le 1000 righe e una serie lasciata a metà tempo fa sparirebbe
+    // da "Continua a guardare" senza che nulla lo segnali.
+    fetchAllRows<{
+      tv_id: number
+      season_number: number
+      episode_number: number
+      watched_at: string
+    }>((from, to) =>
+      client()
+        .from('user_episodes')
+        .select('tv_id, season_number, episode_number, watched_at')
+        .eq('user_id', userId)
+        .order('watched_at', { ascending: false })
+        .range(from, to),
+    ),
     client()
       .from('user_titles')
       .select('tmdb_id')
@@ -169,13 +181,12 @@ export async function getContinueWatching(userId: string, limit = 8): Promise<Co
       .eq('media_type', 'tv')
       .eq('status', 'abandoned'),
   ])
-  if (episodesRes.error) throw new Error(episodesRes.error.message)
 
   const abandonedIds = new Set(
     ((abandonedRes.data ?? []) as { tmdb_id: number }[]).map((r) => r.tmdb_id),
   )
 
-  const rows = (episodesRes.data ?? []) as { tv_id: number; season_number: number; episode_number: number }[]
+  const rows = episodesRes
   const order: number[] = []
   const watchedByTv = new Map<number, Set<string>>()
   for (const r of rows) {

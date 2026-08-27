@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { fetchAllRows } from './paged'
 import { getDetail } from './tmdb'
 import {
   computeAchievementData,
@@ -153,29 +154,11 @@ export async function listFavorites(userId: string): Promise<UserTitle[]> {
 // card pur essendo salvati, e non sempre gli stessi.
 // Qui scorriamo tutte le pagine, con un ordine stabile perché la paginazione
 // abbia senso (senza, la pagina 2 può ripetere o saltare righe).
-const PAGE_SIZE = 1000
-
 export async function listAll(userId: string): Promise<UserTitle[]> {
   const db = client()
-  const all: UserTitle[] = []
-  let from = 0
-  for (;;) {
-    const { data, error } = await db
-      .from(TABLE)
-      .select('*')
-      .eq('user_id', userId)
-      .order('id', { ascending: true })
-      .range(from, from + PAGE_SIZE - 1)
-    if (error) throw new Error(error.message)
-    const rows = (data ?? []) as UserTitle[]
-    if (rows.length === 0) return all
-    all.push(...rows)
-    // Avanziamo di quante righe sono ARRIVATE, non di quante ne abbiamo chieste:
-    // se il server ne concede meno per richiesta (max_rows più basso della
-    // pagina), fermarsi qui lascerebbe fuori il resto della collezione. Ci
-    // costa una richiesta in più alla fine, che torna vuota e chiude il ciclo.
-    from += rows.length
-  }
+  return fetchAllRows<UserTitle>((from, to) =>
+    db.from(TABLE).select('*').eq('user_id', userId).order('id', { ascending: true }).range(from, to),
+  )
 }
 
 // I titoli salvati prima del fix sui generi hanno `genre_ids` vuoto: il
@@ -222,13 +205,17 @@ export interface UserStats {
 }
 
 export async function getStats(userId: string): Promise<UserStats> {
-  const all = await client()
-    .from(TABLE)
-    .select('status, is_favorite')
-    .eq('user_id', userId)
-
-  if (all.error) throw new Error(all.error.message)
-  const rows = (all.data ?? []) as { status: TitleStatus; is_favorite: boolean }[]
+  const db = client()
+  // Paginata: senza, oltre 1000 titoli le statistiche mostravano totali più
+  // bassi del vero senza dare alcun segnale che mancasse qualcosa.
+  const rows = await fetchAllRows<{ status: TitleStatus; is_favorite: boolean }>((from, to) =>
+    db
+      .from(TABLE)
+      .select('status, is_favorite')
+      .eq('user_id', userId)
+      .order('id', { ascending: true })
+      .range(from, to),
+  )
 
   return {
     watched: rows.filter((r) => r.status === 'watched').length,
