@@ -1,3 +1,5 @@
+import { mapLimit } from './mapLimit'
+import { cacheYears, getCachedYears } from './releaseYearCache'
 import type {
   CastMember,
   Collection,
@@ -1059,24 +1061,53 @@ async function getMovieCollectionId(movieId: number): Promise<number | null> {
 // doesn't store a release date). Used to sort/filter personal lists — e.g. the
 // watchlist — by year without a full getDetail call per title. Best-effort:
 // items that fail to resolve just have a null year.
+// Richieste in volo condivise: se due parti della pagina chiedono l'anno dello
+// stesso titolo nello stesso momento, la seconda aspetta la prima invece di
+// aprire una richiesta gemella. La cache da sola non basta, perché viene
+// scritta solo quando la risposta è arrivata.
+const yearInFlight = new Map<string, Promise<string | null>>()
+
+function fetchYearOnce(mediaType: TmdbType, tmdbId: number, key: string): Promise<string | null> {
+  const pending = yearInFlight.get(key)
+  if (pending) return pending
+
+  const p = (async () => {
+    try {
+      const raw = await tmdbFetch<{ release_date?: string; first_air_date?: string }>(
+        `/${mediaType}/${tmdbId}`,
+      )
+      return (raw.release_date || raw.first_air_date)?.slice(0, 4) ?? null
+    } catch {
+      // Un titolo che non risponde non deve far fallire tutta la lista.
+      return null
+    }
+  })().finally(() => yearInFlight.delete(key))
+
+  yearInFlight.set(key, p)
+  return p
+}
+
 export async function getReleaseYears(
   refs: { tmdbId: number; mediaType: TmdbType }[],
 ): Promise<Map<string, string | null>> {
-  const entries = await Promise.all(
-    refs.map(async (r) => {
-      const key = `${r.mediaType}-${r.tmdbId}`
-      try {
-        const raw = await tmdbFetch<{ release_date?: string; first_air_date?: string }>(
-          `/${r.mediaType}/${r.tmdbId}`,
-        )
-        const year = (raw.release_date || raw.first_air_date)?.slice(0, 4) ?? null
-        return [key, year] as const
-      } catch {
-        return [key, null] as const
-      }
-    }),
-  )
-  return new Map(entries)
+  const keyOf = (r: { tmdbId: number; mediaType: TmdbType }) => `${r.mediaType}-${r.tmdbId}`
+
+  // Una lista può contenere lo stesso titolo più volte: chiederlo una volta sola.
+  const unique = new Map(refs.map((r) => [keyOf(r), r]))
+  const years = getCachedYears([...unique.keys()])
+  const missing = [...unique.values()].filter((r) => !years.has(keyOf(r)))
+
+  // Tetto alla concorrenza: senza, una watchlist lunga apriva una richiesta per
+  // titolo tutte insieme, e la pagina restava ferma ad aspettare la valanga.
+  const fetched = await mapLimit(missing, 6, async (r) => {
+    const key = keyOf(r)
+    return [key, await fetchYearOnce(r.mediaType, r.tmdbId, key)] as const
+  })
+
+  const nuovi = new Map(fetched)
+  cacheYears(nuovi)
+  for (const [k, v] of nuovi) years.set(k, v)
+  return years
 }
 
 export interface SagaContinuation {
