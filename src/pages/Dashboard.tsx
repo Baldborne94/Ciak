@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { logFailure } from '../lib/logFailure'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { ScrollRow } from '../components/MediaRow'
@@ -10,7 +11,8 @@ import { computeAchievementData, getNextAchievement, RARITY_STYLES, type NextAch
 import { getContinueWatching, abandonSeries, type ContinueItem } from '../lib/episodes'
 import { useToast } from '../lib/toastCtx'
 import { usePersistedState } from '../lib/usePersistedState'
-import type { DiaryEntry, UserTitle } from '../lib/types'
+import { onThisDayFlashbacks, type Flashback } from '../lib/flashbacks'
+import type { UserTitle } from '../lib/types'
 
 function ContinueCard({ c, onAbandon }: { c: ContinueItem; onAbandon: (c: ContinueItem) => void }) {
   const poster = posterUrl(c.posterPath)
@@ -140,25 +142,6 @@ function ChooseForMe({ watchlist }: { watchlist: UserTitle[] }) {
   )
 }
 
-// Diary entries watched on today's date (MM-DD) in a previous year — a nostalgic
-// "un anno fa" flashback. Deduplicated by title, most-years-ago first.
-function onThisDayFlashbacks(diary: DiaryEntry[]): { entry: DiaryEntry; yearsAgo: number }[] {
-  const now = new Date()
-  const md = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-  const currentYear = now.getFullYear()
-  const seen = new Set<number>()
-  const out: { entry: DiaryEntry; yearsAgo: number }[] = []
-  for (const e of diary) {
-    if (!e.watched_on || e.watched_on.slice(5, 10) !== md) continue
-    const year = Number(e.watched_on.slice(0, 4))
-    const yearsAgo = currentYear - year
-    if (yearsAgo < 1) continue // only past years
-    if (seen.has(e.tmdb_id)) continue
-    seen.add(e.tmdb_id)
-    out.push({ entry: e, yearsAgo })
-  }
-  return out.sort((a, b) => b.yearsAgo - a.yearsAgo)
-}
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -166,7 +149,7 @@ export default function Dashboard() {
   const [watchlist, setWatchlist] = useState<UserTitle[]>([])
   const [continueList, setContinueList] = useState<ContinueItem[]>([])
   const [sagaNext, setSagaNext] = useState<SagaContinuation[]>([])
-  const [flashbacks, setFlashbacks] = useState<{ entry: DiaryEntry; yearsAgo: number }[]>([])
+  const [flashbacks, setFlashbacks] = useState<Flashback[]>([])
   const [allTitles, setAllTitles] = useState<UserTitle[]>([])
   // Saghe che l'utente ha scartato ("non mi interessa continuarla"): persistito
   // in locale per collection id, così non ricompaiono più.
@@ -207,7 +190,7 @@ export default function Dashboard() {
           .then(setSagaNext)
           .catch(() => setSagaNext([]))
       }
-    }).catch(() => {})
+    }).catch(logFailure('ricordi del diario non caricati'))
   }, [user])
 
   // "Prossimo trofeo": closest still-locked achievement. Uses the episode-derived

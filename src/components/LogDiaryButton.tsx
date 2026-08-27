@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
 import Modal from './Modal'
@@ -73,7 +74,7 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
           setNote('')
         }
       })
-      .catch(() => {})
+      .catch(logFailure('visioni del diario non caricate'))
   }, [open, user, item.tmdbId, item.mediaType])
 
   if (!user) return null

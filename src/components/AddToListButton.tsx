@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
@@ -33,7 +34,7 @@ export default function AddToListButton({ item }: { item: ListItemRef }) {
         setLists([...ls].sort((a, b) => a.name.localeCompare(b.name, 'it')))
         setInLists(ids)
       })
-      .catch(() => {})
+      .catch(logFailure('elenco delle liste non caricato'))
       .finally(() => setLoading(false))
   }, [open, user, item.tmdbId, item.mediaType])
 

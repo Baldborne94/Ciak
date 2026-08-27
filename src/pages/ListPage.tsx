@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
 import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
@@ -80,7 +81,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
         setItems(data)
         getReleaseYears(data.map((r) => ({ tmdbId: r.tmdb_id, mediaType: r.media_type === 'tv' ? 'tv' : 'movie' })))
           .then(setReleaseYears)
-          .catch(() => {})
+          .catch(logFailure('anni di uscita non caricati'))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))

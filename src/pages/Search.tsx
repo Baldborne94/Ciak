@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
 import { Link, useNavigate, useSearchParams, useLocation, useNavigationType } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
@@ -391,7 +392,9 @@ export default function Search() {
   // TV genres for the anime/cartoons "Sfoglia per genere" row (Animation implied).
   useEffect(() => {
     if (!isAnimationKind || !isTmdbConfigured || tvGenres.length > 0) return
-    getGenres('tv').then((gs) => setTvGenres(gs.filter((g) => g.id !== 16))).catch(() => {})
+    getGenres('tv')
+      .then((gs) => setTvGenres(gs.filter((g) => g.id !== 16)))
+      .catch(logFailure('generi TV non caricati'))
   }, [isAnimationKind, tvGenres.length])
 
   // Reset the chosen anime/cartoon genre when leaving that browse mode.
@@ -441,16 +444,16 @@ export default function Search() {
   useEffect(() => {
     if (!isTmdbConfigured || query.trim()) return
     if (mode === 'titles' && previewTitles.length === 0) {
-      getTrending().then(setPreviewTitles).catch(() => {})
+      getTrending().then(setPreviewTitles).catch(logFailure('tendenze non caricate'))
     }
     if (mode === 'people' && famousActors.length === 0) {
-      resolvePeople(FAMOUS_ACTORS).then(setFamousActors).catch(() => {})
+      resolvePeople(FAMOUS_ACTORS).then(setFamousActors).catch(logFailure('attori non caricati'))
     }
     if (mode === 'studios' && famousStudios.length === 0) {
-      resolveStudios(FAMOUS_STUDIOS).then(setFamousStudios).catch(() => {})
+      resolveStudios(FAMOUS_STUDIOS).then(setFamousStudios).catch(logFailure('studi non caricati'))
     }
     if (mode === 'collections' && famousSagas.length === 0) {
-      resolveSagaIds(FAMOUS_SAGAS).then(setFamousSagas).catch(() => {})
+      resolveSagaIds(FAMOUS_SAGAS).then(setFamousSagas).catch(logFailure('saghe non caricate'))
     }
   }, [mode, query, previewTitles.length, famousActors.length, famousStudios.length, famousSagas.length])
 

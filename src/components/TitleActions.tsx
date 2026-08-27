@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import {
@@ -64,7 +65,7 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
       refreshLibrary() // keep the "già in libreria" badges current
       // I trofei sono nascosti: continuiamo a registrare gli sblocchi nel DB
       // (utili per la versione futura) ma senza mostrare il toast.
-      checkAndUnlockAchievements(user.id).catch(() => {})
+      checkAndUnlockAchievements(user.id).catch(logFailure('trofei non aggiornati'))
     } catch (e) {
       setError((e as Error).message)
       showToast(`Salvataggio non riuscito: ${(e as Error).message}`)

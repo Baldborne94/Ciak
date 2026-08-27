@@ -36,12 +36,13 @@ export async function saveCachedSong(
   query: string,
   results: SongResult[],
 ): Promise<void> {
-  await client()
+  const { error } = await client()
     .from('user_song_cache')
     .upsert(
       { user_id: userId, query_key: key, query, results },
       { onConflict: 'user_id,query_key' },
     )
+  if (error) throw new Error(error.message)
 }
 
 export async function listCachedSongs(userId: string): Promise<CachedSong[]> {
@@ -50,14 +51,23 @@ export async function listCachedSongs(userId: string): Promise<CachedSong[]> {
     .select('query_key, query, created_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
-  if (error) return []
+  if (error) throw new Error(error.message)
   return (data ?? []) as CachedSong[]
 }
 
+// Queste due segnalano il fallimento invece di ingoiarlo: l'elenco a schermo
+// viene aggiornato in modo ottimistico, quindi senza un errore da propagare
+// chi chiama non può rimettere a posto ciò che non è stato cancellato.
 export async function deleteCachedSong(userId: string, key: string): Promise<void> {
-  await client().from('user_song_cache').delete().eq('user_id', userId).eq('query_key', key)
+  const { error } = await client()
+    .from('user_song_cache')
+    .delete()
+    .eq('user_id', userId)
+    .eq('query_key', key)
+  if (error) throw new Error(error.message)
 }
 
 export async function clearCachedSongs(userId: string): Promise<void> {
-  await client().from('user_song_cache').delete().eq('user_id', userId)
+  const { error } = await client().from('user_song_cache').delete().eq('user_id', userId)
+  if (error) throw new Error(error.message)
 }
