@@ -4,6 +4,8 @@ import { EmptyState, Loader } from './States'
 import { useAuth } from '../lib/auth'
 import { searchMulti, searchPerson, posterUrl, profileUrl, displayTitle } from '../lib/tmdb'
 import { refFromMedia, upsertUserTitle } from '../lib/userTitles'
+import { useToast } from '../lib/toastCtx'
+import { useLibrary } from '../lib/libraryCtx'
 import { addEntity } from '../lib/entities'
 import { aiFetch } from '../lib/aiClient'
 import { usePersistedState } from '../lib/usePersistedState'
@@ -55,6 +57,8 @@ function compress(file: File): Promise<{ base64: string; mediaType: string }> {
 
 export default function ImageIdentify() {
   const { user } = useAuth()
+  const { showToast } = useToast()
+  const { refresh } = useLibrary()
   const inputRef = useRef<HTMLInputElement>(null)
   // Anteprima e risultati vivono in localStorage: restano dopo cambio scheda e
   // refresh, finché non analizzi una nuova foto o premi «Cancella». L'anteprima
@@ -64,7 +68,10 @@ export default function ImageIdentify() {
   const [error, setError] = useState<string | null>(null)
   const [titles, setTitles] = usePersistedState<TitleHit[] | null>('ciak.ai.image.titles', null)
   const [people, setPeople] = usePersistedState<PersonHit[]>('ciak.ai.image.people', [])
-  const [added, setAdded] = useState<Set<number>>(new Set())
+  // Chiave composta: un film e una serie possono condividere lo stesso id
+  // TMDB, e con un Set di soli numeri aggiungerne uno segnava "aggiunto"
+  // anche l'altro.
+  const [added, setAdded] = useState<Set<string>>(new Set())
   const [savedPeople, setSavedPeople] = useState<Set<number>>(new Set())
 
   function clearResult() {
@@ -124,20 +131,32 @@ export default function ImageIdentify() {
 
   async function addToWatchlist(item: MediaItem) {
     if (!user) return
-    await upsertUserTitle(user.id, refFromMedia(item), { status: 'to_watch' }).catch(() => {})
-    setAdded((prev) => new Set(prev).add(item.id))
+    // La spunta "✓ In «Da vedere»" si accende SOLO a salvataggio riuscito:
+    // prima l'errore veniva ignorato e la conferma appariva comunque, così
+    // un titolo mai salvato sembrava in collezione.
+    try {
+      await upsertUserTitle(user.id, refFromMedia(item), { status: 'to_watch' })
+      setAdded((prev) => new Set(prev).add(`${item.mediaType}-${item.id}`))
+      refresh()
+    } catch (e) {
+      showToast(`Non sono riuscito ad aggiungerlo: ${(e as Error).message}`, 'error')
+    }
   }
 
   async function savePerson(person: Person) {
     if (!user) return
-    await addEntity(user.id, {
-      entityType: 'person',
-      entityId: person.id,
-      name: person.name,
-      imagePath: person.profilePath,
-      subtitle: person.department,
-    }).catch(() => {})
-    setSavedPeople((prev) => new Set(prev).add(person.id))
+    try {
+      await addEntity(user.id, {
+        entityType: 'person',
+        entityId: person.id,
+        name: person.name,
+        imagePath: person.profilePath,
+        subtitle: person.department,
+      })
+      setSavedPeople((prev) => new Set(prev).add(person.id))
+    } catch (e) {
+      showToast(`Non sono riuscito a salvarlo: ${(e as Error).message}`, 'error')
+    }
   }
 
   const nothing = titles !== null && titles.length === 0 && people.length === 0
@@ -231,7 +250,7 @@ export default function ImageIdentify() {
                             Apri scheda
                           </Link>
                           {user &&
-                            (added.has(c.item.id) ? (
+                            (added.has(`${c.item.mediaType}-${c.item.id}`) ? (
                               <span className="inline-flex items-center px-3 py-1.5 text-xs text-projector">
                                 ✓ In «Da vedere»
                               </span>
