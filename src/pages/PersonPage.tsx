@@ -141,11 +141,11 @@ export default function PersonPage() {
           <FilterBar>
             <ChipGroup options={KIND_OPTS} value={kind} onChange={setKind} />
             <RatingSlider value={minVote} onChange={setMinVote} />
-            <select value={year} onChange={(e) => setYear(e.target.value)} className={filterSelectClass}>
+            <select aria-label="Filtra per anno" value={year} onChange={(e) => setYear(e.target.value)} className={filterSelectClass}>
               <option value="">Anno: qualsiasi</option>
               {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
-            <select
+            <select aria-label="Ordina la filmografia"
               value={sort}
               onChange={(e) => setSort(e.target.value as typeof sort)}
               className={filterSelectClass}

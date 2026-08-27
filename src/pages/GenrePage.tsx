@@ -206,19 +206,19 @@ export default function GenrePage() {
       {/* Advanced filters — sort lives here with the rest, in one row */}
       <FilterBar>
         <RatingSlider value={minVote} onChange={setMinVote} />
-        <select value={year} onChange={(e) => setYear(e.target.value)} className={selectClass}>
+        <select aria-label="Filtra per anno" value={year} onChange={(e) => setYear(e.target.value)} className={selectClass}>
           <option value="">Anno: qualsiasi</option>
           {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
-        <select value={language} onChange={(e) => setLanguage(e.target.value)} className={selectClass}>
+        <select aria-label="Filtra per lingua" value={language} onChange={(e) => setLanguage(e.target.value)} className={selectClass}>
           <option value="">Lingua: qualsiasi</option>
           {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
         </select>
-        <select value={country} onChange={(e) => setCountry(e.target.value)} className={selectClass}>
+        <select aria-label="Filtra per paese" value={country} onChange={(e) => setCountry(e.target.value)} className={selectClass}>
           <option value="">Paese: qualsiasi</option>
           {COUNTRIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
         </select>
-        <select value={sort} onChange={(e) => setSort(e.target.value)} className={selectClass}>
+        <select aria-label="Ordina i risultati" value={sort} onChange={(e) => setSort(e.target.value)} className={selectClass}>
           {SORTS.map((s) => (
             <option key={s.value} value={s.value}>{s.label}</option>
           ))}
