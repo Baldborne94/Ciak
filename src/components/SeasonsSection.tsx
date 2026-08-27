@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
 import { useSearchParams } from 'react-router-dom'
 import { getSeason } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
@@ -97,7 +98,9 @@ export default function SeasonsSection({
       if (removing) await unmarkEpisode(user.id, tvId, selected, e.episodeNumber)
       else await markEpisode(user.id, tvId, selected, e.episodeNumber)
       // Allinea lo stato della serie (In corso / Vista) al progresso reale.
-      await syncSeriesStatus(user.id, series, next.size, totalEpisodes).catch(() => {})
+      await syncSeriesStatus(user.id, series, next.size, totalEpisodes).catch(
+        logFailure('stato della serie non allineato'),
+      )
     } catch {
       setWatched(prev) // ripristina: il DB non è cambiato
       showToast('Non sono riuscito a salvare l’episodio. Riprova.', 'error')
@@ -118,7 +121,9 @@ export default function SeasonsSection({
       if (allWatched) await unmarkSeason(user.id, tvId, selected)
       else await markSeason(user.id, tvId, selected, episodes.map((e) => e.episodeNumber))
       // Allinea lo stato della serie (In corso / Vista) al progresso reale.
-      await syncSeriesStatus(user.id, series, next.size, totalEpisodes).catch(() => {})
+      await syncSeriesStatus(user.id, series, next.size, totalEpisodes).catch(
+        logFailure('stato della serie non allineato'),
+      )
     } catch {
       setWatched(prev) // ripristina: il DB non è cambiato
       showToast('Non sono riuscito a salvare la stagione. Riprova.', 'error')

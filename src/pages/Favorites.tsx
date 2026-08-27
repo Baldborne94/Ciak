@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
@@ -116,7 +117,7 @@ function TitlesTab() {
             mediaType: r.media_type,
             title: r.title,
             posterPath: r.poster_path,
-          }).catch(() => {})
+          }).catch(logFailure('voto della scheda non ricalcolato'))
           return { ...r, personal_rating: diaryRating }
         })
         setItems(repaired)

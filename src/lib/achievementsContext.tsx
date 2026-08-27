@@ -5,6 +5,7 @@ import {
   useMemo,
   type ReactNode,
 } from 'react'
+import { logFailure } from './logFailure'
 import { type Achievement } from './achievements'
 import { Ctx } from './achievementsCtx'
 import { useAuth } from './auth'
@@ -84,7 +85,7 @@ export function AchievementsProvider({ children }: { children: ReactNode }) {
           theme: stored.theme ?? persona?.theme ?? 'default',
         })
       })
-      .catch(() => {})
+      .catch(logFailure('trofei non caricati'))
     return () => {
       cancelled = true
     }

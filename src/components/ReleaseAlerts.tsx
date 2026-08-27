@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { listReleased, markNotified } from '../lib/alerts'
@@ -24,7 +25,7 @@ export default function ReleaseAlerts() {
     if (!user) return
     const ids = released.map((a) => a.id)
     setReleased([])
-    await markNotified(user.id, ids).catch(() => {})
+    await markNotified(user.id, ids).catch(logFailure('avvisi non marcati come letti'))
   }
 
   const names = released.map((a) => a.title)

@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
+import { useToast } from '../lib/toastCtx'
 import MediaCard from './MediaCard'
 import { EmptyState, ErrorState, Loader } from './States'
 import AiCreditsNote from './AiCreditsNote'
@@ -66,6 +68,7 @@ async function findSongFilms(song: string): Promise<{ item: MediaItem; note: str
 // Estratto da Search per vivere come scheda dell'hub AI.
 export default function SongSearch() {
   const { user } = useAuth()
+  const { showToast } = useToast()
   const [songTitle, setSongTitle] = useState('')
   const [songArtist, setSongArtist] = useState('')
   const [query, setQuery] = useState('')
@@ -101,8 +104,10 @@ export default function SongSearch() {
       const results = await findSongFilms(q)
       setSongFilms(results)
       if (user && results.length > 0) {
-        await saveCachedSong(user.id, key, q, results).catch(() => {})
-        listCachedSongs(user.id).then(setSavedSongs).catch(() => {})
+        await saveCachedSong(user.id, key, q, results).catch(logFailure('ricerca non salvata'))
+        listCachedSongs(user.id)
+          .then(setSavedSongs)
+          .catch(logFailure('elenco delle ricerche salvate non aggiornato'))
       }
     } catch (e) {
       setError((e as Error).message)
@@ -127,16 +132,31 @@ export default function SongSearch() {
     runSearch(saved.query)
   }
 
+  // Cancellazioni ottimistiche: la riga sparisce subito, ma se il database
+  // rifiuta va rimessa. Prima l'errore veniva ignorato e la ricerca sembrava
+  // cancellata finché non si ricaricava la pagina, dove ricompariva.
   async function removeSavedSong(key: string) {
     if (!user) return
+    const before = savedSongs
     setSavedSongs((prev) => prev.filter((s) => s.query_key !== key))
-    await deleteCachedSong(user.id, key).catch(() => {})
+    try {
+      await deleteCachedSong(user.id, key)
+    } catch (e) {
+      setSavedSongs(before)
+      showToast(`Non sono riuscito a cancellarla: ${(e as Error).message}`, 'error')
+    }
   }
 
   async function clearSavedSongs() {
     if (!user) return
+    const before = savedSongs
     setSavedSongs([])
-    await clearCachedSongs(user.id).catch(() => {})
+    try {
+      await clearCachedSongs(user.id)
+    } catch (e) {
+      setSavedSongs(before)
+      showToast(`Non sono riuscito a cancellarle: ${(e as Error).message}`, 'error')
+    }
   }
 
   return (

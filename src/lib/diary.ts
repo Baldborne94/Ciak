@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { logFailure } from './logFailure'
 import type { DiaryEntry, MediaType } from './types'
 
 function client() {
@@ -80,11 +81,15 @@ export async function addDiaryEntry(
   // Il voto del diario vale anche come voto del titolo: senza questa
   // sincronizzazione il profilo di gusto (che legge user_titles) non lo vede.
   if (fields.rating != null) {
-    await syncRatingToUserTitle(userId, ref, fields.rating, fields.watchedOn).catch(() => {})
+    await syncRatingToUserTitle(userId, ref, fields.rating, fields.watchedOn).catch(
+      logFailure('voto non propagato alla scheda del titolo'),
+    )
   } else if (existing) {
     // Voto togliato da una visione GIÀ registrata: ricalcola dal resto del diario.
     // Solo in questo caso qualcosa è stato davvero rimosso.
-    await resyncUserTitleRating(userId, ref).catch(() => {})
+    await resyncUserTitleRating(userId, ref).catch(
+      logFailure('voto della scheda non ricalcolato'),
+    )
   }
   // Visione NUOVA senza voto: non tocchiamo il voto del titolo. Ricalcolarlo dal
   // diario (che qui non ha voti) azzererebbe un voto dato altrove — è così che
@@ -154,7 +159,9 @@ export async function updateDiaryEntry(
   if (error) throw new Error(error.message)
 
   // Mantieni allineato il voto in user_titles (vince la visione più recente).
-  await resyncUserTitleRating(userId, refOf(entry)).catch(() => {})
+  await resyncUserTitleRating(userId, refOf(entry)).catch(
+    logFailure('voto della scheda non ricalcolato'),
+  )
   return data as DiaryEntry
 }
 
@@ -288,6 +295,8 @@ export async function deleteDiaryEntry(userId: string, entry: DiaryEntry): Promi
   // Eliminando una visione votata, allinea (o azzera) il voto sincronizzato in
   // user_titles, così il profilo di gusto non resta con un voto fantasma.
   if (entry.rating != null) {
-    await resyncUserTitleRating(userId, refOf(entry)).catch(() => {})
+    await resyncUserTitleRating(userId, refOf(entry)).catch(
+    logFailure('voto della scheda non ricalcolato'),
+  )
   }
 }

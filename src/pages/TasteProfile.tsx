@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import StarRating from '../components/StarRating'
@@ -76,7 +77,7 @@ function IdentityHero({
         if (idx >= 0) setVariant(idx)
         else setCustomNickname(stored.nickname)
       })
-      .catch(() => {})
+      .catch(logFailure('profilo di gusto non aggiornato'))
     return () => {
       cancelled = true
     }
@@ -265,9 +266,9 @@ export default function TasteProfile() {
       .then((n) => {
         if (cancelled) return
         localStorage.setItem(flag, '1')
-        if (n > 0) listAll(user.id).then(setRows).catch(() => {})
+        if (n > 0) listAll(user.id).then(setRows).catch(logFailure('collezione non ricaricata'))
       })
-      .catch(() => {})
+      .catch(logFailure('profilo di gusto non aggiornato'))
     return () => {
       cancelled = true
     }

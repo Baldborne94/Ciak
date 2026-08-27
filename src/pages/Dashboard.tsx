@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { logFailure } from '../lib/logFailure'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { ScrollRow } from '../components/MediaRow'
@@ -189,7 +190,7 @@ export default function Dashboard() {
           .then(setSagaNext)
           .catch(() => setSagaNext([]))
       }
-    }).catch(() => {})
+    }).catch(logFailure('ricordi del diario non caricati'))
   }, [user])
 
   // "Prossimo trofeo": closest still-locked achievement. Uses the episode-derived
