@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { fetchAllRows } from './paged'
+import { missingTitleRows } from './diaryBackfill'
 import { getDetail } from './tmdb'
 import {
   computeAchievementData,
@@ -8,6 +9,7 @@ import {
   type Achievement,
 } from './achievements'
 import type {
+  DiaryEntry,
   MediaItem,
   MediaType,
   TitleStatus,
@@ -159,6 +161,31 @@ export async function listAll(userId: string): Promise<UserTitle[]> {
   return fetchAllRows<UserTitle>((from, to) =>
     db.from(TABLE).select('*').eq('user_id', userId).order('id', { ascending: true }).range(from, to),
   )
+}
+
+
+// Ricostruisce le schede dei titoli che risultano visti nel diario ma non hanno
+// una riga in user_titles (vedi src/lib/diaryBackfill.ts per il perché).
+// Riceve i dati già letti da chi chiama: il Diario li ha entrambi in mano,
+// quindi la riparazione non costa nemmeno una lettura in più.
+// Torna quante schede ha creato. Best-effort: un errore non deve impedire di
+// vedere il diario.
+export async function backfillTitlesFromDiary(
+  userId: string,
+  diary: DiaryEntry[],
+  titles: UserTitle[],
+): Promise<number> {
+  const mancanti = missingTitleRows(diary, titles)
+  if (mancanti.length === 0) return 0
+
+  const { error } = await client()
+    .from(TABLE)
+    .upsert(
+      mancanti.map((r) => ({ ...r, user_id: userId, is_favorite: false, notes: null, genre_ids: [] })),
+      { onConflict: 'user_id,tmdb_id,media_type' },
+    )
+  if (error) throw new Error(error.message)
+  return mancanti.length
 }
 
 // I titoli salvati prima del fix sui generi hanno `genre_ids` vuoto: il

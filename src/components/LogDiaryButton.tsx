@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { logFailure } from '../lib/logFailure'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
+import { useLibrary } from '../lib/libraryCtx'
 import Modal from './Modal'
 import StarRating from './StarRating'
 import {
@@ -29,6 +30,7 @@ function formatDate(iso: string): string {
 export default function LogDiaryButton({ item }: { item: DiaryRef }) {
   const { user } = useAuth()
   const { showToast } = useToast()
+  const { refresh } = useLibrary()
   const [open, setOpen] = useState(false)
   // La visione più recente già registrata (se c'è): permette di modificarla
   // invece di forzare sempre una nuova rivisione.
@@ -110,6 +112,10 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
           note: note.trim() || null,
         })
       }
+      // Registrare una visione crea (o aggiorna) la scheda del titolo: senza
+      // ricaricare l'indice il badge "✓ Visto" sulle card comparirebbe solo
+      // dopo un ricaricamento della pagina.
+      refresh()
       setDone(true)
       setTimeout(() => {
         setOpen(false)

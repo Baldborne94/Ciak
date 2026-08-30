@@ -84,12 +84,23 @@ export async function addDiaryEntry(
     await syncRatingToUserTitle(userId, ref, fields.rating, fields.watchedOn).catch(
       logFailure('voto non propagato alla scheda del titolo'),
     )
-  } else if (existing) {
-    // Voto togliato da una visione GIÀ registrata: ricalcola dal resto del diario.
-    // Solo in questo caso qualcosa è stato davvero rimosso.
-    await resyncUserTitleRating(userId, ref).catch(
-      logFailure('voto della scheda non ricalcolato'),
+  } else {
+    // Registrare una visione significa averlo visto, col voto o senza: la
+    // scheda del titolo va creata comunque. Prima nasceva SOLO insieme a un
+    // voto, quindi una visione senza stelle finiva nel diario e basta — il
+    // titolo compariva in "Visti & Diario" (che legge anche il diario) ma non
+    // aveva la riga che alimenta il badge "✓ Visto" sulle card, e non veniva
+    // contato nelle statistiche.
+    await ensureWatchedUserTitle(userId, ref, fields.watchedOn).catch(
+      logFailure('scheda del titolo non creata dalla visione'),
     )
+    if (existing) {
+      // Voto tolto da una visione GIÀ registrata: ricalcola dal resto del
+      // diario. Solo in questo caso qualcosa è stato davvero rimosso.
+      await resyncUserTitleRating(userId, ref).catch(
+        logFailure('voto della scheda non ricalcolato'),
+      )
+    }
   }
   // Visione NUOVA senza voto: non tocchiamo il voto del titolo. Ricalcolarlo dal
   // diario (che qui non ha voti) azzererebbe un voto dato altrove — è così che
@@ -163,6 +174,43 @@ export async function updateDiaryEntry(
     logFailure('voto della scheda non ricalcolato'),
   )
   return data as DiaryEntry
+}
+
+// Assicura che il titolo abbia la sua scheda, senza inventare un voto che
+// l'utente non ha dato. Conserva tutto ciò che c'è già: lo stato di una serie
+// "in corso" non deve diventare "vista" solo perché ne hai registrato un
+// episodio, e un voto dato altrove non va toccato.
+async function ensureWatchedUserTitle(
+  userId: string,
+  ref: DiaryRef,
+  watchedOn: string,
+): Promise<void> {
+  const db = client()
+  const { data: existing } = await db
+    .from('user_titles')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('tmdb_id', ref.tmdbId)
+    .eq('media_type', ref.mediaType)
+    .maybeSingle()
+
+  const { error } = await db.from('user_titles').upsert(
+    {
+      user_id: userId,
+      tmdb_id: ref.tmdbId,
+      media_type: ref.mediaType,
+      title: ref.title,
+      poster_path: ref.posterPath,
+      genre_ids: existing?.genre_ids ?? [],
+      status: existing?.status ?? 'watched',
+      is_favorite: existing?.is_favorite ?? false,
+      personal_rating: existing?.personal_rating ?? null,
+      notes: existing?.notes ?? null,
+      watched_at: existing?.watched_at ?? watchedOn,
+    },
+    { onConflict: 'user_id,tmdb_id,media_type' },
+  )
+  if (error) throw new Error(error.message)
 }
 
 async function syncRatingToUserTitle(

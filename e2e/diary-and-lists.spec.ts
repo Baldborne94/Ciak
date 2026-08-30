@@ -89,8 +89,17 @@ test('una visione si elimina dal diario', async ({ page }) => {
   await expect(page.getByText('Fight Club').first()).toBeVisible()
   await page.getByRole('button', { name: 'Rimuovi dal diario' }).first().click()
 
+  // La visione sparisce dal registro…
   await expect.poll(() => db.tables.user_diary.length).toBe(0)
-  await expect(page.getByText('Fight Club')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Rimuovi dal diario' })).toHaveCount(0)
+
+  // …ma il titolo resta in collezione come "visto": eliminare UNA visione non
+  // significa non averlo mai visto, e infatti deleteDiaryEntry non ha mai
+  // cancellato la scheda — riallinea solo il voto. Questa pagina mostra
+  // entrambi i lati, quindi il titolo continua a comparire.
+  expect(db.tables.user_titles).toHaveLength(1)
+  expect((db.tables.user_titles[0] as Record<string, unknown>).status).toBe('watched')
+  await expect(page.getByText('Fight Club').first()).toBeVisible()
 })
 
 test('creare una lista personale, riempirla e svuotarla', async ({ page }) => {
