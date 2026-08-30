@@ -48,8 +48,14 @@ export default function TitleDetail() {
   // Sort for the "Se ti è piaciuto, guarda anche" list.
   const [recSort, setRecSort] = useState<'default' | 'date_desc' | 'date_asc' | 'rating_desc'>('default')
 
-  // Reset per-title UI state when navigating to a different title.
-  useEffect(() => { setWatchCountry(''); setRecSort('default') }, [mediaType, id])
+  // Reset per-title UI state when navigating to a different title. showTrailer
+  // compreso: senza, passando da una scheda col trailer aperto a un'altra la
+  // nuova partiva col riquadro già aperto.
+  useEffect(() => {
+    setWatchCountry('')
+    setRecSort('default')
+    setShowTrailer(false)
+  }, [mediaType, id])
 
   // Recommendations sorted by the chosen order ('default' keeps our relevance rank).
   const sortedRecs = useMemo(() => {
@@ -74,10 +80,16 @@ export default function TitleDetail() {
       return
     }
     setLoading(true)
+    // Guardia contro le risposte fuori ordine: passando in fretta da una scheda
+    // all'altra, la richiesta più vecchia può arrivare per ultima e sovrascrive
+    // la pagina col titolo sbagliato. Senza questo, ciò che vedi dipende da
+    // quale risposta è arrivata dopo.
+    let annullata = false
     getDetail(mediaType, Number(id))
-      .then(setDetail)
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .then((d) => { if (!annullata) setDetail(d) })
+      .catch((e: Error) => { if (!annullata) setError(e.message) })
+      .finally(() => { if (!annullata) setLoading(false) })
+    return () => { annullata = true }
   }, [mediaType, id])
 
   if (loading) return <Loader label="Carico la scheda…" />
@@ -271,9 +283,20 @@ export default function TitleDetail() {
       {/* Trailer */}
       {detail.trailerKey && (
         <section>
-          <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
-            🎬 Trailer
-          </h2>
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-display text-2xl tracking-wide text-zinc-100">🎬 Trailer</h2>
+            {/* I video su TMDB sono contributi degli utenti e ogni tanto qualcuno
+                carica la chiave di un altro film. Non possiamo accorgercene dai
+                dati, ma almeno non lasciamo l'utente in un vicolo cieco. */}
+            <a
+              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${detail.title} trailer italiano`)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-zinc-500 hover:text-projector"
+            >
+              Non è il trailer giusto? Cercalo su YouTube →
+            </a>
+          </div>
           {showTrailer ? (
             <div className="aspect-video w-full overflow-hidden rounded-xl border border-theatre-800">
               <iframe
