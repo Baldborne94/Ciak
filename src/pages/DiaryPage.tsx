@@ -6,8 +6,10 @@ import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { addDiaryEntry, deleteDiaryEntry, listDiary, updateDiaryEntry } from '../lib/diary'
-import { listAll, upsertUserTitle } from '../lib/userTitles'
+import { backfillTitlesFromDiary, listAll, upsertUserTitle } from '../lib/userTitles'
 import { useToast } from '../lib/toastCtx'
+import { logFailure } from '../lib/logFailure'
+import { useLibrary } from '../lib/libraryCtx'
 import { posterUrl } from '../lib/tmdb'
 import type { DiaryEntry, UserTitle } from '../lib/types'
 
@@ -65,6 +67,7 @@ function itemHaystack(it: TimelineItem): string {
 export default function DiaryPage() {
   const { user } = useAuth()
   const { showToast } = useToast()
+  const { refresh } = useLibrary()
   const [entries, setEntries] = useState<DiaryEntry[]>([])
   // Tutte le righe di user_titles, non solo i "Visto": servono anche i voti dei
   // titoli con altro stato, così una visione senza stelle può mostrare il voto
@@ -83,13 +86,40 @@ export default function DiaryPage() {
     // Carichiamo sia il diario (visioni datate) sia la collezione: così questa è
     // l'unica pagina di tutto ciò che hai guardato, e i due lati si allineano.
     Promise.all([listDiary(user.id), listAll(user.id)])
-      .then(([diary, all]) => {
+      .then(async ([diary, all]) => {
         setEntries(diary)
         setTitles(all)
+
+        // Riparazione una tantum dello storico: per un periodo una visione
+        // senza voto non creava la scheda del titolo, quindi quei film
+        // risultavano visti qui ma non avevano il badge sulle card né
+        // entravano nelle statistiche. Il flag evita di riscansionare a ogni
+        // apertura, come per la riparazione dei generi nel Profilo di gusto.
+        const flag = `ciak:diary-titles-backfill:${user.id}`
+        if (localStorage.getItem(flag)) return
+        const create = await backfillTitlesFromDiary(user.id, diary, all).catch((e: Error) => {
+          logFailure('schede mancanti non ricostruite dal diario')(e)
+          return 0
+        })
+        localStorage.setItem(flag, '1')
+        if (create > 0) {
+          // Ricarichiamo la collezione e l'indice dei badge, così le schede
+          // appena ricostruite si vedono senza dover ricaricare la pagina.
+          await listAll(user.id).then(setTitles).catch(logFailure('collezione non ricaricata'))
+          refresh()
+          showToast(
+            create === 1
+              ? 'Ho ritrovato 1 titolo visto che mancava dalla collezione.'
+              : `Ho ritrovato ${create} titoli visti che mancavano dalla collezione.`,
+            'success',
+          )
+        }
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [user])
+    // refresh e showToast sono stabili (useCallback nei rispettivi provider):
+    // dichiararli non fa ripartire il caricamento a ogni render.
+  }, [user, refresh, showToast])
 
   async function remove(entry: DiaryEntry) {
     if (!user) return

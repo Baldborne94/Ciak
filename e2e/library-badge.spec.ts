@@ -106,3 +106,26 @@ test('se il salvataggio rapido fallisce l’utente lo viene a sapere', async ({ 
 
   await expect(page.getByText(/non.*riuscit|errore/i).first()).toBeVisible()
 })
+
+test('dopo aver registrato una visione il badge compare subito sulle card', async ({ page }) => {
+  // Il sintomo per cui è partita tutta l'indagine: un titolo segnato come
+  // visto restava senza badge sulle card. Due cause in fila — la scheda non
+  // veniva creata senza voto, e l'indice dei badge non veniva ricaricato.
+  await mockTmdb(page, {
+    detail: movieDetail(146233, 'Prisoners', {
+      recommendations: { results: [movie(550, 'Fight Club')] },
+    }),
+    searchMulti: [movie(146233, 'Prisoners')],
+  })
+  await mockSupabase(page, { user_titles: [] })
+
+  await page.goto('/title/movie/146233')
+  await page.getByRole('button', { name: /Segna nel diario/ }).click()
+  await page.getByRole('button', { name: /Salva nel diario/ }).click()
+  await expect(page.getByText(/Salvato nel diario/)).toBeVisible()
+
+  // Senza ricaricare la pagina: cerco il titolo e la sua card deve dirlo.
+  await page.goto('/search?q=Prisoners')
+  await expect(page.getByText('Prisoners').first()).toBeVisible()
+  await expect(page.getByText('✓ Visto').first()).toBeVisible()
+})
