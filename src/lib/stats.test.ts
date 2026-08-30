@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import type { MediaDetail } from './types'
+import type { TitleFacts } from './types'
 
 // computeStats aggrega DB (user_titles + user_diary) e dettagli TMDB: mockiamo
 // entrambi i confini e verifichiamo l'aggregazione (dedup, precedenza voti,
 // istogramma, ore, decenni, recap per anno) — il motore della pagina Statistiche.
 vi.mock('./supabase', () => ({ supabase: { from: vi.fn() }, isSupabaseConfigured: true }))
-vi.mock('./tmdb', () => ({ getDetail: vi.fn() }))
+vi.mock('./tmdb', () => ({ fetchTitleFacts: vi.fn() }))
 
 import { computeStats } from './stats'
 import { supabase } from './supabase'
-import { getDetail } from './tmdb'
+import { fetchTitleFacts } from './tmdb'
 
 interface TitleRow {
   tmdb_id: number
@@ -53,19 +53,22 @@ function setDb(titles: TitleRow[], diary: DiaryRow[], episodes: { tv_id: number 
   })
 }
 
-function detail(over: Partial<MediaDetail>): MediaDetail {
+// Le statistiche ora leggono una versione leggera del dettaglio: nomi al posto
+// di oggetti, e l'anno già estratto.
+function detail(over: Partial<TitleFacts>): TitleFacts {
   return {
     genres: [],
     directors: [],
     cast: [],
     runtime: null,
-    releaseDate: null,
+    year: null,
+    episodes: null,
     ...over,
-  } as unknown as MediaDetail
+  }
 }
 
 beforeEach(() => {
-  vi.mocked(getDetail).mockResolvedValue(detail({}))
+  vi.mocked(fetchTitleFacts).mockResolvedValue(detail({}))
 })
 
 describe('computeStats', () => {
@@ -114,7 +117,7 @@ describe('computeStats', () => {
     expect(s.ratingHistogram.find((h) => h.half === 1)?.count).toBe(0)
   })
 
-  it('conta le ore solo dai film e i decenni dalla data di uscita', async () => {
+  it('conta le ore di film e serie separatamente, e i decenni dall anno di uscita', async () => {
     setDb(
       [
         { tmdb_id: 131, media_type: 'movie', title: 'Film 90s', personal_rating: null },
@@ -122,18 +125,33 @@ describe('computeStats', () => {
       ],
       [],
     )
-    vi.mocked(getDetail).mockImplementation(async (type) =>
+    vi.mocked(fetchTitleFacts).mockImplementation(async (type) =>
       type === 'movie'
-        ? detail({ runtime: 120, releaseDate: '1994-09-23' })
-        : detail({ runtime: 45, releaseDate: '2008-01-20' }),
+        ? detail({ runtime: 120, year: 1994 })
+        : detail({ runtime: 45, year: 2008, episodes: 20 }),
     )
     const s = await computeStats('u1')
-    expect(s.filmHours).toBe(2) // solo i 120 min del film, non la serie
+    expect(s.filmHours).toBe(2) // i 120 minuti del film
+    // La serie è segnata come vista e non ha episodi tracciati: vale per
+    // intero, 20 × 45 minuti. Prima le serie valevano zero.
+    expect(s.seriesHours).toBe(15)
     expect(s.decades).toEqual([
       { decade: 1990, count: 1 },
       { decade: 2000, count: 1 },
     ])
     expect(s.enrichedCount).toBe(2)
+  })
+
+  it('per una serie con episodi tracciati conta quelli, non l intera serie', async () => {
+    // Tre episodi segnati su cento: 150 minuti, non 5000.
+    setDb(
+      [{ tmdb_id: 133, media_type: 'tv', title: 'Serie a metà', personal_rating: null }],
+      [],
+      [{ tv_id: 133 }, { tv_id: 133 }, { tv_id: 133 }],
+    )
+    vi.mocked(fetchTitleFacts).mockResolvedValue(detail({ runtime: 50, episodes: 100 }))
+    const s = await computeStats('u1')
+    expect(s.seriesHours).toBe(3)
   })
 
   it('recap per anno di visione: volume, composizione e capolavori (5 stelle)', async () => {
@@ -164,9 +182,9 @@ describe('computeStats', () => {
       ],
       [],
     )
-    vi.mocked(getDetail).mockImplementation(async (_type, id) => {
+    vi.mocked(fetchTitleFacts).mockImplementation(async (_type, id) => {
       if (id === 152) throw new Error('TMDB down')
-      return detail({ runtime: 90, genres: [{ id: 27, name: 'Horror' }] })
+      return detail({ runtime: 90, genres: ['Horror'] })
     })
     const s = await computeStats('u1')
     expect(s.totalTitles).toBe(2)

@@ -274,3 +274,14 @@ export interface UserPreferences {
   preferred_languages: string[]
   updated_at: string
 }
+
+// I pochi dati che servono alle statistiche: molto meno di un MediaDetail
+// completo, quindi una sola richiesta leggera invece di tre pesanti.
+export interface TitleFacts {
+  genres: string[]
+  directors: string[]
+  cast: string[] // i primi del cast
+  runtime: number | null // minuti; per una serie è la durata di un episodio
+  year: number | null
+  episodes: number | null // quanti episodi ha la serie in totale
+}
