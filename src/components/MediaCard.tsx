@@ -8,14 +8,7 @@ import { upsertUserTitle, refFromMedia } from '../lib/userTitles'
 import { quickRate } from '../lib/diary'
 import { useToast } from '../lib/toastCtx'
 import StarRating from './StarRating'
-
-// Badge shown on a card when the title is already in the user's collection.
-const LIB_BADGE: Record<TitleStatus, { label: string; cls: string }> = {
-  watched: { label: '✓ Visto', cls: 'bg-emerald-600/90 text-white' },
-  in_progress: { label: '▶ In corso', cls: 'bg-projector/90 text-theatre-950' },
-  to_watch: { label: '🎟️ In lista', cls: 'bg-sky-600/90 text-white' },
-  abandoned: { label: '✕ Mollato', cls: 'bg-zinc-600/90 text-white' },
-}
+import LibraryBadge from './LibraryBadge'
 
 // Quick actions to file a title straight from a card, without opening its page.
 function QuickActions({ item }: { item: MediaItem }) {
@@ -170,14 +163,7 @@ export default function MediaCard({ item }: { item: MediaItem }) {
         </span>
 
         {/* Already-in-collection badge (status + optional favorite heart) */}
-        {lib && (
-          <span
-            className={`absolute left-2 top-2 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold backdrop-blur ${LIB_BADGE[lib.status].cls}`}
-          >
-            {LIB_BADGE[lib.status].label}
-            {lib.isFavorite && <span aria-label="preferito">❤️</span>}
-          </span>
-        )}
+        {lib && <LibraryBadge status={lib.status} isFavorite={lib.isFavorite} />}
 
         <div className="p-3">
           <h3 className="line-clamp-1 text-sm font-semibold text-zinc-100" title={display}>

@@ -4,13 +4,20 @@ import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
-import { deleteList, getList, getListItems, removeFromList, setListPublic } from '../lib/lists'
+import { deleteList, getList, getListItems, removeFromList, setListPublic, updateList } from '../lib/lists'
 import { posterUrl } from '../lib/tmdb'
+import { useLibrary } from '../lib/libraryCtx'
+import LibraryBadge from '../components/LibraryBadge'
 import type { UserList, UserListItem } from '../lib/types'
 
 export default function CustomListPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
+  const { lookup } = useLibrary()
+  const [editing, setEditing] = useState(false)
+  const [draftName, setDraftName] = useState('')
+  const [draftDesc, setDraftDesc] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
   const { showToast } = useToast()
   const navigate = useNavigate()
   const [list, setList] = useState<UserList | null>(null)
@@ -68,6 +75,34 @@ export default function CustomListPage() {
     setItems((prev) => prev.filter((i) => i.id !== item.id))
   }
 
+  function startEdit() {
+    if (!list) return
+    setDraftName(list.name)
+    setDraftDesc(list.description ?? '')
+    setEditing(true)
+  }
+
+  // Rinomina e descrizione: prima un nome sbagliato si correggeva solo
+  // cancellando la lista e rifacendola — perdendo tutti i titoli — e la
+  // descrizione non era scrivibile da nessuna parte, pur essendo mostrata
+  // nell'elenco.
+  async function saveEdit() {
+    if (!list || !draftName.trim()) return
+    setSavingEdit(true)
+    try {
+      const aggiornata = await updateList(list.id, {
+        name: draftName.trim(),
+        description: draftDesc.trim() || null,
+      })
+      setList(aggiornata)
+      setEditing(false)
+    } catch (e) {
+      showToast(`Non sono riuscito a salvare: ${(e as Error).message}`, 'error')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   async function onDelete() {
     if (!id || !confirm('Eliminare questa lista? I titoli non verranno persi dalle altre sezioni.')) return
     await deleteList(id)
@@ -90,11 +125,56 @@ export default function CustomListPage() {
           >
             {list.is_public ? '🌍 Pubblica' : '🔒 Privata'}
           </button>
+          <button onClick={startEdit} className="btn-ghost">
+            ✏️ Rinomina
+          </button>
           <button onClick={onDelete} className="btn-ghost text-curtain-light">
             🗑️ Elimina lista
           </button>
         </div>
       </PageHeader>
+
+      {editing && (
+        <div className="mb-6 space-y-3 rounded-xl border border-theatre-700 bg-theatre-900/60 p-4">
+          <div>
+            <label htmlFor="lista-nome" className="text-xs uppercase tracking-wider text-zinc-500">
+              Nome
+            </label>
+            <input
+              id="lista-nome"
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
+              className="input-cine mt-1"
+            />
+          </div>
+          <div>
+            <label htmlFor="lista-desc" className="text-xs uppercase tracking-wider text-zinc-500">
+              Descrizione (facoltativa)
+            </label>
+            <input
+              id="lista-desc"
+              value={draftDesc}
+              onChange={(e) => setDraftDesc(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && saveEdit()}
+              placeholder="A cosa serve questa lista…"
+              className="input-cine mt-1"
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={saveEdit}
+              disabled={savingEdit || !draftName.trim()}
+              className="btn-primary"
+            >
+              {savingEdit ? 'Salvo…' : 'Salva'}
+            </button>
+            <button onClick={() => setEditing(false)} className="btn-ghost">
+              Annulla
+            </button>
+          </div>
+        </div>
+      )}
 
       {list.is_public && (
         <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-projector/30 bg-projector/5 px-4 py-3">
@@ -119,6 +199,10 @@ export default function CustomListPage() {
           {items.map((it) => {
             const poster = posterUrl(it.poster_path)
             const type = it.media_type === 'movie' ? 'movie' : 'tv'
+            // Lo stesso badge del resto dell'app: dentro una raccolta «da
+            // vedere» sapere cosa hai già guardato è l'informazione che serve
+            // di più, e qui mancava perché queste card sono disegnate a mano.
+            const lib = lookup(type, it.tmdb_id)
             return (
               <div key={it.id} className="group relative overflow-hidden rounded-xl border border-theatre-800 bg-theatre-900">
                 <Link to={`/title/${type}/${it.tmdb_id}`} className="block">
@@ -133,6 +217,7 @@ export default function CustomListPage() {
                     <h3 className="line-clamp-1 text-sm font-semibold text-zinc-100">{it.title}</h3>
                   </div>
                 </Link>
+                {lib && <LibraryBadge status={lib.status} isFavorite={lib.isFavorite} />}
                 <button
                   onClick={() => remove(it)}
                   aria-label="Rimuovi dalla lista"

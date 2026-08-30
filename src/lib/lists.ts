@@ -51,6 +51,29 @@ export async function createList(
   return data as UserList
 }
 
+
+// Rinomina una lista e/o ne cambia la descrizione. Prima l'unico modo di
+// correggere un nome sbagliato era cancellare la lista e rifarla, perdendo
+// tutti i titoli che conteneva; e la descrizione, pur esistendo nel database ed
+// essendo mostrata nell'elenco, non era scrivibile da nessuna parte.
+export async function updateList(
+  id: string,
+  fields: { name?: string; description?: string | null },
+): Promise<UserList> {
+  const patch: Record<string, unknown> = {}
+  if (fields.name !== undefined) patch.name = fields.name
+  if (fields.description !== undefined) patch.description = fields.description
+
+  const { data, error } = await client()
+    .from('user_lists')
+    .update(patch)
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw new Error(error.message)
+  return data as UserList
+}
+
 // Rende una lista pubblica (condivisibile via link) o di nuovo privata.
 export async function setListPublic(id: string, isPublic: boolean): Promise<void> {
   const { error } = await client()
