@@ -11,7 +11,6 @@ import {
   backdropUrl,
   displayTitle,
   getDetail,
-  isTmdbConfigured,
   logoUrl,
   posterUrl,
   profileUrl,
@@ -103,11 +102,6 @@ export default function TitleDetail() {
 
   useEffect(() => {
     if (!mediaType || !id) return
-    if (!isTmdbConfigured) {
-      setError('Configura VITE_TMDB_API_KEY per vedere i dettagli del titolo.')
-      setLoading(false)
-      return
-    }
     setLoading(true)
     // Guardia contro le risposte fuori ordine: passando in fretta da una scheda
     // all'altra, la richiesta più vecchia può arrivare per ultima e sovrascrive

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { mockTmdb, mockSupabase, mockAiApi, signIn } from './support/mocks'
+import { mockTmdb, mockSupabase, mockAiApi, signIn, TMDB_PROXY, tmdbRequest } from './support/mocks'
 import { movie, personDetail, tv } from './support/fixtures'
 
 // Filtri e ordinamenti delle pagine di catalogo (genere, persona, ricerca) e
@@ -26,10 +26,10 @@ test('cambiare "Ordina" su una pagina di genere richiede a TMDB quel sort', asyn
 test('il filtro per anno su una pagina di genere arriva a TMDB', async ({ page }) => {
   const calls = await mockTmdb(page)
   const seen: string[] = []
-  await page.route('**/discover/**', async (route) => {
-    const u = new URL(route.request().url())
-    const year = u.searchParams.get('primary_release_year')
-    if (year) seen.push(year)
+  await page.route(TMDB_PROXY, async (route) => {
+    const { path, params } = tmdbRequest(route)
+    const year = params.get('primary_release_year')
+    if (path.startsWith('/discover/') && year) seen.push(year)
     await route.fallback()
   })
 

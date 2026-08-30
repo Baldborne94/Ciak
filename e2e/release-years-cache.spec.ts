@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { mockTmdb, mockSupabase, signIn, E2E_USER } from './support/mocks'
+import { mockTmdb, mockSupabase, signIn, E2E_USER, TMDB_PROXY, tmdbRequest } from './support/mocks'
 
 // Gli anni di uscita servono a ordinare le liste, e venivano richiesti a TMDB
 // da capo a ogni apertura: una richiesta per titolo, ogni volta. Su una
@@ -31,7 +31,9 @@ function watchlistRow(tmdbId: number, title: string) {
 async function countDetailRequests(page: import('@playwright/test').Page) {
   const urls: string[] = []
   page.on('request', (r) => {
-    if (/api\.themoviedb\.org\/3\/(movie|tv)\/\d+(\?|$)/.test(r.url())) urls.push(r.url())
+    // Il percorso TMDB viaggia nel parametro `path` del proxy, non nell'URL.
+    const path = new URL(r.url()).searchParams.get('path') ?? ''
+    if (/^\/(movie|tv)\/\d+$/.test(path)) urls.push(r.url())
   })
   return () => urls.length
 }
@@ -70,9 +72,11 @@ test('la lista si apre anche se TMDB non risponde per gli anni', async ({ page }
   await signIn(page)
   await mockTmdb(page)
   await mockSupabase(page, { user_titles: [watchlistRow(550, 'Fight Club')] })
-  await page.route('**/api.themoviedb.org/3/movie/550*', (route) =>
-    route.fulfill({ status: 500, json: { status_message: 'giù' } }),
-  )
+  await page.route(TMDB_PROXY, async (route) => {
+    const { path } = tmdbRequest(route)
+    if (path !== '/movie/550') return route.fallback()
+    return route.fulfill({ status: 500, json: { error: 'giù' } })
+  })
 
   await page.goto('/lists/watchlist')
   await expect(page.getByText('Fight Club')).toBeVisible()

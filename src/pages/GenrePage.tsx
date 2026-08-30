@@ -3,7 +3,7 @@ import { useParams, Link, useLocation, useNavigationType } from 'react-router-do
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { discoverByGenre, getGenres, isTmdbConfigured, resolveKeywordIds } from '../lib/tmdb'
+import { discoverByGenre, getGenres, resolveKeywordIds } from '../lib/tmdb'
 import { subgenresFor } from '../lib/subgenres'
 import { LANGUAGES, COUNTRIES, YEARS } from '../lib/filters'
 import { getPageState, setPageState } from '../lib/pageStateCache'
@@ -74,7 +74,7 @@ export default function GenrePage() {
 
   // Il sottogenere scelto va tradotto in id di keyword prima di poter filtrare.
   useEffect(() => {
-    if (!subgenre || !isTmdbConfigured) {
+    if (!subgenre) {
       setKeywordKey('')
       return
     }
@@ -101,18 +101,13 @@ export default function GenrePage() {
   }, [location.key, items, page, totalPages, sort, year, language, country, minVote, subgenre])
 
   useEffect(() => {
-    if (!isTmdbConfigured || !genreId) return
+    if (!genreId) return
     getGenres(t)
       .then((genres) => setGenreName(genres.find((g) => g.id === gid)?.name ?? ''))
       .catch(() => setGenreName(''))
   }, [t, gid, genreId])
 
   const load = useCallback(() => {
-    if (!isTmdbConfigured) {
-      setError('Configura VITE_TMDB_API_KEY per esplorare il catalogo.')
-      setLoading(false)
-      return
-    }
     setLoading(true)
     setError(null)
     setItems([])

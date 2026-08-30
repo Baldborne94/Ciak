@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { isSupabaseConfigured } from '../lib/supabase'
-import { isTmdbConfigured } from '../lib/tmdb'
+import { tmdbConfigurato } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import {
   disablePush,
@@ -76,18 +76,50 @@ function BackupSettings() {
   )
 }
 
-function StatusRow({ label, ok }: { label: string; ok: boolean }) {
+// `ok === null` = non lo sappiamo ancora. Serve per il catalogo, la cui chiave
+// vive sul server: dal browser lo stato si scopre chiedendo, non leggendo una
+// variabile del bundle.
+function StatusRow({ label, ok }: { label: string; ok: boolean | null }) {
+  const testo = ok === null ? 'Verifico…' : ok ? 'Connesso' : 'Non configurato'
+  const stile =
+    ok === null
+      ? 'bg-theatre-800 text-zinc-400'
+      : ok
+        ? 'bg-green-500/15 text-green-400'
+        : 'bg-curtain/20 text-curtain-light'
   return (
     <div className="flex items-center justify-between border-b border-theatre-800 py-3 last:border-0">
       <span className="text-sm text-zinc-300">{label}</span>
-      <span
-        className={`rounded-md px-2 py-1 text-xs font-semibold ${
-          ok ? 'bg-green-500/15 text-green-400' : 'bg-curtain/20 text-curtain-light'
-        }`}
-      >
-        {ok ? 'Connesso' : 'Non configurato'}
-      </span>
+      <span className={`rounded-md px-2 py-1 text-xs font-semibold ${stile}`}>{testo}</span>
     </div>
+  )
+}
+
+function IntegrationsSettings() {
+  const [tmdbOk, setTmdbOk] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let annullato = false
+    tmdbConfigurato().then((ok) => {
+      if (!annullato) setTmdbOk(ok)
+    })
+    return () => {
+      annullato = true
+    }
+  }, [])
+
+  return (
+    <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
+      <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">🔌 Integrazioni</h2>
+      <StatusRow label="TMDB (catalogo)" ok={tmdbOk} />
+      <StatusRow label="Supabase (dati personali)" ok={isSupabaseConfigured} />
+      <p className="mt-3 text-xs text-zinc-500">
+        Imposta le chiavi nel file <code className="text-projector/80">.env</code>{' '}
+        (vedi <code className="text-projector/80">.env.example</code>). La chiave TMDB sta{' '}
+        <strong>solo</strong> lato server, come quella di Anthropic: il browser passa da{' '}
+        <code className="text-projector/80">/api/tmdb</code>.
+      </p>
+    </section>
   )
 }
 
@@ -175,15 +207,7 @@ export default function Settings() {
       />
 
       <div className="grid gap-6 md:grid-cols-2">
-        <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
-          <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">🔌 Integrazioni</h2>
-          <StatusRow label="TMDB (catalogo)" ok={isTmdbConfigured} />
-          <StatusRow label="Supabase (dati personali)" ok={isSupabaseConfigured} />
-          <p className="mt-3 text-xs text-zinc-500">
-            Imposta le chiavi nel file <code className="text-projector/80">.env</code>{' '}
-            (vedi <code className="text-projector/80">.env.example</code>).
-          </p>
-        </section>
+        <IntegrationsSettings />
 
         <PushSettings />
 

@@ -49,7 +49,9 @@ export default defineConfig({
     env: {
       // Chiavi finte: bastano a far credere all'app di essere configurata,
       // le risposte arrivano tutte dai mock.
-      VITE_TMDB_API_KEY: 'e2e-fake-tmdb-key',
+      // La chiave TMDB non serve più al browser: le richieste passano da
+      // /api/tmdb, che i mock intercettano.
+      TMDB_API_KEY: 'e2e-fake-tmdb-key',
       VITE_SUPABASE_URL: 'https://e2e-fake.supabase.co',
       VITE_SUPABASE_ANON_KEY: 'e2e-fake-anon-key',
     },

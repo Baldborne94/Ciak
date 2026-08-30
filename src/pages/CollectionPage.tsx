@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaCard from '../components/MediaCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { getCollection, getRelatedCollections, backdropUrl, posterUrl, isTmdbConfigured } from '../lib/tmdb'
+import { getCollection, getRelatedCollections, backdropUrl, posterUrl } from '../lib/tmdb'
 import { aiFetch } from '../lib/aiClient'
 import { getCachedSagaOrder, saveCachedSagaOrder } from '../lib/sagaCache'
 import AiCreditsNote from '../components/AiCreditsNote'
@@ -30,11 +30,6 @@ export default function CollectionPage() {
 
   useEffect(() => {
     if (!id) return
-    if (!isTmdbConfigured) {
-      setError('Configura VITE_TMDB_API_KEY per vedere le saghe.')
-      setLoading(false)
-      return
-    }
     setLoading(true)
     setOrder('release')
     setStoryOrder(null)

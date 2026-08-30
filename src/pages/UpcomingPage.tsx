@@ -5,7 +5,7 @@ import AlertButton from '../components/AlertButton'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { alertIds, personalizedUpcoming, upcomingFromFollowedPeople, type PersonUpcoming } from '../lib/alerts'
-import { posterUrl, displayTitle, isTmdbConfigured } from '../lib/tmdb'
+import { posterUrl, displayTitle } from '../lib/tmdb'
 import type { MediaItem } from '../lib/types'
 
 function formatDate(iso?: string | null): string {
@@ -74,11 +74,6 @@ export default function UpcomingPage() {
 
   useEffect(() => {
     if (!user) {
-      setLoading(false)
-      return
-    }
-    if (!isTmdbConfigured) {
-      setError('Configura VITE_TMDB_API_KEY per vedere le uscite.')
       setLoading(false)
       return
     }
