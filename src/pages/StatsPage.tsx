@@ -3,7 +3,7 @@ import PageHeader from '../components/PageHeader'
 import { MONTH_LABELS } from '../lib/watchRhythm'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
-import { computeStats, type CinemaStats, type CountItem } from '../lib/stats'
+import { computeStats, type CinemaStats, type CountItem, type StatsProgress } from '../lib/stats'
 
 // Ritratto sintetico: una frase + chip salienti, derivati dagli aggregati.
 function Portrait({ stats }: { stats: CinemaStats }) {
@@ -265,18 +265,29 @@ export default function StatsPage() {
   const { user } = useAuth()
   const [stats, setStats] = useState<CinemaStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [progress, setProgress] = useState<StatsProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user) return
     let cancelled = false
     setLoading(true)
-    computeStats(user.id)
-      .then((s) => { if (!cancelled) setStats(s) })
+    // I risultati arrivano a blocchi: la pagina compare subito coi conteggi che
+    // non dipendono da TMDB e si riempie mentre l'analisi prosegue, invece di
+    // restare bianca finché non è arrivato l'ultimo titolo.
+    computeStats(user.id, (parziali, avanzamento) => {
+      if (cancelled) return
+      setStats(parziali)
+      setProgress(avanzamento)
+      setLoading(false)
+    })
+      .then((s) => { if (!cancelled) { setStats(s); setProgress(null) } })
       .catch((e: Error) => { if (!cancelled) setError(e.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [user])
+
+  const analisiInCorso = progress != null && progress.done < progress.total
 
   return (
     <div>
@@ -298,6 +309,22 @@ export default function StatsPage() {
         />
       ) : (
         <div className="space-y-6">
+          {analisiInCorso && progress && (
+            // Dire a che punto è: un'attesa muta sembra un blocco, un'attesa
+            // che conta sembra un lavoro.
+            <div className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-3">
+              <p className="text-center text-xs text-zinc-400">
+                Sto analizzando i tuoi titoli: {progress.done} di {progress.total}. I numeri qui
+                sotto si aggiornano mentre procede.
+              </p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-theatre-800">
+                <div
+                  className="h-full rounded-full bg-projector transition-all"
+                  style={{ width: `${Math.round((progress.done / Math.max(progress.total, 1)) * 100)}%` }}
+                />
+              </div>
+            </div>
+          )}
           <Portrait stats={stats} />
 
           {/* Le ore totali sommano film ed episodi segnati: prima le serie non

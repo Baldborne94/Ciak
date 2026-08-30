@@ -102,3 +102,27 @@ test('la pagina regge una collezione vuota senza rompersi', async ({ page }) => 
   await page.goto('/statistiche')
   await expect(page.getByText(/Ancora niente da analizzare/)).toBeVisible()
 })
+
+test('la pagina compare subito e si riempie mentre analizza', async ({ page }) => {
+  // Il problema che questo test blocca: con una collezione grande la pagina
+  // restava bianca finché OGNI titolo non era stato letto da TMDB.
+  const titoli = Array.from({ length: 40 }, (_, i) => titolo(1000 + i, 'movie', `Film ${i}`))
+  await mockSupabase(page, { user_titles: titoli })
+
+  // TMDB risponde lentamente: se la pagina aspettasse tutti i titoli, qui non
+  // si vedrebbe niente per parecchi secondi.
+  await page.route('**/api.themoviedb.org/3/movie/*', async (route) => {
+    await new Promise((r) => setTimeout(r, 300))
+    return route.fulfill({
+      json: { id: 1, genres: [], runtime: 100, release_date: '2020-01-01', credits: { cast: [], crew: [] } },
+    })
+  })
+
+  await page.goto('/statistiche')
+
+  // I conteggi che non dipendono da TMDB ci sono quasi subito…
+  await expect(page.getByText('Film visti')).toBeVisible({ timeout: 5000 })
+  await expect(page.getByText('40', { exact: true }).first()).toBeVisible()
+  // …e l'avanzamento è dichiarato invece di lasciare l'utente al buio.
+  await expect(page.getByText(/Sto analizzando i tuoi titoli/)).toBeVisible()
+})

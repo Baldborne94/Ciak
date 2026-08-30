@@ -74,7 +74,15 @@ function toTmdbType(media: string): TmdbType {
   return media === 'movie' ? 'movie' : 'tv'
 }
 
-export async function computeStats(userId: string): Promise<CinemaStats> {
+// Dodici richieste per volta: senza tetto seicento titoli ne aprirebbero
+// seicento insieme, ma sei erano troppo prudenti e rendevano la prima analisi
+// interminabile. TMDB regge comodamente questo ritmo.
+const CONCORRENZA = 12
+
+export async function computeStats(
+  userId: string,
+  onPartial?: (stats: CinemaStats, progress: StatsProgress) => void,
+): Promise<CinemaStats> {
   const db = client()
 
   // Paginate: PostgREST taglia ogni risposta a max_rows (1000) senza dirlo, e
@@ -152,8 +160,11 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
   }
 
   const refs = [...byKey.values()]
-  const movies = refs.filter((r) => r.type === 'movie').length
-  const series = refs.length - movies
+
+  // Quanti episodi hai visto per ogni serie: moltiplicati per la durata di un
+  // episodio danno le ore di serie.
+  const episodesByTv = new Map<number, number>()
+  for (const e of episodes) episodesByTv.set(e.tv_id, (episodesByTv.get(e.tv_id) ?? 0) + 1)
 
   // Istogramma voti + media (su tutti i titoli che hanno un voto).
   const rated = refs.filter((r) => r.rating != null) as (WatchedRef & { rating: number })[]
@@ -171,24 +182,61 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
   // i campi che servono — e una cache su disco, l'intera collezione diventa
   // analizzabile: il tetto resta solo come difesa contro casi estremi.
   const toEnrich = refs.slice(0, ENRICH_CAP)
-  const cached = getCachedFacts(toEnrich.map((r) => factsKey(r.type, r.tmdbId)))
-  const daChiedere = toEnrich.filter((r) => !cached.has(factsKey(r.type, r.tmdbId)))
+  const facts = getCachedFacts(toEnrich.map((r) => factsKey(r.type, r.tmdbId)))
+  const daChiedere = toEnrich.filter((r) => !facts.has(factsKey(r.type, r.tmdbId)))
 
-  // Sei richieste per volta: senza tetto, seicento titoli aprirebbero seicento
-  // richieste insieme e TMDB inizierebbe a rispondere 429.
-  const nuovi = new Map<string, TitleFacts>()
-  await mapLimit(daChiedere, 6, async (r) => {
-    try {
-      nuovi.set(factsKey(r.type, r.tmdbId), await fetchTitleFacts(r.type, r.tmdbId))
-    } catch {
-      // Un titolo che non risponde non deve far fallire tutta la pagina.
-    }
-  })
-  cacheFacts(nuovi)
+  const aggrega = () => aggregate(refs, toEnrich, facts, episodesByTv, diary, rated, avgRating, ratingHistogram)
 
-  const details = toEnrich.map(
-    (r) => cached.get(factsKey(r.type, r.tmdbId)) ?? nuovi.get(factsKey(r.type, r.tmdbId)) ?? null,
-  )
+  // Prima emissione IMMEDIATA: conteggi, voti e ritmo dal diario non hanno
+  // bisogno di TMDB, quindi la pagina può comparire subito invece di restare
+  // bianca finché non è arrivato l'ultimo dei seicento titoli.
+  onPartial?.(aggrega(), { done: toEnrich.length - daChiedere.length, total: toEnrich.length })
+
+  // A blocchi: dopo ognuno salviamo in cache ed emettiamo. Così il progresso è
+  // visibile, i numeri crescono sotto gli occhi, e chiudendo la pagina a metà
+  // il lavoro già fatto NON va perso (prima si salvava solo alla fine).
+  const BLOCCO = 40
+  for (let i = 0; i < daChiedere.length; i += BLOCCO) {
+    const gruppo = daChiedere.slice(i, i + BLOCCO)
+    const nuovi = new Map<string, TitleFacts>()
+    await mapLimit(gruppo, CONCORRENZA, async (r) => {
+      try {
+        nuovi.set(factsKey(r.type, r.tmdbId), await fetchTitleFacts(r.type, r.tmdbId))
+      } catch {
+        // Un titolo che non risponde non deve far fallire tutta la pagina.
+      }
+    })
+    cacheFacts(nuovi)
+    for (const [k, v] of nuovi) facts.set(k, v)
+    onPartial?.(aggrega(), {
+      done: toEnrich.length - daChiedere.length + Math.min(i + BLOCCO, daChiedere.length),
+      total: toEnrich.length,
+    })
+  }
+
+  return aggrega()
+}
+
+export interface StatsProgress {
+  done: number
+  total: number
+}
+
+// Mette insieme i numeri a partire da ciò che si sa FINORA: richiamabile a ogni
+// blocco di titoli analizzati, così la pagina si riempie mentre carica.
+function aggregate(
+  refs: WatchedRef[],
+  toEnrich: WatchedRef[],
+  facts: Map<string, TitleFacts>,
+  episodesByTv: Map<number, number>,
+  diary: { watched_on: string }[],
+  rated: (WatchedRef & { rating: number })[],
+  avgRating: number | null,
+  ratingHistogram: { half: number; count: number }[],
+): CinemaStats {
+  const movies = refs.filter((r) => r.type === 'movie').length
+  const series = refs.length - movies
+  const details = toEnrich.map((r) => facts.get(factsKey(r.type, r.tmdbId)) ?? null)
 
   const genreCount = new Map<string, number>()
   const directorCount = new Map<string, number>()
@@ -197,11 +245,6 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
   let filmMinutes = 0
   let seriesMinutes = 0
   let enrichedCount = 0
-
-  // Quanti episodi hai visto per ogni serie: moltiplicati per la durata di un
-  // episodio danno le ore di serie, che prima non entravano nel totale.
-  const episodesByTv = new Map<number, number>()
-  for (const e of episodes) episodesByTv.set(e.tv_id, (episodesByTv.get(e.tv_id) ?? 0) + 1)
 
   details.forEach((d, i) => {
     if (!d) return
