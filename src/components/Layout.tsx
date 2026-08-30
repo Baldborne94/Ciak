@@ -2,7 +2,6 @@ import { Suspense } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import Navbar from './Navbar'
 import ScrollManager from './ScrollManager'
-import AchievementToast from './AchievementToast'
 import ToastHost from './ToastHost'
 import InstallPrompt from './InstallPrompt'
 import ReleaseAlerts from './ReleaseAlerts'
@@ -24,7 +23,6 @@ export default function Layout() {
           </Suspense>
         </ErrorBoundary>
       </main>
-      <AchievementToast />
       <ToastHost />
       <InstallPrompt />
       <ReleaseAlerts />

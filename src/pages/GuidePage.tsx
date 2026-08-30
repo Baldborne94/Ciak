@@ -163,14 +163,7 @@ const SLIDES: Slide[] = [
         to: '/profilo',
         cta: 'Apri il Profilo',
       },
-      {
-        icon: '🏆',
-        title: 'Trofei & Badge',
-        body: 'Sblocca trofei guardando film e serie ed equipaggia il preferito per cambiare titolo, avatar e tema dell’app.',
-        to: '/trophies',
-        cta: 'Vedi i Trofei',
-      },
-      {
+            {
         icon: '🔔',
         title: 'Avvisi & notifiche',
         body: 'Segna «Avvisami» su un titolo in arrivo e attiva le notifiche push dalle Impostazioni per l’uscita.',

@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
 import { AuthProvider } from './lib/auth.tsx'
-import { AchievementsProvider } from './lib/achievementsContext.tsx'
+import { IdentityProvider } from './lib/identityContext.tsx'
 import { ToastProvider } from './lib/toastContext.tsx'
 import { LibraryProvider } from './lib/libraryContext.tsx'
 import './index.css'
@@ -13,11 +13,11 @@ createRoot(document.getElementById('root')!).render(
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <AchievementsProvider>
+          <IdentityProvider>
             <LibraryProvider>
               <App />
             </LibraryProvider>
-          </AchievementsProvider>
+          </IdentityProvider>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

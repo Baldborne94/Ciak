@@ -156,15 +156,6 @@ test('In arrivo — proposte di uscite future', async ({ page }) => {
   await expectNoCrash(page)
 })
 
-test('Trofei — griglia dei badge', async ({ page }) => {
-  await mockTmdb(page)
-  await mockSupabase(page, { user_titles: [userTitle()] })
-  await page.goto('/trophies')
-
-  await expect(page.getByRole('heading', { name: 'Trofei & Badge' })).toBeVisible()
-  await expectNoCrash(page)
-})
-
 test('Strumenti AI — le tre schede dell’assistente', async ({ page }) => {
   await mockTmdb(page)
   await mockSupabase(page, { user_titles: [userTitle()] })

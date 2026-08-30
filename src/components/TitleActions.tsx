@@ -1,12 +1,10 @@
 import { useEffect, useState } from 'react'
-import { logFailure } from '../lib/logFailure'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import {
   getUserTitle,
   upsertUserTitle,
   deleteUserTitle,
-  checkAndUnlockAchievements,
   type TitleRef,
 } from '../lib/userTitles'
 import { useToast } from '../lib/toastCtx'
@@ -63,9 +61,6 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
       const next = await upsertUserTitle(user.id, titleRef, patch)
       setRecord(next)
       refreshLibrary() // keep the "già in libreria" badges current
-      // I trofei sono nascosti: continuiamo a registrare gli sblocchi nel DB
-      // (utili per la versione futura) ma senza mostrare il toast.
-      checkAndUnlockAchievements(user.id).catch(logFailure('trofei non aggiornati'))
     } catch (e) {
       setError((e as Error).message)
       showToast(`Salvataggio non riuscito: ${(e as Error).message}`)

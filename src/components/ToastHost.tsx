@@ -1,7 +1,6 @@
 import { useToast, type ToastKind } from '../lib/toastCtx'
 
-// I toast trofei stanno in basso a destra: questi li mettiamo in basso a
-// sinistra per non sovrapporsi.
+// I messaggi stanno in basso a sinistra, fuori dalla portata dei pollici.
 const STYLES: Record<ToastKind, { ring: string; icon: string }> = {
   error: { ring: 'border-curtain-light/50', icon: '⚠️' },
   success: { ring: 'border-projector/40', icon: '✓' },

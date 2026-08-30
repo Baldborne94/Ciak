@@ -18,7 +18,6 @@ const PublicListPage = lazy(() => import('./pages/PublicListPage'))
 const PublicWatchlistPage = lazy(() => import('./pages/PublicWatchlistPage'))
 const DiaryPage = lazy(() => import('./pages/DiaryPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
-const TrophiesPage = lazy(() => import('./pages/TrophiesPage'))
 const UpcomingPage = lazy(() => import('./pages/UpcomingPage'))
 const GenrePage = lazy(() => import('./pages/GenrePage'))
 const PersonPage = lazy(() => import('./pages/PersonPage'))
@@ -144,14 +143,6 @@ export default function App() {
           element={
             <RequireAuth>
               <AiToolsPage />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="trophies"
-          element={
-            <RequireAuth>
-              <TrophiesPage />
             </RequireAuth>
           }
         />

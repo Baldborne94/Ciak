@@ -8,7 +8,7 @@ import { useAuth } from '../lib/auth'
 import { backfillGenreIds, getIdentity, listAll, saveIdentity } from '../lib/userTitles'
 import { listDiary } from '../lib/diary'
 import { getGenres, posterUrl } from '../lib/tmdb'
-import { useAchievementsCtx } from '../lib/achievementsCtx'
+import { useIdentityCtx } from '../lib/identityCtx'
 import { analyzeTaste, buildIdentity, personaById, type TasteInput } from '../lib/cinephileIdentity'
 import type { DiaryEntry, MediaType, UserTitle } from '../lib/types'
 
@@ -45,7 +45,7 @@ function IdentityHero({
   genreMap: Map<number, string>
   userId: string
 }) {
-  const { setIdentity } = useAchievementsCtx()
+  const { setIdentity } = useIdentityCtx()
   const analysis = useMemo(() => analyzeTaste(titles), [titles])
   const [variant, setVariant] = useState(0)
   // Persona scelta a mano (se ne hai più di una forte); null = quella dominante.
