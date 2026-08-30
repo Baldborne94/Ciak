@@ -28,15 +28,38 @@ interface SubRow {
   auth: string
 }
 
-export default async function handler(req: ApiRequest, res: ApiResponse) {
-  // Allow Vercel Cron (GET) and manual POST. If CRON_SECRET is set, require it.
-  const secret = process.env.CRON_SECRET
-  if (secret) {
-    const auth = req.headers?.authorization
-    if (auth !== `Bearer ${secret}`) {
-      res.status(401).json({ error: 'Non autorizzato.' })
-      return
+// Decide se la richiesta può procedere. Estratta perché è la sola cosa che
+// separa questo endpoint — che scrive nel database con la chiave service_role e
+// manda notifiche a TUTTI gli utenti — da chiunque passi di lì.
+//
+// Fallisce CHIUSO quando il segreto non è configurato: prima l'autorizzazione
+// era condizionata alla sua presenza, quindi una variabile d'ambiente
+// dimenticata lasciava l'endpoint aperto senza che nulla lo segnalasse. Meglio
+// un cron che non parte, e si nota, di uno che chiunque può far partire.
+export function cronAuthError(
+  secret: string | undefined,
+  authHeader: string | string[] | undefined,
+): { status: number; error: string } | null {
+  if (!secret) {
+    return {
+      status: 503,
+      error: 'CRON_SECRET non configurato lato server: endpoint disattivato.',
     }
+  }
+  const value = Array.isArray(authHeader) ? authHeader[0] : authHeader
+  if (value !== `Bearer ${secret}`) {
+    return { status: 401, error: 'Non autorizzato.' }
+  }
+  return null
+}
+
+export default async function handler(req: ApiRequest, res: ApiResponse) {
+  // Vercel invia da sé questa intestazione ai cron quando CRON_SECRET è fra le
+  // variabili d'ambiente del progetto.
+  const denied = cronAuthError(process.env.CRON_SECRET, req.headers?.authorization)
+  if (denied) {
+    res.status(denied.status).json({ error: denied.error })
+    return
   }
 
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL

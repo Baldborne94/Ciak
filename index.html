@@ -16,6 +16,11 @@
       name="description"
       content="Ciak — il tuo compagno personale di cinema: traccia film, serie TV, anime e cartoni con ricerca avanzata, watchlist e raccomandazioni AI."
     />
+    <!-- Ogni schermata carica dati e locandine da TMDB: aprire la connessione
+         subito evita di pagare DNS + TLS al primo poster, che su rete mobile
+         sono qualche decimo di secondo prima ancora di chiedere l'immagine. -->
+    <link rel="preconnect" href="https://api.themoviedb.org" crossorigin />
+    <link rel="preconnect" href="https://image.tmdb.org" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

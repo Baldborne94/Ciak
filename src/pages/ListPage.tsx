@@ -212,7 +212,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
             <FilterGroup label="Tipo">
               <ChipGroup options={KIND_OPTS} value={kind} onChange={setKind} />
             </FilterGroup>
-            <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={filterSelectClass}>
+            <select aria-label="Ordina la lista" value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={filterSelectClass}>
               {SORT_OPTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </FilterBar>

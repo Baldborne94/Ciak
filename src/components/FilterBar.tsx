@@ -65,6 +65,7 @@ export function RatingSlider({
     <FilterGroup label="Voto min">
       <input
         type="range"
+        aria-label="Voto minimo"
         min={0}
         max={9}
         step={1}

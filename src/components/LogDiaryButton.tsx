@@ -169,6 +169,7 @@ export default function LogDiaryButton({ item }: { item: DiaryRef }) {
                     <label className="text-xs uppercase tracking-wider text-zinc-500">Visto il</label>
                     <input
                       type="date"
+                      aria-label="Visto il"
                       value={date}
                       max={todayISO()}
                       onChange={(e) => setDate(e.target.value)}

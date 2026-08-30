@@ -580,6 +580,7 @@ export default function Search() {
       <form onSubmit={onSubmit} className="mb-6 flex gap-2">
         <div className="relative flex-1">
           <input
+            aria-label={activeMode.placeholder}
             value={input}
             onChange={(e) => {
               const v = e.target.value
@@ -606,7 +607,7 @@ export default function Search() {
             </button>
           )}
         </div>
-        <button type="submit" className="btn-ghost whitespace-nowrap px-4">
+        <button type="submit" aria-label="Cerca" className="btn-ghost whitespace-nowrap px-4">
           🔍
         </button>
       </form>
@@ -645,7 +646,7 @@ export default function Search() {
           {(query.trim() !== '' || isAnimationKind) && (
             <>
               <RatingSlider value={minRating} onChange={setMinRating} />
-              <select
+              <select aria-label="Filtra per anno"
                 value={titleYear}
                 onChange={(e) => setTitleYear(e.target.value)}
                 className={filterSelectClass}
@@ -653,7 +654,7 @@ export default function Search() {
                 <option value="">Anno: qualsiasi</option>
                 {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
-              <select
+              <select aria-label="Filtra per lingua"
                 value={titleLang}
                 onChange={(e) => setTitleLang(e.target.value)}
                 className={filterSelectClass}
@@ -661,7 +662,7 @@ export default function Search() {
                 <option value="">Lingua: qualsiasi</option>
                 {LANGUAGES.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
-              <select
+              <select aria-label="Ordina i risultati"
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
                 className={filterSelectClass}

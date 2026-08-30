@@ -150,7 +150,7 @@ function TitlesTab() {
   return (
     <div>
       <div className="mb-4 flex justify-end">
-        <select
+        <select aria-label="Ordina i preferiti"
           value={sort}
           onChange={(e) => setSort(e.target.value as SortKey)}
           className="input-cine w-auto"
