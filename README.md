@@ -60,20 +60,28 @@ Esegui [`supabase/schema.sql`](./supabase/schema.sql) nel SQL Editor di Supabase
 | `npm run build` | Type-check + build di produzione |
 | `npm run typecheck` | Solo type-check |
 | `npm run lint` | ESLint |
-| `npm test` | Test unitari (Vitest) sulla logica pura |
+| `npm test` | Test unitari e dei componenti (Vitest) — circa 5 secondi |
 | `npm run test:e2e` | Test end-to-end (Playwright) su un browser vero |
 | `npm run test:e2e:ui` | Gli stessi E2E in modalità interattiva |
 | `npm run preview` | Anteprima della build |
 
 ## Test
 
-Due livelli, entrambi eseguiti dalla CI su ogni pull request:
+Tre livelli, tutti eseguiti dalla CI su ogni pull request:
 
-- **Unitari** (`src/lib/*.test.ts`) — logica pura: statistiche, avvisi, cache,
-  filtri, titoli leggibili.
+- **Unitari** (`src/lib/*.test.ts`, `api/*.test.ts`) — logica pura: statistiche,
+  avvisi, cache, filtri, titoli leggibili, e le autorizzazioni delle funzioni
+  serverless.
+- **Componenti** (`src/components/*.test.tsx`) — un componente alla volta in
+  jsdom: il voto a mezza stella, la trappola del focus di un modale, un avviso
+  che deve tacere. Girano in millisecondi, quindi si possono tenere accesi
+  mentre si scrive (`npm run test:watch`).
 - **End-to-end** (`e2e/*.spec.ts`) — l'app in Chromium: ogni schermata si apre
   e ogni azione principale (segnare uno stato, votare, registrare una visione,
   creare liste, filtrare, chiedere un avviso) fa davvero ciò che promette.
+
+I primi due insieme durano circa cinque secondi, gli E2E un quarto d'ora: vale
+la pena scegliere il livello più basso che sappia rispondere alla domanda.
 
 I test E2E sono **ermetici**: TMDB, Supabase e le immagini sono intercettati e
 sostituiti con dati finti, quindi non servono chiavi né account e i risultati
