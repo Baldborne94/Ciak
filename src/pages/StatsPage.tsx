@@ -326,12 +326,11 @@ export default function StatsPage() {
             <YearsInFilm stats={stats} />
           </div>
 
-          {stats.cappedAt && (
-            <p className="text-center text-xs text-zinc-600">
-              Generi, registi e decenni sono calcolati sui primi {stats.cappedAt} titoli per non
-              sovraccaricare TMDB. I conteggi totali restano completi.
-            </p>
-          )}
+          <p className="text-center text-xs text-zinc-600">
+            {stats.cappedAt
+              ? `Generi, registi e decenni sono calcolati sui primi ${stats.cappedAt} titoli. I conteggi totali restano completi.`
+              : `Analisi su tutti i ${stats.enrichedCount} titoli della tua collezione. Le ore delle serie senza episodi segnati sono stimate sull'intera serie.`}
+          </p>
         </div>
       )}
     </div>

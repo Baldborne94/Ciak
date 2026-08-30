@@ -1,6 +1,7 @@
 import { mapLimit } from './mapLimit'
 import { cacheYears, getCachedYears } from './releaseYearCache'
 import type {
+  TitleFacts,
   CastMember,
   Collection,
   CollectionDetail,
@@ -568,6 +569,32 @@ function buildRecommendations(raw: RawDetail, type: TmdbType): MediaItem[] {
   const relevant = ranked.filter((s) => s.genreOverlap > 0 || (inRec.has(s.r.id) && inSim.has(s.r.id)))
   const chosen = relevant.length >= 6 ? relevant : ranked
   return chosen.slice(0, 12).map((s) => normalise(s.r, type))
+}
+
+// Versione leggera di getDetail per le statistiche: UNA richiesta invece di
+// tre, e senza raccomandazioni, video, provider o traduzioni — roba che pesa
+// molto e che alle statistiche non serve. È ciò che rende possibile analizzare
+// l'intera collezione invece dei primi duecento titoli.
+export async function fetchTitleFacts(type: TmdbType, id: number): Promise<TitleFacts> {
+  const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, { append_to_response: 'credits' })
+  const crew = raw.credits?.crew ?? []
+  const directors = crew
+    .filter((c) => c.job === 'Director' || c.job === 'Creator')
+    .map((c) => c.name)
+  const created = (raw.created_by ?? []).map((c) => c.name)
+  const date = raw.release_date || raw.first_air_date || ''
+  const year = Number(date.slice(0, 4))
+
+  return {
+    genres: (raw.genres ?? []).map((g) => g.name),
+    // Per le serie il "regista" è chi l'ha creata: senza, tutte le serie
+    // sparirebbero dalla classifica dei registi.
+    directors: directors.length > 0 ? directors : created,
+    cast: (raw.credits?.cast ?? []).slice(0, 5).map((c) => c.name),
+    runtime: raw.runtime ?? raw.episode_run_time?.[0] ?? null,
+    year: Number.isFinite(year) && year > 1870 ? year : null,
+    episodes: raw.number_of_episodes ?? null,
+  }
 }
 
 export async function getDetail(

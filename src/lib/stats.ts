@@ -1,8 +1,10 @@
 import { supabase } from './supabase'
 import { fetchAllRows } from './paged'
 import { computeWatchRhythm, type WatchRhythm } from './watchRhythm'
-import { getDetail } from './tmdb'
-import type { MediaDetail, TmdbType } from './types'
+import { mapLimit } from './mapLimit'
+import { cacheFacts, factsKey, getCachedFacts } from './titleFactsCache'
+import { fetchTitleFacts } from './tmdb'
+import type { TitleFacts, TmdbType } from './types'
 
 // Statistiche cinefile: aggregano ciò che hai guardato (user_titles "watched" +
 // user_diary) arricchendolo con i dettagli TMDB (durata, anno, generi, regista,
@@ -63,25 +65,10 @@ interface WatchedRef {
   watchedYear: number | null
 }
 
-// Cache dei dettagli TMDB per id+tipo, condivisa tra le aperture della pagina.
-const detailCache = new Map<string, MediaDetail | null>()
-
-async function detailOf(type: TmdbType, id: number): Promise<MediaDetail | null> {
-  const key = `${type}:${id}`
-  if (detailCache.has(key)) return detailCache.get(key)!
-  try {
-    const d = await getDetail(type, id)
-    detailCache.set(key, d)
-    return d
-  } catch {
-    detailCache.set(key, null)
-    return null
-  }
-}
-
-// Limite di titoli da arricchire via TMDB: protegge da raffiche di richieste su
-// librerie enormi. I conteggi grezzi (film/serie/voti) restano completi.
-const ENRICH_CAP = 200
+// Tetto di sicurezza sui titoli da analizzare. Non è più il collo di bottiglia
+// di prima (era 200): con la lettura leggera e la cache, una collezione normale
+// ci sta dentro tutta.
+const ENRICH_CAP = 3000
 
 function toTmdbType(media: string): TmdbType {
   return media === 'movie' ? 'movie' : 'tv'
@@ -178,10 +165,30 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
     ? Math.round((rated.reduce((s, r) => s + r.rating, 0) / rated.length) * 100) / 100
     : null
 
-  // Arricchimento via TMDB (con cap). I titoli oltre il cap restano nei conteggi
-  // grezzi ma non in generi/registi/decenni/ore.
+  // Arricchimento via TMDB. Il tetto era di 200 titoli perché ogni titolo
+  // costava TRE richieste pesanti (getDetail porta con sé raccomandazioni,
+  // video, provider, traduzioni). Con una lettura leggera — una richiesta, solo
+  // i campi che servono — e una cache su disco, l'intera collezione diventa
+  // analizzabile: il tetto resta solo come difesa contro casi estremi.
   const toEnrich = refs.slice(0, ENRICH_CAP)
-  const details = await Promise.all(toEnrich.map((r) => detailOf(r.type, r.tmdbId)))
+  const cached = getCachedFacts(toEnrich.map((r) => factsKey(r.type, r.tmdbId)))
+  const daChiedere = toEnrich.filter((r) => !cached.has(factsKey(r.type, r.tmdbId)))
+
+  // Sei richieste per volta: senza tetto, seicento titoli aprirebbero seicento
+  // richieste insieme e TMDB inizierebbe a rispondere 429.
+  const nuovi = new Map<string, TitleFacts>()
+  await mapLimit(daChiedere, 6, async (r) => {
+    try {
+      nuovi.set(factsKey(r.type, r.tmdbId), await fetchTitleFacts(r.type, r.tmdbId))
+    } catch {
+      // Un titolo che non risponde non deve far fallire tutta la pagina.
+    }
+  })
+  cacheFacts(nuovi)
+
+  const details = toEnrich.map(
+    (r) => cached.get(factsKey(r.type, r.tmdbId)) ?? nuovi.get(factsKey(r.type, r.tmdbId)) ?? null,
+  )
 
   const genreCount = new Map<string, number>()
   const directorCount = new Map<string, number>()
@@ -200,16 +207,19 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
     if (!d) return
     enrichedCount++
     const ref = toEnrich[i]
-    for (const g of d.genres) genreCount.set(g.name, (genreCount.get(g.name) ?? 0) + 1)
-    for (const dir of d.directors) directorCount.set(dir.name, (directorCount.get(dir.name) ?? 0) + 1)
-    for (const c of d.cast.slice(0, 5)) actorCount.set(c.name, (actorCount.get(c.name) ?? 0) + 1)
+    for (const g of d.genres) genreCount.set(g, (genreCount.get(g) ?? 0) + 1)
+    for (const dir of d.directors) directorCount.set(dir, (directorCount.get(dir) ?? 0) + 1)
+    for (const c of d.cast) actorCount.set(c, (actorCount.get(c) ?? 0) + 1)
     if (ref.type === 'movie' && d.runtime) filmMinutes += d.runtime
-    // Per una serie `runtime` è la durata di UN episodio (episode_run_time):
-    // contiamo solo gli episodi effettivamente segnati, non l'intera serie.
+    // Per una serie `runtime` è la durata di UN episodio. Se hai segnato i
+    // singoli episodi contiamo quelli; altrimenti la serie risulta vista per
+    // intero, e il totale della serie è la stima migliore che abbiamo — meglio
+    // di zero, che era la risposta di prima per chiunque non tracci episodi.
     if (ref.type === 'tv' && d.runtime) {
-      seriesMinutes += d.runtime * (episodesByTv.get(ref.tmdbId) ?? 0)
+      const segnati = episodesByTv.get(ref.tmdbId) ?? 0
+      seriesMinutes += d.runtime * (segnati > 0 ? segnati : (d.episodes ?? 0))
     }
-    const year = d.releaseDate ? Number(d.releaseDate.slice(0, 4)) : NaN
+    const year = d.year ?? NaN
     if (!Number.isNaN(year) && year > 1870) {
       const decade = Math.floor(year / 10) * 10
       decadeCount.set(decade, (decadeCount.get(decade) ?? 0) + 1)
