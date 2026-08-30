@@ -11,6 +11,70 @@ import {
   pushSupported,
   sendTestNotification,
 } from '../lib/push'
+import {
+  esportaTutto,
+  nomeFileEsportazione,
+  riassuntoEsportazione,
+} from '../lib/exportData'
+
+function BackupSettings() {
+  const { user } = useAuth()
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [errore, setErrore] = useState<string | null>(null)
+
+  async function scarica() {
+    if (!user) return
+    setBusy(true)
+    setMsg(null)
+    setErrore(null)
+    try {
+      const dati = await esportaTutto({ id: user.id, email: user.email ?? null })
+      // Il file nasce e muore nel browser: nessun server intermedio vede i
+      // dati, che è il minimo per un backup personale.
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(dati, null, 2)], { type: 'application/json' }),
+      )
+      const a = document.createElement('a')
+      a.href = url
+      a.download = nomeFileEsportazione()
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      // Revoca rimandata: se si libera l'URL nello stesso giro dell'evento, il
+      // browser può trovarselo già morto mentre avvia il salvataggio.
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+      setMsg(riassuntoEsportazione(dati))
+    } catch (e) {
+      setErrore((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
+      <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">💾 Backup dei tuoi dati</h2>
+      {!user ? (
+        <p className="text-sm text-zinc-400">Accedi per scaricare una copia del tuo archivio.</p>
+      ) : (
+        <>
+          <p className="text-sm text-zinc-400">
+            Voti, diario, liste, preferiti ed episodi visti in un unico file JSON. È l'unica parte
+            di Ciak che non si può ricostruire da TMDB: tienine una copia tua.
+          </p>
+          <div className="mt-4">
+            <button onClick={scarica} disabled={busy} className="btn-primary">
+              {busy ? 'Raccolgo i dati…' : '⬇️ Scarica tutto'}
+            </button>
+          </div>
+          {msg && <p className="mt-3 text-xs text-projector">Scaricato: {msg}</p>}
+          {errore && <p className="mt-3 text-xs text-curtain-light">{errore}</p>}
+        </>
+      )}
+    </section>
+  )
+}
 
 function StatusRow({ label, ok }: { label: string; ok: boolean }) {
   return (
@@ -122,6 +186,8 @@ export default function Settings() {
         </section>
 
         <PushSettings />
+
+        <BackupSettings />
 
         <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
           <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">🎯 Preferenze AI</h2>
