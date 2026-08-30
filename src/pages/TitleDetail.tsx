@@ -16,6 +16,15 @@ import {
   posterUrl,
   profileUrl,
 } from '../lib/tmdb'
+import { useAuth } from '../lib/auth'
+import { useToast } from '../lib/toastCtx'
+import { logFailure } from '../lib/logFailure'
+import { parseYoutubeKey } from '../lib/youtubeKey'
+import {
+  clearCustomTrailer,
+  getCustomTrailer,
+  setCustomTrailer as setCustomTrailerDb,
+} from '../lib/customTrailers'
 import type { MediaDetail, Provider, TmdbType } from '../lib/types'
 
 const LANG_NAMES: Record<string, string> = {
@@ -39,10 +48,18 @@ function formatMoney(n: number): string {
 
 export default function TitleDetail() {
   const { mediaType, id } = useParams<{ mediaType: TmdbType; id: string }>()
+  const { user } = useAuth()
+  const { showToast } = useToast()
   const [detail, setDetail] = useState<MediaDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showTrailer, setShowTrailer] = useState(false)
+  // Trailer scelto dall'utente: vince su quello di TMDB, che a volte è sbagliato
+  // (i video del catalogo sono contributi aperti) o manca del tutto.
+  const [customTrailer, setCustomTrailer] = useState<string | null>(null)
+  const [editingTrailer, setEditingTrailer] = useState(false)
+  const [trailerInput, setTrailerInput] = useState('')
+  const [savingTrailer, setSavingTrailer] = useState(false)
   // Selected country for "Dove guardarlo" ('' = default to first, i.e. Italy).
   const [watchCountry, setWatchCountry] = useState('')
   // Sort for the "Se ti è piaciuto, guarda anche" list.
@@ -55,7 +72,19 @@ export default function TitleDetail() {
     setWatchCountry('')
     setRecSort('default')
     setShowTrailer(false)
+    setEditingTrailer(false)
+    setCustomTrailer(null)
   }, [mediaType, id])
+
+  // Il trailer scelto dall'utente per questo titolo, se ce n'è uno.
+  useEffect(() => {
+    if (!user || !mediaType || !id) return
+    let annullata = false
+    getCustomTrailer(user.id, Number(id), mediaType)
+      .then((k) => { if (!annullata) setCustomTrailer(k) })
+      .catch(logFailure('trailer personalizzato non caricato'))
+    return () => { annullata = true }
+  }, [user, mediaType, id])
 
   // Recommendations sorted by the chosen order ('default' keeps our relevance rank).
   const sortedRecs = useMemo(() => {
@@ -92,10 +121,46 @@ export default function TitleDetail() {
     return () => { annullata = true }
   }, [mediaType, id])
 
+
+  async function salvaTrailer() {
+    if (!user || !mediaType || !id) return
+    const key = parseYoutubeKey(trailerInput)
+    if (!key) {
+      showToast('Non riconosco questo link YouTube. Incolla l\'indirizzo del video.', 'error')
+      return
+    }
+    setSavingTrailer(true)
+    try {
+      await setCustomTrailerDb(user.id, Number(id), mediaType, key)
+      setCustomTrailer(key)
+      setEditingTrailer(false)
+      setTrailerInput('')
+      setShowTrailer(false)
+      showToast('Trailer aggiornato.', 'success')
+    } catch (e) {
+      showToast(`Non sono riuscito a salvarlo: ${(e as Error).message}`, 'error')
+    } finally {
+      setSavingTrailer(false)
+    }
+  }
+
+  async function ripristinaTrailer() {
+    if (!user || !mediaType || !id) return
+    try {
+      await clearCustomTrailer(user.id, Number(id), mediaType)
+      setCustomTrailer(null)
+      setShowTrailer(false)
+    } catch (e) {
+      showToast(`Non sono riuscito a ripristinarlo: ${(e as Error).message}`, 'error')
+    }
+  }
+
   if (loading) return <Loader label="Carico la scheda…" />
   if (error) return <ErrorState title="Scheda non disponibile" message={error} />
   if (!detail) return null
 
+  // Il tuo trailer vince su quello di TMDB.
+  const trailerKey = customTrailer ?? detail.trailerKey
   const backdrop = backdropUrl(detail.backdropPath)
   const poster = posterUrl(detail.posterPath, 'w500')
   const year = detail.releaseDate ? detail.releaseDate.slice(0, 4) : '—'
@@ -280,27 +345,82 @@ export default function TitleDetail() {
         )
       })()}
 
-      {/* Trailer */}
-      {detail.trailerKey && (
+      {/* Trailer — quello scelto da te vince su quello di TMDB. La sezione
+          compare anche se TMDB non ne ha nessuno: così puoi metterlo tu. */}
+      {(trailerKey || user) && (
         <section>
           <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-display text-2xl tracking-wide text-zinc-100">🎬 Trailer</h2>
-            {/* I video su TMDB sono contributi degli utenti e ogni tanto qualcuno
-                carica la chiave di un altro film. Non possiamo accorgercene dai
-                dati, ma almeno non lasciamo l'utente in un vicolo cieco. */}
-            <a
-              href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${detail.title} trailer italiano`)}`}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-zinc-500 hover:text-projector"
-            >
-              Non è il trailer giusto? Cercalo su YouTube →
-            </a>
+            <h2 className="font-display text-2xl tracking-wide text-zinc-100">
+              🎬 Trailer
+              {customTrailer && (
+                <span className="ml-2 align-middle text-xs font-normal text-projector">
+                  scelto da te
+                </span>
+              )}
+            </h2>
+            <div className="flex flex-wrap items-center gap-3 text-xs">
+              <a
+                href={`https://www.youtube.com/results?search_query=${encodeURIComponent(`${detail.title} trailer italiano`)}`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-zinc-500 hover:text-projector"
+              >
+                Cercalo su YouTube →
+              </a>
+              {user && (
+                <button
+                  onClick={() => {
+                    setTrailerInput('')
+                    setEditingTrailer((v) => !v)
+                  }}
+                  className="text-zinc-500 hover:text-projector"
+                >
+                  {trailerKey ? '✏️ Non è quello giusto?' : '➕ Aggiungi il trailer'}
+                </button>
+              )}
+              {customTrailer && (
+                <button onClick={ripristinaTrailer} className="text-zinc-500 hover:text-projector">
+                  ↩️ Usa quello di TMDB
+                </button>
+              )}
+            </div>
           </div>
-          {showTrailer ? (
+
+          {editingTrailer && (
+            <div className="mb-4 rounded-xl border border-theatre-700 bg-theatre-900/60 p-4">
+              <label htmlFor="trailer-url" className="text-xs uppercase tracking-wider text-zinc-500">
+                Link del video YouTube
+              </label>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <input
+                  id="trailer-url"
+                  value={trailerInput}
+                  onChange={(e) => setTrailerInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && salvaTrailer()}
+                  placeholder="https://www.youtube.com/watch?v=…"
+                  className="input-cine flex-1"
+                />
+                <button onClick={salvaTrailer} disabled={savingTrailer} className="btn-primary">
+                  {savingTrailer ? 'Salvo…' : 'Salva'}
+                </button>
+                <button onClick={() => setEditingTrailer(false)} className="btn-ghost">
+                  Annulla
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-zinc-600">
+                Vale solo per te, e sostituisce il video che arriva da TMDB.
+              </p>
+            </div>
+          )}
+          {!trailerKey ? (
+            <p className="text-sm text-zinc-500">
+              Nessun trailer disponibile per questo titolo. Se lo trovi su YouTube, puoi
+              aggiungerlo qui sopra.
+            </p>
+          ) : showTrailer ? (
             <div className="aspect-video w-full overflow-hidden rounded-xl border border-theatre-800">
               <iframe
-                src={`https://www.youtube.com/embed/${detail.trailerKey}?autoplay=1`}
+                src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1`}
                 title="Trailer"
                 className="h-full w-full"
                 allow="autoplay; encrypted-media; fullscreen"
@@ -313,7 +433,7 @@ export default function TitleDetail() {
               className="group relative block aspect-video w-full overflow-hidden rounded-xl border border-theatre-800"
             >
               <img
-                src={`https://img.youtube.com/vi/${detail.trailerKey}/hqdefault.jpg`}
+                src={`https://img.youtube.com/vi/${trailerKey}/hqdefault.jpg`}
                 alt="Trailer"
                 className="h-full w-full object-cover opacity-70 transition group-hover:opacity-90"
               />
