@@ -44,7 +44,7 @@ Vedi [`.env.example`](./.env.example):
 
 | Variabile | Dove |
 |---|---|
-| `VITE_TMDB_API_KEY` | [TMDB → API](https://www.themoviedb.org/settings/api) |
+| `TMDB_API_KEY` | [TMDB → API](https://www.themoviedb.org/settings/api) — lato server, senza `VITE_` |
 | `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` | Supabase → Project Settings → API |
 | `ANTHROPIC_API_KEY` | [Anthropic Console](https://console.anthropic.com) — **solo server**, niente prefisso `VITE_` |
 

@@ -71,8 +71,12 @@ Due guardie automatiche, oltre ai test veri e propri:
   passate a `/discover` come `with_keywords`. Più keyword per lo stesso
   sottogenere stanno in OR, perché i titoli non sono etichettati in modo
   uniforme (`world war ii` e `wwii` convivono).
-- La chiave Anthropic vive **solo** lato server (`api/`), mai con prefisso
-  `VITE_`.
+- Le chiavi Anthropic e TMDB vivono **solo** lato server (`api/`), mai con
+  prefisso `VITE_`: con quel prefisso finiscono nel bundle, dove chiunque le
+  copia. Il catalogo passa da `/api/tmdb`, che tiene una **lista dei percorsi
+  consentiti**: usare un endpoint TMDB nuovo vuol dire aggiungerlo lì, altrimenti
+  la richiesta torna 400. Un proxy che serve tutto è un proxy che useranno al
+  posto nostro.
 
 ## Struttura
 

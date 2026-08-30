@@ -13,7 +13,10 @@ import {
 // Intercetta TUTTE le chiamate esterne (TMDB, Supabase, immagini) così i test
 // sono ermetici e deterministici: nessuna rete reale, nessuna chiave vera.
 
-const TMDB = 'https://api.themoviedb.org/3'
+// L'app non parla più direttamente con TMDB: passa da /api/tmdb, che tiene la
+// chiave lato server. I mock intercettano quindi il proxy, e il percorso TMDB
+// arriva nel parametro `path`.
+const PROXY = '**/api/tmdb*'
 const SUPABASE = 'https://e2e-fake.supabase.co'
 
 export interface TmdbOverrides {
@@ -42,10 +45,13 @@ export interface TmdbCalls {
 export async function mockTmdb(page: Page, over: TmdbOverrides = {}): Promise<TmdbCalls> {
   const calls: TmdbCalls = { discover: [] }
 
-  await page.route(`${TMDB}/**`, async (route: Route) => {
+  await page.route(PROXY, async (route: Route) => {
     const url = new URL(route.request().url())
-    const path = url.pathname.replace('/3', '')
+    const path = url.searchParams.get('path') ?? ''
     const json = (body: unknown) => route.fulfill({ json: body })
+
+    // Le Impostazioni lo usano per dire se il catalogo è configurato.
+    if (path === '/configuration') return json({ images: {} })
 
     if (path === '/trending/all/week') {
       return json({ results: over.trending ?? [] })
@@ -356,6 +362,9 @@ export async function mockAiApi(
 ): Promise<void> {
   await page.route('**/api/**', (route) => {
     const path = new URL(route.request().url()).pathname
+    // Il catalogo passa anch'esso da /api, ma lo serve mockTmdb: questa rotta è
+    // registrata dopo e vincerebbe, lasciando le pagine senza film.
+    if (path === '/api/tmdb') return route.fallback()
     const preset: Record<string, unknown> = {
       '/api/tonight': { suggestions: [] },
       '/api/song-films': { films: [] },

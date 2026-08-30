@@ -20,7 +20,6 @@ import {
   profileUrl,
   logoUrl,
   posterUrl,
-  isTmdbConfigured,
   type BrowseSort,
 } from '../lib/tmdb'
 import { MediaRow } from '../components/MediaRow'
@@ -362,10 +361,6 @@ export default function Search() {
       setTitles([]); setPeople([]); setStudios([]); setCollections([])
       return
     }
-    if (!isTmdbConfigured) {
-      setError('Configura VITE_TMDB_API_KEY per cercare nel catalogo.')
-      return
-    }
     setLoading(true)
     setError(null)
     // Flag di cancellazione: digitando in fretta più richieste partono in
@@ -385,13 +380,13 @@ export default function Search() {
   }, [query, mode])
 
   useEffect(() => {
-    if (mode !== 'titles' || isAnimationKind || !isTmdbConfigured) return
+    if (mode !== 'titles' || isAnimationKind) return
     getGenres(genreBrowseType).then(setGenres).catch(() => setGenres([]))
   }, [genreBrowseType, isAnimationKind, mode])
 
   // TV genres for the anime/cartoons "Sfoglia per genere" row (Animation implied).
   useEffect(() => {
-    if (!isAnimationKind || !isTmdbConfigured || tvGenres.length > 0) return
+    if (!isAnimationKind || tvGenres.length > 0) return
     getGenres('tv')
       .then((gs) => setTvGenres(gs.filter((g) => g.id !== 16)))
       .catch(logFailure('generi TV non caricati'))
@@ -442,7 +437,7 @@ export default function Search() {
 
   // Idle previews — loaded lazily only for the active tab, once.
   useEffect(() => {
-    if (!isTmdbConfigured || query.trim()) return
+    if (query.trim()) return
     if (mode === 'titles' && previewTitles.length === 0) {
       getTrending().then(setPreviewTitles).catch(logFailure('tendenze non caricate'))
     }

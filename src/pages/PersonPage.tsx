@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { getPersonDetail, profileUrl, isTmdbConfigured } from '../lib/tmdb'
+import { getPersonDetail, profileUrl } from '../lib/tmdb'
 import EntityFavoriteButton from '../components/EntityFavoriteButton'
 import { FilterBar, ChipGroup, RatingSlider, filterSelectClass } from '../components/FilterBar'
 import { YEARS } from '../lib/filters'
@@ -34,11 +34,6 @@ export default function PersonPage() {
 
   useEffect(() => {
     if (!id) return
-    if (!isTmdbConfigured) {
-      setError('Configura VITE_TMDB_API_KEY per vedere i profili.')
-      setLoading(false)
-      return
-    }
     setLoading(true)
     // Reset filters when navigating to a different person.
     setKind('all'); setMinVote(0); setYear(''); setSort('popularity')

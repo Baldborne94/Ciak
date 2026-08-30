@@ -242,7 +242,7 @@ src/
 
 | Variabile | Dove | Note |
 |---|---|---|
-| `VITE_TMDB_API_KEY` | TMDB → Settings → API | chiave v3 |
+| `TMDB_API_KEY` | TMDB → Settings → API | chiave v3, **solo server** (il browser passa da `/api/tmdb`) |
 | `VITE_SUPABASE_URL` | Supabase → Project Settings → API | Project URL |
 | `VITE_SUPABASE_ANON_KEY` | Supabase → API → **Legacy anon key** (`eyJ…`) | client browser |
 | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) | **senza** prefisso `VITE_` — solo server |

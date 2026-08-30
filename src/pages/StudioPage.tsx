@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { discoverByCompany, getCompany, logoUrl, isTmdbConfigured } from '../lib/tmdb'
+import { discoverByCompany, getCompany, logoUrl } from '../lib/tmdb'
 import EntityFavoriteButton from '../components/EntityFavoriteButton'
 import type { Company, MediaItem } from '../lib/types'
 
@@ -21,11 +21,6 @@ export default function StudioPage() {
 
   useEffect(() => {
     if (!id) return
-    if (!isTmdbConfigured) {
-      setError('Configura VITE_TMDB_API_KEY per vedere i titoli dello studio.')
-      setLoading(false)
-      return
-    }
     setLoading(true)
     setError(null)
     setItems([])
