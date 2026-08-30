@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { mockTmdb, mockSupabase, signIn, E2E_USER } from './support/mocks'
+import { mockTmdb, mockSupabase, signIn, E2E_USER, TMDB_PROXY, tmdbRequest } from './support/mocks'
 import { movieDetail } from './support/fixtures'
 
 // Le statistiche devono dire la verità: i totali non possono fermarsi alla
@@ -111,7 +111,9 @@ test('la pagina compare subito e si riempie mentre analizza', async ({ page }) =
 
   // TMDB risponde lentamente: se la pagina aspettasse tutti i titoli, qui non
   // si vedrebbe niente per parecchi secondi.
-  await page.route('**/api.themoviedb.org/3/movie/*', async (route) => {
+  await page.route(TMDB_PROXY, async (route) => {
+    const { path } = tmdbRequest(route)
+    if (!/^\/movie\/\d+$/.test(path)) return route.fallback()
     await new Promise((r) => setTimeout(r, 300))
     return route.fulfill({
       json: { id: 1, genres: [], runtime: 100, release_date: '2020-01-01', credits: { cast: [], crew: [] } },

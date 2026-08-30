@@ -19,6 +19,18 @@ import {
 const PROXY = '**/api/tmdb*'
 const SUPABASE = 'https://e2e-fake.supabase.co'
 
+// Da usare in page.route() quando un test vuole intercettare una richiesta al
+// catalogo per conto suo. Prima bastava filtrare per URL (`**/discover/**`):
+// ora il percorso TMDB non è più nell'indirizzo, sta nel parametro `path`, e
+// una rotta scritta alla vecchia maniera non aggancia più niente — in silenzio.
+export const TMDB_PROXY = PROXY
+
+// Il percorso TMDB e i parametri di una richiesta intercettata sul proxy.
+export function tmdbRequest(route: Route): { path: string; params: URLSearchParams } {
+  const url = new URL(route.request().url())
+  return { path: url.searchParams.get('path') ?? '', params: url.searchParams }
+}
+
 export interface TmdbOverrides {
   // Risposte per endpoint, con la pagina di discover come parametro.
   trending?: RawMedia[]

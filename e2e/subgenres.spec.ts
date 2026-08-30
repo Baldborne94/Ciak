@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { mockTmdb, mockSupabase, mockAiApi } from './support/mocks'
+import { mockTmdb, mockSupabase, mockAiApi, TMDB_PROXY, tmdbRequest } from './support/mocks'
 import { movie } from './support/fixtures'
 
 // Sottogeneri: scegliere "Antimilitarista" dentro Guerra deve tradursi in una
@@ -13,8 +13,10 @@ import { movie } from './support/fixtures'
 // Risolve i nomi di keyword in id prevedibili, così si può verificare che
 // finiscano davvero in with_keywords.
 async function mockKeywords(page: Page, ids: Record<string, number>) {
-  await page.route('**/search/keyword**', (route) => {
-    const q = (new URL(route.request().url()).searchParams.get('query') ?? '').toLowerCase()
+  await page.route(TMDB_PROXY, async (route) => {
+    const { path, params } = tmdbRequest(route)
+    if (path !== '/search/keyword') return route.fallback()
+    const q = (params.get('query') ?? '').toLowerCase()
     const id = ids[q]
     return route.fulfill({ json: { results: id ? [{ id, name: q }] : [] } })
   })
@@ -24,9 +26,11 @@ async function mockKeywords(page: Page, ids: Record<string, number>) {
 // in italiano: l'app ne fa sempre una gemella in inglese per i titoli leggibili).
 async function watchKeywordParam(page: Page): Promise<(string | null)[]> {
   const seen: (string | null)[] = []
-  await page.route('**/discover/**', async (route) => {
-    const u = new URL(route.request().url())
-    if (u.searchParams.get('language') !== 'en-US') seen.push(u.searchParams.get('with_keywords'))
+  await page.route(TMDB_PROXY, async (route) => {
+    const { path, params } = tmdbRequest(route)
+    if (path.startsWith('/discover/') && params.get('language') !== 'en-US') {
+      seen.push(params.get('with_keywords'))
+    }
     await route.fallback()
   })
   return seen
