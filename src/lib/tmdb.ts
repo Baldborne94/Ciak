@@ -353,8 +353,10 @@ interface RawVideo {
   key: string
   site: string
   type: string
+  name?: string
   official?: boolean
   iso_639_1?: string
+  published_at?: string
 }
 
 interface RawProvider {
@@ -674,12 +676,21 @@ export async function getDetail(
 
   const recommendations = buildRecommendations(raw, type)
 
-  // Best YouTube trailer: prefer official Trailer, then any trailer/teaser.
+  // Il trailer da mostrare, scelto fra i video che TMDB associa a QUESTO titolo.
+  // I video sono contributi degli utenti e capita che qualcuno carichi la chiave
+  // sbagliata: non possiamo saperlo con certezza, ma preferire un ufficiale
+  // nella lingua giusta riduce le probabilità di pescare una voce raffazzonata.
   const videos = (raw.videos?.results ?? []).filter((v) => v.site === 'YouTube')
+  const piuRecente = (a: RawVideo, b: RawVideo) =>
+    (b.published_at ?? '').localeCompare(a.published_at ?? '')
+  const scegli = (pred: (v: RawVideo) => boolean) =>
+    videos.filter(pred).sort(piuRecente)[0]
+
   const trailer =
-    videos.find((v) => v.type === 'Trailer' && v.official) ??
-    videos.find((v) => v.type === 'Trailer') ??
-    videos.find((v) => v.type === 'Teaser') ??
+    scegli((v) => v.type === 'Trailer' && !!v.official && v.iso_639_1 === 'it') ??
+    scegli((v) => v.type === 'Trailer' && !!v.official) ??
+    scegli((v) => v.type === 'Trailer') ??
+    scegli((v) => v.type === 'Teaser') ??
     videos[0]
 
   // Where to watch — all countries TMDB has data for, IT first.
