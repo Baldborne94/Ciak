@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { mockTmdb, mockSupabase, mockAiApi, signIn, E2E_USER } from './support/mocks'
+import { mockTmdb, mockSupabase, mockAiApi, signIn } from './support/mocks'
 import { movie, personDetail, tv } from './support/fixtures'
 
 // Filtri e ordinamenti delle pagine di catalogo (genere, persona, ricerca) e
@@ -164,24 +164,3 @@ test('"Avvisami" registra un avviso di uscita e si può togliere', async ({ page
   await expect.poll(() => db.tables.user_alerts.length).toBe(0)
 })
 
-test('un trofeo sbloccato si può equipaggiare', async ({ page }) => {
-  await signIn(page)
-  await mockTmdb(page)
-  const db = await mockSupabase(page, {
-    user_achievements: [
-      { id: 'a1', user_id: E2E_USER.id, achievement_id: 'first_watch', unlocked_at: '2025-01-01T00:00:00Z' },
-    ],
-  })
-  await page.goto('/trophies')
-
-  await expect(page.getByRole('heading', { name: 'Trofei & Badge' })).toBeVisible()
-
-  // Il primo trofeo sbloccato è cliccabile per equipaggiarlo.
-  const equip = page.getByRole('button', { name: /Equipaggia|Attivo|Scegli/ }).first()
-  if ((await equip.count()) > 0) {
-    await equip.click()
-    await expect
-      .poll(() => (db.tables.user_profile?.[0] as Record<string, unknown>)?.active_achievement_id)
-      .toBeTruthy()
-  }
-})

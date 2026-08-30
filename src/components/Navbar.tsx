@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { useAchievementsCtx } from '../lib/achievementsCtx'
+import { useIdentityCtx } from '../lib/identityCtx'
 
 // Primary links shown inline. Anime/Cartoni now live inside "Cerca".
 const primary = [
@@ -26,7 +26,6 @@ const trailing = [
   { to: '/ai', label: '✨ AI' },
   { to: '/in-arrivo', label: 'In arrivo' },
   { to: '/statistiche', label: '📊 Statistiche' },
-  { to: '/trophies', label: '🏆 Trofei' },
   { to: '/guida', label: '❓ Guida' },
 ]
 
@@ -37,7 +36,7 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
 
 export default function Navbar() {
   const { user, signOut } = useAuth()
-  const { nickname, avatarUrl } = useAchievementsCtx()
+  const { nickname, avatarUrl } = useIdentityCtx()
   const navigate = useNavigate()
   const [listsOpen, setListsOpen] = useState(false)
 

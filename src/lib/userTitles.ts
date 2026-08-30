@@ -2,12 +2,6 @@ import { supabase } from './supabase'
 import { fetchAllRows } from './paged'
 import { missingTitleRows } from './diaryBackfill'
 import { getDetail } from './tmdb'
-import {
-  computeAchievementData,
-  getEarnedIds,
-  ACHIEVEMENTS,
-  type Achievement,
-} from './achievements'
 import type {
   DiaryEntry,
   MediaItem,
@@ -286,72 +280,6 @@ export async function getPublicWatchlist(targetUserId: string): Promise<PublicWa
   return (data ?? []) as PublicWatchlistItem[]
 }
 
-// ── Achievements ──────────────────────────────────────────────────────────────
-
-export async function checkAndUnlockAchievements(
-  userId: string,
-  opts?: { inProgressSeries?: number },
-): Promise<Achievement[]> {
-  const db = client()
-
-  const { data: titles } = await db
-    .from(TABLE)
-    .select('status, is_favorite, personal_rating, notes, genre_ids')
-    .eq('user_id', userId)
-
-  if (!titles) return []
-
-  const data = computeAchievementData(titles, opts)
-  const earnedIds = getEarnedIds(data)
-
-  const { data: already } = await db
-    .from('user_achievements')
-    .select('achievement_id')
-    .eq('user_id', userId)
-
-  const alreadySet = new Set((already ?? []).map((r: { achievement_id: string }) => r.achievement_id))
-  const newIds = earnedIds.filter((id) => !alreadySet.has(id))
-
-  if (newIds.length > 0) {
-    await db.from('user_achievements').upsert(
-      newIds.map((achievement_id) => ({ user_id: userId, achievement_id })),
-      { onConflict: 'user_id,achievement_id', ignoreDuplicates: true },
-    )
-  }
-
-  return newIds.map((id) => ACHIEVEMENTS.find((a) => a.id === id)!).filter(Boolean)
-}
-
-export async function getUnlockedAchievementIds(userId: string): Promise<string[]> {
-  const { data } = await client()
-    .from('user_achievements')
-    .select('achievement_id')
-    .eq('user_id', userId)
-  return (data ?? []).map((r: { achievement_id: string }) => r.achievement_id)
-}
-
-export async function getActiveAchievementId(userId: string): Promise<string | null> {
-  const { data } = await client()
-    .from('user_profile')
-    .select('active_achievement_id')
-    .eq('user_id', userId)
-    .maybeSingle()
-  return (data as { active_achievement_id: string | null } | null)?.active_achievement_id ?? null
-}
-
-export async function setActiveAchievement(
-  userId: string,
-  achievementId: string,
-): Promise<void> {
-  const { error } = await client()
-    .from('user_profile')
-    .upsert({ user_id: userId, active_achievement_id: achievementId })
-  if (error) throw new Error(error.message)
-}
-
-// ── Identità Cinefila ───────────────────────────────────────────────────────
-// Nickname + avatar (DiceBear) + tema, scelti in base ai gusti e salvati sulla
-// riga del profilo. Vivono accanto ad active_achievement_id (colonne distinte).
 
 export interface StoredIdentity {
   nickname: string | null

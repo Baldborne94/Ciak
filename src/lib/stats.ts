@@ -1,4 +1,6 @@
 import { supabase } from './supabase'
+import { fetchAllRows } from './paged'
+import { computeWatchRhythm, type WatchRhythm } from './watchRhythm'
 import { getDetail } from './tmdb'
 import type { MediaDetail, TmdbType } from './types'
 
@@ -37,7 +39,8 @@ export interface CinemaStats {
   totalTitles: number
   movies: number
   series: number
-  filmHours: number // ore stimate solo dai film (durata affidabile)
+  filmHours: number // ore stimate dai film
+  seriesHours: number // ore stimate dagli episodi segnati × durata episodio
   ratedCount: number
   avgRating: number | null
   ratingHistogram: { half: number; count: number }[] // 0.5 → 5
@@ -46,6 +49,7 @@ export interface CinemaStats {
   topActors: CountItem[]
   decades: DecadeBucket[]
   yearsInFilm: YearInFilm[]
+  rhythm: WatchRhythm // quando guardi: mesi, anno su anno, giorni di fila
   enrichedCount: number // quanti titoli sono stati arricchiti via TMDB
   cappedAt: number | null // se abbiamo limitato i titoli arricchiti
 }
@@ -86,33 +90,49 @@ function toTmdbType(media: string): TmdbType {
 export async function computeStats(userId: string): Promise<CinemaStats> {
   const db = client()
 
-  const [titlesRes, diaryRes] = await Promise.all([
-    db
-      .from('user_titles')
-      .select('tmdb_id, media_type, title, personal_rating')
-      .eq('user_id', userId)
-      .eq('status', 'watched'),
-    db
-      .from('user_diary')
-      .select('tmdb_id, media_type, title, rating, watched_on')
-      .eq('user_id', userId),
+  // Paginate: PostgREST taglia ogni risposta a max_rows (1000) senza dirlo, e
+  // qui i totali DEVONO essere esatti — una pagina di statistiche che
+  // sottostima in silenzio è peggio di una che non c'è.
+  const [titles, diary, episodes] = await Promise.all([
+    fetchAllRows<{
+      tmdb_id: number
+      media_type: string
+      title: string
+      personal_rating: number | null
+    }>((from, to) =>
+      db
+        .from('user_titles')
+        .select('tmdb_id, media_type, title, personal_rating')
+        .eq('user_id', userId)
+        .eq('status', 'watched')
+        .order('tmdb_id', { ascending: true })
+        .range(from, to),
+    ),
+    fetchAllRows<{
+      tmdb_id: number
+      media_type: string
+      title: string
+      rating: number | null
+      watched_on: string
+    }>((from, to) =>
+      db
+        .from('user_diary')
+        .select('tmdb_id, media_type, title, rating, watched_on')
+        .eq('user_id', userId)
+        .order('id', { ascending: true })
+        .range(from, to),
+    ),
+    // Episodi visti: servono per contare le ore delle serie, che finora non
+    // entravano nel totale (solo i film avevano una durata).
+    fetchAllRows<{ tv_id: number }>((from, to) =>
+      db
+        .from('user_episodes')
+        .select('tv_id')
+        .eq('user_id', userId)
+        .order('tv_id', { ascending: true })
+        .range(from, to),
+    ).catch(() => [] as { tv_id: number }[]),
   ])
-  if (titlesRes.error) throw new Error(titlesRes.error.message)
-  if (diaryRes.error) throw new Error(diaryRes.error.message)
-
-  const titles = (titlesRes.data ?? []) as {
-    tmdb_id: number
-    media_type: string
-    title: string
-    personal_rating: number | null
-  }[]
-  const diary = (diaryRes.data ?? []) as {
-    tmdb_id: number
-    media_type: string
-    title: string
-    rating: number | null
-    watched_on: string
-  }[]
 
   // Unisci diario + visti in un set di riferimenti unici (chiave id:tipo). Per il
   // voto preferiamo il diario (più recente e specifico per visione); l'anno di
@@ -168,7 +188,13 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
   const actorCount = new Map<string, number>()
   const decadeCount = new Map<number, number>()
   let filmMinutes = 0
+  let seriesMinutes = 0
   let enrichedCount = 0
+
+  // Quanti episodi hai visto per ogni serie: moltiplicati per la durata di un
+  // episodio danno le ore di serie, che prima non entravano nel totale.
+  const episodesByTv = new Map<number, number>()
+  for (const e of episodes) episodesByTv.set(e.tv_id, (episodesByTv.get(e.tv_id) ?? 0) + 1)
 
   details.forEach((d, i) => {
     if (!d) return
@@ -178,6 +204,11 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
     for (const dir of d.directors) directorCount.set(dir.name, (directorCount.get(dir.name) ?? 0) + 1)
     for (const c of d.cast.slice(0, 5)) actorCount.set(c.name, (actorCount.get(c.name) ?? 0) + 1)
     if (ref.type === 'movie' && d.runtime) filmMinutes += d.runtime
+    // Per una serie `runtime` è la durata di UN episodio (episode_run_time):
+    // contiamo solo gli episodi effettivamente segnati, non l'intera serie.
+    if (ref.type === 'tv' && d.runtime) {
+      seriesMinutes += d.runtime * (episodesByTv.get(ref.tmdbId) ?? 0)
+    }
     const year = d.releaseDate ? Number(d.releaseDate.slice(0, 4)) : NaN
     if (!Number.isNaN(year) && year > 1870) {
       const decade = Math.floor(year / 10) * 10
@@ -230,6 +261,8 @@ export async function computeStats(userId: string): Promise<CinemaStats> {
     movies,
     series,
     filmHours: Math.round(filmMinutes / 60),
+    seriesHours: Math.round(seriesMinutes / 60),
+    rhythm: computeWatchRhythm(diary),
     ratedCount: rated.length,
     avgRating,
     ratingHistogram,

@@ -25,24 +25,32 @@ interface DiaryRow {
   watched_on: string
 }
 
-// Query builder finto: ogni metodo di filtro torna se stesso, l'await risolve
-// il risultato — sufficiente per le chain .select().eq().eq() di computeStats.
+// Query builder finto: i metodi di filtro tornano se stessi, l'await risolve il
+// risultato. `range` affetta davvero le righe, perché computeStats ora sfoglia
+// le pagine: un finto che ignorasse gli estremi restituirebbe sempre tutto e il
+// ciclo non finirebbe mai — il test passerebbe per il motivo sbagliato.
 function fakeTable(rows: unknown[]) {
   const b: Record<string, unknown> = {}
+  let slice: [number, number] | null = null
   const chain = () => b
   b.select = chain
   b.eq = chain
-  b.then = (resolve: (v: unknown) => unknown) => resolve({ data: rows, error: null })
+  b.order = chain
+  b.range = (from: number, to: number) => {
+    slice = [from, to]
+    return b
+  }
+  b.then = (resolve: (v: unknown) => unknown) =>
+    resolve({ data: slice ? rows.slice(slice[0], slice[1] + 1) : rows, error: null })
   return b
 }
 
-function setDb(titles: TitleRow[], diary: DiaryRow[]) {
-  vi.mocked(supabase!.from).mockImplementation(
-    (table: string) =>
-      fakeTable(table === 'user_titles' ? titles : diary) as unknown as ReturnType<
-        NonNullable<typeof supabase>['from']
-      >,
-  )
+function setDb(titles: TitleRow[], diary: DiaryRow[], episodes: { tv_id: number }[] = []) {
+  vi.mocked(supabase!.from).mockImplementation((table: string) => {
+    const rows =
+      table === 'user_titles' ? titles : table === 'user_diary' ? diary : episodes
+    return fakeTable(rows) as unknown as ReturnType<NonNullable<typeof supabase>['from']>
+  })
 }
 
 function detail(over: Partial<MediaDetail>): MediaDetail {

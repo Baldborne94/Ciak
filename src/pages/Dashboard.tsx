@@ -7,7 +7,6 @@ import { posterUrl, getSagaContinuations, type SagaContinuation } from '../lib/t
 import { useAuth } from '../lib/auth'
 import { listByStatus, listWatchlist, listAll } from '../lib/userTitles'
 import { listDiary } from '../lib/diary'
-import { computeAchievementData, getNextAchievement, RARITY_STYLES, type NextAchievement } from '../lib/achievements'
 import { getContinueWatching, abandonSeries, type ContinueItem } from '../lib/episodes'
 import { useToast } from '../lib/toastCtx'
 import { usePersistedState } from '../lib/usePersistedState'
@@ -150,7 +149,6 @@ export default function Dashboard() {
   const [continueList, setContinueList] = useState<ContinueItem[]>([])
   const [sagaNext, setSagaNext] = useState<SagaContinuation[]>([])
   const [flashbacks, setFlashbacks] = useState<Flashback[]>([])
-  const [allTitles, setAllTitles] = useState<UserTitle[]>([])
   // Saghe che l'utente ha scartato ("non mi interessa continuarla"): persistito
   // in locale per collection id, così non ricompaiono più.
   const [dismissedSagas, setDismissedSagas] = usePersistedState<number[]>(
@@ -164,7 +162,6 @@ export default function Dashboard() {
       setContinueList([])
       setSagaNext([])
       setFlashbacks([])
-      setAllTitles([])
       return
     }
 
@@ -177,7 +174,6 @@ export default function Dashboard() {
       listByStatus(user.id, 'watched'),
       listAll(user.id),
     ]).then(([watched, all]) => {
-      setAllTitles(all)
       const knownIds = new Set(all.map((t) => t.tmdb_id))
 
       // "Continua la saga": watched movies (most-recent first) → next unwatched
@@ -193,16 +189,6 @@ export default function Dashboard() {
     }).catch(logFailure('ricordi del diario non caricati'))
   }, [user])
 
-  // "Prossimo trofeo": closest still-locked achievement. Uses the episode-derived
-  // in-progress-series count (continue-watching) so "Binge Master" matches reality.
-  const nextTrophy: NextAchievement | null = useMemo(
-    () =>
-      allTitles.length > 0
-        ? getNextAchievement(computeAchievementData(allTitles, { inProgressSeries: continueList.length }))
-        : null,
-    [allTitles, continueList.length],
-  )
-
   const visibleSagas = useMemo(
     () => sagaNext.filter((s) => !dismissedSagas.includes(s.collectionId)),
     [sagaNext, dismissedSagas],
@@ -210,7 +196,7 @@ export default function Dashboard() {
 
   const isEmpty =
     watchlist.length === 0 && continueList.length === 0 && visibleSagas.length === 0 &&
-    flashbacks.length === 0 && !nextTrophy
+    flashbacks.length === 0
 
   async function handleAbandon(c: ContinueItem) {
     if (!user) return
@@ -326,35 +312,6 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* Next trophy — closest locked achievement */}
-        {user && nextTrophy && (
-          <section>
-            <SectionTitle icon="🏆" title="Prossimo trofeo" />
-            <Link
-              to="/trophies"
-              className={`flex flex-wrap items-center gap-5 rounded-2xl border p-5 transition hover:-translate-y-0.5 ${RARITY_STYLES[nextTrophy.achievement.rarity]}`}
-            >
-              <span className="text-5xl">{nextTrophy.achievement.avatar}</span>
-              <div className="min-w-0 flex-1">
-                <p className="font-display text-xl tracking-wide text-zinc-100">
-                  {nextTrophy.achievement.emoji} {nextTrophy.achievement.title}
-                </p>
-                <p className="mt-0.5 text-sm text-zinc-400">{nextTrophy.achievement.subtitle}</p>
-                <div className="mt-3 flex items-center gap-3">
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-theatre-800">
-                    <div
-                      className="h-full rounded-full bg-projector transition-all"
-                      style={{ width: `${Math.round((nextTrophy.current / nextTrophy.target) * 100)}%` }}
-                    />
-                  </div>
-                  <span className="shrink-0 text-sm font-semibold text-zinc-200">
-                    {nextTrophy.current}/{nextTrophy.target}
-                  </span>
-                </div>
-              </div>
-            </Link>
-          </section>
-        )}
 
         {/* Empty state */}
         {user && isEmpty && (

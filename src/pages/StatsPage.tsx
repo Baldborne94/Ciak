@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import PageHeader from '../components/PageHeader'
+import { MONTH_LABELS } from '../lib/watchRhythm'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { computeStats, type CinemaStats, type CountItem } from '../lib/stats'
@@ -60,12 +61,91 @@ function Portrait({ stats }: { stats: CinemaStats }) {
   )
 }
 
-function StatCard({ value, label, icon }: { value: string; label: string; icon: string }) {
+// Le ore diventano un numero che si capisce: 240h non dice niente, «10 giorni
+// interi» sì.
+function giorniEquivalenti(stats: CinemaStats): number {
+  return Math.round(((stats.filmHours + stats.seriesHours) / 24) * 10) / 10
+}
+
+function StatCard({
+  value,
+  label,
+  icon,
+  hint,
+}: {
+  value: string
+  label: string
+  icon: string
+  hint?: string
+}) {
   return (
     <div className="rounded-2xl border border-theatre-800 bg-theatre-900/60 p-5 text-center">
       <div className="text-3xl">{icon}</div>
       <p className="mt-2 font-display text-3xl tracking-wide text-projector">{value}</p>
       <p className="mt-1 text-xs uppercase tracking-wider text-zinc-500">{label}</p>
+      {hint && <p className="mt-1 text-[11px] text-zinc-600">{hint}</p>}
+    </div>
+  )
+}
+
+
+// «Quando guardi»: il diario sa le date, e finora quel dato serviva solo a
+// raggruppare le visioni. Qui diventa il ritratto delle tue abitudini.
+function WatchRhythmChart({ stats }: { stats: CinemaStats }) {
+  const r = stats.rhythm
+  const max = Math.max(...r.perMonth.map((m) => m.count), 1)
+  const delta = r.thisYear - r.lastYear
+  const anno = new Date().getFullYear()
+
+  return (
+    <div className="rounded-2xl border border-theatre-800 bg-theatre-900/60 p-6">
+      <h3 className="mb-1 font-display text-lg tracking-wide text-zinc-100">📆 Quando guardi</h3>
+      <p className="mb-4 text-xs text-zinc-500">
+        Dalle date del tuo diario. I mesi vuoti restano vuoti: raccontano quanto quelli pieni.
+      </p>
+
+      <div className="flex items-end gap-1" style={{ height: 120 }}>
+        {r.perMonth.map((m) => (
+          <div key={m.month} className="flex flex-1 flex-col items-center gap-1">
+            <div
+              className={`w-full rounded-t ${
+                r.busiest?.month === m.month ? 'bg-projector' : 'bg-projector/30'
+              }`}
+              // Un mese a zero resta una riga sottile invece di sparire: la
+              // striscia dei dodici mesi dev'essere continua, altrimenti un
+              // buco sembra un errore del grafico e non un mese senza film.
+              style={{ height: `${Math.max(3, Math.round((m.count / max) * 96))}px` }}
+              title={`${MONTH_LABELS[m.month - 1]}: ${m.count} ${m.count === 1 ? 'visione' : 'visioni'}`}
+            />
+            <span className="text-[10px] text-zinc-600">{MONTH_LABELS[m.month - 1]}</span>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+        <div>
+          <p className="font-display text-2xl text-projector">{r.thisYear}</p>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">nel {anno}</p>
+        </div>
+        <div>
+          <p className="font-display text-2xl text-zinc-300">{r.lastYear}</p>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">nel {anno - 1}</p>
+        </div>
+        <div>
+          <p className="font-display text-2xl text-zinc-300">{r.currentStreakDays}</p>
+          <p className="text-[11px] uppercase tracking-wider text-zinc-500">giorni di fila</p>
+        </div>
+      </div>
+
+      {r.lastYear > 0 && (
+        <p className="mt-3 text-center text-xs text-zinc-500">
+          {delta === 0
+            ? `Stesso passo dell'anno scorso.`
+            : delta > 0
+              ? `${delta} in più dell'anno scorso.`
+              : `${Math.abs(delta)} in meno dell'anno scorso.`}
+        </p>
+      )}
     </div>
   )
 }
@@ -220,10 +300,19 @@ export default function StatsPage() {
         <div className="space-y-6">
           <Portrait stats={stats} />
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {/* Le ore totali sommano film ed episodi segnati: prima le serie non
+              contavano nulla, e per chi guarda soprattutto serie il totale era
+              quasi sempre sbagliato per difetto. */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
             <StatCard icon="🎬" value={String(stats.movies)} label="Film visti" />
             <StatCard icon="📺" value={String(stats.series)} label="Serie viste" />
-            <StatCard icon="⏱️" value={`${stats.filmHours}h`} label="Ore di film" />
+            <StatCard
+              icon="⏱️"
+              value={`${stats.filmHours + stats.seriesHours}h`}
+              label="Ore guardate"
+              hint={`${stats.filmHours}h di film · ${stats.seriesHours}h di serie`}
+            />
+            <StatCard icon="📅" value={String(giorniEquivalenti(stats))} label="Giorni interi" />
             <StatCard icon="⭐" value={stats.avgRating != null ? String(stats.avgRating) : '—'} label="Voto medio" />
           </div>
 
@@ -233,6 +322,7 @@ export default function StatsPage() {
             <RankList title="Registi & creatori" icon="🎥" items={stats.topDirectors} />
             <RankList title="Attori più visti" icon="🌟" items={stats.topActors} />
             <DecadeChart stats={stats} />
+            <WatchRhythmChart stats={stats} />
             <YearsInFilm stats={stats} />
           </div>
 
