@@ -6,6 +6,7 @@ import ToastHost from './ToastHost'
 import InstallPrompt from './InstallPrompt'
 import ReleaseAlerts from './ReleaseAlerts'
 import ErrorBoundary from './ErrorBoundary'
+import SchemaBanner from './SchemaBanner'
 import { Loader } from './States'
 
 export default function Layout() {
@@ -16,6 +17,7 @@ export default function Layout() {
     <div className="flex min-h-screen flex-col">
       <ScrollManager />
       <Navbar />
+      <SchemaBanner />
       <main className="container-cine flex-1 py-8">
         <ErrorBoundary key={pathname}>
           <Suspense fallback={<Loader label="Carico…" />}>

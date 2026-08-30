@@ -85,6 +85,28 @@ e2e/             test end-to-end + mock
 supabase/        schema SQL e policy
 ```
 
+## Schema del database
+
+I file `supabase/schema_vN_*.sql` si eseguono **a mano** nel SQL Editor di
+Supabase, mentre il codice si aggiorna da solo a ogni deploy: i due si possono
+separare, ed è già successo (una funzione in produzione prima della sua
+tabella).
+
+Per questo esiste il registro `schema_version`. Ogni nuovo file SQL:
+
+1. si chiude registrando la propria versione —
+   `insert into public.schema_version (version) values (N) on conflict do nothing;`
+2. porta con sé l'aumento di `SCHEMA_RICHIESTO` in `src/lib/schemaVersion.ts`.
+
+Se le due cose non viaggiano insieme il registro mente, che è peggio di non
+averlo. Quando il database resta indietro, `SchemaBanner` lo dice in cima a
+ogni pagina invece di lasciare che l'utente lo scopra da un salvataggio muto.
+
+Chi aggiunge una tabella con dati dell'utente la aggiunge anche a
+`TABELLE_ESPORTATE` (`src/lib/exportData.ts`), altrimenti il backup che
+l'utente scarica è silenziosamente incompleto. Cache, contatori e iscrizioni
+push restano fuori di proposito.
+
 ## Git
 
 Si lavora su un branch dedicato, mai direttamente su `main`; ogni lavoro
