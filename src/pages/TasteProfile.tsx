@@ -288,6 +288,8 @@ export default function TasteProfile() {
       title: string
       poster_path: string | null
       rating: number
+      isFavorite: boolean
+      when: string // data della visione o del salvataggio, per i pari merito
     }
     const ratedByTitle = new Map<string, RatedItem>()
     const keyOf = (tmdbId: number, mediaType: string) => `${mediaType}:${tmdbId}`
@@ -303,6 +305,8 @@ export default function TasteProfile() {
           title: e.title,
           poster_path: e.poster_path,
           rating: e.rating,
+          isFavorite: false,
+          when: e.watched_on ?? e.created_at ?? '',
         })
       }
     }
@@ -315,6 +319,8 @@ export default function TasteProfile() {
         title: r.title,
         poster_path: r.poster_path,
         rating: r.personal_rating,
+        isFavorite: r.is_favorite,
+        when: r.watched_at ?? r.updated_at ?? '',
       })
     }
     const rated = [...ratedByTitle.values()]
@@ -345,7 +351,18 @@ export default function TasteProfile() {
     const avg =
       rated.length > 0 ? rated.reduce((s, r) => s + r.rating, 0) / rated.length : 0
 
-    const topRated = [...rated].sort((a, b) => b.rating - a.rating).slice(0, 10)
+    // A parità di voto serve un criterio, altrimenti "i tuoi titoli col voto
+    // più alto" sono solo i primi dieci capitati: con molti 5 stelle
+    // l'ordinamento per solo voto lascia decidere all'ordine di inserimento.
+    // Prima i preferiti (li hai scelti due volte), poi i più recenti.
+    const topRated = [...rated]
+      .sort(
+        (a, b) =>
+          b.rating - a.rating ||
+          Number(b.isFavorite) - Number(a.isFavorite) ||
+          b.when.localeCompare(a.when),
+      )
+      .slice(0, 10)
 
     return { watched, rated, favs, topGenres, types, ratingDist, avg, topRated }
   }, [rows, diary, genreMap])
@@ -439,9 +456,14 @@ export default function TasteProfile() {
       {/* Top rated titles */}
       {stats.topRated.length > 0 && (
         <section className="mt-12">
-          <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
+          <h2 className="mb-1 font-display text-2xl tracking-wide text-zinc-100">
             🏅 I tuoi titoli col voto più alto
           </h2>
+          {/* Il criterio dichiarato: con molti 5 stelle "i dieci col voto più
+              alto" non significa niente se non si dice come si scelgono. */}
+          <p className="mb-4 text-xs text-zinc-500">
+            A parità di voto vengono prima i preferiti, poi i visti più di recente.
+          </p>
           <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
             {stats.topRated.map((r) => {
               const poster = posterUrl(r.poster_path)
