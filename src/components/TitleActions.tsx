@@ -9,8 +9,10 @@ import {
   checkAndUnlockAchievements,
   type TitleRef,
 } from '../lib/userTitles'
+import { quickRate } from '../lib/diary'
 import { useToast } from '../lib/toastCtx'
 import { useLibrary } from '../lib/libraryCtx'
+import StarRating from './StarRating'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
 const STATUS_ORDER: TitleStatus[] = [
@@ -102,6 +104,42 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
     }
   }
 
+  // Voto diretto dalla scheda del film: registra la visione nel diario (così
+  // compare in «Visti & Diario») e sincronizza il voto in user_titles. Dare un
+  // voto implica averlo visto: se non è già visto/in corso, lo segna come visto.
+  async function rate(v: number | null) {
+    if (!user) return
+    setSaving(true)
+    setError(null)
+    try {
+      if (v != null && record?.status !== 'watched' && record?.status !== 'in_progress') {
+        await upsertUserTitle(user.id, titleRef, {
+          status: 'watched',
+          watched_at: record?.watched_at ?? new Date().toISOString(),
+        })
+      }
+      await quickRate(
+        user.id,
+        {
+          tmdbId: titleRef.tmdbId,
+          mediaType: titleRef.mediaType,
+          title: titleRef.title,
+          posterPath: titleRef.posterPath,
+        },
+        v,
+      )
+      // Ricarica la riga così voto e stato aggiornati si riflettono qui.
+      const next = await getUserTitle(user.id, titleRef.tmdbId, titleRef.mediaType)
+      setRecord(next)
+      refreshLibrary()
+    } catch (e) {
+      setError((e as Error).message)
+      showToast(`Voto non salvato: ${(e as Error).message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function setStatus(status: TitleStatus) {
     // Cliccando di nuovo lo stato già attivo lo si deseleziona: il titolo
     // esce dalle liste.
@@ -178,11 +216,16 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
         )}
       </div>
 
+      {/* Voto diretto: tocca le stelle per votare (e registrarlo nel diario). */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs uppercase tracking-wider text-zinc-500">Il tuo voto</span>
+        <StarRating value={record?.personal_rating ?? null} onChange={rate} size="md" />
+      </div>
+
       {record && (
         <p className="mt-2 text-xs text-zinc-500">
           Nella tua collezione · stato:{' '}
           <span className="text-zinc-300">{STATUS_LABELS[record.status]}</span>
-          {record.personal_rating ? ` · voto ${record.personal_rating}/5` : ''}
         </p>
       )}
       {error && <p className="mt-2 text-xs text-curtain-light">{error}</p>}
