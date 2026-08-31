@@ -3,6 +3,7 @@ import { logFailure } from '../lib/logFailure'
 import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { ScrollRow } from '../components/MediaRow'
+import SavedTitleCard from '../components/SavedTitleCard'
 import { posterUrl, getSagaContinuations, type SagaContinuation } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { listByStatus, listWatchlist, listAll } from '../lib/userTitles'
@@ -149,6 +150,7 @@ export default function Dashboard() {
   const [continueList, setContinueList] = useState<ContinueItem[]>([])
   const [sagaNext, setSagaNext] = useState<SagaContinuation[]>([])
   const [flashbacks, setFlashbacks] = useState<Flashback[]>([])
+  const [recenti, setRecenti] = useState<UserTitle[]>([])
   // Saghe che l'utente ha scartato ("non mi interessa continuarla"): persistito
   // in locale per collection id, così non ricompaiono più.
   const [dismissedSagas, setDismissedSagas] = usePersistedState<number[]>(
@@ -162,6 +164,7 @@ export default function Dashboard() {
       setContinueList([])
       setSagaNext([])
       setFlashbacks([])
+      setRecenti([])
       return
     }
 
@@ -175,6 +178,14 @@ export default function Dashboard() {
       listAll(user.id),
     ]).then(([watched, all]) => {
       const knownIds = new Set(all.map((t) => t.tmdb_id))
+
+      // Gli ultimi visti, i più recenti davanti. `watched_at` può mancare sui
+      // titoli segnati prima che la data venisse registrata: per quelli vale
+      // l'ultima modifica, che è comunque meglio di lasciarli in fondo a caso.
+      const quando = (t: UserTitle) => t.watched_at ?? t.updated_at ?? ''
+      setRecenti(
+        [...watched].sort((a, b) => quando(b).localeCompare(quando(a))).slice(0, 12),
+      )
 
       // "Continua la saga": watched movies (most-recent first) → next unwatched
       // film in each collection they belong to.
@@ -196,7 +207,7 @@ export default function Dashboard() {
 
   const isEmpty =
     watchlist.length === 0 && continueList.length === 0 && visibleSagas.length === 0 &&
-    flashbacks.length === 0
+    flashbacks.length === 0 && recenti.length === 0
 
   async function handleAbandon(c: ContinueItem) {
     if (!user) return
@@ -225,26 +236,50 @@ export default function Dashboard() {
     <div>
       <PageHeader
         eyebrow="La tua sala"
-        title="Bentornato al cinema"
+        // «Bentornato» a chi non è mai stato suona come un'app che non ti
+        // guarda. Il saluto segue quello che ha davanti.
+        title={user && isEmpty ? 'Benvenuto al cinema' : 'Bentornato al cinema'}
         subtitle="Il tuo archivio, le tue liste e cosa vedere adesso."
       />
 
       <div className="space-y-12">
-        {/* AI shortcut — prominent banner at top */}
-        {user && (
+        {/* La tua roba, prima di tutto: la Sala mostrava solo sezioni
+            "extra" — un suggerimento casuale, le saghe da finire, i ricordi —
+            tutte condizionali e tutte capaci di essere vuote insieme. Con sei
+            titoli in archivio si apriva praticamente vuota. */}
+        {user && watchlist.length > 0 && (
           <section>
-            <Link
-              to="/ai?tab=tonight"
-              className="group flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-projector/30 bg-gradient-to-br from-projector/10 via-theatre-900/60 to-theatre-900/40 p-6 transition hover:border-projector/60 hover:from-projector/15"
-            >
-              <div>
-                <p className="font-display text-xl tracking-wide text-zinc-100">✨ Non sai cosa vedere stasera?</p>
-                <p className="mt-1 text-sm text-zinc-400">
-                  Dimmi umore e tempo: trovo io il film o la serie perfetta per te.
-                </p>
-              </div>
-              <span className="btn-primary shrink-0">Apri «Stasera» →</span>
-            </Link>
+            <div className="mb-4 flex items-baseline justify-between gap-4">
+              <SectionTitle icon="🎟️" title="Da vedere" />
+              <Link to="/lists/watchlist" className="shrink-0 text-sm text-projector hover:underline">
+                Vedi tutti ({watchlist.length}) →
+              </Link>
+            </div>
+            <ScrollRow>
+              {watchlist.slice(0, 12).map((t) => (
+                <div key={t.id} className="w-40 shrink-0">
+                  <SavedTitleCard record={t} />
+                </div>
+              ))}
+            </ScrollRow>
+          </section>
+        )}
+
+        {user && recenti.length > 0 && (
+          <section>
+            <div className="mb-4 flex items-baseline justify-between gap-4">
+              <SectionTitle icon="🎬" title="Visti di recente" />
+              <Link to="/diario" className="shrink-0 text-sm text-projector hover:underline">
+                Apri il diario →
+              </Link>
+            </div>
+            <ScrollRow>
+              {recenti.map((t) => (
+                <div key={t.id} className="w-40 shrink-0">
+                  <SavedTitleCard record={t} />
+                </div>
+              ))}
+            </ScrollRow>
           </section>
         )}
 
@@ -314,6 +349,26 @@ export default function Dashboard() {
 
 
         {/* Empty state */}
+        {/* La scorciatoia all'AI: utile, ma sta DOPO le tue cose. In cima
+            faceva sembrare la Sala la pubblicità di una funzione invece che
+            il tuo archivio. */}
+        {user && (
+          <section>
+            <Link
+              to="/ai?tab=tonight"
+              className="group flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-projector/30 bg-gradient-to-br from-projector/10 via-theatre-900/60 to-theatre-900/40 p-6 transition hover:border-projector/60 hover:from-projector/15"
+            >
+              <div>
+                <p className="font-display text-xl tracking-wide text-zinc-100">✨ Non sai cosa vedere stasera?</p>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Dimmi umore e tempo: trovo io il film o la serie perfetta per te.
+                </p>
+              </div>
+              <span className="btn-primary shrink-0">Apri «Stasera» →</span>
+            </Link>
+          </section>
+        )}
+
         {user && isEmpty && (
           <section className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
             <p className="text-zinc-300">

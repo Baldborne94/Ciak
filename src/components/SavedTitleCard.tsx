@@ -41,7 +41,9 @@ export default function SavedTitleCard({
           )}
         </div>
         <div className="p-3">
-          <h3 className="line-clamp-1 text-sm font-semibold text-zinc-100">
+          {/* Due righe, non una: nelle file strette della Sala «The Lighthouse»
+              diventava «The…», che non identifica niente. */}
+          <h3 className="line-clamp-2 text-sm font-semibold text-zinc-100">
             {record.title}
           </h3>
           <p className="mt-0.5 text-xs text-zinc-500">

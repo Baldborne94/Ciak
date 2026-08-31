@@ -204,3 +204,49 @@ test('la watchlist si filtra per tipo e si riordina', async ({ page }) => {
   await expect(page.getByText('Una Serie')).toBeVisible()
   await expectNoCrash(page)
 })
+
+// ── La Sala mostra la tua roba ────────────────────────────────────────────
+// Mostrava solo sezioni "extra" — un suggerimento casuale, le saghe da finire,
+// i ricordi — tutte condizionali e tutte capaci di essere vuote insieme: con
+// sei titoli in archivio si apriva praticamente vuota.
+
+test('la Sala mostra la watchlist e gli ultimi visti', async ({ page }) => {
+  await signIn(page)
+  await mockAiApi(page)
+  await mockTmdb(page)
+  await mockSupabase(page, {
+    user_titles: [
+      {
+        id: 't-1', user_id: E2E_USER.id, tmdb_id: 101, media_type: 'movie', title: 'Midsommar',
+        poster_path: '/p.jpg', status: 'to_watch', is_favorite: false, personal_rating: null,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      },
+      {
+        id: 't-2', user_id: E2E_USER.id, tmdb_id: 102, media_type: 'movie', title: 'Hereditary',
+        poster_path: '/p.jpg', status: 'watched', is_favorite: false, personal_rating: 5,
+        watched_at: '2026-08-20T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-08-20T00:00:00Z',
+      },
+    ],
+  })
+
+  await page.goto('/')
+
+  // Quello che hai in lista, e quello che hai appena visto: entrambi in chiaro,
+  // senza dover navigare altrove.
+  const daVedere = page.locator('section', { hasText: 'Da vedere' }).first()
+  await expect(daVedere.getByText('Midsommar')).toBeVisible()
+  const visti = page.locator('section', { hasText: 'Visti di recente' }).first()
+  await expect(visti.getByText('Hereditary')).toBeVisible()
+})
+
+test('a chi non ha ancora niente la Sala dà il benvenuto, non il bentornato', async ({ page }) => {
+  await signIn(page)
+  await mockAiApi(page)
+  await mockTmdb(page)
+  await mockSupabase(page, { user_titles: [] })
+
+  await page.goto('/')
+
+  await expect(page.getByRole('heading', { name: 'Benvenuto al cinema' })).toBeVisible()
+})
