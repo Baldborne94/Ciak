@@ -18,7 +18,9 @@ function registro(version: number) {
 test('nessun avviso quando il database è allineato', async ({ page }) => {
   await signIn(page)
   await mockTmdb(page)
-  await mockSupabase(page, { schema_version: registro(16) })
+  // Molto avanti: questo test verifica il caso «allineato», e non deve
+  // diventare rosso al prossimo schema.
+  await mockSupabase(page, { schema_version: registro(999) })
 
   await page.goto('/settings')
   await expect(page.getByRole('heading', { name: 'Impostazioni' })).toBeVisible()
@@ -36,7 +38,11 @@ test('avvisa quando il database è indietro, dicendo di quanto', async ({ page }
   // Non basta dire «c'è un problema»: deve dire quale versione c'è, quale
   // serve e dove stanno i file da eseguire.
   await expect(banda).toContainText('v14')
-  await expect(banda).toContainText('v16')
+  // La versione richiesta non è scritta a mano: un test che si rompe a ogni
+  // schema nuovo si finisce per aggiornare senza leggerlo. Che il numero sia
+  // QUELLO giusto lo verificano gli unitari (SCHEMA_RICHIESTO contro i file
+  // SQL, e la banda contro SCHEMA_RICHIESTO).
+  await expect(banda).toContainText(/ne serve almeno v\d+/)
   await expect(banda).toContainText('supabase/')
 })
 
@@ -44,7 +50,8 @@ test('avvisa anche se il registro delle versioni non esiste', async ({ page }) =
   await signIn(page)
   await mockTmdb(page)
   await mockSupabase(page)
-  // Tabella assente: è il caso di chi non ha ancora eseguito lo schema v16.
+  // Tabella assente: è il caso di chi non ha ancora eseguito lo schema v16,
+  // quello che ha introdotto il registro.
   await page.route('**/rest/v1/schema_version*', (route) =>
     route.fulfill({
       status: 404,

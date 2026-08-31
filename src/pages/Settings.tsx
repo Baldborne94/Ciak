@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { tmdbConfigurato } from '../lib/tmdb'
@@ -16,6 +16,115 @@ import {
   nomeFileEsportazione,
   riassuntoEsportazione,
 } from '../lib/exportData'
+import { leggiErrori, cancellaErrori, type ErroreRegistrato } from '../lib/errorLog'
+
+function quando(iso: string): string {
+  return new Date(iso).toLocaleString('it-IT', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+// Il diario degli errori, guardabile senza aprire la console né il SQL Editor.
+// È il punto di tutta la funzione: un errore che nessuno legge non è diverso
+// da un errore ingoiato.
+function DiagnosticaSettings() {
+  const { user } = useAuth()
+  const [errori, setErrori] = useState<ErroreRegistrato[] | null>(null)
+  const [aperto, setAperto] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const ricarica = useCallback(async () => {
+    if (!user) return
+    setBusy(true)
+    try {
+      setErrori(await leggiErrori(user.id))
+    } catch {
+      setErrori([])
+    } finally {
+      setBusy(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    void ricarica()
+  }, [ricarica])
+
+  return (
+    <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5 md:col-span-2">
+      <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">🩺 Diagnostica</h2>
+      {!user ? (
+        <p className="text-sm text-zinc-400">Accedi per vedere gli errori registrati.</p>
+      ) : (
+        <>
+          <p className="text-sm text-zinc-400">
+            Gli errori che l'app incontra senza interromperti finiscono qui, oltre che nella
+            console. Se qualcosa &laquo;sparisce&raquo; senza spiegazione, di solito la
+            spiegazione è in questo elenco.
+          </p>
+
+          {errori === null ? (
+            <p className="mt-4 text-xs text-zinc-500">Carico…</p>
+          ) : errori.length === 0 ? (
+            <p className="mt-4 text-sm text-emerald-400">Nessun errore registrato. 🎉</p>
+          ) : (
+            <ul className="mt-4 divide-y divide-theatre-800 text-sm">
+              {errori.map((e) => (
+                <li key={e.id} className="py-2">
+                  <button
+                    onClick={() => setAperto(aperto === e.id ? null : e.id)}
+                    aria-expanded={aperto === e.id}
+                    className="flex w-full items-baseline justify-between gap-3 text-left"
+                  >
+                    <span className="text-zinc-200">
+                      <span className="text-curtain-light">{e.contesto}</span> — {e.messaggio}
+                    </span>
+                    <span className="shrink-0 text-xs text-zinc-500">{quando(e.created_at)}</span>
+                  </button>
+                  {aperto === e.id && (
+                    <div className="mt-2 space-y-1 text-xs text-zinc-500">
+                      {e.percorso && <p>Pagina: {e.percorso}</p>}
+                      {e.dettaglio && (
+                        <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-theatre-950/60 p-2">
+                          {e.dettaglio}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button onClick={() => void ricarica()} disabled={busy} className="btn-ghost">
+              ↻ Aggiorna
+            </button>
+            {errori && errori.length > 0 && (
+              <button
+                onClick={async () => {
+                  setBusy(true)
+                  try {
+                    await cancellaErrori(user.id)
+                    setErrori([])
+                  } finally {
+                    setBusy(false)
+                  }
+                }}
+                disabled={busy}
+                className="btn-ghost"
+              >
+                🗑️ Svuota
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
 
 function BackupSettings() {
   const { user } = useAuth()
@@ -212,6 +321,8 @@ export default function Settings() {
         <PushSettings />
 
         <BackupSettings />
+
+        <DiagnosticaSettings />
 
         <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
           <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">🎯 Preferenze AI</h2>

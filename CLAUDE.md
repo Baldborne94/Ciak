@@ -21,6 +21,9 @@ In pratica, quando tocchi qualcosa:
    indebolirlo per farlo tacere.
 4. **Cambi logica pura** (calcoli, filtri, ordinamenti) → coprila con un test
    unitario in `src/lib/*.test.ts`, molto più veloce di un test E2E.
+5. **Cambi un componente** (stati, tastiera, cosa compare e cosa no) → provalo
+   in `src/components/*.test.tsx`. Sono secondi invece di minuti, quindi si
+   possono eseguire a ogni salvataggio.
 
 Prima di considerare finito un lavoro, esegui tutto:
 
@@ -30,12 +33,29 @@ npm run lint && npm run typecheck && npm test && npm run build && npm run test:e
 
 Sono gli stessi comandi della CI: se passano qui, passano lì.
 
-## I due livelli di test
+## I tre livelli di test
 
 | | Dove | Cosa copre | Comando |
 | --- | --- | --- | --- |
-| Unitari (Vitest) | `src/lib/*.test.ts` | Logica pura: statistiche, filtri, cache, avvisi | `npm test` |
+| Unitari (Vitest) | `src/lib/*.test.ts`, `api/*.test.ts` | Logica pura: statistiche, filtri, cache, avvisi, autorizzazioni | `npm test` |
+| Componenti (Vitest + Testing Library) | `src/components/*.test.tsx` | Un componente da solo: stati, tastiera, cosa compare e cosa no | `npm test` |
 | End-to-end (Playwright) | `e2e/*.spec.ts` | L'app in un browser vero: ogni schermata e ogni azione principale | `npm run test:e2e` |
+
+**Scegliere il livello giusto è quasi tutto.** L'intera suite unitaria (compresi
+i componenti) gira in circa cinque secondi; quella E2E in un quarto d'ora. Un
+comportamento che si può provare senza rete e senza navigazione — un voto a
+mezza stella, la trappola del focus di un modale, un avviso che deve tacere —
+non merita un browser intero. Gli E2E restano per ciò che solo loro vedono:
+navigare fra schermate, salvare davvero e ritrovarlo altrove.
+
+I test dei componenti usano jsdom (`environmentMatchGlobs` in
+`vitest.config.ts`, solo per i `.tsx`: la logica pura resta su `node`, che è più
+veloce). `src/test/setup.ts` monta i matcher di jest-dom e smonta i componenti
+fra un test e l'altro.
+
+Si interroga il DOM **come farebbe una persona** — `getByRole`, `getByLabelText`,
+il testo visibile — non per classe CSS: così il test descrive il comportamento e
+sopravvive a un cambio di stile, invece di rompersi a ogni ritocco.
 
 I test E2E sono **ermetici**: TMDB, Supabase e le immagini sono intercettati e
 sostituiti con dati finti (`e2e/support/mocks.ts`). Non servono chiavi né
@@ -71,6 +91,12 @@ Due guardie automatiche, oltre ai test veri e propri:
   passate a `/discover` come `with_keywords`. Più keyword per lo stesso
   sottogenere stanno in OR, perché i titoli non sono etichettati in modo
   uniforme (`world war ii` e `wwii` convivono).
+- Un fallimento «best effort» si passa a `logFailure(contesto)`, mai a un
+  `catch {}` vuoto: finisce in console **e** nel diario su Supabase, che le
+  Impostazioni mostrano. Un `catch` muto fa sparire un dato senza lasciare
+  traccia — è già costato statistiche sbagliate per settimane. Se il fallimento
+  si ripete in ciclo, segnalalo **una volta col totale** («47 titoli su 600»),
+  non a ogni giro.
 - Le chiavi Anthropic e TMDB vivono **solo** lato server (`api/`), mai con
   prefisso `VITE_`: con quel prefisso finiscono nel bundle, dove chiunque le
   copia. Il catalogo passa da `/api/tmdb`, che tiene una **lista dei percorsi

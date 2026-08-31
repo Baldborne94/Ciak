@@ -4,6 +4,7 @@ import { computeWatchRhythm, type WatchRhythm } from './watchRhythm'
 import { mapLimit } from './mapLimit'
 import { cacheFacts, factsKey, getCachedFacts } from './titleFactsCache'
 import { fetchTitleFacts } from './tmdb'
+import { logFailure } from './logFailure'
 import type { TitleFacts, TmdbType } from './types'
 
 // Statistiche cinefile: aggregano ciò che hai guardato (user_titles "watched" +
@@ -196,14 +197,23 @@ export async function computeStats(
   // visibile, i numeri crescono sotto gli occhi, e chiudendo la pagina a metà
   // il lavoro già fatto NON va perso (prima si salvava solo alla fine).
   const BLOCCO = 40
+  // I titoli che TMDB non restituisce vanno contati, non ignorati: è
+  // esattamente così che le statistiche sono rimaste sbagliate a lungo — un
+  // regista con quattro film invece di otto, e nessuna riga da nessuna parte a
+  // dirlo. Si segnala UNA volta alla fine, col totale: seicento righe identiche
+  // sarebbero rumore, «47 titoli su 600 non hanno risposto» è un'informazione.
+  let falliti = 0
+  let primoErrore: unknown = null
   for (let i = 0; i < daChiedere.length; i += BLOCCO) {
     const gruppo = daChiedere.slice(i, i + BLOCCO)
     const nuovi = new Map<string, TitleFacts>()
     await mapLimit(gruppo, CONCORRENZA, async (r) => {
       try {
         nuovi.set(factsKey(r.type, r.tmdbId), await fetchTitleFacts(r.type, r.tmdbId))
-      } catch {
+      } catch (e) {
         // Un titolo che non risponde non deve far fallire tutta la pagina.
+        falliti++
+        primoErrore ??= e
       }
     })
     cacheFacts(nuovi)
@@ -212,6 +222,16 @@ export async function computeStats(
       done: toEnrich.length - daChiedere.length + Math.min(i + BLOCCO, daChiedere.length),
       total: toEnrich.length,
     })
+  }
+
+  if (falliti > 0) {
+    const dettaglio = primoErrore instanceof Error ? primoErrore.message : String(primoErrore)
+    logFailure('statistiche: titoli non letti dal catalogo')(
+      new Error(
+        `${falliti} titoli su ${toEnrich.length} non hanno risposto, quindi generi, registi e ` +
+          `durate qui sotto sono incompleti. Primo errore: ${dettaglio}`,
+      ),
+    )
   }
 
   return aggrega()
