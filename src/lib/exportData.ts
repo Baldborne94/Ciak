@@ -25,8 +25,9 @@ export const TABELLE_ESPORTATE = [
 
 // Volutamente fuori: `user_song_cache` e `ai_usage` sono cache e contatori
 // (si ricostruiscono da soli), `push_subscriptions` vale solo per il browser
-// che l'ha creata e altrove è spazzatura. Un backup che contiene tutto è un
-// backup che nessuno legge.
+// che l'ha creata e altrove è spazzatura, `client_errors` è diagnostica e non
+// un ricordo di cinema. Un backup che contiene tutto è un backup che nessuno
+// legge.
 
 export interface EsportazioneCiak {
   formato: 'ciak-export'

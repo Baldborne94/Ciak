@@ -10,7 +10,7 @@ import { logFailure } from './logFailure'
 // confrontiamo con quella che questo codice si aspetta.
 
 // Alzalo insieme a ogni nuovo file supabase/schema_vN_*.sql.
-export const SCHEMA_RICHIESTO = 16
+export const SCHEMA_RICHIESTO = 17
 
 export type EsitoSchema =
   | { stato: 'ok'; versione: number }

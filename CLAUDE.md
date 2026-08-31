@@ -91,6 +91,12 @@ Due guardie automatiche, oltre ai test veri e propri:
   passate a `/discover` come `with_keywords`. Più keyword per lo stesso
   sottogenere stanno in OR, perché i titoli non sono etichettati in modo
   uniforme (`world war ii` e `wwii` convivono).
+- Un fallimento «best effort» si passa a `logFailure(contesto)`, mai a un
+  `catch {}` vuoto: finisce in console **e** nel diario su Supabase, che le
+  Impostazioni mostrano. Un `catch` muto fa sparire un dato senza lasciare
+  traccia — è già costato statistiche sbagliate per settimane. Se il fallimento
+  si ripete in ciclo, segnalalo **una volta col totale** («47 titoli su 600»),
+  non a ogni giro.
 - Le chiavi Anthropic e TMDB vivono **solo** lato server (`api/`), mai con
   prefisso `VITE_`: con quel prefisso finiscono nel bundle, dove chiunque le
   copia. Il catalogo passa da `/api/tmdb`, che tiene una **lista dei percorsi

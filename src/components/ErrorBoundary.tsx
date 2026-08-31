@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { registraErrore } from '../lib/errorLog'
 
 interface Props {
   children: ReactNode
@@ -19,9 +20,10 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Best-effort: in produzione finisce nella console del browser; basta per
-    // capire cosa è andato storto senza un servizio di tracking esterno.
     console.error('Errore non gestito:', error, info.componentStack)
+    // Un errore che ha svuotato lo schermo è il più importante da ritrovare
+    // dopo: la console dell'utente non la leggerà nessuno.
+    void registraErrore('render (schermata bianca evitata)', error)
   }
 
   render() {

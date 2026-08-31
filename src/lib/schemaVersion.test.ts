@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { valutaSchema, messaggioSchema } from './schemaVersion'
+import { readdirSync, readFileSync } from 'node:fs'
+import { valutaSchema, messaggioSchema, SCHEMA_RICHIESTO } from './schemaVersion'
 
 describe('valutaSchema', () => {
   it('sta zitto quando il database è allineato', () => {
@@ -47,5 +48,33 @@ describe('messaggioSchema', () => {
     const testo = messaggioSchema({ stato: 'assente' }, 16)
     expect(testo).toContain('sconosciuta')
     expect(testo).toContain('16')
+  })
+})
+
+describe('SCHEMA_RICHIESTO', () => {
+  const dir = new URL('../../supabase/', import.meta.url)
+  const file = (n: string) => readFileSync(new URL(n, dir), 'utf8')
+
+  const versioniSuDisco = readdirSync(dir)
+    .map((n) => /^schema_v(\d+)_/.exec(n)?.[1])
+    .filter((v): v is string => Boolean(v))
+    .map(Number)
+
+  it('corrisponde al file SQL più recente', () => {
+    // La guardia che tiene onesto il registro: se il codice chiede una versione
+    // che nessun file porta, il banner mentirebbe a tutti; se un file c'è ma il
+    // codice non lo chiede, nessuno si accorgerebbe del database indietro.
+    expect(SCHEMA_RICHIESTO).toBe(Math.max(...versioniSuDisco))
+  })
+
+  it('ogni file SQL registra la propria versione', () => {
+    // Dal v16 in poi, quando il registro esiste. Un file che non si registra
+    // lascia il registro fermo, e il registro fermo è peggio di non averlo.
+    for (const v of versioniSuDisco.filter((n) => n > 16)) {
+      const nome = readdirSync(dir).find((n) => n.startsWith(`schema_v${v}_`))!
+      expect(file(nome), nome).toMatch(
+        new RegExp(`insert into public\\.schema_version[\\s\\S]*?${v}`),
+      )
+    }
   })
 })

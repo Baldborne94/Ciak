@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import SchemaBanner from './SchemaBanner'
-import { leggiSchema } from '../lib/schemaVersion'
+import { leggiSchema, SCHEMA_RICHIESTO } from '../lib/schemaVersion'
 import { useAuth } from '../lib/auth'
 
 vi.mock('../lib/schemaVersion', async () => {
@@ -38,7 +38,10 @@ describe('SchemaBanner', () => {
 
     const banda = await screen.findByRole('status')
     expect(banda).toHaveTextContent('v14')
-    expect(banda).toHaveTextContent('v16')
+    // Non il numero scritto a mano: così il test non va aggiornato a ogni
+    // schema nuovo, e continua a verificare ciò che gli interessa — che la
+    // banda dica quale versione serve.
+    expect(banda).toHaveTextContent(`v${SCHEMA_RICHIESTO}`)
     // Un avviso che non dice come rimediare è solo un allarme.
     expect(banda).toHaveTextContent('supabase/')
   })
