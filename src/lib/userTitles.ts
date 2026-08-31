@@ -1,5 +1,7 @@
 import { supabase } from './supabase'
 import { fetchAllRows } from './paged'
+import { chiaveCollezione, leggiCopia, salvaCopia } from './offlineCache'
+import { segnalaCopia, segnalaDatiFreschi } from './offlineState'
 import { missingTitleRows } from './diaryBackfill'
 import { getDetail } from './tmdb'
 import type {
@@ -150,11 +152,43 @@ export async function listFavorites(userId: string): Promise<UserTitle[]> {
 // card pur essendo salvati, e non sempre gli stessi.
 // Qui scorriamo tutte le pagine, con un ordine stabile perché la paginazione
 // abbia senso (senza, la pagina 2 può ripetere o saltare righe).
+//
+// La lettura riuscita lascia una copia in locale: è ciò che permette all'app di
+// aprirsi anche senza rete, invece di mostrare una schermata vuota. La copia si
+// usa SOLO se la lettura fallisce, e chi la usa lo dichiara in cima alla
+// pagina — un dato vecchio spacciato per fresco è peggio di un errore, perché
+// non si può nemmeno sospettare.
 export async function listAll(userId: string): Promise<UserTitle[]> {
   const db = client()
-  return fetchAllRows<UserTitle>((from, to) =>
-    db.from(TABLE).select('*').eq('user_id', userId).order('id', { ascending: true }).range(from, to),
-  )
+  const chiave = chiaveCollezione(userId)
+
+  // Quando il browser dichiara di essere offline gli si crede subito, senza
+  // mandare una richiesta destinata a scadere: aspettare il timeout vuol dire
+  // fissare una pagina vuota per secondi, proprio nel momento in cui l'attesa
+  // dà più fastidio. `navigator.onLine` è affidabile in questa direzione: un
+  // `false` significa davvero che non c'è rete (il `true`, invece, mente
+  // volentieri — e per quello resta il recupero nel catch qui sotto).
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const copia = leggiCopia<UserTitle>(chiave)
+    if (copia) {
+      segnalaCopia(copia.salvatoIl)
+      return copia.dati
+    }
+  }
+
+  try {
+    const righe = await fetchAllRows<UserTitle>((from, to) =>
+      db.from(TABLE).select('*').eq('user_id', userId).order('id', { ascending: true }).range(from, to),
+    )
+    salvaCopia(chiave, righe)
+    segnalaDatiFreschi()
+    return righe
+  } catch (e) {
+    const copia = leggiCopia<UserTitle>(chiave)
+    if (!copia) throw e
+    segnalaCopia(copia.salvatoIl)
+    return copia.dati
+  }
 }
 
 

@@ -3,9 +3,18 @@
 //  - Navigations (HTML): network-first, fall back to cached shell when offline.
 //    This guarantees users always get the latest deploy when online.
 //  - Same-origin static assets (content-hashed JS/CSS/img): cache-first.
-//  - Everything cross-origin (TMDB, Supabase, Anthropic) is left untouched.
+//  - Le locandine di TMDB: cache-first in una cache a parte, con un tetto.
+//    Senza, offline la collezione si apre ma è una griglia di riquadri vuoti —
+//    e una collezione di film senza copertine non si riconosce.
+//  - Tutto il resto cross-origin (API TMDB, Supabase, Anthropic) non si tocca:
+//    sono dati che cambiano e richieste autenticate, non roba da cache muta.
 
-const CACHE = 'ciak-v2'
+const CACHE = 'ciak-v3'
+const IMG_CACHE = 'ciak-img-v1'
+// Circa la collezione di una persona più il navigato di qualche giorno. Oltre,
+// si buttano le più vecchie: una cache che cresce senza fine se la prende il
+// browser quando meno serve, di solito proprio offline.
+const MAX_IMMAGINI = 400
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
@@ -16,7 +25,15 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) =>
+        Promise.all(
+          keys
+            // La cache delle immagini sopravvive ai deploy: le locandine non
+            // cambiano, e ributtarle a ogni versione vanificherebbe l'offline.
+            .filter((k) => k !== CACHE && k !== IMG_CACHE)
+            .map((k) => caches.delete(k)),
+        ),
+      )
       .then(() => self.clients.claim()),
   )
 })
@@ -26,7 +43,27 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return
 
   const url = new URL(req.url)
-  if (url.origin !== self.location.origin) return // don't touch APIs / TMDB / Supabase
+
+  // Locandine e ritratti: cache-first, perché non cambiano mai e sono ciò che
+  // rende riconoscibile la collezione quando la rete non c'è.
+  if (url.hostname === 'image.tmdb.org') {
+    event.respondWith(
+      caches.open(IMG_CACHE).then((cache) =>
+        cache.match(req).then((cached) => {
+          if (cached) return cached
+          return fetch(req).then((res) => {
+            if (res.ok) {
+              cache.put(req, res.clone()).then(() => sfoltisci(cache))
+            }
+            return res
+          })
+        }),
+      ),
+    )
+    return
+  }
+
+  if (url.origin !== self.location.origin) return // don't touch APIs / Supabase
 
   // App navigations → network-first with offline fallback to the cached shell.
   if (req.mode === 'navigate') {
@@ -56,6 +93,15 @@ self.addEventListener('fetch', (event) => {
     ),
   )
 })
+
+// Toglie le immagini più vecchie quando la cache supera il tetto. `keys()` le
+// restituisce in ordine di inserimento, quindi le prime sono le più vecchie.
+function sfoltisci(cache) {
+  return cache.keys().then((chiavi) => {
+    if (chiavi.length <= MAX_IMMAGINI) return
+    return Promise.all(chiavi.slice(0, chiavi.length - MAX_IMMAGINI).map((k) => cache.delete(k)))
+  })
+}
 
 // ── Web Push ────────────────────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
