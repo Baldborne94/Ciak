@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useIdentityCtx } from '../lib/identityCtx'
 
@@ -38,7 +38,22 @@ export default function Navbar() {
   const { user, signOut } = useAuth()
   const { nickname, avatarUrl } = useIdentityCtx()
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [listsOpen, setListsOpen] = useState(false)
+  const [menuAperto, setMenuAperto] = useState(false)
+
+  // Il menu si chiude da solo quando cambi pagina: lasciarlo aperto sopra la
+  // schermata appena scelta è il modo più veloce per farlo sembrare rotto.
+  useEffect(() => setMenuAperto(false), [pathname])
+
+  useEffect(() => {
+    if (!menuAperto) return
+    const suTasto = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuAperto(false)
+    }
+    document.addEventListener('keydown', suTasto)
+    return () => document.removeEventListener('keydown', suTasto)
+  }, [menuAperto])
 
   async function onSignOut() {
     await signOut()
@@ -158,28 +173,67 @@ export default function Navbar() {
               🎟️ Accedi
             </NavLink>
           )}
+
+          {/* Il pulsante che apre il menu, solo sotto lg. */}
+          <button
+            type="button"
+            onClick={() => setMenuAperto((a) => !a)}
+            aria-expanded={menuAperto}
+            aria-controls="menu-mobile"
+            className="btn-ghost px-3 py-2 lg:hidden"
+          >
+            <span aria-hidden="true">{menuAperto ? '✕' : '☰'}</span>{' '}
+            <span className="text-sm">Menu</span>
+          </button>
         </div>
       </nav>
 
-      {/* Compact nav for small/medium screens — flat, horizontal scroll.
-          Qui includiamo "Profilo": su telefono l'avatar in alto è nascosto. */}
-      <ul className="container-cine flex items-center gap-1 overflow-x-auto pb-2 lg:hidden">
-        {[...primary, ...lists, ...trailing, { to: '/profilo', label: 'Profilo' }].map((link) => (
-          <li key={link.to}>
-            <NavLink
-              to={link.to}
-              end={link.to === '/'}
-              className={({ isActive }) =>
-                `whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition ${
-                  isActive ? 'bg-theatre-800 text-projector' : 'text-zinc-400'
-                }`
-              }
-            >
-              {link.label}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
+      {/* Menu per telefono e tablet.
+          Prima era una striscia che scorreva in orizzontale con dentro tredici
+          voci: su uno schermo da 390px se ne vedevano quattro, l'ultima
+          tagliata a metà, e Statistiche, Guida e AI restavano oltre il bordo
+          senza alcun segnale che ci fosse altro. Un menu che si apre le mostra
+          tutte, raggruppate, e non nasconde niente. */}
+      {menuAperto && (
+        <div id="menu-mobile" className="border-t border-theatre-800/80 lg:hidden">
+          <nav aria-label="Menu principale" className="container-cine space-y-5 py-4">
+            {[
+              { titolo: 'Sfoglia', voci: [...primary, ...trailing] },
+              {
+                titolo: 'Il tuo archivio',
+                voci: [...lists, { to: '/profilo', label: 'Profilo' }],
+              },
+            ].map((gruppo) => (
+              <div key={gruppo.titolo}>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                  {gruppo.titolo}
+                </p>
+                <ul className="grid grid-cols-2 gap-1">
+                  {gruppo.voci.map((link) => (
+                    <li key={link.to}>
+                      <NavLink
+                        to={link.to}
+                        end={link.to === '/'}
+                        className={({ isActive }) =>
+                          // py-3: un bersaglio che si prende col pollice senza
+                          // mirare, non una riga di testo da centrare.
+                          `block rounded-lg px-3 py-3 text-sm transition ${
+                            isActive
+                              ? 'bg-theatre-800 text-projector'
+                              : 'text-zinc-300 hover:bg-theatre-800/60'
+                          }`
+                        }
+                      >
+                        {link.label}
+                      </NavLink>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </nav>
+        </div>
+      )}
     </header>
   )
 }

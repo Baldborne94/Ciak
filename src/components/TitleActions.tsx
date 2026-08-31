@@ -8,6 +8,7 @@ import {
   type TitleRef,
 } from '../lib/userTitles'
 import { useToast } from '../lib/toastCtx'
+import StarRating from './StarRating'
 import { useLibrary } from '../lib/libraryCtx'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
@@ -173,11 +174,40 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
         )}
       </div>
 
+      {/* Il voto si dà QUI, sulla pagina del film: è il gesto che viene subito
+          dopo averlo visto, ed era l'unico posto dove non si poteva fare — le
+          stelle cliccabili stavano sulle card, nei Preferiti e nel Diario, ma
+          non dove uno le cerca. */}
+      <div
+        role="group"
+        aria-label="Il tuo voto"
+        className="mt-4 flex flex-wrap items-center gap-3"
+      >
+        <span className="text-sm text-zinc-400">Il tuo voto</span>
+        <StarRating
+          value={record?.personal_rating ?? null}
+          size="lg"
+          onChange={(v) => {
+            // Votare un film vuol dire averlo visto: se non è ancora in
+            // collezione ce lo mette come «Visto», com'è già per i preferiti.
+            // Togliere il voto, invece, non cambia lo stato.
+            apply({
+              personal_rating: v,
+              ...(v !== null && record?.status !== 'watched'
+                ? {
+                    status: 'watched' as TitleStatus,
+                    watched_at: record?.watched_at ?? new Date().toISOString(),
+                  }
+                : {}),
+            })
+          }}
+        />
+      </div>
+
       {record && (
         <p className="mt-2 text-xs text-zinc-500">
           Nella tua collezione · stato:{' '}
           <span className="text-zinc-300">{STATUS_LABELS[record.status]}</span>
-          {record.personal_rating ? ` · voto ${record.personal_rating}/5` : ''}
         </p>
       )}
       {error && <p className="mt-2 text-xs text-curtain-light">{error}</p>}

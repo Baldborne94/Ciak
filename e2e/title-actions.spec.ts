@@ -123,3 +123,68 @@ test('il titolo aggiunto compare poi nella lista corrispondente', async ({ page 
   await page.goto('/lists/watchlist')
   await expect(page.getByText('Fight Club')).toBeVisible()
 })
+
+// ── Il voto, dalla pagina del film ────────────────────────────────────────
+// Le stelle cliccabili c'erano ovunque tranne dove uno le cerca: sulla scheda
+// del titolo, cioè dove si arriva appena finito di guardarlo. Lì il voto era
+// scritto come testo e basta.
+//
+// Il locator passa dal gruppo «Il tuo voto»: anche le card consigliate più
+// sotto hanno le loro stelle. E `exact` non è un vezzo: senza, «5 stelle»
+// corrisponde anche a «0.5 stelle», «1.5 stelle» e via così.
+const stelle = (page: import('@playwright/test').Page, nome: string) =>
+  page.getByRole('group', { name: 'Il tuo voto' }).getByRole('button', { name: nome, exact: true })
+
+test('si può votare un film dalla sua scheda', async ({ page }) => {
+  const db = await mockSupabase(page, {
+    user_titles: [
+      {
+        id: 't-550', user_id: E2E_USER.id, tmdb_id: 550, media_type: 'movie',
+        title: 'Fight Club', poster_path: '/p.jpg', status: 'watched',
+        is_favorite: false, personal_rating: null, watched_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+  })
+  await page.goto('/title/movie/550')
+
+  await stelle(page, '4.5 stelle').click()
+
+  // Il mezzo voto arriva davvero al database, non solo a schermo.
+  await expect.poll(() => db.tables.user_titles[0].personal_rating).toBe(4.5)
+})
+
+test('votare un film non ancora in collezione lo segna come visto', async ({ page }) => {
+  // Dare un voto vuol dire averlo guardato: chiedere anche di premere «Visto»
+  // sarebbe un passaggio in più per dire una cosa che si è già detta.
+  const db = await mockSupabase(page, { user_titles: [] })
+  await page.goto('/title/movie/550')
+
+  await stelle(page, '5 stelle').click()
+
+  await expect.poll(() => db.tables.user_titles?.length ?? 0).toBe(1)
+  expect(db.tables.user_titles[0]).toMatchObject({ personal_rating: 5, status: 'watched' })
+  await expect(page.getByRole('button', { name: '✓ Visto' })).toBeVisible()
+})
+
+test('togliere il voto non toglie lo stato', async ({ page }) => {
+  const db = await mockSupabase(page, {
+    user_titles: [
+      {
+        id: 't-550', user_id: E2E_USER.id, tmdb_id: 550, media_type: 'movie',
+        title: 'Fight Club', poster_path: '/p.jpg', status: 'watched',
+        is_favorite: false, personal_rating: 3, watched_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+  })
+  await page.goto('/title/movie/550')
+
+  // Ri-cliccare il voto già dato lo azzera: è la via d'uscita da un voto
+  // messo per sbaglio.
+  await stelle(page, '3 stelle').click()
+
+  await expect.poll(() => db.tables.user_titles[0].personal_rating).toBeNull()
+  expect(db.tables.user_titles[0].status).toBe('watched')
+  await expect(page.getByRole('button', { name: '✓ Visto' })).toBeVisible()
+})
