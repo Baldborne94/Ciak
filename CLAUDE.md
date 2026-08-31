@@ -116,11 +116,25 @@ Due guardie automatiche, oltre ai test veri e propri:
 ```
 src/pages/       una per schermata (code-split)
 src/components/  componenti condivisi
-src/lib/         accesso ai dati, TMDB, logica pura (+ test unitari)
-api/             funzioni serverless Vercel (AI, cron avvisi)
+src/lib/         accesso ai dati, logica pura (+ test unitari)
+src/lib/tmdb/    il catalogo, diviso per responsabilità
+api/             funzioni serverless Vercel (AI, proxy TMDB, cron avvisi)
 e2e/             test end-to-end + mock
 supabase/        schema SQL e policy
 ```
+
+`src/lib/tmdb.ts` è una **facciata**: ri-esporta e basta. Il codice vero sta in
+`src/lib/tmdb/` — `client` (la richiesta al proxy), `raw` (le forme che TMDB
+manda e la loro normalizzazione), `titles` (quale titolo è leggibile),
+`discover`, `browse`, `detail`, `people`, `collections`, `companies`.
+
+Una funzione nuova va nel modulo giusto e si ri-esporta dalla facciata, così le
+pagine continuano a importare da `../lib/tmdb`. Il file era arrivato a 1376
+righe perché aggiungere lì era sempre la strada più corta: due test in
+`tmdb.test.ts` tengono in piedi la divisione — uno controlla che la facciata
+esponga ancora tutto, l'altro che nessun modulo superi le 400 righe. Se un
+modulo cresce davvero, si divide ancora; quello che non deve succedere è
+tornare alla discarica per inerzia, una funzione alla volta.
 
 ## Schema del database
 

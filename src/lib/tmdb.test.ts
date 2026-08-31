@@ -143,3 +143,44 @@ describe('fallbackReadableTitle', () => {
     expect(fallbackReadableTitle(null, [], [])).toBeNull()
   })
 })
+
+// ── La facciata e i moduli dietro ─────────────────────────────────────────
+// `tmdb.ts` era 1376 righe: il modulo-discarica dove finiva ogni funzione
+// nuova perché era comodo. Ora è una facciata su `src/lib/tmdb/`. Questi due
+// test tengono in piedi la divisione, che altrimenti si sfalda in silenzio —
+// la prima funzione rimessa nel posto sbagliato non se ne accorge nessuno.
+
+describe('la facciata di tmdb', () => {
+  it('espone tutto ciò che l app usa', async () => {
+    // L'elenco è scritto a mano di proposito: se una funzione sparisce dalla
+    // facciata durante uno spostamento, questo test lo dice invece di lasciare
+    // che se ne accorga una pagina a runtime.
+    const attesi = [
+      'backdropUrl', 'discoverByCompany', 'discoverByGenre', 'discoverByGenres',
+      'displayTitle', 'fallbackReadableTitle', 'fetchTitleFacts', 'getAnime',
+      'getCartoons', 'getCollection', 'getCompany', 'getDetail', 'getGenres',
+      'getPersonDetail', 'getPervertitoAnime', 'getRecentReleases',
+      'getRecommendations', 'getRelatedCollections', 'getReleaseYears',
+      'getSagaContinuations', 'getSeason', 'getTrending', 'getUpcoming',
+      'isReadableTitle', 'logoUrl', 'posterUrl', 'profileUrl',
+      'resolveKeywordIds', 'resolvePeople', 'resolveSagaIds', 'resolveSagas',
+      'resolveStudios', 'resolveSuggestions', 'searchCollection',
+      'searchCompany', 'searchMulti', 'searchPerson', 'tmdbConfigurato',
+    ]
+    const modulo = await import('./tmdb')
+    expect(Object.keys(modulo).sort()).toEqual(attesi)
+  })
+
+  it('nessun modulo del catalogo torna a essere una discarica', async () => {
+    // Il tetto non è sacro: se un modulo lo supera davvero, si divide ancora
+    // (per esempio `browse` in ricerca e sfoglia). Quello che non deve
+    // succedere è tornarci per inerzia, una funzione alla volta.
+    const { readdirSync, readFileSync } = await import('node:fs')
+    const dir = new URL('./tmdb/', import.meta.url)
+    const TETTO = 400
+    for (const nome of readdirSync(dir)) {
+      const righe = readFileSync(new URL(nome, dir), 'utf8').split('\n').length
+      expect(righe, `${nome} ha ${righe} righe`).toBeLessThanOrEqual(TETTO)
+    }
+  })
+})
