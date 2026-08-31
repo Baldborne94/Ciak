@@ -97,6 +97,13 @@ Due guardie automatiche, oltre ai test veri e propri:
   traccia — è già costato statistiche sbagliate per settimane. Se il fallimento
   si ripete in ciclo, segnalalo **una volta col totale** («47 titoli su 600»),
   non a ogni giro.
+- La collezione ha una **copia locale** (`src/lib/offlineCache.ts`): `listAll`
+  la salva a ogni lettura riuscita e la serve quando `navigator.onLine` è
+  `false` o la rete fallisce. Si controlla `onLine` **prima** di tentare la
+  rete, perché aspettare un timeout offline vuol dire fissare una pagina vuota
+  per secondi. Chi serve una copia lo dichiara (`segnalaCopia`) e `OfflineBanner`
+  lo scrive in cima alla pagina: dati vecchi mostrati senza avvisare rendono
+  l'archivio inaffidabile, perché non si può nemmeno sospettare.
 - Le chiavi Anthropic e TMDB vivono **solo** lato server (`api/`), mai con
   prefisso `VITE_`: con quel prefisso finiscono nel bundle, dove chiunque le
   copia. Il catalogo passa da `/api/tmdb`, che tiene una **lista dei percorsi

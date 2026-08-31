@@ -38,6 +38,19 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { load() }, [load])
 
+  // Quando la rete cade — o torna — la collezione va riletta subito: cadendo
+  // per passare alla copia salvata (e dirlo in cima alla pagina), tornando per
+  // smettere di mostrare dati vecchi. Senza questo, il passaggio si notava solo
+  // cambiando schermata, e nel frattempo l'app raccontava una cosa per l'altra.
+  useEffect(() => {
+    window.addEventListener('offline', load)
+    window.addEventListener('online', load)
+    return () => {
+      window.removeEventListener('offline', load)
+      window.removeEventListener('online', load)
+    }
+  }, [load])
+
   const value = useMemo(
     () => ({
       lookup: (mediaType: string, tmdbId: number) => index.get(libKey(mediaType, tmdbId)),
