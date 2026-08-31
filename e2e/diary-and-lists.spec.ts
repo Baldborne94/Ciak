@@ -58,7 +58,11 @@ test('il voto dato nel diario si propaga al titolo in collezione', async ({ page
   await page.goto('/title/movie/550')
 
   await page.getByRole('button', { name: /Segna nel diario/ }).click()
-  await page.getByRole('button', { name: '4 stelle', exact: true }).click()
+  // Le stelle DENTRO il modale: da quando si vota anche dalla scheda, sulla
+  // pagina ce ne sono due gruppi. Scoprirlo qui è utile — così il test prova
+  // che il voto arriva dal diario, non dalle stelle della scheda accanto.
+  const modale = page.getByRole('dialog', { name: 'Segna nel diario' })
+  await modale.getByRole('button', { name: '4 stelle', exact: true }).click()
   await page.getByRole('button', { name: /Salva nel diario/ }).click()
   await expect(page.getByText(/Salvato nel diario/)).toBeVisible()
 
