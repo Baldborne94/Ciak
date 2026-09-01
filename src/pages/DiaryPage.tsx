@@ -10,7 +10,17 @@ import { backfillTitlesFromDiary, listAll, upsertUserTitle } from '../lib/userTi
 import { useToast } from '../lib/toastCtx'
 import { logFailure } from '../lib/logFailure'
 import { useLibrary } from '../lib/libraryCtx'
-import { posterUrl } from '../lib/tmdb'
+import { getGenres, posterUrl } from '../lib/tmdb'
+import {
+  FILTRI_VUOTI,
+  TIPI,
+  contaFiltriAttivi,
+  filtriAttivi,
+  generiPresenti,
+  passaIFiltri,
+  type FiltroTipo,
+  type VoceFiltrabile,
+} from '../lib/diaryFilters'
 import type { DiaryEntry, UserTitle } from '../lib/types'
 
 function formatDate(iso: string): string {
@@ -79,6 +89,16 @@ export default function DiaryPage() {
   const [query, setQuery] = useState('')
   const [yearFilter, setYearFilter] = useState('all')
   const [minRating, setMinRating] = useState(0)
+  const [tipo, setTipo] = useState<FiltroTipo>('all')
+  const [genere, setGenere] = useState<number | 'all'>('all')
+  const [soloConNota, setSoloConNota] = useState(false)
+  // Su telefono i filtri stanno chiusi: aperti sono sei controlli impilati, cioè
+  // uno schermo intero prima di vedere anche solo un film. La ricerca invece
+  // resta sempre fuori, perché è quella che si usa.
+  const [filtriAperti, setFiltriAperti] = useState(false)
+  // id → nome dei generi, da TMDB. Se non arrivano, il menu dei generi non
+  // compare: meglio nasconderlo che offrire scelte senza etichetta.
+  const [nomiGeneri, setNomiGeneri] = useState<Map<number, string>>(new Map())
 
   useEffect(() => {
     if (!user) return
@@ -206,6 +226,24 @@ export default function DiaryPage() {
     }
   }
 
+  // I nomi dei generi arrivano da TMDB (film e serie insieme: un id vale per
+  // entrambi i cataloghi). Best effort — senza, il filtro per genere non si
+  // mostra e il resto della pagina funziona lo stesso.
+  useEffect(() => {
+    let annullato = false
+    Promise.all([getGenres('movie'), getGenres('tv')])
+      .then(([film, serie]) => {
+        if (annullato) return
+        const m = new Map<number, string>()
+        for (const g of [...film, ...serie]) m.set(g.id, g.name)
+        setNomiGeneri(m)
+      })
+      .catch(logFailure('generi del diario non caricati'))
+    return () => {
+      annullato = true
+    }
+  }, [])
+
   // I titoli segnati "Visto": alimentano la timeline come prima.
   const watched = useMemo(() => titles.filter((t) => t.status === 'watched'), [titles])
 
@@ -269,18 +307,52 @@ export default function DiaryPage() {
     return [...set].sort((a, b) => b.localeCompare(a))
   }, [timeline])
 
-  // Applica i filtri alle voci datate.
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return timeline.filter((it) => {
-      if (yearFilter !== 'all' && it.date.slice(0, 4) !== yearFilter) return false
-      if (minRating > 0 && (itemRating(it, ratingByTitle) ?? 0) < minRating) return false
-      if (q && !itemHaystack(it).includes(q)) return false
-      return true
-    })
-  }, [timeline, query, yearFilter, minRating, ratingByTitle])
+  // I generi di un titolo stanno in user_titles, non nella voce di diario:
+  // si recuperano dalla riga corrispondente (chiave composta tipo+id, perché
+  // un film e una serie possono avere lo stesso numero).
+  const generiPerTitolo = useMemo(() => {
+    const m = new Map<string, number[]>()
+    for (const t of titles) m.set(`${t.tmdb_id}:${t.media_type}`, t.genre_ids ?? [])
+    return m
+  }, [titles])
 
-  const filtersActive = query.trim() !== '' || yearFilter !== 'all' || minRating > 0
+  // Ogni voce ridotta alla forma che i filtri sanno leggere.
+  const voci = useMemo(() => {
+    const m = new Map<TimelineItem, VoceFiltrabile>()
+    for (const it of timeline) {
+      const chiave = itemTmdbKey(it)
+      m.set(it, {
+        mediaType: it.kind === 'diary' ? it.entry.media_type : it.record.media_type,
+        genreIds: generiPerTitolo.get(chiave) ?? [],
+        testo: itemHaystack(it),
+        anno: it.date.slice(0, 4),
+        voto: itemRating(it, ratingByTitle),
+        haNota: it.kind === 'diary' ? Boolean(it.entry.note?.trim()) : false,
+      })
+    }
+    return m
+  }, [timeline, generiPerTitolo, ratingByTitle])
+
+  const filtri = useMemo(
+    () => ({ query, anno: yearFilter, votoMin: minRating, tipo, genere, soloConNota }),
+    [query, yearFilter, minRating, tipo, genere, soloConNota],
+  )
+
+  // Applica i filtri alle voci datate.
+  const filtered = useMemo(
+    () => timeline.filter((it) => passaIFiltri(voci.get(it) as VoceFiltrabile, filtri)),
+    [timeline, voci, filtri],
+  )
+
+  // I generi da offrire: solo quelli presenti nel diario, col più frequente in
+  // cima. Contati sull'intera timeline, non su ciò che è già filtrato — se no
+  // scegliere un genere farebbe sparire tutti gli altri dal menu.
+  const generi = useMemo(
+    () => generiPresenti([...voci.values()], nomiGeneri),
+    [voci, nomiGeneri],
+  )
+
+  const filtersActive = filtriAttivi(filtri)
 
   // Group by date, ordinando i giorni dal più recente.
   const groups = useMemo(() => {
@@ -293,15 +365,25 @@ export default function DiaryPage() {
     [groups],
   )
 
-  // Il blocco "senza data" segue gli stessi filtri (testo + voto). Il filtro per
-  // anno lo nasconde: questi titoli non hanno un anno di visione.
-  const q = query.trim().toLowerCase()
+  // Passa dagli stessi filtri della timeline, così «Horror» o «Solo film»
+  // valgono anche qui invece di lasciare un blocco che ignora le tue scelte.
+  // `anno` resta l'eccezione dichiarata: questi titoli un anno non ce l'hanno.
   const watchedOnly =
     yearFilter !== 'all'
       ? []
-      : watchedUndated
-          .filter((w) => minRating === 0 || (w.personal_rating ?? 0) >= minRating)
-          .filter((w) => !q || w.title.toLowerCase().includes(q))
+      : watchedUndated.filter((w) =>
+          passaIFiltri(
+            {
+              mediaType: w.media_type,
+              genreIds: w.genre_ids ?? [],
+              testo: w.title.toLowerCase(),
+              anno: '',
+              voto: w.personal_rating,
+              haNota: Boolean(w.notes?.trim()),
+            },
+            { ...filtri, anno: 'all' },
+          ),
+        )
 
   const isEmpty = entries.length === 0 && watched.length === 0
   const noMatches = !isEmpty && dates.length === 0 && watchedOnly.length === 0
@@ -315,7 +397,8 @@ export default function DiaryPage() {
       />
 
       {!loading && !error && !isEmpty && (
-        <div className="mb-8 flex flex-wrap items-end gap-3">
+        <div className="mb-8">
+         <div className="flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-[12rem]">
             <label htmlFor="diary-search" className="text-xs uppercase tracking-wider text-zinc-500">
               Cerca
@@ -329,6 +412,21 @@ export default function DiaryPage() {
               className="input-cine mt-1 w-full py-2 text-sm"
             />
           </div>
+          <button
+            type="button"
+            onClick={() => setFiltriAperti((a) => !a)}
+            aria-expanded={filtriAperti}
+            aria-controls="diary-filtri"
+            className="btn-ghost py-2 text-sm sm:hidden"
+          >
+            Filtri{contaFiltriAttivi(filtri) > 0 ? ` (${contaFiltriAttivi(filtri)})` : ''}
+          </button>
+         </div>
+
+         <div
+           id="diary-filtri"
+           className={`mt-3 flex-wrap items-end gap-3 sm:flex ${filtriAperti ? 'flex' : 'hidden'}`}
+         >
           <div>
             <label htmlFor="diary-year" className="text-xs uppercase tracking-wider text-zinc-500">
               Anno
@@ -361,14 +459,70 @@ export default function DiaryPage() {
               ))}
             </select>
           </div>
+          <div>
+            <label htmlFor="diary-tipo" className="text-xs uppercase tracking-wider text-zinc-500">
+              Tipo
+            </label>
+            <select
+              id="diary-tipo"
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value as FiltroTipo)}
+              className="input-cine mt-1 py-2 text-sm"
+            >
+              {TIPI.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+          {/* Il menu dei generi compare solo se ce ne sono: su un diario appena
+              iniziato una tendina con una voce sola è solo ingombro. */}
+          {generi.length > 0 && (
+            <div>
+              <label htmlFor="diary-genere" className="text-xs uppercase tracking-wider text-zinc-500">
+                Genere
+              </label>
+              <select
+                id="diary-genere"
+                value={genere}
+                onChange={(e) =>
+                  setGenere(e.target.value === 'all' ? 'all' : Number(e.target.value))
+                }
+                className="input-cine mt-1 py-2 text-sm"
+              >
+                <option value="all">Tutti</option>
+                {generi.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.nome} ({g.quanti})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <label className="flex cursor-pointer items-center gap-2 self-end py-2 text-sm text-zinc-300">
+            <input
+              type="checkbox"
+              checked={soloConNota}
+              onChange={(e) => setSoloConNota(e.target.checked)}
+              className="h-4 w-4 accent-projector"
+            />
+            Solo con recensione
+          </label>
           {filtersActive && (
             <button
-              onClick={() => { setQuery(''); setYearFilter('all'); setMinRating(0) }}
-              className="btn-ghost py-2 text-sm"
+              onClick={() => {
+                setQuery(FILTRI_VUOTI.query)
+                setYearFilter(FILTRI_VUOTI.anno)
+                setMinRating(FILTRI_VUOTI.votoMin)
+                setTipo(FILTRI_VUOTI.tipo)
+                setGenere(FILTRI_VUOTI.genere)
+                setSoloConNota(FILTRI_VUOTI.soloConNota)
+              }}
+              className="btn-ghost self-end py-2 text-sm"
             >
               Azzera filtri
             </button>
           )}
+         </div>
         </div>
       )}
 
