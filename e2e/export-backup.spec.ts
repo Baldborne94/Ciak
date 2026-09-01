@@ -103,3 +103,39 @@ test('senza accesso non si offre un backup vuoto', async ({ page }) => {
   await expect(page.getByText('Accedi per scaricare una copia del tuo archivio.')).toBeVisible()
   await expect(page.getByRole('button', { name: /Scarica tutto/ })).toHaveCount(0)
 })
+
+// ── I generi mancanti ─────────────────────────────────────────────────────
+// Il recupero c'era già ma girava di nascosto, una volta sola per browser: se a
+// metà strada TMDB non rispondeva nessuno lo sapeva, e non si riprovava più.
+
+test('dalle Impostazioni si completano i generi mancanti', async ({ page }) => {
+  await signIn(page)
+  await mockTmdb(page)
+  const db = await mockSupabase(page, {
+    user_titles: [
+      { ...titolo(550, 'Fight Club'), genre_ids: [] },
+      { ...titolo(680, 'Pulp Fiction'), genre_ids: [18] },
+    ],
+  })
+
+  await page.goto('/settings')
+  await page.getByRole('button', { name: /Completa i generi mancanti/ }).click()
+
+  // Solo il titolo che ne era privo viene toccato: l'altro aveva già i suoi.
+  await expect(page.getByText(/Completati 1 titoli su 1/)).toBeVisible()
+  await expect
+    .poll(() => (db.tables.user_titles.find((t) => t.tmdb_id === 550) as { genre_ids: number[] }).genre_ids.length)
+    .toBeGreaterThan(0)
+  expect((db.tables.user_titles.find((t) => t.tmdb_id === 680) as { genre_ids: number[] }).genre_ids).toEqual([18])
+})
+
+test('quando non manca niente lo dice, invece di fingere di aver lavorato', async ({ page }) => {
+  await signIn(page)
+  await mockTmdb(page)
+  await mockSupabase(page, { user_titles: [{ ...titolo(550, 'Fight Club'), genre_ids: [27] }] })
+
+  await page.goto('/settings')
+  await page.getByRole('button', { name: /Completa i generi mancanti/ }).click()
+
+  await expect(page.getByText(/Tutti i titoli hanno già i loro generi/)).toBeVisible()
+})

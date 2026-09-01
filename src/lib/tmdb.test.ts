@@ -157,7 +157,8 @@ describe('la facciata di tmdb', () => {
     // che se ne accorga una pagina a runtime.
     const attesi = [
       'backdropUrl', 'discoverByCompany', 'discoverByGenre', 'discoverByGenres',
-      'displayTitle', 'fallbackReadableTitle', 'fetchTitleFacts', 'getAnime',
+      'displayTitle', 'fallbackReadableTitle', 'fetchGenreIds', 'fetchTitleFacts',
+      'getAnime',
       'getCartoons', 'getCollection', 'getCompany', 'getDetail', 'getGenres',
       'getPersonDetail', 'getPervertitoAnime', 'getRecentReleases',
       'getRecommendations', 'getRelatedCollections', 'getReleaseYears',
@@ -169,6 +170,23 @@ describe('la facciata di tmdb', () => {
     ]
     const modulo = await import('./tmdb')
     expect(Object.keys(modulo).sort()).toEqual(attesi)
+  })
+
+  it('tmdb.ts è davvero una facciata, non di nuovo il file intero', async () => {
+    // La guardia che mi mancava, e che è costata una PR: la divisione era stata
+    // fatta, i moduli erano lì, ma `tmdb.ts` era tornato a essere il file da
+    // 1376 righe — un `git checkout` di troppo — e i moduli non li importava
+    // nessuno. Il test sugli export passava lo stesso, perché il file vecchio
+    // esporta esattamente gli stessi nomi.
+    const { readFileSync } = await import('node:fs')
+    const righe = readFileSync(new URL('./tmdb.ts', import.meta.url), 'utf8')
+    // Ogni export deve venire da un sottomodulo: se ricompaiono definizioni
+    // vere qui, siamo tornati al punto di partenza.
+    expect(righe).not.toMatch(/^export (async )?function /m)
+    expect(righe.split('\n').length).toBeLessThanOrEqual(80)
+    // E i moduli devono essere raggiunti davvero.
+    expect(righe).toContain("from './tmdb/detail'")
+    expect(righe).toContain("from './tmdb/browse'")
   })
 
   it('nessun modulo del catalogo torna a essere una discarica', async () => {
