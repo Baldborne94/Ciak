@@ -194,3 +194,86 @@ test('la watchlist si può condividere con un link pubblico', async ({ page }) =
     .poll(() => (db.tables.user_profile?.[0] as Record<string, unknown>)?.watchlist_public)
     .toBe(true)
 })
+
+// ── I filtri del diario ───────────────────────────────────────────────────
+// Con un archivio che cresce, «cerca» e «anno» non bastano più: servono il
+// tipo, il genere e un modo per ritrovare quello che hai scritto tu.
+
+test('il diario si filtra per genere, tipo e recensione', async ({ page }) => {
+  await mockTmdb(page)
+  await mockSupabase(page, {
+    user_titles: [
+      {
+        id: 't-1', user_id: E2E_USER.id, tmdb_id: 101, media_type: 'movie', title: 'Hereditary',
+        poster_path: '/p.jpg', status: 'watched', is_favorite: false, personal_rating: 5,
+        genre_ids: [27], watched_at: '2026-08-20T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-08-20T00:00:00Z',
+      },
+      {
+        id: 't-2', user_id: E2E_USER.id, tmdb_id: 201, media_type: 'tv', title: 'Twin Peaks',
+        poster_path: '/p.jpg', status: 'watched', is_favorite: false, personal_rating: 5,
+        genre_ids: [9648], watched_at: '2026-08-21T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-08-21T00:00:00Z',
+      },
+    ],
+    user_diary: [
+      {
+        id: 'd-1', user_id: E2E_USER.id, tmdb_id: 101, media_type: 'movie', title: 'Hereditary',
+        poster_path: '/p.jpg', watched_on: '2026-08-20', rating: 5,
+        note: 'che disagio', created_at: '2026-08-20T00:00:00Z',
+      },
+    ],
+  })
+
+  await page.goto('/diario')
+  await expect(page.getByText('Hereditary').first()).toBeVisible()
+  await expect(page.getByText('Twin Peaks').first()).toBeVisible()
+
+  // Tipo: le serie restano, i film no.
+  await page.getByLabel('Tipo').selectOption('tv')
+  await expect(page.getByText('Twin Peaks').first()).toBeVisible()
+  await expect(page.getByText('Hereditary')).toHaveCount(0)
+
+  await page.getByLabel('Tipo').selectOption('all')
+
+  // Genere: l'elenco viene dai generi che hai davvero visto, col conteggio.
+  await page.getByLabel('Genere').selectOption({ label: 'Horror (1)' })
+  await expect(page.getByText('Hereditary').first()).toBeVisible()
+  await expect(page.getByText('Twin Peaks')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Azzera filtri' }).click()
+  await expect(page.getByText('Twin Peaks').first()).toBeVisible()
+
+  // Solo con recensione: resta ciò che hai commentato tu.
+  await page.getByLabel('Solo con recensione').check()
+  await expect(page.getByText('Hereditary').first()).toBeVisible()
+  await expect(page.getByText('Twin Peaks')).toHaveCount(0)
+})
+
+test('su telefono i filtri stanno chiusi finché non li apri', async ({ page }) => {
+  // Aperti sono sei controlli impilati: uno schermo intero prima di vedere
+  // anche solo un film. La ricerca invece resta sempre fuori.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockTmdb(page)
+  await mockSupabase(page, {
+    user_titles: [
+      {
+        id: 't-1', user_id: E2E_USER.id, tmdb_id: 101, media_type: 'movie', title: 'Hereditary',
+        poster_path: '/p.jpg', status: 'watched', is_favorite: false, personal_rating: 5,
+        genre_ids: [27], watched_at: '2026-08-20T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-08-20T00:00:00Z',
+      },
+    ],
+  })
+
+  await page.goto('/diario')
+  await expect(page.getByLabel('Cerca')).toBeVisible()
+  await expect(page.getByLabel('Tipo')).not.toBeVisible()
+
+  await page.getByRole('button', { name: /Filtri/ }).click()
+  await expect(page.getByLabel('Tipo')).toBeVisible()
+
+  // Il pulsante dice quanti filtri hai messo, senza doverlo riaprire.
+  await page.getByLabel('Tipo').selectOption('movie')
+  await expect(page.getByRole('button', { name: 'Filtri (1)' })).toBeVisible()
+})
