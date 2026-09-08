@@ -25,8 +25,10 @@ export {
   resolveKeywordIds,
   discoverByGenre,
   discoverByGenres,
+  discoverMigliori,
   getRecentReleases,
   type DiscoverFilters,
+  type FiltriMigliori,
 } from './tmdb/browse'
 export {
   fetchTitleFacts,

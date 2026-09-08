@@ -157,6 +157,7 @@ describe('la facciata di tmdb', () => {
     // che se ne accorga una pagina a runtime.
     const attesi = [
       'backdropUrl', 'discoverByCompany', 'discoverByGenre', 'discoverByGenres',
+      'discoverMigliori',
       'displayTitle', 'fallbackReadableTitle', 'fetchGenreIds', 'fetchTitleFacts',
       'getAnime',
       'getCartoons', 'getCollection', 'getCompany', 'getDetail', 'getGenres',

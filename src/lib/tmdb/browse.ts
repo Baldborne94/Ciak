@@ -301,6 +301,49 @@ export async function discoverByGenres(
   return (data.results ?? []).slice(0, 20).map((r) => normalise(r, type))
 }
 
+export interface FiltriMigliori {
+  genreIds?: number[]
+  // Estremi di data già pronti per TMDB (YYYY-MM-DD), per restringere a un
+  // decennio.
+  dal?: string
+  al?: string
+  // Quanti voti servono perché un titolo sia preso sul serio.
+  votiMinimi?: number
+}
+
+// I titoli col voto medio più alto, sfogliabili. È la base di «Da recuperare».
+//
+// `vote_count.gte` non è un dettaglio: ordinando per voto medio senza una
+// soglia, in cima finiscono i film con nove voti a dieci — cioè cortometraggi
+// sconosciuti e documentari di nicchia, non i capolavori che uno si aspetta.
+export async function discoverMigliori(
+  type: TmdbType,
+  filtri: FiltriMigliori = {},
+  page = 1,
+): Promise<{ items: MediaItem[]; totalPages: number }> {
+  const campoData = type === 'movie' ? 'primary_release_date' : 'first_air_date'
+  const params: Record<string, string> = {
+    sort_by: 'vote_average.desc',
+    'vote_count.gte': String(filtri.votiMinimi ?? 1000),
+    page: String(page),
+  }
+  if (filtri.genreIds && filtri.genreIds.length > 0) {
+    params.with_genres = filtri.genreIds.slice(0, 3).join('|')
+  }
+  if (filtri.dal) params[`${campoData}.gte`] = filtri.dal
+  if (filtri.al) params[`${campoData}.lte`] = filtri.al
+
+  const [data, enData] = await Promise.all([
+    tmdbFetch<{ results: RawMedia[]; total_pages?: number }>(`/discover/${type}`, params),
+    tmdbFetch<{ results: RawMedia[] }>(`/discover/${type}`, { ...params, language: 'en-US' }),
+  ])
+  patchReadableTitles(data.results, enData.results)
+  return {
+    items: (data.results ?? []).map((r) => normalise(r, type)),
+    totalPages: data.total_pages ?? 1,
+  }
+}
+
 // Recent popular releases (last 90 days) for "Nuove uscite" on Dashboard.
 export async function getRecentReleases(
   type: TmdbType,

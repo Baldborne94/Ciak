@@ -25,6 +25,7 @@ const lists = [
 const trailing = [
   { to: '/ai', label: '✨ AI' },
   { to: '/in-arrivo', label: 'In arrivo' },
+  { to: '/da-recuperare', label: '🏆 Da recuperare' },
   { to: '/statistiche', label: '📊 Statistiche' },
   { to: '/guida', label: '❓ Guida' },
 ]
