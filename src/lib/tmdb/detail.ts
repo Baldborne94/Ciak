@@ -41,6 +41,14 @@ function buildRecommendations(raw: RawDetail, type: TmdbType): MediaItem[] {
 // tre, e senza raccomandazioni, video, provider o traduzioni — roba che pesa
 // molto e che alle statistiche non serve. È ciò che rende possibile analizzare
 // l'intera collezione invece dei primi duecento titoli.
+// Solo gli id dei generi di un titolo: una richiesta sola, senza credits, video
+// né provider. Serve a completare i generi mancanti, dove i titoli sono
+// centinaia e `getDetail` — che ne fa tre a testa — costerebbe il triplo.
+export async function fetchGenreIds(type: TmdbType, id: number): Promise<number[]> {
+  const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`)
+  return (raw.genres ?? []).map((g) => g.id)
+}
+
 export async function fetchTitleFacts(type: TmdbType, id: number): Promise<TitleFacts> {
   const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, { append_to_response: 'credits' })
   const crew = raw.credits?.crew ?? []

@@ -1,9 +1,11 @@
 import { supabase } from './supabase'
+import { mapLimit } from './mapLimit'
 import { fetchAllRows } from './paged'
+import { logFailure } from './logFailure'
 import { chiaveCollezione, leggiCopia, salvaCopia } from './offlineCache'
 import { segnalaCopia, segnalaDatiFreschi } from './offlineState'
 import { missingTitleRows } from './diaryBackfill'
-import { getDetail } from './tmdb'
+import { fetchGenreIds } from './tmdb'
 import type {
   DiaryEntry,
   MediaItem,
@@ -221,35 +223,85 @@ export async function backfillTitlesFromDiary(
 // Questo backfill, una tantum, recupera i generi dei titoli ancora vuoti e li
 // salva, così il "Profilo di gusto" si popola anche per lo storico.
 // Best-effort: gli errori sui singoli titoli non bloccano gli altri.
-export async function backfillGenreIds(userId: string): Promise<number> {
+// Quali righe non hanno ancora i generi. Separata e pura per la parte che
+// conta: distinguere «nessun genere» da «campo assente» è ciò che decide se un
+// titolo verrà riletto da TMDB o lasciato indietro per sempre.
+export function senzaGeneri<T extends { genre_ids?: number[] | null }>(righe: T[]): T[] {
+  return righe.filter((r) => !r.genre_ids || r.genre_ids.length === 0)
+}
+
+export interface EsitoBackfill {
+  // Quanti ne mancavano all'inizio.
+  daFare: number
+  aggiornati: number
+  // Titoli che TMDB non ha saputo dire (rimossi dal catalogo, rete, quota):
+  // restano senza generi e si riproveranno la volta dopo.
+  falliti: number
+}
+
+// I generi mancano sui titoli salvati prima che venissero registrati: senza,
+// spariscono dal filtro per genere del diario e dai "Generi preferiti" delle
+// statistiche, senza che nulla lo segnali.
+//
+// Una richiesta leggera per titolo (`fetchGenreIds`, non `getDetail` che ne fa
+// tre), a scaglioni di sei: su qualche centinaio di titoli la differenza fra
+// sequenziale e concorrente è fra minuti e secondi.
+export async function backfillGenreIds(
+  userId: string,
+  onAvanzamento?: (fatti: number, totale: number) => void,
+): Promise<EsitoBackfill> {
   const db = client()
-  const { data, error } = await db
-    .from(TABLE)
-    .select('id, tmdb_id, media_type, genre_ids')
-    .eq('user_id', userId)
-  if (error) throw new Error(error.message)
+  // Paginata: senza, oltre 1000 righe se ne vedeva solo una parte e i titoli in
+  // fondo restavano senza generi per sempre, in silenzio.
+  const righe = await fetchAllRows<Pick<UserTitle, 'id' | 'tmdb_id' | 'media_type' | 'genre_ids'>>(
+    (from, to) =>
+      db
+        .from(TABLE)
+        .select('id, tmdb_id, media_type, genre_ids')
+        .eq('user_id', userId)
+        .order('id', { ascending: true })
+        .range(from, to),
+  )
 
-  const missing = (data ?? []).filter(
-    (r) => !r.genre_ids || (r.genre_ids as number[]).length === 0,
-  ) as Pick<UserTitle, 'id' | 'tmdb_id' | 'media_type'>[]
+  const mancanti = senzaGeneri(righe)
+  let aggiornati = 0
+  let falliti = 0
+  let fatti = 0
 
-  let updated = 0
-  for (const r of missing) {
+  await mapLimit(mancanti, 6, async (r) => {
     try {
       const type: TmdbType = r.media_type === 'movie' ? 'movie' : 'tv'
-      const detail = await getDetail(type, r.tmdb_id)
-      if (detail.genreIds.length === 0) continue
-      const { error: upErr } = await db
-        .from(TABLE)
-        .update({ genre_ids: detail.genreIds })
-        .eq('user_id', userId)
-        .eq('id', r.id)
-      if (!upErr) updated++
+      const genreIds = await fetchGenreIds(type, r.tmdb_id)
+      if (genreIds.length > 0) {
+        const { error } = await db
+          .from(TABLE)
+          .update({ genre_ids: genreIds })
+          .eq('user_id', userId)
+          .eq('id', r.id)
+        if (error) throw new Error(error.message)
+        aggiornati++
+      } else {
+        // TMDB non gli attribuisce generi: non è un errore, è un titolo che
+        // resta senza. Riprovarlo ogni volta sarebbe lavoro sprecato.
+        falliti++
+      }
     } catch {
-      // titolo non risolvibile (rimosso da TMDB, rete, ecc.): si salta.
+      falliti++
+    } finally {
+      fatti++
+      onAvanzamento?.(fatti, mancanti.length)
     }
+  })
+
+  // Una riga sola col totale, non una per titolo: un ciclo che fallisce
+  // seicento volte riempie il diario di rumore e nasconde tutto il resto.
+  if (falliti > 0) {
+    logFailure('generi non recuperati')(
+      new Error(`${falliti} titoli su ${mancanti.length} restano senza generi`),
+    )
   }
-  return updated
+
+  return { daFare: mancanti.length, aggiornati, falliti }
 }
 
 export interface UserStats {

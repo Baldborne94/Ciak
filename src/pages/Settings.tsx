@@ -17,6 +17,7 @@ import {
   riassuntoEsportazione,
 } from '../lib/exportData'
 import { leggiErrori, cancellaErrori, type ErroreRegistrato } from '../lib/errorLog'
+import { backfillGenreIds, type EsitoBackfill } from '../lib/userTitles'
 
 function quando(iso: string): string {
   return new Date(iso).toLocaleString('it-IT', {
@@ -120,6 +121,73 @@ function DiagnosticaSettings() {
               </button>
             )}
           </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+// I generi mancano sui titoli salvati prima che venissero registrati: senza,
+// spariscono dal filtro per genere del diario e dai «Generi preferiti» delle
+// statistiche. Il recupero c'era già ma girava di nascosto, una volta sola per
+// browser: se a metà strada TMDB non rispondeva, nessuno lo sapeva e non si
+// riprovava più. Qui si vede, si lancia e si legge com'è andata.
+function GeneriSettings() {
+  const { user } = useAuth()
+  const [busy, setBusy] = useState(false)
+  const [avanzamento, setAvanzamento] = useState<{ fatti: number; totale: number } | null>(null)
+  const [esito, setEsito] = useState<EsitoBackfill | null>(null)
+  const [errore, setErrore] = useState<string | null>(null)
+
+  async function completa() {
+    if (!user) return
+    setBusy(true)
+    setEsito(null)
+    setErrore(null)
+    setAvanzamento({ fatti: 0, totale: 0 })
+    try {
+      setEsito(
+        await backfillGenreIds(user.id, (fatti, totale) => setAvanzamento({ fatti, totale })),
+      )
+    } catch (e) {
+      setErrore((e as Error).message)
+    } finally {
+      setBusy(false)
+      setAvanzamento(null)
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
+      <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">🎭 Generi dei titoli</h2>
+      {!user ? (
+        <p className="text-sm text-zinc-400">Accedi per completare i generi della tua collezione.</p>
+      ) : (
+        <>
+          <p className="text-sm text-zinc-400">
+            I titoli salvati prima che i generi venissero registrati non compaiono nel filtro per
+            genere del diario né nelle statistiche. Questo li ricontrolla su TMDB e li completa.
+          </p>
+          <div className="mt-4">
+            <button onClick={completa} disabled={busy} className="btn-primary">
+              {busy ? 'Controllo…' : '🎭 Completa i generi mancanti'}
+            </button>
+          </div>
+          {avanzamento && avanzamento.totale > 0 && (
+            <p className="mt-3 text-xs text-zinc-400" role="status">
+              {avanzamento.fatti} di {avanzamento.totale}…
+            </p>
+          )}
+          {esito && (
+            <p className="mt-3 text-xs text-projector" role="status">
+              {esito.daFare === 0
+                ? 'Tutti i titoli hanno già i loro generi. 🎉'
+                : `Completati ${esito.aggiornati} titoli su ${esito.daFare}.`}
+              {esito.falliti > 0 &&
+                ` ${esito.falliti} non hanno generi su TMDB o non hanno risposto: riprova più tardi.`}
+            </p>
+          )}
+          {errore && <p className="mt-3 text-xs text-curtain-light">{errore}</p>}
         </>
       )}
     </section>
@@ -321,6 +389,8 @@ export default function Settings() {
         <PushSettings />
 
         <BackupSettings />
+
+        <GeneriSettings />
 
         <DiagnosticaSettings />
 

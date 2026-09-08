@@ -263,10 +263,15 @@ export default function TasteProfile() {
     if (localStorage.getItem(flag)) return
     let cancelled = false
     backfillGenreIds(user.id)
-      .then((n) => {
+      .then((esito) => {
         if (cancelled) return
-        localStorage.setItem(flag, '1')
-        if (n > 0) listAll(user.id).then(setRows).catch(logFailure('collezione non ricaricata'))
+        // Il flag si mette solo se non è rimasto niente indietro: segnarlo
+        // «fatto» dopo una passata in cui metà titoli non hanno risposto
+        // significa non riprovarci mai più su questo browser.
+        if (esito.falliti === 0) localStorage.setItem(flag, '1')
+        if (esito.aggiornati > 0) {
+          listAll(user.id).then(setRows).catch(logFailure('collezione non ricaricata'))
+        }
       })
       .catch(logFailure('profilo di gusto non aggiornato'))
     return () => {
