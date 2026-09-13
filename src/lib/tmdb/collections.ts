@@ -130,15 +130,18 @@ export interface SagaContinuation {
   item: MediaItem
 }
 
-// "Continua la saga": given a sample of the user's watched movies, find the
-// collections they belong to and return the next *unwatched, already-released*
-// film in each — so the Dashboard can nudge the user to finish sagas they've
-// started. Bounded (samples watched movies, caps collections) to limit API load,
-// but wide enough to cover most libraries so older watches aren't missed.
+// "Continua la saga": given the user's watched movies, find the collections they
+// belong to and return the next film they *haven't watched yet* in each — so the
+// Dashboard can nudge them to finish sagas they've started. Il capitolo proposto
+// è il primo NON ANCORA VISTO in ordine cronologico, anche se ce l'hanno già in
+// watchlist: così la Sala punta ad Hellraiser 2 (che devi ancora vedere) invece
+// di saltare al 3 solo perché il 2 è già in una lista. Bounded (samples watched
+// movies, caps collections) to limit API load, but wide enough to cover most
+// libraries so older watches aren't missed.
 export async function getSagaContinuations(
   watchedMovieIds: number[],
-  knownIds: Set<number>,
 ): Promise<SagaContinuation[]> {
+  const watchedSet = new Set(watchedMovieIds)
   const sample = watchedMovieIds.slice(0, 60)
   const collectionIds = await Promise.all(sample.map(getMovieCollectionId))
   const uniqueCollections = [...new Set(collectionIds.filter((c): c is number => c != null))].slice(0, 20)
@@ -149,10 +152,12 @@ export async function getSagaContinuations(
     uniqueCollections.map(async (cid): Promise<SagaContinuation | null> => {
       try {
         const col = await getCollection(cid) // items sorted chronologically
-        // First film in the saga the user hasn't got, already released, with art.
+        // Il primo capitolo che l'utente non ha ancora visto, già uscito e con
+        // locandina. Ci si basa sui "visti", non sull'intera collezione: un
+        // capitolo già in watchlist va comunque proposto (è quello da guardare).
         const next = col.items.find(
           (f) =>
-            !knownIds.has(f.id) &&
+            !watchedSet.has(f.id) &&
             !!f.releaseDate &&
             f.releaseDate <= today &&
             !!f.posterPath,

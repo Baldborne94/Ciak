@@ -6,7 +6,7 @@ import { ScrollRow } from '../components/MediaRow'
 import SavedTitleCard from '../components/SavedTitleCard'
 import { posterUrl, getSagaContinuations, type SagaContinuation } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
-import { listByStatus, listWatchlist, listAll } from '../lib/userTitles'
+import { listByStatus, listWatchlist } from '../lib/userTitles'
 import { listDiary } from '../lib/diary'
 import { getContinueWatching, abandonSeries, type ContinueItem } from '../lib/episodes'
 import { useToast } from '../lib/toastCtx'
@@ -173,12 +173,7 @@ export default function Dashboard() {
     listDiary(user.id).then((d) => setFlashbacks(onThisDayFlashbacks(d))).catch(() => setFlashbacks([]))
 
     // Personalized sections from the user's own library.
-    Promise.all([
-      listByStatus(user.id, 'watched'),
-      listAll(user.id),
-    ]).then(([watched, all]) => {
-      const knownIds = new Set(all.map((t) => t.tmdb_id))
-
+    listByStatus(user.id, 'watched').then((watched) => {
       // Gli ultimi visti, i più recenti davanti. `watched_at` può mancare sui
       // titoli segnati prima che la data venisse registrata: per quelli vale
       // l'ultima modifica, che è comunque meglio di lasciarli in fondo a caso.
@@ -187,13 +182,13 @@ export default function Dashboard() {
         [...watched].sort((a, b) => quando(b).localeCompare(quando(a))).slice(0, 12),
       )
 
-      // "Continua la saga": watched movies (most-recent first) → next unwatched
-      // film in each collection they belong to.
+      // "Continua la saga": dai film visti → il prossimo capitolo non ancora
+      // visto in ogni collezione a cui appartengono.
       const watchedMovieIds = watched
         .filter((t) => t.media_type === 'movie')
         .map((t) => t.tmdb_id)
       if (watchedMovieIds.length > 0) {
-        getSagaContinuations(watchedMovieIds, knownIds)
+        getSagaContinuations(watchedMovieIds)
           .then(setSagaNext)
           .catch(() => setSagaNext([]))
       }
