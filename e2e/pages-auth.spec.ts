@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { mockTmdb, mockSupabase, mockAiApi, signIn, E2E_USER } from './support/mocks'
+import { movie, movieDetail, collectionDetail } from './support/fixtures'
 
 // Ogni schermata che richiede il login. Come per quelle pubbliche, verifichiamo
 // che si aprano davvero (non che rimandino al login) e che mostrino i dati
@@ -238,6 +239,51 @@ test('la Sala mostra la watchlist e gli ultimi visti', async ({ page }) => {
   await expect(daVedere.getByText('Midsommar')).toBeVisible()
   const visti = page.locator('section', { hasText: 'Visti di recente' }).first()
   await expect(visti.getByText('Hereditary')).toBeVisible()
+})
+
+test('"Continua la saga" propone il primo capitolo non visto, non salta chi è in watchlist', async ({
+  page,
+}) => {
+  // Il bug: avendo visto il capitolo 1 e con il 2 già in «Da vedere», la Sala
+  // proponeva il 3 — perché scartava tutto ciò che era in collezione, watchlist
+  // compresa. Ora si basa sui soli "visti", quindi punta al 2, che è il prossimo
+  // da guardare davvero.
+  await mockAiApi(page)
+  await mockTmdb(page, {
+    // Il film visto appartiene alla collezione 900.
+    detail: movieDetail(700, 'Hellraiser', { belongs_to_collection: { id: 900 } }),
+    collection: collectionDetail(900, {
+      name: 'Hellraiser Collection',
+      parts: [
+        movie(700, 'Hellraiser', { release_date: '1987-09-11' }),
+        movie(701, 'Hellbound: Hellraiser II', { release_date: '1988-12-23' }),
+        movie(702, 'Hellraiser III', { release_date: '1992-09-11' }),
+      ],
+    }),
+  })
+  await mockSupabase(page, {
+    user_titles: [
+      {
+        id: 'h-1', user_id: E2E_USER.id, tmdb_id: 700, media_type: 'movie', title: 'Hellraiser',
+        poster_path: '/p.jpg', status: 'watched', is_favorite: false, personal_rating: null,
+        watched_at: '2026-08-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z',
+      },
+      {
+        id: 'h-2', user_id: E2E_USER.id, tmdb_id: 701, media_type: 'movie',
+        title: 'Hellbound: Hellraiser II',
+        poster_path: '/p.jpg', status: 'to_watch', is_favorite: false, personal_rating: null,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+  })
+
+  await page.goto('/')
+
+  const saga = page.locator('section', { hasText: 'Continua la saga' }).first()
+  await expect(saga.getByText('Hellbound: Hellraiser II')).toBeVisible()
+  // Non deve saltare al capitolo 3 scavalcando il 2 ancora da vedere.
+  await expect(page.getByText('Hellraiser III')).toHaveCount(0)
 })
 
 test('a chi non ha ancora niente la Sala dà il benvenuto, non il bentornato', async ({ page }) => {
