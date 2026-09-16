@@ -206,52 +206,56 @@ export async function getContinueWatching(userId: string, limit = 8): Promise<Co
     watchedByTv.get(r.tv_id)!.add(epKey(r.season_number, r.episode_number))
   }
 
-  // Le serie "In corso" senza episodi tracciati vengono dopo quelle con visioni
-  // recenti (che hanno una data e quindi un ordine): partono da zero episodi.
-  for (const tvId of inProgressIds) {
-    if (abandonedIds.has(tvId)) continue
-    if (!watchedByTv.has(tvId)) {
-      watchedByTv.set(tvId, new Set())
-      order.push(tvId)
-    }
-  }
+  // Le serie "In corso" segnate a mano, senza episodi tracciati: partono da
+  // zero episodi. NON entrano in `order` con le altre, altrimenti il `limit`
+  // qui sotto le taglierebbe dietro a decine di serie con episodi — comprese
+  // quelle già completate, che occupano uno slot e solo dopo, risolto il
+  // dettaglio, si scoprono finite (next === null). Si risolvono a parte e si
+  // garantisce loro un posto in coda.
+  const manualOrder = inProgressIds.filter(
+    (tvId) => !abandonedIds.has(tvId) && !watchedByTv.has(tvId),
+  )
+  for (const tvId of manualOrder) watchedByTv.set(tvId, new Set())
 
-  const results = await Promise.all(
-    order.slice(0, limit).map(async (tvId): Promise<ContinueItem | null> => {
-      try {
-        const detail = await getDetail('tv', tvId)
-        const watched = watchedByTv.get(tvId)!
-        const seasons = detail.seasons.filter((s) => s.seasonNumber > 0)
-        let total = 0
-        let next: { season: number; episode: number } | null = null
-        for (const s of seasons) {
-          total += s.episodeCount
-          if (!next) {
-            for (let e = 1; e <= s.episodeCount; e++) {
-              if (!watched.has(epKey(s.seasonNumber, e))) {
-                next = { season: s.seasonNumber, episode: e }
-                break
-              }
+  const resolve = async (tvId: number): Promise<ContinueItem | null> => {
+    try {
+      const detail = await getDetail('tv', tvId)
+      const watched = watchedByTv.get(tvId)!
+      const seasons = detail.seasons.filter((s) => s.seasonNumber > 0)
+      let total = 0
+      let next: { season: number; episode: number } | null = null
+      for (const s of seasons) {
+        total += s.episodeCount
+        if (!next) {
+          for (let e = 1; e <= s.episodeCount; e++) {
+            if (!watched.has(epKey(s.seasonNumber, e))) {
+              next = { season: s.seasonNumber, episode: e }
+              break
             }
           }
         }
-        if (!next) return null // serie completata
-        return {
-          tvId,
-          title: displayTitle(detail),
-          posterPath: detail.posterPath,
-          genreIds: detail.genreIds,
-          season: next.season,
-          episode: next.episode,
-          watchedCount: watched.size,
-          totalEpisodes: total,
-        }
-      } catch {
-        return null
       }
-    }),
-  )
-  return results.filter((x): x is ContinueItem => x !== null)
+      if (!next) return null // serie completata
+      return {
+        tvId,
+        title: displayTitle(detail),
+        posterPath: detail.posterPath,
+        genreIds: detail.genreIds,
+        season: next.season,
+        episode: next.episode,
+        watchedCount: watched.size,
+        totalEpisodes: total,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  // Le serie con episodi recenti hanno la priorità (fino a `limit`); quelle
+  // segnate "In corso" a mano si risolvono comunque, così non spariscono dietro
+  // le serie già viste. Il taglio a `limit` avviene DOPO, sui risultati validi.
+  const results = await Promise.all([...order.slice(0, limit), ...manualOrder].map(resolve))
+  return results.filter((x): x is ContinueItem => x !== null).slice(0, limit)
 }
 
 // Marca una serie come "Abbandonato": esce da "Riprendi a guardare" senza
