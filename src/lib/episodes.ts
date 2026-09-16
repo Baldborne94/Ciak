@@ -153,11 +153,15 @@ export interface ContinueItem {
 
 // Series the user is watching → the next unwatched episode for each, most
 // recently watched first. Used by the homepage "Riprendi a guardare" row.
+// Include anche le serie segnate "In corso" a mano dalla scheda, che non hanno
+// (ancora) episodi tracciati: senza questo una serie messa "In corso" col
+// pulsante non comparirebbe qui, pur essendo "da riprendere". Per quelle si
+// riparte dal primo episodio, finché non se ne registra qualcuno.
 // Excludes series the user has marked "Abbandonato" — dismissing one there
 // hides it here without deleting the watched-episode history, so it can be
 // picked back up later (see resumeAbandonedSeries).
 export async function getContinueWatching(userId: string, limit = 8): Promise<ContinueItem[]> {
-  const [episodesRes, abandonedRes] = await Promise.all([
+  const [episodesRes, statusRes] = await Promise.all([
     // Paginata: una riga per episodio visto, quindi chi guarda molte serie
     // supera le 1000 righe e una serie lasciata a metà tempo fa sparirebbe
     // da "Continua a guardare" senza che nulla lo segnali.
@@ -176,15 +180,19 @@ export async function getContinueWatching(userId: string, limit = 8): Promise<Co
     ),
     client()
       .from('user_titles')
-      .select('tmdb_id')
+      .select('tmdb_id, status')
       .eq('user_id', userId)
       .eq('media_type', 'tv')
-      .eq('status', 'abandoned'),
+      .in('status', ['abandoned', 'in_progress']),
   ])
 
+  const statusRows = (statusRes.data ?? []) as { tmdb_id: number; status: TitleStatus }[]
   const abandonedIds = new Set(
-    ((abandonedRes.data ?? []) as { tmdb_id: number }[]).map((r) => r.tmdb_id),
+    statusRows.filter((r) => r.status === 'abandoned').map((r) => r.tmdb_id),
   )
+  const inProgressIds = statusRows
+    .filter((r) => r.status === 'in_progress')
+    .map((r) => r.tmdb_id)
 
   const rows = episodesRes
   const order: number[] = []
@@ -196,6 +204,16 @@ export async function getContinueWatching(userId: string, limit = 8): Promise<Co
       order.push(r.tv_id)
     }
     watchedByTv.get(r.tv_id)!.add(epKey(r.season_number, r.episode_number))
+  }
+
+  // Le serie "In corso" senza episodi tracciati vengono dopo quelle con visioni
+  // recenti (che hanno una data e quindi un ordine): partono da zero episodi.
+  for (const tvId of inProgressIds) {
+    if (abandonedIds.has(tvId)) continue
+    if (!watchedByTv.has(tvId)) {
+      watchedByTv.set(tvId, new Set())
+      order.push(tvId)
+    }
   }
 
   const results = await Promise.all(

@@ -286,6 +286,39 @@ test('"Continua la saga" propone il primo capitolo non visto, non salta chi è i
   await expect(page.getByText('Hellraiser III')).toHaveCount(0)
 })
 
+test('una serie segnata "In corso" a mano compare in "Riprendi a guardare"', async ({ page }) => {
+  // Il bug: «Riprendi a guardare» si costruiva solo dagli episodi tracciati,
+  // quindi una serie messa "In corso" col pulsante (senza episodi registrati)
+  // non compariva in Sala. Ora c'è, e riparte dal primo episodio.
+  await signIn(page)
+  await mockAiApi(page)
+  await mockTmdb(page, {
+    detail: movieDetail(900, 'Scavengers Reign', {
+      number_of_seasons: 1,
+      number_of_episodes: 12,
+      seasons: [{ id: 1, season_number: 1, episode_count: 12, name: 'Stagione 1', air_date: '2023-10-19' }],
+    }),
+  })
+  await mockSupabase(page, {
+    user_titles: [
+      {
+        id: 's-1', user_id: E2E_USER.id, tmdb_id: 900, media_type: 'tv', title: 'Scavengers Reign',
+        poster_path: '/p.jpg', status: 'in_progress', is_favorite: false, personal_rating: null,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+    // Nessuna riga in user_episodes: la serie è "In corso" solo per il pulsante.
+    user_episodes: [],
+  })
+
+  await page.goto('/')
+
+  const riprendi = page.locator('section', { hasText: 'Riprendi a guardare' }).first()
+  await expect(riprendi.getByText('Scavengers Reign')).toBeVisible()
+  // Riparte dall'inizio, dato che nessun episodio è ancora registrato.
+  await expect(riprendi.getByText(/S1\s*·\s*E1/)).toBeVisible()
+})
+
 test('a chi non ha ancora niente la Sala dà il benvenuto, non il bentornato', async ({ page }) => {
   await signIn(page)
   await mockAiApi(page)
