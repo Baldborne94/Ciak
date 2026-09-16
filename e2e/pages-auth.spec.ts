@@ -319,6 +319,55 @@ test('una serie segnata "In corso" a mano compare in "Riprendi a guardare"', asy
   await expect(riprendi.getByText(/S1\s*·\s*E1/)).toBeVisible()
 })
 
+test('«Riprendi a guardare» non nasconde una serie "In corso" dietro molte serie finite', async ({
+  page,
+}) => {
+  // Il bug: le serie "In corso" a mano venivano messe IN CODA e poi il limite
+  // tagliava la lista PRIMA di scoprire quali serie con episodi erano già finite
+  // (occupano uno slot ma poi spariscono). Con abbastanza serie viste, quella
+  // "In corso" restava fuori — è quello che succedeva a Scavengers Reign.
+  await signIn(page)
+  await mockAiApi(page)
+  // Tutte le serie condividono lo stesso dettaglio: 1 stagione da 3 episodi.
+  await mockTmdb(page, {
+    detail: movieDetail(900, 'Scavengers Reign', {
+      number_of_seasons: 1,
+      number_of_episodes: 3,
+      seasons: [{ id: 1, season_number: 1, episode_count: 3, name: 'Stagione 1', air_date: '2023-10-19' }],
+    }),
+  })
+  // 8 serie con episodi tracciati, tutte GIÀ COMPLETATE (3/3): riempiono il
+  // limite di «Riprendi a guardare» e poi spariscono (nessun prossimo episodio).
+  const finite = Array.from({ length: 8 }, (_, i) => 801 + i)
+  await mockSupabase(page, {
+    user_titles: [
+      ...finite.map((id, i) => ({
+        id: `f-${id}`, user_id: E2E_USER.id, tmdb_id: id, media_type: 'tv', title: `Finita ${i + 1}`,
+        poster_path: '/p.jpg', status: 'watched', is_favorite: false, personal_rating: null,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      })),
+      {
+        id: 's-900', user_id: E2E_USER.id, tmdb_id: 900, media_type: 'tv', title: 'Scavengers Reign',
+        poster_path: '/p.jpg', status: 'in_progress', is_favorite: false, personal_rating: null,
+        created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+      },
+    ],
+    user_episodes: finite.flatMap((id, i) =>
+      [1, 2, 3].map((ep) => ({
+        id: `e-${id}-${ep}`, user_id: E2E_USER.id, tv_id: id,
+        season_number: 1, episode_number: ep,
+        watched_at: `2026-08-0${i + 1}T00:00:00Z`,
+      })),
+    ),
+  })
+
+  await page.goto('/')
+
+  // La serie "In corso" compare comunque, nonostante le 8 serie finite davanti.
+  const riprendi = page.locator('section', { hasText: 'Riprendi a guardare' }).first()
+  await expect(riprendi.getByText('Scavengers Reign')).toBeVisible()
+})
+
 test('a chi non ha ancora niente la Sala dà il benvenuto, non il bentornato', async ({ page }) => {
   await signIn(page)
   await mockAiApi(page)
