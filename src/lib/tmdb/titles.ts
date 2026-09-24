@@ -66,6 +66,20 @@ export function displayTitle(item: {
   return item.title || item.originalTitle || 'Senza titolo'
 }
 
+// Il nome leggibile di una persona: come per i titoli, un nome in uno script
+// non latino (registi/attori coreani, giapponesi, russi…) va mostrato nella
+// sua versione leggibile quando esiste. TMDB la tiene di solito in
+// `also_known_as` (la traslitterazione, es. "Bong Joon-ho"): si prende il primo
+// alias leggibile, altrimenti si resta sul nome originale.
+export function readablePersonName(
+  name: string,
+  alsoKnownAs: string[] | null | undefined,
+): string {
+  if (isReadableTitle(name)) return name
+  const alt = (alsoKnownAs ?? []).find((a) => isReadableTitle(a))
+  return alt ?? name
+}
+
 // When the localized (it-IT) title is in a non-readable script (CJK, Hangul,
 // Cyrillic…), patch it in place with the English title, matched by id — so
 // foreign titles TMDB hasn't translated to Italian at least show in English

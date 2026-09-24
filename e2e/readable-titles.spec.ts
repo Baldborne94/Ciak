@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { mockTmdb, mockSupabase, signIn } from './support/mocks'
-import { movieDetail } from './support/fixtures'
+import { movieDetail, personDetail } from './support/fixtures'
 
 // Un titolo straniero non deve mai arrivare a schermo in uno script che non si
 // legge, se TMDB ne conosce una versione leggibile. Il caso che ha fatto
@@ -74,4 +74,32 @@ test('quando TMDB non conosce nessuna versione leggibile il titolo originale res
   await page.goto('/title/movie/9003')
 
   await expect(page.getByRole('heading', { name: CJK })).toBeVisible()
+})
+
+// Non solo i film: anche registi e attori con nome in uno script non latino
+// vanno mostrati leggibili. Il caso della segnalazione: la scheda del regista
+// «봉준호» (Bong Joon-ho).
+test('il nome di un regista straniero ripiega sulla traslitterazione', async ({ page }) => {
+  await mockTmdb(page, {
+    person: personDetail(21684, '봉준호', {
+      also_known_as: ['ボン・ジュノ', 'Bong Joon-ho'],
+    }),
+  })
+
+  await page.goto('/person/21684')
+
+  await expect(page.getByRole('heading', { name: 'Bong Joon-ho' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '봉준호' })).toHaveCount(0)
+})
+
+test('se TMDB non conosce una traslitterazione leggibile, il nome originale resta', async ({
+  page,
+}) => {
+  await mockTmdb(page, {
+    person: personDetail(9999, '宮崎駿', { also_known_as: ['みやざき はやお'] }),
+  })
+
+  await page.goto('/person/9999')
+
+  await expect(page.getByRole('heading', { name: '宮崎駿' })).toBeVisible()
 })
