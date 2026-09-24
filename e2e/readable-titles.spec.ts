@@ -103,3 +103,26 @@ test('se TMDB non conosce una traslitterazione leggibile, il nome originale rest
 
   await expect(page.getByRole('heading', { name: '宮崎駿' })).toBeVisible()
 })
+
+// Anche sulla scheda di un film: il nome del regista nei credits (es. «Regia:
+// 봉준호») va reso leggibile. I credits non portano la traslitterazione, quindi
+// si pesca dalla scheda persona — ma solo per i nomi in script non latino.
+test('il nome del regista, nei credits di un film, ripiega sulla traslitterazione', async ({
+  page,
+}) => {
+  await mockTmdb(page, {
+    detail: movieDetail(9100, 'Madre', {
+      credits: {
+        cast: [{ id: 501, name: 'Kim Hye-ja', character: 'La madre', profile_path: null, order: 0 }],
+        crew: [{ id: 21684, name: '봉준호', job: 'Director', profile_path: null }],
+      },
+    }),
+    // /person/{id} porta la traslitterazione fra i nomi noti.
+    person: personDetail(21684, '봉준호', { also_known_as: ['ボン・ジュノ', 'Bong Joon-ho'] }),
+  })
+
+  await page.goto('/title/movie/9100')
+
+  await expect(page.getByText('Bong Joon-ho')).toBeVisible()
+  await expect(page.getByText('봉준호')).toHaveCount(0)
+})

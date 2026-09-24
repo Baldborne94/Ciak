@@ -1,6 +1,6 @@
 import { tmdbFetch } from './client'
-import { normalise, countryName, type RawMedia, type RawDetail, type RawEpisode, type RawVideo, type RawProvider } from './raw'
-import { patchReadableTitles, fallbackReadableTitle, isReadableTitle } from './titles'
+import { normalise, countryName, type RawMedia, type RawDetail, type RawEpisode, type RawVideo, type RawProvider, type RawPerson } from './raw'
+import { patchReadableTitles, fallbackReadableTitle, isReadableTitle, readablePersonName } from './titles'
 import type { CastMember, Company, CountryProviders, CrewMember, Episode, MediaDetail, MediaItem, Provider, TitleFacts, TmdbType } from '../types'
 
 // "Se ti è piaciuto, guarda anche": TMDB's raw /recommendations feed is noisy
@@ -140,6 +140,32 @@ export async function getDetail(
       ? (raw.created_by ?? []).map((c) => ({ id: c.id, name: c.name }))
       : crewRaw.filter((c) => c.job === 'Director').map((c) => ({ id: c.id, name: c.name }))
 
+  // Nomi di cast e regia in script non latino (es. il regista «봉준호»): i
+  // credits del film non portano la traslitterazione, così va pescata dalla
+  // scheda persona (/person/{id} → also_known_as), come per la scheda del
+  // regista. Solo per i nomi NON leggibili — per i film "occidentali" nessuna
+  // chiamata extra — e con un tetto, per non esplodere in fan-out.
+  const peopleToRead = [...cast, ...directorsRaw]
+  const nonReadableIds = [
+    ...new Set(peopleToRead.filter((p) => !isReadableTitle(p.name)).map((p) => p.id)),
+  ].slice(0, 20)
+  const nameOverrides = new Map<number, string>()
+  if (nonReadableIds.length > 0) {
+    await Promise.all(
+      nonReadableIds.map(async (pid) => {
+        try {
+          const person = await tmdbFetch<RawPerson>(`/person/${pid}`)
+          const readable = readablePersonName(person.name, person.also_known_as)
+          if (isReadableTitle(readable)) nameOverrides.set(pid, readable)
+        } catch {
+          /* best-effort: se salta, resta il nome originale */
+        }
+      }),
+    )
+  }
+  const readableName = <T extends { id: number; name: string }>(p: T): T =>
+    nameOverrides.has(p.id) ? { ...p, name: nameOverrides.get(p.id)! } : p
+
   const productionCompanies: Company[] = (raw.production_companies ?? []).map((c) => ({
     id: c.id,
     name: c.name,
@@ -202,8 +228,8 @@ export async function getDetail(
     genres: raw.genres ?? [],
     runtime: raw.runtime ?? raw.episode_run_time?.[0] ?? null,
     tagline: raw.tagline ?? null,
-    cast,
-    crew,
+    cast: cast.map(readableName),
+    crew: crew.map(readableName),
     recommendations,
     originalTitle: raw.original_title ?? raw.original_name ?? null,
     originalLanguage: raw.original_language ?? null,
@@ -215,7 +241,9 @@ export async function getDetail(
     homepage: raw.homepage ?? null,
     numberOfSeasons: raw.number_of_seasons ?? null,
     numberOfEpisodes: raw.number_of_episodes ?? null,
-    directors: directorsRaw.filter((d, i, arr) => arr.findIndex((x) => x.id === d.id) === i),
+    directors: directorsRaw
+      .filter((d, i, arr) => arr.findIndex((x) => x.id === d.id) === i)
+      .map(readableName),
     trailerKey: trailer?.key ?? null,
     watchProviders,
     watchProvidersByCountry,
