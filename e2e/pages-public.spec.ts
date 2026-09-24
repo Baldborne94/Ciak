@@ -93,6 +93,23 @@ test('Studio — titoli prodotti', async ({ page }) => {
   await expectNoCrash(page)
 })
 
+test('Studio — nome in script non latino ripiega sui nomi alternativi', async ({ page }) => {
+  // TMDB non traduce i nomi delle compagnie: per uno studio con nome in uno
+  // script non latino l'unica fonte di un nome leggibile è /alternative_names.
+  await mockTmdb(page, {
+    company: { id: 4, name: '스튜디오 지브리', logo_path: null },
+    companyAltNames: [
+      { name: 'スタジオジブリ', type: 'International title' },
+      { name: 'Studio Ghibli', type: 'International title' },
+    ],
+  })
+  await page.goto('/studio/4')
+
+  await expect(page.getByRole('heading', { name: 'Studio Ghibli' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '스튜디오 지브리' })).toHaveCount(0)
+  await expectNoCrash(page)
+})
+
 test('Saga — capitoli della collezione', async ({ page }) => {
   await mockTmdb(page)
   await page.goto('/collection/1241')

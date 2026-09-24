@@ -27,6 +27,9 @@ const CONSENTITI: RegExp[] = [
   /^\/person\/\d+$/,
   /^\/person\/\d+\/combined_credits$/,
   /^\/company\/\d+$/,
+  // Nomi alternativi/internazionali di una compagnia: l'unica fonte di un nome
+  // latino quando quello principale è in uno script non leggibile.
+  /^\/company\/\d+\/alternative_names$/,
   /^\/collection\/\d+$/,
   // Serve alle Impostazioni per dire se il catalogo è configurato davvero.
   /^\/configuration$/,
