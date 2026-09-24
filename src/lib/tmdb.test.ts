@@ -8,6 +8,7 @@ import {
   profileUrl,
   logoUrl,
 } from './tmdb'
+import { readablePersonName } from './tmdb/titles'
 
 describe('isReadableTitle', () => {
   it('rifiuta valori vuoti o assenti', () => {
@@ -141,6 +142,22 @@ describe('fallbackReadableTitle', () => {
 
   it('torna null quando davvero non esiste nulla di leggibile', () => {
     expect(fallbackReadableTitle(null, [], [])).toBeNull()
+  })
+})
+
+describe('readablePersonName', () => {
+  it('tiene il nome quando è già leggibile', () => {
+    expect(readablePersonName('Bong Joon-ho', ['봉준호'])).toBe('Bong Joon-ho')
+  })
+
+  it('ripiega sulla traslitterazione quando il nome è in uno script non latino', () => {
+    // Il caso della segnalazione: il regista mostrato come «봉준호».
+    expect(readablePersonName('봉준호', ['ボン・ジュノ', 'Bong Joon-ho'])).toBe('Bong Joon-ho')
+  })
+
+  it('resta sul nome originale se nessun alias è leggibile', () => {
+    expect(readablePersonName('宮崎駿', ['みやざき はやお'])).toBe('宮崎駿')
+    expect(readablePersonName('宮崎駿', undefined)).toBe('宮崎駿')
   })
 })
 

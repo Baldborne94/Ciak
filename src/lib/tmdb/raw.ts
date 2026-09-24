@@ -131,6 +131,10 @@ export interface RawWatchRegion {
 export interface RawPerson {
   id: number
   name: string
+  // Altri nomi noti (traslitterazioni, nome internazionale…): per una persona
+  // con nome in uno script non latino è qui che vive di solito la versione
+  // leggibile ("봉준호" → "Bong Joon-ho").
+  also_known_as?: string[]
   profile_path?: string | null
   known_for_department?: string
   known_for?: RawMedia[]

@@ -1,6 +1,6 @@
 import { tmdbFetch } from './client'
 import { normalise, type RawPerson, type RawCredit } from './raw'
-import { patchReadableTitles } from './titles'
+import { patchReadableTitles, readablePersonName } from './titles'
 import type { MediaItem, Person, PersonDetail } from '../types'
 
 export async function resolvePeople(names: string[]): Promise<Person[]> {
@@ -106,7 +106,9 @@ export async function getPersonDetail(id: number): Promise<PersonDetail> {
 
   return {
     id: raw.id,
-    name: raw.name,
+    // Nome leggibile: se TMDB dà il nome in uno script non latino, ripiega
+    // sulla traslitterazione in `also_known_as` (come per i titoli dei film).
+    name: readablePersonName(raw.name, raw.also_known_as),
     profilePath: raw.profile_path ?? null,
     department: raw.known_for_department ?? null,
     knownFor: raw.known_for_department ?? null,
