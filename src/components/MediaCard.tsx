@@ -127,7 +127,17 @@ function QuickItem({ label, active, onClick }: { label: string; active: boolean;
   )
 }
 
-export default function MediaCard({ item }: { item: MediaItem }) {
+export default function MediaCard({
+  item,
+  priority = false,
+}: {
+  item: MediaItem
+  // Le locandine "above the fold" (prima riga di una griglia/carosello): caricate
+  // subito e ad alta priorità. Con `loading="lazy"` il browser le scarica a
+  // priorità bassa e solo dopo il layout, così proprio quelle che stai guardando
+  // arrivano per ultime. Il resto resta lazy, per non scaricare tutta la lista.
+  priority?: boolean
+}) {
   const { lookup } = useLibrary()
   const lib = lookup(item.mediaType, item.id)
   const poster = posterUrl(item.posterPath)
@@ -148,7 +158,9 @@ export default function MediaCard({ item }: { item: MediaItem }) {
             <img
               src={poster}
               alt={item.title}
-              loading="lazy"
+              loading={priority ? 'eager' : 'lazy'}
+              fetchPriority={priority ? 'high' : 'auto'}
+              decoding="async"
               className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
             />
           ) : (
