@@ -74,9 +74,11 @@ function Carousel({ children }: { children: ReactNode }) {
 export function MediaRow({ items }: { items: MediaItem[] }) {
   return (
     <Carousel>
-      {items.map((item) => (
+      {items.map((item, i) => (
         <div key={`${item.mediaType}-${item.id}`} className={CARD}>
-          <MediaCard item={item} />
+          {/* Le prime card del carosello sono visibili all'apertura: priorità
+              alta, così non restano grigie mentre le guardi. */}
+          <MediaCard item={item} priority={i < 5} />
         </div>
       ))}
     </Carousel>

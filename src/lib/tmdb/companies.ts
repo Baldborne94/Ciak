@@ -1,6 +1,6 @@
 import { tmdbFetch } from './client'
 import { normalise, type RawCompany, type RawMedia } from './raw'
-import { patchReadableTitles } from './titles'
+import { patchReadableTitles, isReadableTitle } from './titles'
 import type { Company, MediaItem } from '../types'
 
 // Resolve a curated list of names to real TMDB entities (with logos/photos),
@@ -26,7 +26,23 @@ export async function searchCompany(query: string): Promise<Company[]> {
 
 export async function getCompany(id: number): Promise<Company> {
   const raw = await tmdbFetch<RawCompany>(`/company/${id}`)
-  return { id: raw.id, name: raw.name, logoPath: raw.logo_path ?? null }
+  let name = raw.name
+  // TMDB non traduce i nomi delle compagnie e non espone un `original_name`:
+  // quando il nome è in uno script non leggibile, l'unica fonte di una versione
+  // latina sono i nomi alternativi/internazionali. Best-effort: solo per i nomi
+  // non leggibili (nessuna chiamata extra per gli studi "occidentali").
+  if (!isReadableTitle(name)) {
+    try {
+      const alt = await tmdbFetch<{ results?: { name: string }[] }>(
+        `/company/${id}/alternative_names`,
+      )
+      const readable = (alt.results ?? []).map((r) => r.name).find((n) => isReadableTitle(n))
+      if (readable) name = readable
+    } catch {
+      /* best-effort: se salta, resta il nome originale */
+    }
+  }
+  return { id: raw.id, name, logoPath: raw.logo_path ?? null }
 }
 
 export async function discoverByCompany(

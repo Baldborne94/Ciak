@@ -21,6 +21,7 @@ describe('percorsoConsentito', () => {
       '/person/488',
       '/person/488/combined_credits',
       '/company/420',
+      '/company/420/alternative_names',
       '/collection/10',
       '/configuration',
     ]

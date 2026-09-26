@@ -42,6 +42,7 @@ export interface TmdbOverrides {
   person?: Record<string, unknown>
   personCredits?: Record<string, unknown>
   company?: Record<string, unknown>
+  companyAltNames?: unknown[]
   collection?: Record<string, unknown>
   searchPerson?: unknown[]
   searchCompany?: unknown[]
@@ -114,6 +115,9 @@ export async function mockTmdb(page: Page, over: TmdbOverrides = {}): Promise<Tm
     }
     if (/^\/person\/\d+\/combined_credits$/.test(path)) {
       return json(over.personCredits ?? { cast: [], crew: [] })
+    }
+    if (/^\/company\/\d+\/alternative_names$/.test(path)) {
+      return json({ results: over.companyAltNames ?? [] })
     }
     const companyMatch = /^\/company\/(\d+)$/.exec(path)
     if (companyMatch) {

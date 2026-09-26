@@ -56,6 +56,25 @@ test('anche un anime già visto viene tolto, benché TMDB lo chiami «tv»', asy
   await expect(page.getByText('Cowboy Bebop')).toHaveCount(0)
 })
 
+test('la prima riga della griglia carica le locandine subito, non pigre', async ({ page }) => {
+  // Perché la Sala «ci mette a caricare le locandine»: con loading=lazy il
+  // browser scarica anche le immagini già a schermo a bassa priorità e dopo il
+  // layout. La prima riga (fino a 5) va invece caricata subito e ad alta
+  // priorità; il resto resta pigro per non scaricare tutta la lista.
+  const items = Array.from({ length: 6 }, (_, i) => movie(300 + i, `Recupero ${i + 1}`))
+  await mockTmdb(page, { discover: () => items })
+  await mockSupabase(page, { user_titles: [] })
+
+  await page.goto('/da-recuperare')
+
+  const prima = page.getByAltText('Recupero 1')
+  await expect(prima).toBeVisible()
+  await expect(prima).toHaveAttribute('loading', 'eager')
+  await expect(prima).toHaveAttribute('fetchpriority', 'high')
+  // La sesta card (seconda riga, su griglia a 5 colonne) resta pigra.
+  await expect(page.getByAltText('Recupero 6')).toHaveAttribute('loading', 'lazy')
+})
+
 test('quando non resta niente lo dice, invece di lasciare la pagina vuota', async ({ page }) => {
   await mockTmdb(page, { discover: () => [movie(101, 'Il Padrino')] })
   await mockSupabase(page, { user_titles: [inArchivio(101, 'Il Padrino')] })
