@@ -206,6 +206,32 @@ test('la watchlist si filtra per tipo e si riordina', async ({ page }) => {
   await expectNoCrash(page)
 })
 
+test('la watchlist si può cercare per titolo', async ({ page }) => {
+  await mockTmdb(page)
+  await mockSupabase(page, {
+    user_titles: [
+      userTitle({ id: 'a', tmdb_id: 1, title: 'Rooster Fighter', media_type: 'tv', status: 'to_watch' }),
+      userTitle({ id: 'b', tmdb_id: 2, title: 'Sakamoto Days', media_type: 'tv', status: 'to_watch' }),
+      userTitle({ id: 'c', tmdb_id: 3, title: 'Mr. Pickles', media_type: 'tv', status: 'to_watch' }),
+    ],
+  })
+  await page.goto('/lists/watchlist')
+
+  await expect(page.getByText('Sakamoto Days')).toBeVisible()
+
+  // Cercando "sakamoto" resta solo quel titolo (ricerca senza maiuscole).
+  await page.getByRole('searchbox', { name: 'Cerca nella lista' }).fill('sakamoto')
+  await expect(page.getByText('Sakamoto Days')).toBeVisible()
+  await expect(page.getByText('Rooster Fighter')).toHaveCount(0)
+  await expect(page.getByText('Mr. Pickles')).toHaveCount(0)
+
+  // Svuotando il campo tornano tutti.
+  await page.getByRole('searchbox', { name: 'Cerca nella lista' }).fill('')
+  await expect(page.getByText('Rooster Fighter')).toBeVisible()
+  await expect(page.getByText('Mr. Pickles')).toBeVisible()
+  await expectNoCrash(page)
+})
+
 // ── La Sala mostra la tua roba ────────────────────────────────────────────
 // Mostrava solo sezioni "extra" — un suggerimento casuale, le saghe da finire,
 // i ricordi — tutte condizionali e tutte capaci di essere vuote insieme: con

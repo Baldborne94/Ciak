@@ -62,6 +62,8 @@ export default function ListPage({ status }: { status: TitleStatus }) {
   const shareUrl = user ? `${window.location.origin}/watchlist/${user.id}` : ''
   const [kind, setKind] = useState<Kind>('all')
   const [sort, setSort] = useState<Sort>('recent')
+  // Ricerca testuale dentro la lista: filtra per titolo, oltre a Tipo e ordine.
+  const [search, setSearch] = useState('')
   // Anno d'uscita per titolo ("mediaType-tmdbId" → anno), caricato in background:
   // user_titles non lo salva, quindi lo recuperiamo da TMDB solo per ordinare/
   // filtrare qui, senza bloccare il rendering della lista.
@@ -88,13 +90,16 @@ export default function ListPage({ status }: { status: TitleStatus }) {
   }, [user, status])
 
   const filteredSorted = useMemo(() => {
-    const list = items.filter((r) => {
-      const isAnimation = (r.genre_ids ?? []).includes(ANIME_CARTOON_GENRE)
-      if (kind === 'movie') return r.media_type === 'movie' && !isAnimation
-      if (kind === 'tv') return r.media_type === 'tv' && !isAnimation
-      if (kind === 'animation') return isAnimation
-      return true
-    })
+    const q = search.trim().toLowerCase()
+    const list = items
+      .filter((r) => {
+        const isAnimation = (r.genre_ids ?? []).includes(ANIME_CARTOON_GENRE)
+        if (kind === 'movie') return r.media_type === 'movie' && !isAnimation
+        if (kind === 'tv') return r.media_type === 'tv' && !isAnimation
+        if (kind === 'animation') return isAnimation
+        return true
+      })
+      .filter((r) => q === '' || r.title.toLowerCase().includes(q))
     const yearOf = (r: UserTitle) => releaseYears.get(`${r.media_type === 'tv' ? 'tv' : 'movie'}-${r.tmdb_id}`) ?? ''
     if (sort === 'title') return [...list].sort((a, b) => a.title.localeCompare(b.title, 'it'))
     if (sort === 'oldest') return [...list].sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -105,7 +110,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
       return ya.localeCompare(yb)
     })
     return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at)) // recent (default)
-  }, [items, kind, sort, releaseYears])
+  }, [items, kind, sort, search, releaseYears])
 
   useEffect(() => {
     if (!user || !shareable) return
@@ -212,6 +217,14 @@ export default function ListPage({ status }: { status: TitleStatus }) {
             <FilterGroup label="Tipo">
               <ChipGroup options={KIND_OPTS} value={kind} onChange={setKind} />
             </FilterGroup>
+            <input
+              type="search"
+              aria-label="Cerca nella lista"
+              placeholder="🔍 Cerca un titolo…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className={filterSelectClass}
+            />
             <select aria-label="Ordina la lista" value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={filterSelectClass}>
               {SORT_OPTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
