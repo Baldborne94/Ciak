@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { mockTmdb, mockSupabase, mockAiApi, signIn, E2E_USER } from './support/mocks'
+import { mockTmdb, mockSupabase, mockAiApi, signIn, E2E_USER, TMDB_PROXY, tmdbRequest } from './support/mocks'
 import { movie, movieDetail, collectionDetail } from './support/fixtures'
 
 // Ogni schermata che richiede il login. Come per quelle pubbliche, verifichiamo
@@ -229,6 +229,37 @@ test('la watchlist si può cercare per titolo', async ({ page }) => {
   await page.getByRole('searchbox', { name: 'Cerca nella lista' }).fill('')
   await expect(page.getByText('Rooster Fighter')).toBeVisible()
   await expect(page.getByText('Mr. Pickles')).toBeVisible()
+  await expectNoCrash(page)
+})
+
+test('la watchlist si cerca anche col titolo originale', async ({ page }) => {
+  await mockTmdb(page)
+  // In inglese TMDB risponde col titolo originale: è da lì che la lista lo
+  // impara, perché user_titles salva solo quello italiano.
+  await page.route(TMDB_PROXY, (route) => {
+    const { path, params } = tmdbRequest(route)
+    if (path === '/movie/110420' && params.get('language') === 'en-US') {
+      return route.fulfill({ json: movieDetail(110420, 'Song of the Sea') })
+    }
+    return route.fallback()
+  })
+  await mockSupabase(page, {
+    user_titles: [
+      userTitle({ id: 'a', tmdb_id: 110420, title: 'La canzone del mare', status: 'to_watch' }),
+      userTitle({ id: 'b', tmdb_id: 2, title: 'Sakamoto Days', media_type: 'tv', status: 'to_watch' }),
+    ],
+  })
+  await page.goto('/lists/watchlist')
+  await expect(page.getByText('La canzone del mare')).toBeVisible()
+
+  await page.getByRole('searchbox', { name: 'Cerca nella lista' }).fill('song of the sea')
+  await expect(page.getByText('La canzone del mare')).toBeVisible()
+  await expect(page.getByText('Sakamoto Days')).toHaveCount(0)
+
+  // Il titolo italiano continua a funzionare.
+  await page.getByRole('searchbox', { name: 'Cerca nella lista' }).fill('la can')
+  await expect(page.getByText('La canzone del mare')).toBeVisible()
+  await expect(page.getByText('Sakamoto Days')).toHaveCount(0)
   await expectNoCrash(page)
 })
 

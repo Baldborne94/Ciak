@@ -46,6 +46,7 @@ export {
   resolveSagas,
   resolveSagaIds,
   getReleaseYears,
+  getSearchTitles,
   getSagaContinuations,
   getRelatedCollections,
   type SagaContinuation,

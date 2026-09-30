@@ -54,7 +54,8 @@ test('gli anni di uscita non vengono richiesti di nuovo alla visita successiva',
 
   await page.goto('/lists/watchlist')
   await expect(page.getByText('Fight Club')).toBeVisible()
-  // Un titolo, una richiesta: la prima volta l'anno non lo sappiamo.
+  // Un titolo, una richiesta: la prima volta l'anno non lo sappiamo. I titoli
+  // originali per la ricerca viaggiano nella stessa, non in una seconda.
   await expect.poll(detailRequests).toBe(3)
 
   const dopoLaPrimaVisita = detailRequests()
