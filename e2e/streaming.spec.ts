@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import { mockTmdb, mockSupabase, signIn } from './support/mocks'
+import { movieDetail } from './support/fixtures'
 
 // «Streaming»: i film nella cartella «Ciak» di Google Drive, riprodotti col
 // lettore di Drive. Ermetico — Google Identity Services, l'API Drive e il
@@ -110,7 +111,8 @@ async function conLettoreCiak(page: Page, video: 'fermo' | 'illeggibile' = 'ferm
 async function apriSongOfTheSea(page: Page) {
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  await page.getByRole('button', { name: /Song of the Sea/ }).click()
+  // Per nome del file: il titolo mostrato cambia quando Ciak lo riconosce.
+  await page.getByRole('button', { name: /Song\.of\.the\.Sea\.2014/ }).click()
   await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
 }
 
@@ -442,4 +444,204 @@ test('un film si scarica sul dispositivo e da lì si guarda anche senza rete', a
 
   await page.getByRole('button', { name: 'Elimina dal dispositivo' }).click()
   await expect(page.getByText(/Scaricalo sul dispositivo/)).toBeVisible()
+})
+
+// ── Il lettore collegato all'archivio ─────────────────────────────────────────
+
+const SONG = {
+  id: 110416,
+  media_type: 'movie',
+  title: 'La canzone del mare',
+  original_title: 'Song of the Sea',
+  release_date: '2014-09-06',
+  poster_path: '/song.jpg',
+  genre_ids: [16],
+}
+
+// Il catalogo risponde alla ricerca con i risultati dati; tutto il resto al
+// mock generale.
+async function cercaTmdb(page: Page, risultati: unknown[], dettaglioTv?: Record<string, unknown>) {
+  await page.route('**/api/tmdb*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    if (path === '/search/multi') return route.fulfill({ json: { results: risultati } })
+    if (dettaglioTv && /^\/tv\/\d+$/.test(path)) return route.fulfill({ json: dettaglioTv })
+    return route.fallback()
+  })
+}
+
+// Finge che il video sia a un certo punto e scorra: il lettore vero, nel dev
+// server senza film, non si muove da solo.
+async function portaIlVideoA(page: Page, secondi: number, durata: number) {
+  await page.evaluate(
+    ([t, d]) => {
+      const v = document.querySelector('video') as HTMLVideoElement
+      Object.defineProperty(v, 'duration', { configurable: true, get: () => d })
+      Object.defineProperty(v, 'paused', { configurable: true, get: () => false })
+      Object.defineProperty(v, 'currentTime', { configurable: true, get: () => t, set: () => {} })
+      v.dispatchEvent(new Event('timeupdate'))
+    },
+    [secondi, durata],
+  )
+}
+
+test('la lista riconosce i film di Drive e li mostra col titolo e la locandina', async ({ page }) => {
+  const db = await mockSupabase(page)
+  await mockDrive(page)
+  await cercaTmdb(page, [SONG])
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  // Il file «Song.of.the.Sea.2014.1080p.mkv» è diventato il film di TMDB.
+  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001')).toMatchObject({
+    tmdb_id: 110416,
+    media_type: 'movie',
+    titolo: 'La canzone del mare',
+    nome_file: 'Song.of.the.Sea.2014.1080p.mkv',
+  })
+  // «B99» non somiglia abbastanza a niente: resta il nome del file, e la riga
+  // senza titolo evita di ricercarlo a ogni apertura.
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await expect
+    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-b99-00001'))
+    .toMatchObject({ nome_file: 'B99 S7E2.mp4' })
+  expect(db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-b99-00001')?.tmdb_id).toBeUndefined()
+})
+
+test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede il voto', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  const db = await mockSupabase(page, {
+    user_titles: [
+      { id: 't1', user_id: 'e2e-user-0000-0000-000000000000', tmdb_id: 110416, media_type: 'movie', title: 'La canzone del mare', status: 'to_watch', genre_ids: [] },
+    ],
+    user_streaming: [
+      {
+        id: 's1',
+        user_id: 'e2e-user-0000-0000-000000000000',
+        drive_file_id: 'video-song-0001',
+        tmdb_id: 110416,
+        media_type: 'movie',
+        titolo: 'La canzone del mare',
+        poster_path: '/song.jpg',
+        posizione: 0,
+        durata: 5640,
+        // Quasi tutto già guardato in una sera precedente.
+        secondi_visti: 5000,
+        visto_il: null,
+        abbinato_a_mano: false,
+      },
+    ],
+  })
+
+  await apriSongOfTheSea(page)
+  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toHaveAttribute('href', '/title/movie/110416')
+
+  await portaIlVideoA(page, 5400, 5640)
+
+  await expect(page.getByText('Segnato come visto nel diario, oggi')).toBeVisible()
+  await expect.poll(() => db.tables.user_diary?.[0]).toMatchObject({ tmdb_id: 110416, media_type: 'movie', rating: null })
+  await expect.poll(() => db.tables.user_titles.find((r) => r.tmdb_id === 110416)?.status).toBe('watched')
+  await expect.poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-song-0001')?.visto_il).toBeTruthy()
+
+  await page.getByRole('button', { name: '4 stelle', exact: true }).click()
+  await expect(page.getByText('Voto salvato.')).toBeVisible()
+  await expect.poll(() => db.tables.user_diary?.[0]?.rating).toBe(4)
+})
+
+test('saltare alla fine senza averlo guardato non lo segna come visto', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  const db = await mockSupabase(page, {
+    user_streaming: [
+      { id: 's1', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: 'video-song-0001', tmdb_id: 110416, media_type: 'movie', titolo: 'La canzone del mare', posizione: 0, durata: 5640, secondi_visti: 0, visto_il: null, abbinato_a_mano: false },
+    ],
+  })
+
+  await apriSongOfTheSea(page)
+  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toBeVisible()
+  await portaIlVideoA(page, 5500, 5640)
+  await page.waitForTimeout(500)
+
+  await expect(page.getByText('Segnato come visto nel diario')).toHaveCount(0)
+  expect(db.tables.user_diary ?? []).toHaveLength(0)
+})
+
+test('riapre il film dal punto in cui ci si era fermati', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await mockSupabase(page, {
+    user_streaming: [
+      { id: 's1', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: 'video-song-0001', tmdb_id: 110416, media_type: 'movie', titolo: 'La canzone del mare', posizione: 1345, durata: 5640, secondi_visti: 1300, visto_il: null, abbinato_a_mano: false, updated_at: new Date().toISOString() },
+    ],
+  })
+
+  await apriSongOfTheSea(page)
+  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toBeVisible()
+  // I metadati del video arrivano: si riparte qualche secondo prima.
+  await page.evaluate(() => document.querySelector('video')?.dispatchEvent(new Event('loadedmetadata')))
+
+  await expect(page.getByText(/Ripreso da 22:20/)).toBeVisible()
+  await expect(page.getByRole('button', { name: "Ricomincia dall'inizio" })).toBeVisible()
+})
+
+test('«Non è questo?» fa scegliere il titolo a mano, e resta scelto', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  const db = await mockSupabase(page)
+  await cercaTmdb(page, [SONG, { ...SONG, id: 42, title: 'Song of the Sea (corto)', release_date: '2012-01-01' }])
+
+  await apriSongOfTheSea(page)
+  // La lista l'ha già riconosciuto come «La canzone del mare»: lo si corregge.
+  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toBeVisible()
+  await page.getByRole('button', { name: 'Non è questo?' }).click()
+  await page.getByRole('button', { name: 'Cerca', exact: true }).click()
+  await page.getByRole('button', { name: /Song of the Sea \(corto\)/ }).click()
+
+  await expect(page.getByRole('link', { name: 'Song of the Sea (corto)' })).toHaveAttribute('href', '/title/movie/42')
+  await expect
+    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001'))
+    .toMatchObject({ tmdb_id: 42, abbinato_a_mano: true })
+})
+
+test('a fine episodio lo spunta, mette la serie in corso e propone il prossimo', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  const riga = (id: string, episodio: number, extra: Record<string, unknown> = {}) => ({
+    id,
+    user_id: 'e2e-user-0000-0000-000000000000',
+    drive_file_id: id,
+    nome_file: `Shogun.S01E0${episodio}.mkv`,
+    tmdb_id: 126308,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    stagione: 1,
+    episodio,
+    posizione: 0,
+    durata: 3600,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: false,
+    ...extra,
+  })
+  const db = await mockSupabase(page, {
+    // Il file aperto è l'episodio 1 (l'id del film di prova), il 2 è un altro file.
+    user_streaming: [riga('video-song-0001', 1, { secondi_visti: 3400 }), riga('video-shogun-02', 2)],
+  })
+  await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', {
+    name: 'Shōgun',
+    seasons: [{ id: 1, season_number: 1, episode_count: 10, name: 'Stagione 1', poster_path: null, air_date: '2024-02-27' }],
+  }))
+
+  await apriSongOfTheSea(page)
+  await expect(page.getByRole('link', { name: 'Shōgun · S1E1' })).toHaveAttribute('href', '/title/tv/126308?season=1&episode=1')
+  await portaIlVideoA(page, 3500, 3600)
+
+  await expect(page.getByText('Episodio S1E1 spuntato: Shōgun è in corso.')).toBeVisible()
+  await expect.poll(() => db.tables.user_episodes?.[0]).toMatchObject({ tv_id: 126308, season_number: 1, episode_number: 1 })
+  await expect.poll(() => db.tables.user_titles?.find((r) => r.tmdb_id === 126308)?.status).toBe('in_progress')
+
+  await page.getByRole('button', { name: /Prossimo episodio: S1E2/ }).first().click()
+  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
 })

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { ErrorState } from '../components/States'
+import PannelloArchivio from '../components/PannelloArchivio'
 import {
   anteprimaUrl,
   apriSuDriveUrl,
@@ -40,7 +41,9 @@ import {
 } from '../lib/filmOffline'
 import { registraErrore } from '../lib/errorLog'
 import { logFailure } from '../lib/logFailure'
-import { nomeLingua } from '../lib/sottotitoli'
+import { filmDaCercare, nomeLingua } from '../lib/sottotitoli'
+import { titoloDaMostrare } from '../lib/streaming'
+import { useArchivioStreaming } from '../lib/useArchivioStreaming'
 import { useSottotitoli } from '../lib/useSottotitoli'
 
 // Due lettori per lo stesso film:
@@ -60,7 +63,15 @@ const MESSAGGI: Record<Problema, string> = {
   salto: 'Il salto non è riuscito: Drive non ha mandato il pezzo di film richiesto. Riprova, o usa il lettore di Drive (i dettagli tecnici qui sotto dicono cosa ha risposto).',
 }
 
+// Un lettore per file: passando all'episodio dopo (stessa pagina, altro file)
+// si riparte da zero, invece di trascinarsi posizione, errori e sottotitoli
+// dell'episodio precedente.
 export default function StreamingPlayerPage() {
+  const { fileId = '' } = useParams()
+  return <LettoreStreaming key={fileId} />
+}
+
+function LettoreStreaming() {
   const { fileId = '' } = useParams()
   const stato = useLocation().state as { titolo?: string; file?: string } | null
   const valido = idDriveValido(fileId)
@@ -173,6 +184,15 @@ export default function StreamingPlayerPage() {
 
   const tracce = usaSalvati ? tracceSalvate : sub.tracce
 
+  // Il legame con l'archivio: quale titolo è, dove ci si era fermati, e a fine
+  // visione «visto» nel diario (o l'episodio spuntato) e il voto.
+  const archivio = useArchivioStreaming(fileId, valido)
+  const { caricata: archivioCaricato, applicaRipresa } = archivio
+  useEffect(() => {
+    const v = videoRef.current
+    if (archivioCaricato && v && v.readyState >= 1) applicaRipresa(v)
+  }, [archivioCaricato, applicaRipresa, chiaveVideo])
+
   // I sottotitoli trovati dopo il download, o cambiati, raggiungono la scheda
   // del film sul dispositivo: offline si vedono quelli.
   useEffect(() => {
@@ -198,6 +218,7 @@ export default function StreamingPlayerPage() {
   const titolo =
     stato?.titolo ??
     locale?.titolo ??
+    (archivio.voce ? titoloDaMostrare(archivio.voce) : null) ??
     (sub.info ? titoloVideo({ name: sub.info.name, cartella: sub.cartella }) : 'Film')
   const nomeFile = stato?.file ?? locale?.file ?? sub.info?.name
 
@@ -353,8 +374,12 @@ export default function StreamingPlayerPage() {
                 v.currentTime = daRiprendere.current
                 daRiprendere.current = 0
                 v.play().catch(logFailure('Ripresa del film'))
+              } else {
+                // Prima apertura: dal punto in cui ci si era fermati l'ultima volta.
+                archivio.applicaRipresa(v)
               }
             }}
+            onPause={() => archivio.suPausa()}
             // Un salto fallito riprende dal punto scelto, non da quello di prima;
             // uno che non finisce mai viene segnalato.
             onSeeking={(e) => {
@@ -366,6 +391,7 @@ export default function StreamingPlayerPage() {
             onTimeUpdate={(e) => {
               const v = e.currentTarget
               posizione.current = v.currentTime
+              archivio.suTempo(v)
               if (tentativi.current > 0 && v.currentTime > ripresoDa.current + 30) tentativi.current = 0
               const scade = !scaricato && sessioneInScadenza(scadenzaDrive(), Date.now())
               if (scade !== inScadenza) setInScadenza(scade)
@@ -431,6 +457,23 @@ export default function StreamingPlayerPage() {
         </div>
       )}
       {errore && <p className="text-sm text-red-400">{errore}</p>}
+
+      {archivio.caricata && (
+        <PannelloArchivio
+          voce={archivio.voce}
+          nome={filmDaCercare(nomeFile ?? titolo, sub.cartella)}
+          ripresoDa={archivio.ripresoDa}
+          visto={archivio.visto}
+          votoSalvato={archivio.votoSalvato}
+          errore={archivio.erroreArchivio}
+          prossimo={archivio.prossimo}
+          onRicomincia={() => {
+            if (videoRef.current) videoRef.current.currentTime = 0
+          }}
+          onVota={(voto) => void archivio.vota(voto)}
+          onCambia={archivio.cambiaAbbinamento}
+        />
+      )}
 
       {/* Sul dispositivo: scaricare, avanzamento, eliminare. */}
       {offlineDisponibile() && locale !== undefined && (
