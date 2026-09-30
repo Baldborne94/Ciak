@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { idDriveValido, queryInCartelle, titoloVideo } from './googleDrive'
+import { idDriveValido, queryInCartelle, soloRiproducibili, titoloVideo } from './googleDrive'
 
 describe('titoloVideo', () => {
   it('usa il nome della sottocartella, che di solito è il film', () => {
@@ -47,5 +47,21 @@ describe('idDriveValido', () => {
     expect(idDriveValido('abc?x=1')).toBe(false)
     expect(idDriveValido('corto')).toBe(false)
     expect(idDriveValido('')).toBe(false)
+  })
+})
+
+describe('soloRiproducibili', () => {
+  const v = (name: string, mimeType: string) => ({ id: name, name, size: null, mimeType, cartella: null })
+
+  it('tiene gli MP4 (e WebM/M4V) e conta gli MKV e gli altri formati nascosti', () => {
+    const esito = soloRiproducibili([
+      v('Song.of.the.Sea.mp4', 'video/mp4'),
+      v('The.Secret.of.Kells.mkv', 'video/x-matroska'),
+      v('Clip.webm', 'video/webm'),
+      v('Vecchio.avi', 'video/x-msvideo'),
+      v('Telefono.M4V', 'video/x-m4v'),
+    ])
+    expect(esito.visibili.map((x) => x.name)).toEqual(['Song.of.the.Sea.mp4', 'Clip.webm', 'Telefono.M4V'])
+    expect(esito.nascosti).toBe(2)
   })
 })

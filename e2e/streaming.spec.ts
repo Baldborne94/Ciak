@@ -14,9 +14,9 @@ const SRT = '1\n00:00:01,000 --> 00:00:03,000\nC\'era una volta\n'
 const FILE: Record<string, unknown> = {
   'video-song-0001': {
     id: 'video-song-0001',
-    name: 'Song.of.the.Sea.2014.1080p.mkv',
+    name: 'Song.of.the.Sea.2014.1080p.mp4',
     size: '2147483648',
-    mimeType: 'video/x-matroska',
+    mimeType: 'video/mp4',
     parents: ['cartella-song'],
   },
   'cartella-song': {
@@ -29,7 +29,8 @@ const FILE: Record<string, unknown> = {
 
 // Risponde alle richieste a Drive come farebbe un Drive con:
 //   Ciak/B99 S7E2.mp4
-//   Ciak/Song of the Sea (2014) [1080p]/Song.of.the.Sea.2014.1080p.mkv
+//   Ciak/Song of the Sea (2014) [1080p]/Song.of.the.Sea.2014.1080p.mp4
+//   Ciak/The.Secret.of.Kells.2009.mkv (nascosto: Ciak riproduce gli MP4)
 //   (e, se richiesto, …/Song.of.the.Sea.it.srt)
 // Le scritture (salvataggio e cestino dei sottotitoli) finiscono in `scritture`.
 async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaCartella = false } = {}) {
@@ -76,6 +77,13 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
           name: 'B99 S7E2.mp4',
           size: '325058560',
           mimeType: 'video/mp4',
+          parents: ['cartella-ciak'],
+        },
+        {
+          id: 'video-kells-0001',
+          name: 'The.Secret.of.Kells.2009.mkv',
+          size: '2901526000',
+          mimeType: 'video/x-matroska',
           parents: ['cartella-ciak'],
         },
       ]
@@ -171,7 +179,10 @@ test('«Streaming» elenca i film della cartella Ciak e li apre nel player', asy
   // del file senza estensione.
   await expect(page.getByText('Song of the Sea (2014) [1080p]')).toBeVisible()
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await expect(page.getByText(/MKV · 2,0 GB · Song\.of\.the\.Sea/)).toBeVisible()
+  await expect(page.getByText(/MP4 · 2,0 GB · Song\.of\.the\.Sea/)).toBeVisible()
+  // L'MKV non compare, ma la pagina dice che c'è e come renderlo visibile.
+  await expect(page.getByText('The.Secret.of.Kells.2009', { exact: false })).toHaveCount(0)
+  await expect(page.getByText(/1 video in un altro formato \(MKV, AVI…\) è nascosto/)).toBeVisible()
 
   // Aprendo il film si va alla pagina del player, grande. Senza service worker
   // (qui non c'è) il lettore di Ciak non può partire: si usa quello di Drive.
@@ -508,13 +519,13 @@ test('la lista riconosce i film di Drive e li mostra col titolo e la locandina',
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
-  // Il file «Song.of.the.Sea.2014.1080p.mkv» è diventato il film di TMDB.
+  // Il file «Song.of.the.Sea.2014.1080p.mp4» è diventato il film di TMDB.
   await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001')).toMatchObject({
     tmdb_id: 110416,
     media_type: 'movie',
     titolo: 'Song of the Sea',
-    nome_file: 'Song.of.the.Sea.2014.1080p.mkv',
+    nome_file: 'Song.of.the.Sea.2014.1080p.mp4',
   })
   // «B99» non somiglia abbastanza a niente: resta il nome del file, e la riga
   // senza titolo evita di ricercarlo a ogni apertura.

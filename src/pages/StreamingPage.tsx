@@ -15,6 +15,7 @@ import {
   driveDisconnetti,
   collegaDrive,
   elencaVideo,
+  soloRiproducibili,
   titoloVideo,
   type DriveVideo,
 } from '../lib/googleDrive'
@@ -35,6 +36,7 @@ export default function StreamingPage() {
   const [archivio, setArchivio] = useState<Map<string, VoceStreaming>>(new Map())
   const [connesso, setConnesso] = useState(driveConnesso())
   const [video, setVideo] = useState<DriveVideo[]>([])
+  const [nascosti, setNascosti] = useState(0)
   const [cartellaTrovata, setCartellaTrovata] = useState(true)
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
@@ -72,7 +74,9 @@ export default function StreamingPage() {
     try {
       const esito = await elencaVideo()
       setCartellaTrovata(esito.cartellaTrovata)
-      setVideo(esito.video)
+      const { visibili, nascosti: altri } = soloRiproducibili(esito.video)
+      setVideo(visibili)
+      setNascosti(altri)
       setCaricato(true)
       // Locandine e titoli: prima ciò che è già collegato, poi si riconoscono
       // i file nuovi. Best effort: senza, la lista resta quella dei file.
@@ -80,7 +84,7 @@ export default function StreamingPage() {
         try {
           const noti = new Map((await elencaStreaming(user.id)).map((v) => [v.drive_file_id, v]))
           setArchivio(noti)
-          setArchivio(await riconosciNuovi(user.id, esito.video, noti))
+          setArchivio(await riconosciNuovi(user.id, visibili, noti))
         } catch (e) {
           logFailure('Titoli dei film di Drive')(e)
         }
@@ -227,11 +231,22 @@ export default function StreamingPage() {
         />
       ) : caricato && video.length === 0 ? (
         <EmptyState
-          title={`La cartella «${CARTELLA_CIAK}» è vuota`}
-          message="Non ho trovato video. Se li stai ancora caricando con Google Drive per desktop, attendi la fine del caricamento e premi «Aggiorna»."
+          title={nascosti > 0 ? 'Nessun film in MP4' : `La cartella «${CARTELLA_CIAK}» è vuota`}
+          message={
+            nascosti > 0
+              ? `Ci sono ${nascosti} video in altri formati (MKV, AVI…): convertili in MP4 con converti-mkv.bat e premi «Aggiorna».`
+              : 'Non ho trovato video. Se li stai ancora caricando con Google Drive per desktop, attendi la fine del caricamento e premi «Aggiorna».'
+          }
           icon="🎞️"
         />
       ) : (
+        <>
+        {nascosti > 0 && (
+          <p className="mb-3 text-sm text-zinc-500">
+            {nascosti === 1 ? '1 video in un altro formato (MKV, AVI…) è nascosto' : `${nascosti} video in altri formati (MKV, AVI…) sono nascosti`}
+            : Ciak riproduce gli MP4. Convertili con <code>converti-mkv.bat</code> e premi «Aggiorna».
+          </p>
+        )}
         <ul className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
           {video.map((v) => {
             const voce = archivio.get(v.id)
@@ -276,6 +291,7 @@ export default function StreamingPage() {
             )
           })}
         </ul>
+        </>
       )}
     </div>
   )

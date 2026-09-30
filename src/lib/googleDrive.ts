@@ -191,6 +191,18 @@ export function queryInCartelle(idCartelle: string[], condizione: string, blocco
   return query
 }
 
+// Il lettore di Ciak mostra solo i video che il browser sa riprodurre: MP4 (e
+// i pochi WebM/M4V). Gli MKV, anche quando hanno video e audio compatibili,
+// Chrome spesso li scarica senza mai aprirli — si convertono una volta con
+// lo script `converti-mkv.bat`, e l'MP4 prende il loro posto. Quelli nascosti
+// si contano, così la pagina lo dice invece di farli sparire in silenzio.
+const RIPRODUCIBILI = /\.(mp4|m4v|webm)$/i
+
+export function soloRiproducibili(video: DriveVideo[]): { visibili: DriveVideo[]; nascosti: number } {
+  const visibili = video.filter((v) => RIPRODUCIBILI.test(v.name))
+  return { visibili, nascosti: video.length - visibili.length }
+}
+
 // Il titolo da mostrare: il nome della sottocartella se c'è (di solito il film,
 // «Song of the Sea (2014) [1080p]»), altrimenti il nome del file senza estensione.
 export function titoloVideo(v: Pick<DriveVideo, 'name' | 'cartella'>): string {
