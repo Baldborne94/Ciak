@@ -4,6 +4,7 @@ import { ErrorState } from '../components/States'
 import {
   anteprimaUrl,
   apriSuDriveUrl,
+  attendiLettoreCiak,
   collegaDrive,
   driveConnesso,
   flussoVideoUrl,
@@ -49,6 +50,7 @@ export default function StreamingPlayerPage() {
   const valido = idDriveValido(fileId)
 
   const [connesso, setConnesso] = useState(driveConnesso)
+  const [ciakPronto, setCiakPronto] = useState(lettoreCiakDisponibile)
   const [lettore, setLettore] = useState<'ciak' | 'drive'>(() =>
     lettoreCiakDisponibile() && driveConnesso() ? 'ciak' : 'drive',
   )
@@ -61,6 +63,21 @@ export default function StreamingPlayerPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const posizione = useRef(0)
   const audioControllato = useRef(false)
+  // Chi ha scelto a mano il lettore di Drive ci resta, anche se quello di Ciak
+  // diventa pronto dopo.
+  const sceltaDrive = useRef(false)
+
+  useEffect(
+    () =>
+      attendiLettoreCiak(() => {
+        setCiakPronto(true)
+        if (!sceltaDrive.current && driveConnesso()) {
+          setLettore('ciak')
+          setSottotitoliAttivi(true)
+        }
+      }),
+    [],
+  )
 
   const sub = useSottotitoli(fileId, valido && connesso && sottotitoliAttivi)
 
@@ -92,11 +109,13 @@ export default function StreamingPlayerPage() {
   }
 
   function usaDrive() {
+    sceltaDrive.current = true
     setLettore('drive')
     setProblema(null)
   }
 
   function usaCiak() {
+    sceltaDrive.current = false
     audioControllato.current = false
     setLettore('ciak')
     setSottotitoliAttivi(true)
@@ -110,7 +129,7 @@ export default function StreamingPlayerPage() {
       setConnesso(true)
       setProblema(null)
       setChiaveVideo((k) => k + 1)
-      if (lettoreCiakDisponibile()) usaCiak()
+      if (ciakPronto || lettoreCiakDisponibile()) usaCiak()
     } catch (e) {
       setErrore(e instanceof Error ? e.message : 'Collegamento non riuscito.')
     }
@@ -212,15 +231,24 @@ export default function StreamingPlayerPage() {
           <button type="button" onClick={usaDrive} className="btn-ghost px-3 py-1.5">
             Usa il lettore di Drive
           </button>
-        ) : connesso && lettoreCiakDisponibile() ? (
-          <button type="button" onClick={usaCiak} className="btn-ghost px-3 py-1.5">
-            Usa il lettore di Ciak (con sottotitoli)
-          </button>
         ) : !connesso ? (
           <button type="button" onClick={ricollega} className="btn-ghost px-3 py-1.5">
             Collega Google Drive per i sottotitoli
           </button>
-        ) : null}
+        ) : ciakPronto ? (
+          <button type="button" onClick={usaCiak} className="btn-ghost px-3 py-1.5">
+            Usa il lettore di Ciak (con sottotitoli)
+          </button>
+        ) : (
+          <>
+            <p className="text-zinc-400">
+              Il lettore di Ciak, quello con i sottotitoli, non è ancora attivo in questa scheda.
+            </p>
+            <button type="button" onClick={() => window.location.reload()} className="btn-ghost px-3 py-1.5">
+              Ricarica la pagina
+            </button>
+          </>
+        )}
       </div>
 
       <div className="grid gap-3 text-sm text-zinc-400 sm:grid-cols-2">
