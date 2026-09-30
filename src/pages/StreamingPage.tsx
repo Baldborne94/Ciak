@@ -4,6 +4,7 @@ import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { logFailure } from '../lib/logFailure'
 import { useAuth } from '../lib/auth'
+import { usePersistedState } from '../lib/usePersistedState'
 import { posterUrl } from '../lib/tmdb'
 import { riconosciNuovi } from '../lib/riconoscimento'
 import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
@@ -15,6 +16,7 @@ import {
   driveDisconnetti,
   collegaDrive,
   elencaVideo,
+  schedeCategorie,
   soloRiproducibili,
   titoloVideo,
   type DriveVideo,
@@ -37,6 +39,9 @@ export default function StreamingPage() {
   const [connesso, setConnesso] = useState(driveConnesso())
   const [video, setVideo] = useState<DriveVideo[]>([])
   const [nascosti, setNascosti] = useState(0)
+  // La scheda scelta (una cartella di primo livello), ricordata fra un'apertura
+  // e l'altra. '*' = tutto.
+  const [scheda, setScheda] = usePersistedState<string>('ciak:videoteca-scheda', '*')
   const [cartellaTrovata, setCartellaTrovata] = useState(true)
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
@@ -126,6 +131,12 @@ export default function StreamingPage() {
     setCaricato(false)
   }
 
+  // Le schede della videoteca e i video della scheda scelta. Una scheda che non
+  // esiste più (cartella rinominata o svuotata) torna a «Tutto».
+  const schede = schedeCategorie(video)
+  const schedaValida = scheda === '*' || schede.some((c) => (c.cartella ?? '') === scheda) ? scheda : '*'
+  const mostrati = schedaValida === '*' ? video : video.filter((v) => (v.categoria ?? '') === schedaValida)
+
   // Senza Client ID configurato la funzione non esiste: lo diciamo invece di
   // mostrare un pulsante che non farebbe nulla.
   if (!driveConfigurato()) {
@@ -133,12 +144,12 @@ export default function StreamingPage() {
       <div>
         <PageHeader
           eyebrow="Streaming"
-          title="I miei film"
-          subtitle="Guarda in streaming i film che tieni su Google Drive, senza scaricarli."
+          title="La mia videoteca"
+          subtitle="Guarda in streaming i film, le serie, gli anime e i cartoni che tieni su Google Drive."
         />
         <EmptyState
           title="Funzione non ancora configurata"
-          message="Manca il collegamento a Google Drive (Client ID OAuth). Una volta configurato, qui compariranno i tuoi film."
+          message="Manca il collegamento a Google Drive (Client ID OAuth). Una volta configurato, qui compariranno i tuoi video."
           icon="🔌"
         />
       </div>
@@ -149,8 +160,8 @@ export default function StreamingPage() {
     <div>
       <PageHeader
         eyebrow="Streaming"
-        title="I miei film"
-        subtitle={`I film nella cartella «${CARTELLA_CIAK}» del tuo Google Drive, in streaming senza scaricarli.`}
+        title="La mia videoteca"
+        subtitle={`Film, serie, anime e cartoni della cartella «${CARTELLA_CIAK}» del tuo Google Drive, in streaming o scaricati sul dispositivo.`}
       >
         {connesso && (
           <div className="flex gap-2">
@@ -214,7 +225,7 @@ export default function StreamingPage() {
       ) : !connesso ? (
         <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
           <p className="mb-4 text-zinc-400">
-            Collega il tuo Google Drive per vedere qui i film della cartella «{CARTELLA_CIAK}» e
+            Collega il tuo Google Drive per vedere qui i video della cartella «{CARTELLA_CIAK}» e
             riprodurli in streaming. La connessione è in sola lettura e i file restano su Drive.
           </p>
           <button onClick={collega} disabled={caricando} className="btn-primary">
@@ -226,7 +237,7 @@ export default function StreamingPage() {
       ) : !cartellaTrovata ? (
         <EmptyState
           title={`Nessuna cartella «${CARTELLA_CIAK}» su Drive`}
-          message={`Crea una cartella chiamata «${CARTELLA_CIAK}» in «Il mio Drive», mettici dentro i film (anche in sottocartelle) e premi «Aggiorna».`}
+          message={`Crea una cartella chiamata «${CARTELLA_CIAK}» in «Il mio Drive», con dentro le cartelle FILM, SERIE TV, ANIME, CARTONI (o quelle che vuoi: diventano le schede) e premi «Aggiorna».`}
           icon="📂"
         />
       ) : caricato && video.length === 0 ? (
@@ -241,6 +252,24 @@ export default function StreamingPage() {
         />
       ) : (
         <>
+        {schede.length >= 2 && (
+          <div role="tablist" aria-label="Categorie della videoteca" className="mb-3 flex flex-wrap gap-1">
+            {[{ valore: '*', nome: 'Tutto', quanti: video.length }, ...schede.map((c) => ({ valore: c.cartella ?? '', nome: c.nome, quanti: c.quanti }))].map((c) => (
+              <button
+                key={c.valore}
+                type="button"
+                role="tab"
+                aria-selected={schedaValida === c.valore}
+                onClick={() => setScheda(c.valore)}
+                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition ${
+                  schedaValida === c.valore ? 'bg-theatre-800 text-projector' : 'text-zinc-400 hover:text-zinc-100'
+                }`}
+              >
+                {c.nome} <span className="text-zinc-500">{c.quanti}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {nascosti > 0 && (
           <p className="mb-3 text-sm text-zinc-500">
             {nascosti === 1 ? '1 video in un altro formato (MKV, AVI…) è nascosto' : `${nascosti} video in altri formati (MKV, AVI…) sono nascosti`}
@@ -248,7 +277,7 @@ export default function StreamingPage() {
           </p>
         )}
         <ul className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
-          {video.map((v) => {
+          {mostrati.map((v) => {
             const voce = archivio.get(v.id)
             const nome = (voce && titoloDaMostrare(voce)) ?? titoloVideo(v)
             const avanzamento = voce?.durata ? Math.min(1, voce.posizione / voce.durata) : 0

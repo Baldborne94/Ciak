@@ -42,8 +42,12 @@ export interface DriveVideo {
   size: number | null
   mimeType: string
   // Nome della sottocartella che lo contiene (es. «Song of the Sea (2014)
-  // [1080p]»), null se sta direttamente nella cartella Ciak.
+  // [1080p]»), null se sta direttamente nella cartella Ciak o in una
+  // cartella di categoria.
   cartella: string | null
+  // La cartella di primo livello dentro Ciak (FILM, SERIE TV, ANIME…): è la
+  // scheda della videoteca in cui compare. null se sta direttamente in Ciak.
+  categoria?: string | null
 }
 
 export interface ElencoVideo {
@@ -203,6 +207,31 @@ export function soloRiproducibili(video: DriveVideo[]): { visibili: DriveVideo[]
   return { visibili, nascosti: video.length - visibili.length }
 }
 
+// Le schede della videoteca, dalle cartelle di primo livello: nell'ordine in
+// cui le si pensa (film, serie, anime, cartoni) e poi le altre in ordine
+// alfabetico; «Altro» per i video messi direttamente in Ciak.
+const ORDINE_CATEGORIE = ['film', 'serie tv', 'serie', 'anime', 'cartoni', 'cartoni animati']
+
+export function nomeCategoria(cartella: string | null): string {
+  if (!cartella) return 'Altro'
+  const basso = cartella.trim().toLowerCase()
+  if (basso === 'serie tv') return 'Serie TV'
+  return basso.charAt(0).toUpperCase() + basso.slice(1)
+}
+
+export function schedeCategorie(video: Pick<DriveVideo, 'categoria'>[]): { cartella: string | null; nome: string; quanti: number }[] {
+  const conta = new Map<string | null, number>()
+  for (const v of video) conta.set(v.categoria ?? null, (conta.get(v.categoria ?? null) ?? 0) + 1)
+  const posto = (c: string | null) => {
+    if (c === null) return 1000
+    const i = ORDINE_CATEGORIE.indexOf(c.trim().toLowerCase())
+    return i === -1 ? 100 : i
+  }
+  return [...conta.entries()]
+    .map(([cartella, quanti]) => ({ cartella, nome: nomeCategoria(cartella), quanti }))
+    .sort((a, b) => posto(a.cartella) - posto(b.cartella) || a.nome.localeCompare(b.nome, 'it'))
+}
+
 // Il titolo da mostrare: il nome della sottocartella se c'è (di solito il film,
 // «Song of the Sea (2014) [1080p]»), altrimenti il nome del file senza estensione.
 export function titoloVideo(v: Pick<DriveVideo, 'name' | 'cartella'>): string {
@@ -264,17 +293,25 @@ export async function elencaVideo(): Promise<ElencoVideo> {
 
   const idRadici = new Set(radici.map((r) => r.id))
   const nomiCartelle = new Map<string, string>()
+  // La categoria di ogni cartella: il nome della sua antenata di primo livello.
+  const categoriaDi = new Map<string, string>()
+  // Le cartelle di primo livello: sono categorie, non film.
+  const cartelleCategoria = new Set<string>()
   const tutte: string[] = [...idRadici]
   let livello = [...idRadici]
   for (let profondita = 0; profondita < PROFONDITA_MAX && livello.length > 0; profondita++) {
     const figli: FileGrezzo[] = []
     for (const q of queryInCartelle(livello, `mimeType = '${MIME_CARTELLA}'`)) {
-      figli.push(...(await cercaFile(q, 'id, name')))
+      figli.push(...(await cercaFile(q, 'id, name, parents')))
     }
     livello = []
     for (const f of figli) {
       if (nomiCartelle.has(f.id) || idRadici.has(f.id) || tutte.length >= CARTELLE_MAX) continue
       nomiCartelle.set(f.id, f.name)
+      const genitore = f.parents?.[0]
+      const categoria = profondita === 0 ? f.name : genitore ? categoriaDi.get(genitore) : undefined
+      if (categoria) categoriaDi.set(f.id, categoria)
+      if (profondita === 0) cartelleCategoria.add(f.id)
       tutte.push(f.id)
       livello.push(f.id)
     }
@@ -287,12 +324,15 @@ export async function elencaVideo(): Promise<ElencoVideo> {
 
   const video = grezzi.map((f) => {
     const genitore = f.parents?.[0]
+    // Né la cartella Ciak né una di categoria (FILM, ANIME…) sono il titolo del film.
+    const titoloDaCartella = !!genitore && !idRadici.has(genitore) && !cartelleCategoria.has(genitore)
     return {
       id: f.id,
       name: f.name,
       size: f.size ? Number(f.size) : null,
       mimeType: f.mimeType,
-      cartella: genitore && !idRadici.has(genitore) ? (nomiCartelle.get(genitore) ?? null) : null,
+      cartella: titoloDaCartella ? (nomiCartelle.get(genitore as string) ?? null) : null,
+      categoria: genitore ? (categoriaDi.get(genitore) ?? null) : null,
     }
   })
   video.sort((a, b) => titoloVideo(a).localeCompare(titoloVideo(b), 'it', { numeric: true }))
