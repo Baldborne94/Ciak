@@ -61,9 +61,10 @@ test('le ore contano anche le serie, non solo i film', async ({ page }) => {
   await expect(page.getByText('Ore guardate')).toBeVisible()
   // Il dettaglio finto vale per ogni id: 120 minuti a testa, quindi il film
   // porta 2h e i 4 episodi 8h. Ciò che conta è che le serie NON valgano zero.
-  const dettaglio = page.getByText(/h di film · \d+h di serie/)
-  await expect(dettaglio).toBeVisible()
-  expect(await dettaglio.textContent()).not.toMatch(/0h di serie/)
+  // Le ore delle serie arrivano dopo quelle dei film: si aspetta il valore
+  // finale invece di leggere il testo una volta sola, che sotto carico poteva
+  // cogliere l'istante intermedio «0h di serie» e fallire a caso.
+  await expect(page.getByText(/h di film · [1-9]\d*h di serie/)).toBeVisible()
 })
 
 test('la sezione "Quando guardi" riassume il diario', async ({ page }) => {
