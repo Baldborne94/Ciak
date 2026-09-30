@@ -107,6 +107,11 @@ export function driveConnesso(): boolean {
   return !!accessToken && Date.now() < tokenExpiry
 }
 
+// Quando scade la sessione Google (ms dall'epoch), 0 se non c'è.
+export function scadenzaDrive(): number {
+  return driveConnesso() ? tokenExpiry : 0
+}
+
 export function driveDisconnetti(): void {
   accessToken = null
   tokenExpiry = 0
@@ -385,6 +390,17 @@ export function attendiLettoreCiak(pronto: () => void): () => void {
   // `ready` aspetta un worker attivo; senza registrazione (sviluppo) non si risolve mai.
   void sw.ready.then((reg) => reg.active?.postMessage({ tipo: 'ciak:prendi-controllo' }))
   return () => sw.removeEventListener('controllerchange', suCambio)
+}
+
+// Chrome ferma un service worker che resta 30 secondi senza eventi, e con lui
+// si chiude la richiesta a Drive da cui arriva il film: il video si blocca con
+// «errore di rete». Finché il film va, un messaggio ogni 20 secondi lo tiene
+// sveglio (ogni evento azzera l'attesa).
+export function tieniSveglioIlLettore(): () => void {
+  const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined
+  if (!sw) return () => {}
+  const timer = setInterval(() => sw.controller?.postMessage({ tipo: 'ciak:tieni-vivo' }), 20_000)
+  return () => clearInterval(timer)
 }
 
 if (typeof navigator !== 'undefined' && navigator.serviceWorker) {

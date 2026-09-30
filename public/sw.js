@@ -135,6 +135,9 @@ function videoDaDrive(event, url) {
 // Una scheda aperta con un ricaricamento forzato (Ctrl+F5), o prima che questo
 // worker fosse attivo, non è controllata e /drive-video/ non passerebbe di qui:
 // la pagina lo chiede e il worker la prende.
+// Gli altri messaggi (`ciak:tieni-vivo`, mandato dal lettore mentre il film va)
+// non chiedono niente: il loro arrivo basta a non far fermare il worker, che
+// altrimenti chiuderebbe con sé la richiesta del film a Drive.
 self.addEventListener('message', (event) => {
   if (event.data && event.data.tipo === 'ciak:prendi-controllo') event.waitUntil(self.clients.claim())
 })

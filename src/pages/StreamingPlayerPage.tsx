@@ -10,8 +10,12 @@ import {
   flussoVideoUrl,
   idDriveValido,
   lettoreCiakDisponibile,
+  scadenzaDrive,
+  tieniSveglioIlLettore,
   titoloVideo,
 } from '../lib/googleDrive'
+import { decidiErrore, senzaAudio, sessioneInScadenza, type Problema } from '../lib/lettore'
+import { logFailure } from '../lib/logFailure'
 import { useSottotitoli } from '../lib/useSottotitoli'
 
 // Due lettori per lo stesso film:
@@ -22,26 +26,11 @@ import { useSottotitoli } from '../lib/useSottotitoli'
 // Si parte da quello di Ciak; se il browser non legge il file o l'audio resta
 // muto (tipico del Dolby E-AC3 negli MKV) lo si dice e si passa a Drive.
 
-type Problema = 'formato' | 'muto' | 'sessione'
-
-// Il browser sta decodificando l'audio? Ogni motore lo espone a modo suo; null
-// quando non si può sapere, e allora non si avvisa.
-function senzaAudio(v: HTMLVideoElement): boolean | null {
-  const w = v as HTMLVideoElement & {
-    webkitAudioDecodedByteCount?: number
-    mozHasAudio?: boolean
-    audioTracks?: { length: number }
-  }
-  if (typeof w.mozHasAudio === 'boolean') return !w.mozHasAudio
-  if (typeof w.webkitAudioDecodedByteCount === 'number') return w.webkitAudioDecodedByteCount === 0
-  if (w.audioTracks) return w.audioTracks.length === 0
-  return null
-}
-
 const MESSAGGI: Record<Problema, string> = {
   formato: 'Il browser non riesce a leggere questo file. Il lettore di Drive lo converte da sé.',
   muto: 'Il video parte ma senza audio: probabilmente è in un formato (come il Dolby E-AC3) che il browser non legge. Il lettore di Drive lo converte da sé.',
   sessione: 'La sessione Google è scaduta: ricollega Google Drive per continuare da dove eri.',
+  rete: 'La connessione con Drive si è interrotta più volte di fila. Riprova tra poco, o usa il lettore di Drive.',
 }
 
 export default function StreamingPlayerPage() {
@@ -63,6 +52,11 @@ export default function StreamingPlayerPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const posizione = useRef(0)
   const audioControllato = useRef(false)
+  // Riprese automatiche dopo un errore di rete, e da che punto è partita l'ultima:
+  // il conto si azzera quando il film torna a scorrere per un po'.
+  const tentativi = useRef(0)
+  const ripresoDa = useRef(0)
+  const [inScadenza, setInScadenza] = useState(false)
   // Chi ha scelto a mano il lettore di Drive ci resta, anche se quello di Ciak
   // diventa pronto dopo.
   const sceltaDrive = useRef(false)
@@ -78,6 +72,8 @@ export default function StreamingPlayerPage() {
       }),
     [],
   )
+
+  useEffect(() => (lettore === 'ciak' ? tieniSveglioIlLettore() : undefined), [lettore])
 
   const sub = useSottotitoli(fileId, valido && connesso && sottotitoliAttivi)
 
@@ -122,13 +118,45 @@ export default function StreamingPlayerPage() {
     setProblema(null)
   }
 
+  // Un avviso dentro la pagina non si vede in schermo intero: prima si esce.
+  function segnala(p: Problema) {
+    setProblema(p)
+    if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
+  }
+
+  function suErrore(v: HTMLVideoElement) {
+    const decisione = decidiErrore({
+      codice: v.error?.code,
+      posizione: posizione.current,
+      tentativi: tentativi.current,
+      connesso: driveConnesso(),
+    })
+    if (decisione !== 'riprova') return segnala(decisione)
+    // Stesso elemento, nuova richiesta: si riprende da `posizione` (vedi
+    // onLoadedMetadata) senza uscire dallo schermo intero.
+    tentativi.current++
+    ripresoDa.current = posizione.current
+    v.load()
+  }
+
+  function riprova() {
+    tentativi.current = 0
+    setProblema(null)
+    videoRef.current?.load()
+  }
+
   async function ricollega() {
     setErrore(null)
     try {
       await collegaDrive()
       setConnesso(true)
+      // Un rinnovo a film in corso non deve interromperlo: il service worker
+      // chiede il token a ogni richiesta e prende da sé quello nuovo. Solo un
+      // video già fermo per la sessione scaduta va ricaricato.
+      if (problema) setChiaveVideo((k) => k + 1)
       setProblema(null)
-      setChiaveVideo((k) => k + 1)
+      setInScadenza(false)
+      tentativi.current = 0
       if (ciakPronto || lettoreCiakDisponibile()) usaCiak()
     } catch (e) {
       setErrore(e instanceof Error ? e.message : 'Collegamento non riuscito.')
@@ -163,14 +191,21 @@ export default function StreamingPlayerPage() {
             playsInline
             aria-label={titolo}
             className="h-full w-full"
-            onError={() => setProblema(driveConnesso() ? 'formato' : 'sessione')}
+            onError={(e) => suErrore(e.currentTarget)}
             onLoadedMetadata={(e) => {
-              // Dopo un ricollegamento si riparte da dove si era.
-              if (posizione.current > 0) e.currentTarget.currentTime = posizione.current
+              // Dopo un'interruzione o un ricollegamento si riparte da dove si era.
+              const v = e.currentTarget
+              if (posizione.current > 0) {
+                v.currentTime = posizione.current
+                v.play().catch(logFailure('Ripresa del film'))
+              }
             }}
             onTimeUpdate={(e) => {
               const v = e.currentTarget
               posizione.current = v.currentTime
+              if (tentativi.current > 0 && v.currentTime > ripresoDa.current + 30) tentativi.current = 0
+              const scade = sessioneInScadenza(scadenzaDrive(), Date.now())
+              if (scade !== inScadenza) setInScadenza(scade)
               if (!audioControllato.current && v.currentTime >= 3) {
                 audioControllato.current = true
                 if (senzaAudio(v)) setProblema('muto')
@@ -206,11 +241,30 @@ export default function StreamingPlayerPage() {
             <button type="button" onClick={ricollega} className="btn-primary px-3 py-2">
               Ricollega Google Drive
             </button>
+          ) : problema === 'rete' ? (
+            <>
+              <button type="button" onClick={riprova} className="btn-primary px-3 py-2">
+                Riprova
+              </button>
+              <button type="button" onClick={usaDrive} className="btn-ghost px-3 py-2">
+                Usa il lettore di Drive
+              </button>
+            </>
           ) : (
             <button type="button" onClick={usaDrive} className="btn-primary px-3 py-2">
               Usa il lettore di Drive
             </button>
           )}
+        </div>
+      )}
+      {inScadenza && !problema && lettore === 'ciak' && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900/40 p-3 text-sm text-zinc-300">
+          <p className="flex-1">
+            La sessione Google sta per scadere e il film si fermerebbe: rinnovala ora, riprende da dove sei.
+          </p>
+          <button type="button" onClick={ricollega} className="btn-ghost px-3 py-1.5">
+            Rinnova la sessione Google
+          </button>
         </div>
       )}
       {errore && <p className="text-sm text-red-400">{errore}</p>}
