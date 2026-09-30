@@ -109,6 +109,17 @@ export function driveConnesso(): boolean {
   return !!accessToken && Date.now() < tokenExpiry
 }
 
+// Il token, per chi deve parlare con Drive senza passare dal service worker
+// (il download in sottofondo). Null se scaduto o assente.
+export function tokenDrive(): string | null {
+  return driveConnesso() ? accessToken : null
+}
+
+// L'URL da cui Drive serve il contenuto di un file.
+export function apiDriveMediaUrl(id: string): string {
+  return `${API}/${id}?alt=media`
+}
+
 // Quando scade la sessione Google (ms dall'epoch), 0 se non c'è.
 export function scadenzaDrive(): number {
   return driveConnesso() ? tokenExpiry : 0

@@ -62,7 +62,7 @@ export interface DiagnosticaVideo {
   redirect: string | null
   contentLength: string | null
   totale: number | null
-  esito: 'ok' | 'errore' | 'range-ignorato' | 'rifiutata'
+  esito: 'ok' | 'errore' | 'range-ignorato' | 'rifiutata' | 'dispositivo'
   // Solo per «rifiutata»: il messaggio del browser.
   errore?: string
 }
@@ -72,6 +72,9 @@ export interface DiagnosticaVideo {
 export function descriviDiagnostica(d: DiagnosticaVideo): string {
   const ora = new Date(d.quando).toLocaleTimeString('it-IT')
   const chiesto = d.range ? `chiesto ${d.range}` : 'chiesto tutto il file'
+  if (d.esito === 'dispositivo') {
+    return `${ora} · ${chiesto} → servito dal film scaricato sul dispositivo${d.totale ? ` (${d.totale} byte)` : ''}`
+  }
   const esito =
     d.esito === 'rifiutata'
       ? `il browser ha rifiutato la richiesta a Drive${d.errore ? ` (${d.errore})` : ''}`

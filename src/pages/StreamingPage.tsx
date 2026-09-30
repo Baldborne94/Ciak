@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { logFailure } from '../lib/logFailure'
+import { ascoltaFilmOffline, elencaFilmOffline, offlineDisponibile, spazio, taglia, type FilmOffline } from '../lib/filmOffline'
 import {
   CARTELLA_CIAK,
   driveConfigurato,
@@ -13,14 +14,6 @@ import {
   titoloVideo,
   type DriveVideo,
 } from '../lib/googleDrive'
-
-// Dimensione leggibile (i film sono grossi: MB/GB). `size` può mancare.
-function taglia(bytes: number | null): string {
-  if (!bytes) return ''
-  const gb = bytes / 1024 ** 3
-  if (gb >= 1) return `${gb.toFixed(1).replace('.', ',')} GB`
-  return `${Math.round(bytes / 1024 ** 2)} MB`
-}
 
 // «video/x-matroska» → «MKV»: il sottotipo MIME è poco leggibile.
 function formato(mime: string): string {
@@ -39,6 +32,32 @@ export default function StreamingPage() {
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
+  // I film sul dispositivo: si vedono anche senza rete, ed è il motivo per cui
+  // esistono. Si controlla `onLine` prima di tentare Drive: aspettare un
+  // timeout offline vuol dire fissare una pagina vuota per secondi.
+  const [offline, setOffline] = useState<FilmOffline[]>([])
+  const [senzaRete, setSenzaRete] = useState(typeof navigator !== 'undefined' && !navigator.onLine)
+  const [spazioUsato, setSpazioUsato] = useState<number | null>(null)
+
+  const caricaOffline = useCallback(async () => {
+    if (!offlineDisponibile()) return
+    setOffline(await elencaFilmOffline())
+    setSpazioUsato((await spazio())?.usato ?? null)
+  }, [])
+  useEffect(() => {
+    void caricaOffline()
+    return ascoltaFilmOffline(() => void caricaOffline())
+  }, [caricaOffline])
+  useEffect(() => {
+    const aggiorna = () => setSenzaRete(!navigator.onLine)
+    window.addEventListener('online', aggiorna)
+    window.addEventListener('offline', aggiorna)
+    return () => {
+      window.removeEventListener('online', aggiorna)
+      window.removeEventListener('offline', aggiorna)
+    }
+  }, [])
+  const scaricati = new Set(offline.filter((f) => f.stato === 'completo').map((f) => f.id))
 
   const carica = useCallback(async () => {
     setErrore(null)
@@ -60,7 +79,7 @@ export default function StreamingPage() {
   // Già collegati (token ancora valido in questa scheda): elenco subito, senza
   // chiedere di nuovo il permesso.
   useEffect(() => {
-    if (driveConfigurato() && driveConnesso()) void carica()
+    if (driveConfigurato() && driveConnesso() && navigator.onLine) void carica()
   }, [carica])
 
   async function collega() {
@@ -125,7 +144,52 @@ export default function StreamingPage() {
 
       {errore && <ErrorState title="Qualcosa è andato storto" message={errore} />}
 
-      {!connesso ? (
+      {offline.length > 0 && (
+        <section className="mb-6">
+          <h2 className="mb-2 flex items-baseline gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500">
+            📱 Sul dispositivo
+            {spazioUsato !== null && (
+              <span className="font-normal normal-case tracking-normal text-zinc-600">· {taglia(spazioUsato)} usati da Ciak</span>
+            )}
+          </h2>
+          <ul className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
+            {offline.map((f) => (
+              <li key={f.id}>
+                <button
+                  onClick={() => navigate(`/streaming/${f.id}`, { state: { titolo: f.titolo, file: f.file } })}
+                  disabled={f.stato !== 'completo'}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-theatre-800/60 disabled:opacity-60"
+                >
+                  <span className="text-xl">{f.stato === 'completo' ? '📱' : f.stato === 'in-corso' ? '⬇️' : '⚠️'}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-zinc-100">{f.titolo}</span>
+                    <span className="block truncate text-xs text-zinc-500">
+                      {f.stato === 'completo'
+                        ? `Disponibile offline${f.dimensione ? ` · ${taglia(f.dimensione)}` : ''}`
+                        : f.stato === 'in-corso'
+                          ? 'Download in corso…'
+                          : `Download non riuscito${f.errore ? ` · ${f.errore}` : ''}`}
+                    </span>
+                  </span>
+                  {f.stato === 'completo' && <span className="shrink-0 text-projector">▶ Guarda</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {senzaRete ? (
+        <EmptyState
+          title="Sei offline"
+          message={
+            offline.some((f) => f.stato === 'completo')
+              ? 'Puoi guardare i film scaricati sul dispositivo. Gli altri tornano quando torna la rete.'
+              : 'Non hai film scaricati sul dispositivo. Quando torni online, apri un film e premi «Scarica per l’offline».'
+          }
+          icon="📴"
+        />
+      ) : !connesso ? (
         <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
           <p className="mb-4 text-zinc-400">
             Collega il tuo Google Drive per vedere qui i film della cartella «{CARTELLA_CIAK}» e
@@ -159,12 +223,13 @@ export default function StreamingPage() {
                 }
                 className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-theatre-800/60"
               >
-                <span className="text-xl">🎬</span>
+                <span className="text-xl">{scaricati.has(v.id) ? '📱' : '🎬'}</span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-zinc-100">
                     {titoloVideo(v)}
                   </span>
                   <span className="block truncate text-xs text-zinc-500">
+                    {scaricati.has(v.id) && 'Offline · '}
                     {formato(v.mimeType)}
                     {taglia(v.size) && ` · ${taglia(v.size)}`}
                     {v.cartella && ` · ${v.name}`}

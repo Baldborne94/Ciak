@@ -240,10 +240,11 @@ test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', as
   // Il video arriva dal service worker, non dall'iframe di Drive.
   await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
   await expect(page.locator('iframe')).toHaveCount(0)
-  await expect(page.getByText('Italiano · dalla cartella su Drive')).toBeVisible()
-  await expect(page.locator('video track[kind="subtitles"]')).toHaveAttribute('label', 'Italiano')
-  // C'era già: niente ricerca online, niente download consumati.
-  expect(ricercheOnline).toBe(0)
+  await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
+  await expect(page.locator('video track[kind="subtitles"]').first()).toHaveAttribute('label', 'Italiano')
+  // L'italiano c'era già; per l'inglese, che manca, si è cercato online (senza esito).
+  await expect.poll(() => ricercheOnline).toBe(1)
+  await expect(page.getByText(/Nessun sottotitolo in inglese/)).toBeVisible()
 
   // Il service worker racconta cosa risponde Drive: la pagina lo mostra nei
   // dettagli tecnici, così un salto che non funziona si spiega da uno screenshot.
@@ -270,7 +271,7 @@ test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', as
   await expect(page.getByText(/chiesto bytes=1048576- → Drive ha ignorato il Range/)).toBeVisible()
 })
 
-test('senza sottotitoli nella cartella li cerca online e li salva accanto al film', async ({ page }) => {
+test('senza sottotitoli nella cartella li cerca online, in italiano e in inglese, e li salva accanto al film', async ({ page }) => {
   await conLettoreCiak(page)
   const { scritture } = await mockDrive(page)
   const richieste: Record<string, unknown>[] = []
@@ -283,6 +284,7 @@ test('senza sottotitoli nella cartella li cerca online e li salva accanto al fil
           candidati: [
             { fileId: 111, lingua: 'it', nome: 'song.it.srt', download: 50, hash: true },
             { fileId: 222, lingua: 'en', nome: 'song.en.srt', download: 900, hash: false },
+            { fileId: 333, lingua: 'it', nome: 'song2.it.srt', download: 10, hash: false },
           ],
         },
       })
@@ -292,25 +294,32 @@ test('senza sottotitoli nella cartella li cerca online e li salva accanto al fil
 
   await apriSongOfTheSea(page)
 
-  await expect(page.getByText('Italiano · da OpenSubtitles, salvato nella cartella')).toBeVisible()
+  // Due tracce, italiano e inglese, da una ricerca sola.
+  await expect(page.getByText(/Italiano · da OpenSubtitles, salvato nella cartella/)).toBeVisible()
+  await expect(page.getByText(/Inglese · da OpenSubtitles, salvato nella cartella/)).toBeVisible()
+  await expect(page.locator('video track[kind="subtitles"]')).toHaveCount(2)
   // Il film si cerca per titolo e anno, e con l'hash del file per trovare
   // sottotitoli già sincronizzati (qui i pezzi sono zeri: resta la dimensione).
+  expect(richieste.filter((r) => r.azione === 'cerca')).toHaveLength(1)
   expect(richieste[0]).toMatchObject({
     azione: 'cerca',
     query: 'Song of the Sea',
     anno: 2014,
     hash: '0000000080000000',
   })
-  expect(richieste[1]).toEqual({ azione: 'scarica', fileId: 111 })
-  // Salvato nella cartella del film, col nome del video: la volta dopo c'è già.
-  expect(scritture).toHaveLength(1)
-  expect(scritture[0].corpo).toContain('"name":"Song.of.the.Sea.2014.1080p.it.srt"')
+  expect(richieste.filter((r) => r.azione === 'scarica').map((r) => r.fileId)).toEqual([111, 222])
+  // Salvati nella cartella del film, col nome del video e la lingua: la volta dopo ci sono già.
+  expect(scritture.filter((s) => s.metodo === 'POST').map((s) => /"name":"([^"]+)"/.exec(s.corpo)?.[1])).toEqual([
+    'Song.of.the.Sea.2014.1080p.it.srt',
+    'Song.of.the.Sea.2014.1080p.en.srt',
+  ])
   expect(scritture[0].corpo).toContain('"parents":["cartella-song"]')
 
-  // Fuori sincrono: si passa al candidato dopo e quello scartato va nel cestino.
-  await page.getByRole('button', { name: /Prova un altro sottotitolo/ }).click()
-  await expect(page.getByText('Inglese · da OpenSubtitles, salvato nella cartella')).toBeVisible()
-  expect(richieste[2]).toEqual({ azione: 'scarica', fileId: 222 })
+  // L'italiano fuori sincrono: si passa al candidato dopo della stessa lingua e
+  // quello scartato va nel cestino. L'inglese non ha alternative: nessun pulsante.
+  await page.getByRole('button', { name: 'Italiano fuori sincrono? Prova un altro' }).click()
+  await expect(page.getByRole('button', { name: /Inglese fuori sincrono/ })).toHaveCount(0)
+  await expect.poll(() => richieste.filter((r) => r.azione === 'scarica').map((r) => r.fileId)).toEqual([111, 222, 333])
   const cestino = scritture.find((s) => s.metodo === 'PATCH')
   expect(cestino?.url).toContain('/files/sottotitolo-salvato-01')
   expect(JSON.parse(cestino?.corpo ?? '{}')).toEqual({ trashed: true })
@@ -382,4 +391,55 @@ test('mentre il film va, il lettore tiene sveglio il service worker', async ({ p
 
   const messaggi = await page.evaluate(() => (window as unknown as { __messaggi: unknown[] }).__messaggi)
   expect(messaggi.filter((m) => (m as { tipo?: string }).tipo === 'ciak:tieni-vivo').length).toBeGreaterThanOrEqual(3)
+})
+
+test('un film si scarica sul dispositivo e da lì si guarda anche senza rete', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
+  // Il «film»: pochi byte, serviti come farebbe il service worker.
+  await page.unroute('**/drive-video/**')
+  await page.route('**/drive-video/**', (route) =>
+    route.fulfill({ status: 200, contentType: 'video/mp4', body: Buffer.alloc(64, 1) }),
+  )
+
+  await apriSongOfTheSea(page)
+  await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
+  await page.getByRole('button', { name: "Scarica per l'offline" }).click()
+  await expect(page.getByText(/Scaricato sul dispositivo/)).toBeVisible()
+
+  // In cache: il film, e la sua scheda coi sottotitoli trovati.
+  const scheda = await page.evaluate(async () => {
+    const cache = await caches.open('ciak-film-v1')
+    const info = await (await cache.match('/film-offline/video-song-0001/info.json'))?.json()
+    const film = await cache.match('/film-offline/video-song-0001')
+    return { info, byte: (await film?.arrayBuffer())?.byteLength }
+  })
+  expect(scheda.byte).toBe(64)
+  expect(scheda.info).toMatchObject({
+    id: 'video-song-0001',
+    titolo: 'Song of the Sea (2014) [1080p]',
+    stato: 'completo',
+    sottotitoli: [expect.objectContaining({ chiave: 'it', vtt: expect.stringContaining('WEBVTT') })],
+  })
+
+  // Nell'elenco il film è segnato come disponibile offline.
+  await page.getByRole('link', { name: /Torna ai film/ }).click()
+  await expect(page.getByText('Sul dispositivo')).toBeVisible()
+  await expect(page.getByText('Disponibile offline', { exact: false })).toBeVisible()
+
+  // Senza rete: niente Drive, ma il film scaricato si apre col lettore di Ciak
+  // e i sottotitoli salvati, anche senza il collegamento a Google.
+  await page.evaluate(() => sessionStorage.removeItem('ciak:drive-token'))
+  await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false }))
+  await page.route('https://www.googleapis.com/**', (route) => route.abort())
+  await page.goto('/streaming')
+  await expect(page.getByText('Sei offline')).toBeVisible()
+  await page.getByRole('button', { name: /Song of the Sea/ }).click()
+  await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
+  await expect(page.locator('video track[kind="subtitles"]')).toHaveAttribute('label', 'Italiano')
+  await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Elimina dal dispositivo' }).click()
+  await expect(page.getByText(/Scaricalo sul dispositivo/)).toBeVisible()
 })
