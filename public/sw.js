@@ -125,11 +125,61 @@ function videoDaDrive(event, url) {
     .then((client) => (client ? chiediToken(client) : null))
     .then((token) => {
       if (!token) return new Response('', { status: 401 })
-      const headers = { Authorization: 'Bearer ' + token }
-      const range = event.request.headers.get('Range')
-      if (range) headers.Range = range
-      return fetch('https://www.googleapis.com/drive/v3/files/' + id + '?alt=media', { headers })
+      return rispostaVideo(id, token, event.request.headers.get('Range'))
     })
+}
+
+const API_DRIVE = 'https://www.googleapis.com/drive/v3/files/'
+
+// La dimensione di ogni film, chiesta una volta sola a Drive.
+const dimensioni = new Map()
+function dimensioneFile(id, token) {
+  if (dimensioni.has(id)) return Promise.resolve(dimensioni.get(id))
+  return fetch(API_DRIVE + id + '?fields=size', { headers: { Authorization: 'Bearer ' + token } })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((dati) => {
+      const n = dati && Number(dati.size)
+      if (!n) return null
+      dimensioni.set(id, n)
+      return n
+    })
+}
+
+// Il pezzo di film richiesto dal <video>. Drive risponde 206 con Content-Range,
+// ma non lo espone al browser (manca da Access-Control-Expose-Headers): il
+// video riceveva un pezzo senza sapere dove collocarlo e, spostandosi avanti,
+// ripartiva dall'inizio o si rompeva. La risposta la ricostruiamo noi, con la
+// dimensione del file e l'intervallo che abbiamo chiesto.
+function rispostaVideo(id, token, range) {
+  const intervallo = range && /^bytes=(\d+)-(\d*)$/.exec(range)
+  const headers = { Authorization: 'Bearer ' + token }
+  if (range) headers.Range = range
+  return Promise.all([
+    fetch(API_DRIVE + id + '?alt=media', { headers }),
+    dimensioneFile(id, token).catch(() => null),
+  ]).then(([res, totale]) => {
+    if (!res.ok) return new Response('', { status: res.status })
+    // Senza dimensione non si può fare di meglio che girare la risposta com'è.
+    if (!totale) return res
+    const tipo = res.headers.get('Content-Type') || 'video/mp4'
+    if (!intervallo) {
+      return new Response(res.body, {
+        status: 200,
+        headers: { 'Content-Type': tipo, 'Content-Length': String(totale), 'Accept-Ranges': 'bytes' },
+      })
+    }
+    const inizio = Number(intervallo[1])
+    const fine = intervallo[2] ? Math.min(Number(intervallo[2]), totale - 1) : totale - 1
+    return new Response(res.body, {
+      status: 206,
+      headers: {
+        'Content-Type': tipo,
+        'Content-Length': String(fine - inizio + 1),
+        'Content-Range': 'bytes ' + inizio + '-' + fine + '/' + totale,
+        'Accept-Ranges': 'bytes',
+      },
+    })
+  })
 }
 
 // Una scheda aperta con un ricaricamento forzato (Ctrl+F5), o prima che questo
