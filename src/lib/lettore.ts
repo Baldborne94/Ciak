@@ -1,7 +1,7 @@
 // Le decisioni del lettore di Ciak quando qualcosa va storto, separate dalla
 // pagina perché si possano provare senza un video vero.
 
-export type Problema = 'formato' | 'muto' | 'sessione' | 'rete' | 'salto'
+export type Problema = 'formato' | 'muto' | 'sessione' | 'rete' | 'salto' | 'avvio'
 
 // I codici di MediaError: 2 è la rete, 3 la decodifica, 4 un formato che il
 // browser non sa leggere.
@@ -95,6 +95,9 @@ export function descriviDiagnostica(d: DiagnosticaVideo): string {
 // (Drive che ignora il Range, worker fermato a metà), resta in attesa senza
 // mai dare errore. Dopo un po' lo si dice, invece di lasciare la rotellina.
 export const ATTESA_SALTO_MS = 20_000
+// Un film che non parte: alcuni MKV il browser li scarica senza mai riuscire
+// ad aprirli, e senza dare errore. Oltre questa attesa lo si dice.
+export const ATTESA_AVVIO_MS = 20_000
 
 export function vigilanzaSalto(suBlocco: () => void, attesaMs = ATTESA_SALTO_MS) {
   let timer: ReturnType<typeof setTimeout> | null = null

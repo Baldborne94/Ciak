@@ -34,6 +34,7 @@ export {
   fetchTitleFacts,
   fetchGenreIds,
   fetchReadableTitle,
+  fetchOriginalTitle,
   getDetail,
   getSeason,
   getRecommendations,
