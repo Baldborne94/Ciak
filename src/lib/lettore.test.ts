@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { decidiErrore, sessioneInScadenza, TENTATIVI_MAX } from './lettore'
+import { describe, it, expect, vi } from 'vitest'
+import { decidiErrore, descriviDiagnostica, sessioneInScadenza, TENTATIVI_MAX, vigilanzaSalto } from './lettore'
 
 const base = { codice: 2, posizione: 508, tentativi: 0, connesso: true }
 
@@ -40,5 +40,70 @@ describe('sessioneInScadenza', () => {
   it('tace quando manca ancora tempo, o quando non c’è sessione', () => {
     expect(sessioneInScadenza(ora + 30 * 60_000, ora)).toBe(false)
     expect(sessioneInScadenza(0, ora)).toBe(false)
+  })
+})
+
+describe('descriviDiagnostica', () => {
+  const base = {
+    quando: Date.UTC(2026, 8, 30, 18, 0, 0),
+    ms: 420,
+    range: 'bytes=1000-',
+    status: 206,
+    redirect: null,
+    contentLength: '9000',
+    totale: 10000,
+    esito: 'ok' as const,
+  }
+
+  it('dice cosa è stato chiesto e cosa ha risposto Drive', () => {
+    expect(descriviDiagnostica(base)).toMatch(
+      /chiesto bytes=1000- → Drive ha risposto 206, 9000 byte \(file di 10000 byte, 420 ms\)$/,
+    )
+  })
+
+  it('un Range ignorato si legge subito', () => {
+    expect(descriviDiagnostica({ ...base, status: 200, esito: 'range-ignorato' })).toContain(
+      'Drive ha ignorato il Range e ha mandato tutto il file',
+    )
+  })
+
+  it('segnala un reindirizzamento e una dimensione sconosciuta', () => {
+    const riga = descriviDiagnostica({ ...base, range: null, redirect: 'altro.googleusercontent.com', totale: null })
+    expect(riga).toContain('chiesto tutto il file')
+    expect(riga).toContain('dimensione del file sconosciuta')
+    expect(riga).toContain('reindirizzato a altro.googleusercontent.com')
+  })
+})
+
+describe('vigilanzaSalto', () => {
+  it('avvisa se il salto non finisce in tempo', () => {
+    vi.useFakeTimers()
+    const suBlocco = vi.fn()
+    const v = vigilanzaSalto(suBlocco, 1000)
+    v.inizio()
+    vi.advanceTimersByTime(999)
+    expect(suBlocco).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(suBlocco).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('un salto finito in tempo non avvisa, e un nuovo salto riparte da capo', () => {
+    vi.useFakeTimers()
+    const suBlocco = vi.fn()
+    const v = vigilanzaSalto(suBlocco, 1000)
+    v.inizio()
+    vi.advanceTimersByTime(800)
+    v.fine()
+    vi.advanceTimersByTime(1000)
+    expect(suBlocco).not.toHaveBeenCalled()
+    v.inizio()
+    vi.advanceTimersByTime(800)
+    v.inizio() // un altro salto: l'attesa ricomincia
+    vi.advanceTimersByTime(800)
+    expect(suBlocco).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(200)
+    expect(suBlocco).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
   })
 })

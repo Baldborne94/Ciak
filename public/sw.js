@@ -125,8 +125,16 @@ function videoDaDrive(event, url) {
     .then((client) => (client ? chiediToken(client) : null))
     .then((token) => {
       if (!token) return new Response('', { status: 401 })
-      return rispostaVideo(id, token, event.request.headers.get('Range'))
+      return rispostaVideo(id, token, event.request.headers.get('Range'), event.clientId)
     })
+}
+
+// Racconta alla pagina cosa ha risposto Drive a ogni pezzo di film: è l'unico
+// modo di capire, da uno screenshot, perché un salto avanti non funziona.
+function diagnostica(clientId, dati) {
+  return self.clients.get(clientId).then((client) => {
+    if (client) client.postMessage({ tipo: 'ciak:diagnostica', ...dati })
+  }).catch(() => {})
 }
 
 const API_DRIVE = 'https://www.googleapis.com/drive/v3/files/'
@@ -150,15 +158,40 @@ function dimensioneFile(id, token) {
 // video riceveva un pezzo senza sapere dove collocarlo e, spostandosi avanti,
 // ripartiva dall'inizio o si rompeva. La risposta la ricostruiamo noi, con la
 // dimensione del file e l'intervallo che abbiamo chiesto.
-function rispostaVideo(id, token, range) {
+function rispostaVideo(id, token, range, clientId) {
   const intervallo = range && /^bytes=(\d+)-(\d*)$/.exec(range)
   const headers = { Authorization: 'Bearer ' + token }
   if (range) headers.Range = range
+  const inizioMs = Date.now()
   return Promise.all([
     fetch(API_DRIVE + id + '?alt=media', { headers }),
     dimensioneFile(id, token).catch(() => null),
   ]).then(([res, totale]) => {
-    if (!res.ok) return new Response('', { status: res.status })
+    const dati = {
+      quando: inizioMs,
+      ms: Date.now() - inizioMs,
+      range: range || null,
+      status: res.status,
+      redirect: res.redirected ? new URL(res.url).host : null,
+      contentLength: res.headers.get('Content-Length'),
+      totale,
+      esito: 'ok',
+    }
+    if (!res.ok) {
+      dati.esito = 'errore'
+      diagnostica(clientId, dati)
+      return new Response('', { status: res.status })
+    }
+    const inizio = intervallo ? Number(intervallo[1]) : 0
+    // Chiesto un pezzo a metà film e ricevuto tutto il file dall'inizio: Drive
+    // ha ignorato il Range. Spacciarlo per il pezzo giusto farebbe aspettare
+    // il video per sempre; meglio un errore, che la pagina sa gestire.
+    if (inizio > 0 && res.status === 200) {
+      dati.esito = 'range-ignorato'
+      diagnostica(clientId, dati)
+      return new Response('', { status: 416 })
+    }
+    diagnostica(clientId, dati)
     // Senza dimensione non si può fare di meglio che girare la risposta com'è.
     if (!totale) return res
     const tipo = res.headers.get('Content-Type') || 'video/mp4'
@@ -168,7 +201,6 @@ function rispostaVideo(id, token, range) {
         headers: { 'Content-Type': tipo, 'Content-Length': String(totale), 'Accept-Ranges': 'bytes' },
       })
     }
-    const inizio = Number(intervallo[1])
     const fine = intervallo[2] ? Math.min(Number(intervallo[2]), totale - 1) : totale - 1
     return new Response(res.body, {
       status: 206,

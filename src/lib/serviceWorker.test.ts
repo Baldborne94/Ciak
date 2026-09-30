@@ -13,7 +13,13 @@ type Gestore = (evento: unknown) => void
 
 function avviaWorker({ token }: { token: string | null }) {
   const gestori: Record<string, Gestore> = {}
-  const postMessage = vi.fn((_msg: unknown, [porta]: MessagePort[]) => porta.postMessage({ token }))
+  // La pagina: risponde alla richiesta del token; gli altri messaggi (la
+  // diagnostica) li tiene da parte per le verifiche.
+  const postMessage = vi.fn((_msg: unknown, transfer?: MessagePort[]) => {
+    if (transfer?.[0]) transfer[0].postMessage({ token })
+  })
+  const diagnostiche = () =>
+    postMessage.mock.calls.map(([m]) => m as { tipo?: string }).filter((m) => m.tipo === 'ciak:diagnostica')
   const self = {
     location: { origin: 'https://ciak.test' },
     addEventListener: (tipo: string, fn: Gestore) => (gestori[tipo] = fn),
@@ -37,7 +43,7 @@ function avviaWorker({ token }: { token: string | null }) {
     })
     return risposta
   }
-  return { richiedi, fetchFinto, postMessage, gestori, self }
+  return { richiedi, fetchFinto, postMessage, gestori, self, diagnostiche }
 }
 
 describe('service worker: i film di Drive', () => {
@@ -106,6 +112,43 @@ describe('service worker: andare avanti nel film', () => {
     )
     const risposta = await richiedi('https://ciak.test/drive-video/video-song-0001', { Range: 'bytes=0-' })
     expect(risposta?.status).toBe(403)
+  })
+})
+
+describe('service worker: diagnostica per la pagina', () => {
+  it('racconta alla pagina cosa ha risposto Drive a ogni pezzo', async () => {
+    const { richiedi, diagnostiche } = avviaWorker({ token: 'tok-123' })
+    await richiedi('https://ciak.test/drive-video/video-song-0001', { Range: 'bytes=600-' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(diagnostiche()).toEqual([
+      expect.objectContaining({ range: 'bytes=600-', status: 206, totale: 1000, esito: 'ok', redirect: null }),
+    ])
+  })
+
+  it('se Drive ignora il Range non spaccia tutto il file per il pezzo chiesto', async () => {
+    const { richiedi, fetchFinto, diagnostiche } = avviaWorker({ token: 'tok-123' })
+    fetchFinto.mockImplementation(async (url: string) =>
+      url.includes('fields=size')
+        ? new Response(JSON.stringify({ size: '1000' }))
+        : new Response('tutto il file', { status: 200, headers: { 'Content-Type': 'video/mp4' } }),
+    )
+    const risposta = await richiedi('https://ciak.test/drive-video/video-song-0001', { Range: 'bytes=600-' })
+    await new Promise((r) => setTimeout(r, 0))
+    // Un errore, che la pagina sa gestire, invece di un video che aspetta per sempre.
+    expect(risposta?.status).toBe(416)
+    expect(diagnostiche()[0]).toMatchObject({ esito: 'range-ignorato', status: 200 })
+  })
+
+  it('un 200 alla richiesta dell’intero file è normale: diventa un 206 da 0', async () => {
+    const { richiedi, fetchFinto } = avviaWorker({ token: 'tok-123' })
+    fetchFinto.mockImplementation(async (url: string) =>
+      url.includes('fields=size')
+        ? new Response(JSON.stringify({ size: '1000' }))
+        : new Response('video', { status: 200, headers: { 'Content-Type': 'video/mp4' } }),
+    )
+    const risposta = await richiedi('https://ciak.test/drive-video/video-song-0001', { Range: 'bytes=0-' })
+    expect(risposta?.status).toBe(206)
+    expect(risposta?.headers.get('Content-Range')).toBe('bytes 0-999/1000')
   })
 })
 

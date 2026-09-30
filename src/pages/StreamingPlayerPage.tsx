@@ -4,6 +4,7 @@ import { ErrorState } from '../components/States'
 import {
   anteprimaUrl,
   apriSuDriveUrl,
+  ascoltaDiagnostica,
   attendiLettoreCiak,
   collegaDrive,
   driveConnesso,
@@ -14,7 +15,16 @@ import {
   tieniSveglioIlLettore,
   titoloVideo,
 } from '../lib/googleDrive'
-import { decidiErrore, senzaAudio, sessioneInScadenza, type Problema } from '../lib/lettore'
+import {
+  decidiErrore,
+  descriviDiagnostica,
+  senzaAudio,
+  sessioneInScadenza,
+  vigilanzaSalto,
+  type DiagnosticaVideo,
+  type Problema,
+} from '../lib/lettore'
+import { registraErrore } from '../lib/errorLog'
 import { logFailure } from '../lib/logFailure'
 import { useSottotitoli } from '../lib/useSottotitoli'
 
@@ -31,6 +41,7 @@ const MESSAGGI: Record<Problema, string> = {
   muto: 'Il video parte ma senza audio: probabilmente è in un formato (come il Dolby E-AC3) che il browser non legge. Il lettore di Drive lo converte da sé.',
   sessione: 'La sessione Google è scaduta: ricollega Google Drive per continuare da dove eri.',
   rete: 'La connessione con Drive si è interrotta più volte di fila. Riprova tra poco, o usa il lettore di Drive.',
+  salto: 'Il salto non è riuscito: Drive non ha mandato il pezzo di film richiesto. Riprova, o usa il lettore di Drive (i dettagli tecnici qui sotto dicono cosa ha risposto).',
 }
 
 export default function StreamingPlayerPage() {
@@ -56,6 +67,14 @@ export default function StreamingPlayerPage() {
   // il conto si azzera quando il film torna a scorrere per un po'.
   const tentativi = useRef(0)
   const ripresoDa = useRef(0)
+  // Da dove ripartire al prossimo caricamento (errore, ricollegamento). Non si
+  // può leggere `posizione` in quel momento: `load()` azzera il tempo e manda
+  // un timeupdate a 0 prima di loadedmetadata, e il film ripartiva da capo.
+  const daRiprendere = useRef(0)
+  // Cosa ha risposto Drive agli ultimi pezzi di film, dal service worker.
+  const [diagnostica, setDiagnostica] = useState<DiagnosticaVideo[]>([])
+  const vigilanza = useRef(vigilanzaSalto(() => segnala('salto')))
+  useEffect(() => () => vigilanza.current.fine(), [])
   const [inScadenza, setInScadenza] = useState(false)
   // Chi ha scelto a mano il lettore di Drive ci resta, anche se quello di Ciak
   // diventa pronto dopo.
@@ -74,6 +93,7 @@ export default function StreamingPlayerPage() {
   )
 
   useEffect(() => (lettore === 'ciak' ? tieniSveglioIlLettore() : undefined), [lettore])
+  useEffect(() => ascoltaDiagnostica((d) => setDiagnostica((prima) => [...prima.slice(-7), d])), [])
 
   const sub = useSottotitoli(fileId, valido && connesso && sottotitoliAttivi)
 
@@ -106,6 +126,7 @@ export default function StreamingPlayerPage() {
 
   function usaDrive() {
     sceltaDrive.current = true
+    vigilanza.current.fine()
     setLettore('drive')
     setProblema(null)
   }
@@ -131,16 +152,27 @@ export default function StreamingPlayerPage() {
       tentativi: tentativi.current,
       connesso: driveConnesso(),
     })
+    // Nel diario, con le ultime risposte di Drive: un errore del lettore che
+    // resta solo a schermo non si può più indagare.
+    void registraErrore('lettore: errore video', {
+      codice: v.error?.code,
+      messaggio: v.error?.message,
+      posizione: posizione.current,
+      decisione,
+      drive: diagnostica.slice(-3),
+    })
     if (decisione !== 'riprova') return segnala(decisione)
-    // Stesso elemento, nuova richiesta: si riprende da `posizione` (vedi
+    // Stesso elemento, nuova richiesta: si riprende da dove si era (vedi
     // onLoadedMetadata) senza uscire dallo schermo intero.
     tentativi.current++
     ripresoDa.current = posizione.current
+    daRiprendere.current = posizione.current
     v.load()
   }
 
   function riprova() {
     tentativi.current = 0
+    daRiprendere.current = posizione.current
     setProblema(null)
     videoRef.current?.load()
   }
@@ -153,7 +185,10 @@ export default function StreamingPlayerPage() {
       // Un rinnovo a film in corso non deve interromperlo: il service worker
       // chiede il token a ogni richiesta e prende da sé quello nuovo. Solo un
       // video già fermo per la sessione scaduta va ricaricato.
-      if (problema) setChiaveVideo((k) => k + 1)
+      if (problema) {
+        daRiprendere.current = posizione.current
+        setChiaveVideo((k) => k + 1)
+      }
       setProblema(null)
       setInScadenza(false)
       tentativi.current = 0
@@ -195,11 +230,20 @@ export default function StreamingPlayerPage() {
             onLoadedMetadata={(e) => {
               // Dopo un'interruzione o un ricollegamento si riparte da dove si era.
               const v = e.currentTarget
-              if (posizione.current > 0) {
-                v.currentTime = posizione.current
+              if (daRiprendere.current > 0) {
+                v.currentTime = daRiprendere.current
+                daRiprendere.current = 0
                 v.play().catch(logFailure('Ripresa del film'))
               }
             }}
+            // Un salto fallito riprende dal punto scelto, non da quello di prima;
+            // uno che non finisce mai viene segnalato.
+            onSeeking={(e) => {
+              posizione.current = e.currentTarget.currentTime
+              vigilanza.current.inizio()
+            }}
+            onSeeked={() => vigilanza.current.fine()}
+            onPlaying={() => vigilanza.current.fine()}
             onTimeUpdate={(e) => {
               const v = e.currentTarget
               posizione.current = v.currentTime
@@ -241,7 +285,7 @@ export default function StreamingPlayerPage() {
             <button type="button" onClick={ricollega} className="btn-primary px-3 py-2">
               Ricollega Google Drive
             </button>
-          ) : problema === 'rete' ? (
+          ) : problema === 'rete' || problema === 'salto' ? (
             <>
               <button type="button" onClick={riprova} className="btn-primary px-3 py-2">
                 Riprova
@@ -268,6 +312,16 @@ export default function StreamingPlayerPage() {
         </div>
       )}
       {errore && <p className="text-sm text-red-400">{errore}</p>}
+      {lettore === 'ciak' && diagnostica.length > 0 && (
+        <details className="rounded-xl border border-theatre-800 bg-theatre-900/40 px-4 py-2 text-xs text-zinc-400">
+          <summary className="cursor-pointer text-zinc-300">Dettagli tecnici (cosa risponde Drive)</summary>
+          <ul className="mt-2 space-y-1 font-mono">
+            {diagnostica.map((d, i) => (
+              <li key={`${d.quando}-${i}`}>{descriviDiagnostica(d)}</li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {lettore === 'ciak' && (
