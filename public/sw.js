@@ -132,6 +132,13 @@ function videoDaDrive(event, url) {
     })
 }
 
+// Una scheda aperta con un ricaricamento forzato (Ctrl+F5), o prima che questo
+// worker fosse attivo, non è controllata e /drive-video/ non passerebbe di qui:
+// la pagina lo chiede e il worker la prende.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.tipo === 'ciak:prendi-controllo') event.waitUntil(self.clients.claim())
+})
+
 // Chiede il token alla pagina; se non risponde entro poco, niente token.
 function chiediToken(client) {
   return new Promise((resolve) => {

@@ -166,6 +166,9 @@ test('«Streaming» elenca i film della cartella Ciak e li apre nel player', asy
     'src',
     'https://drive.google.com/file/d/video-song-0001/preview',
   )
+  // E lo dice, invece di lasciare il lettore di Drive senza un perché.
+  await expect(page.getByText('Il lettore di Ciak, quello con i sottotitoli, non è ancora attivo')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Ricarica la pagina' })).toBeVisible()
   // Le istruzioni per i sottotitoli portano al file su Drive.
   await expect(page.getByRole('link', { name: /Apri su Drive/ })).toHaveAttribute(
     'href',
@@ -297,4 +300,31 @@ test('se il browser non legge il file propone il lettore di Drive', async ({ pag
     'https://drive.google.com/file/d/video-song-0001/preview',
   )
   await expect(page.locator('video')).toHaveCount(0)
+})
+
+test('quando il service worker prende la scheda passa da solo al lettore di Ciak', async ({ page }) => {
+  // La scheda parte senza worker (come dopo un Ctrl+F5); poi il worker la prende.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __controller: unknown }
+    w.__controller = null
+    Object.defineProperty(ServiceWorkerContainer.prototype, 'controller', {
+      get: () => w.__controller,
+      configurable: true,
+    })
+  })
+  await page.route('**/drive-video/**', () => {
+    // In sospeso: il film «sta caricando».
+  })
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+
+  await apriSongOfTheSea(page)
+  await expect(page.locator('iframe')).toBeVisible()
+
+  await page.evaluate(() => {
+    ;(window as unknown as { __controller: unknown }).__controller = {}
+    navigator.serviceWorker.dispatchEvent(new Event('controllerchange'))
+  })
+
+  await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
+  await expect(page.getByText('Italiano · dalla cartella su Drive')).toBeVisible()
 })

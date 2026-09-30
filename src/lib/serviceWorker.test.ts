@@ -17,7 +17,7 @@ function avviaWorker({ token }: { token: string | null }) {
   const self = {
     location: { origin: 'https://ciak.test' },
     addEventListener: (tipo: string, fn: Gestore) => (gestori[tipo] = fn),
-    clients: { get: vi.fn(async () => ({ postMessage })) },
+    clients: { get: vi.fn(async () => ({ postMessage })), claim: vi.fn(async () => {}) },
   }
   const fetchFinto = vi.fn(async () => new Response('video', { status: 206 }))
   new Function('self', 'fetch', 'caches', codice)(self, fetchFinto, {})
@@ -31,7 +31,7 @@ function avviaWorker({ token }: { token: string | null }) {
     })
     return risposta
   }
-  return { richiedi, fetchFinto, postMessage }
+  return { richiedi, fetchFinto, postMessage, gestori, self }
 }
 
 describe('service worker: i film di Drive', () => {
@@ -60,5 +60,22 @@ describe('service worker: i film di Drive', () => {
     expect(risposta?.status).toBe(400)
     expect(postMessage).not.toHaveBeenCalled()
     expect(fetchFinto).not.toHaveBeenCalled()
+  })
+})
+
+describe('service worker: prendere una scheda non controllata', () => {
+  it('su richiesta della pagina prende il controllo delle schede', () => {
+    const { gestori, self } = avviaWorker({ token: null })
+    const attese: Promise<unknown>[] = []
+    gestori.message({ data: { tipo: 'ciak:prendi-controllo' }, waitUntil: (p: Promise<unknown>) => attese.push(p) })
+    expect(self.clients.claim).toHaveBeenCalledTimes(1)
+    expect(attese).toHaveLength(1)
+  })
+
+  it('ignora gli altri messaggi', () => {
+    const { gestori, self } = avviaWorker({ token: null })
+    gestori.message({ data: { tipo: 'altro' }, waitUntil: () => {} })
+    gestori.message({ data: null, waitUntil: () => {} })
+    expect(self.clients.claim).not.toHaveBeenCalled()
   })
 })

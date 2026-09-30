@@ -368,6 +368,25 @@ export function lettoreCiakDisponibile(): boolean {
   return typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller
 }
 
+// Avvisa quando il lettore di Ciak diventa usabile. Se la scheda non è ancora
+// controllata dal worker (Ctrl+F5, primo caricamento dopo un aggiornamento) gli
+// si chiede di prenderla: prima si restava sul lettore di Drive senza un perché.
+export function attendiLettoreCiak(pronto: () => void): () => void {
+  const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined
+  if (!sw) return () => {}
+  if (sw.controller) {
+    pronto()
+    return () => {}
+  }
+  const suCambio = () => {
+    if (sw.controller) pronto()
+  }
+  sw.addEventListener('controllerchange', suCambio)
+  // `ready` aspetta un worker attivo; senza registrazione (sviluppo) non si risolve mai.
+  void sw.ready.then((reg) => reg.active?.postMessage({ tipo: 'ciak:prendi-controllo' }))
+  return () => sw.removeEventListener('controllerchange', suCambio)
+}
+
 if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
   navigator.serviceWorker.addEventListener('message', (evento: MessageEvent) => {
     if ((evento.data as { tipo?: string } | null)?.tipo !== 'ciak:drive-token') return
