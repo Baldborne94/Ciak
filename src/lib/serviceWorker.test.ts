@@ -21,7 +21,7 @@ function avviaWorker({ token }: { token: string | null }) {
   }
   // Drive finto: la dimensione del file e i pezzi di video. Come quello vero,
   // risponde 206 ma senza un Content-Range leggibile dal browser.
-  const fetchFinto = vi.fn(async (url: string, _init?: RequestInit) =>
+  const fetchFinto = vi.fn(async (url: string) =>
     url.includes('fields=size')
       ? new Response(JSON.stringify({ size: '1000' }), { headers: { 'Content-Type': 'application/json' } })
       : new Response('video', { status: 206, headers: { 'Content-Type': 'video/mp4' } }),
