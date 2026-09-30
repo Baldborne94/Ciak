@@ -11,10 +11,12 @@
 
 const CACHE = 'ciak-v3'
 const IMG_CACHE = 'ciak-img-v1'
-// Circa la collezione di una persona più il navigato di qualche giorno. Oltre,
-// si buttano le più vecchie: una cache che cresce senza fine se la prende il
-// browser quando meno serve, di solito proprio offline.
-const MAX_IMMAGINI = 400
+// Circa la collezione di una persona più parecchio navigato: tenendone di più
+// si evita di ri-scaricare le stesse locandine quando si sfoglia molto (anime,
+// cartoni, cataloghi lunghi). Oltre il tetto si buttano le più vecchie: una
+// cache che cresce senza fine se la prende il browser quando meno serve, di
+// solito proprio offline. ~1000 locandine w342 stanno in qualche decina di MB.
+const MAX_IMMAGINI = 1000
 
 self.addEventListener('install', (event) => {
   self.skipWaiting()
