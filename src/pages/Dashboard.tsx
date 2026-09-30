@@ -4,6 +4,9 @@ import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { ScrollRow } from '../components/MediaRow'
 import SavedTitleCard from '../components/SavedTitleCard'
+import GuardaOra from '../components/GuardaOra'
+import { useVideoteca } from '../lib/useVideoteca'
+import type { VoceStreaming } from '../lib/streaming'
 import { posterUrl, getSagaContinuations, type SagaContinuation } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
 import { listByStatus, listWatchlist } from '../lib/userTitles'
@@ -14,7 +17,15 @@ import { usePersistedState } from '../lib/usePersistedState'
 import { onThisDayFlashbacks, type Flashback } from '../lib/flashbacks'
 import type { UserTitle } from '../lib/types'
 
-function ContinueCard({ c, onAbandon }: { c: ContinueItem; onAbandon: (c: ContinueItem) => void }) {
+function ContinueCard({
+  c,
+  onAbandon,
+  videoteca,
+}: {
+  c: ContinueItem
+  onAbandon: (c: ContinueItem) => void
+  videoteca: VoceStreaming[]
+}) {
   const poster = posterUrl(c.posterPath)
   const pct = c.totalEpisodes > 0 ? Math.round((c.watchedCount / c.totalEpisodes) * 100) : 0
   return (
@@ -45,6 +56,10 @@ function ContinueCard({ c, onAbandon }: { c: ContinueItem; onAbandon: (c: Contin
           <p className="mt-0.5 text-[11px] text-zinc-500">{c.watchedCount}/{c.totalEpisodes} episodi</p>
         </div>
       </Link>
+      {/* L'episodio da riprendere è nella videoteca: si guarda subito. */}
+      <div className="px-2 pb-2 empty:hidden">
+        <GuardaOra videoteca={videoteca} tmdbId={c.tvId} mediaType="tv" episodio={{ stagione: c.season, episodio: c.episode }} />
+      </div>
     </div>
   )
 }
@@ -145,6 +160,7 @@ function ChooseForMe({ watchlist }: { watchlist: UserTitle[] }) {
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const videoteca = useVideoteca()
   const { showToast } = useToast()
   const [watchlist, setWatchlist] = useState<UserTitle[]>([])
   const [continueList, setContinueList] = useState<ContinueItem[]>([])
@@ -253,7 +269,9 @@ export default function Dashboard() {
             <ScrollRow>
               {watchlist.slice(0, 12).map((t) => (
                 <div key={t.id} className="w-40 shrink-0">
-                  <SavedTitleCard record={t} />
+                  <SavedTitleCard record={t}>
+                    <GuardaOra videoteca={videoteca} tmdbId={t.tmdb_id} mediaType={t.media_type === 'tv' ? 'tv' : 'movie'} />
+                  </SavedTitleCard>
                 </div>
               ))}
             </ScrollRow>
@@ -291,7 +309,7 @@ export default function Dashboard() {
           <section>
             <SectionTitle icon="📺" title="Riprendi a guardare" />
             <ScrollRow>
-              {continueList.map((c) => <ContinueCard key={c.tvId} c={c} onAbandon={handleAbandon} />)}
+              {continueList.map((c) => <ContinueCard key={c.tvId} c={c} onAbandon={handleAbandon} videoteca={videoteca} />)}
             </ScrollRow>
           </section>
         )}

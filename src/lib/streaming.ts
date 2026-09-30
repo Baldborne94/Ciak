@@ -234,3 +234,39 @@ export function posizionePiuRecente(
   if (locale && (!server || locale.quando > quandoServer)) return locale.posizione
   return server?.posizione ?? 0
 }
+
+// ── «▶ Guarda ora» dalle schede e dalle liste ───────────────────────────────
+
+// Il file da far partire per un titolo dell'archivio: per un film quello
+// lasciato a metà (o il primo); per una serie l'episodio chiesto (quello da
+// riprendere) o altrimenti il primo non ancora visto, in ordine di stagione ed
+// episodio. null se il titolo non ha file nella videoteca.
+export function fileDaGuardare(
+  righe: VoceStreaming[],
+  tmdbId: number,
+  mediaType: TmdbType,
+  episodio?: { stagione: number; episodio: number },
+): VoceStreaming | null {
+  const suoi = righe.filter((r) => r.tmdb_id === tmdbId && r.media_type === mediaType)
+  if (suoi.length === 0) return null
+  if (mediaType === 'movie') {
+    return suoi.find((r) => !r.visto_il && puntoDiRipresa(r.posizione, r.durata) > 0) ?? suoi[0]
+  }
+  const inOrdine = suoi
+    .filter((r) => r.stagione != null && r.episodio != null)
+    .sort((a, b) => (a.stagione as number) - (b.stagione as number) || (a.episodio as number) - (b.episodio as number))
+  if (episodio) {
+    const esatto = inOrdine.find((r) => r.stagione === episodio.stagione && r.episodio === episodio.episodio)
+    if (esatto) return esatto
+  }
+  return inOrdine.find((r) => !r.visto_il) ?? inOrdine[0] ?? suoi[0]
+}
+
+// Il testo del pulsante: dice cosa succede cliccando.
+export function etichettaGuarda(voce: VoceStreaming): string {
+  if (voce.media_type === 'tv' && voce.stagione != null && voce.episodio != null) {
+    return `▶ Guarda S${voce.stagione}E${voce.episodio}`
+  }
+  const ripresa = voce.visto_il ? 0 : puntoDiRipresa(voce.posizione, voce.durata)
+  return ripresa > 0 ? `▶ Riprendi da ${formattaTempo(ripresa)}` : '▶ Guarda ora'
+}

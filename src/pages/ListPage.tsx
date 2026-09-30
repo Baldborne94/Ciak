@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { logFailure } from '../lib/logFailure'
 import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
+import GuardaOra from '../components/GuardaOra'
+import { useVideoteca } from '../lib/useVideoteca'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { FilterBar, FilterGroup, ChipGroup, filterSelectClass } from '../components/FilterBar'
 import { useAuth } from '../lib/auth'
@@ -50,6 +52,7 @@ const COPY: Record<TitleStatus, { subtitle: string; icon: string }> = {
 
 export default function ListPage({ status }: { status: TitleStatus }) {
   const { user } = useAuth()
+  const videoteca = useVideoteca()
   const { showToast } = useToast()
   const copy = COPY[status]
   const [items, setItems] = useState<UserTitle[]>([])
@@ -236,6 +239,11 @@ export default function ListPage({ status }: { status: TitleStatus }) {
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {filteredSorted.map((record) => (
                 <SavedTitleCard key={record.id} record={record}>
+                  <GuardaOra
+                    videoteca={videoteca}
+                    tmdbId={record.tmdb_id}
+                    mediaType={record.media_type === 'tv' ? 'tv' : 'movie'}
+                  />
                   {status === 'abandoned' && (
                     <button onClick={() => resume(record)} className="btn-ghost w-full py-1.5 text-sm">
                       ▶️ Riprendi
