@@ -11,6 +11,7 @@ import {
   type InfoFile,
 } from './googleDrive'
 import {
+  analizzaNomeFilm,
   BLOCCO_HASH,
   decodificaTesto,
   filmDaCercare,
@@ -234,7 +235,12 @@ export function useSottotitoli(fileId: string, attivo: boolean) {
       if (l.annullato) return
       l.info = video
       // La cartella «Ciak» non dice niente del film: conta solo una sottocartella.
-      l.cartella = nomeCartella && nomeCartella !== CARTELLA_CIAK ? nomeCartella : null
+      // Né «Ciak» né una categoria (FILM, ANIME…) dicono qualcosa del film: conta
+      // solo una cartella dedicata, che di solito porta l'anno.
+      l.cartella =
+        nomeCartella && nomeCartella !== CARTELLA_CIAK && analizzaNomeFilm(nomeCartella).anno !== undefined
+          ? nomeCartella
+          : null
       setInfo(video)
       setCartella(l.cartella)
       for (const sub of sottotitoliPerVideo(video.name, vicini)) {

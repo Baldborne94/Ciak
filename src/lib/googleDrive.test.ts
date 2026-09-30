@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { idDriveValido, queryInCartelle, titoloVideo } from './googleDrive'
+import { idDriveValido, nomeCategoria, queryInCartelle, schedeCategorie, soloRiproducibili, titoloVideo } from './googleDrive'
 
 describe('titoloVideo', () => {
   it('usa il nome della sottocartella, che di solito è il film', () => {
@@ -47,5 +47,44 @@ describe('idDriveValido', () => {
     expect(idDriveValido('abc?x=1')).toBe(false)
     expect(idDriveValido('corto')).toBe(false)
     expect(idDriveValido('')).toBe(false)
+  })
+})
+
+describe('soloRiproducibili', () => {
+  const v = (name: string, mimeType: string) => ({ id: name, name, size: null, mimeType, cartella: null })
+
+  it('tiene gli MP4 (e WebM/M4V) e conta gli MKV e gli altri formati nascosti', () => {
+    const esito = soloRiproducibili([
+      v('Song.of.the.Sea.mp4', 'video/mp4'),
+      v('The.Secret.of.Kells.mkv', 'video/x-matroska'),
+      v('Clip.webm', 'video/webm'),
+      v('Vecchio.avi', 'video/x-msvideo'),
+      v('Telefono.M4V', 'video/x-m4v'),
+    ])
+    expect(esito.visibili.map((x) => x.name)).toEqual(['Song.of.the.Sea.mp4', 'Clip.webm', 'Telefono.M4V'])
+    expect(esito.nascosti).toBe(2)
+  })
+})
+
+describe('schede della videoteca', () => {
+  it('nomi leggibili dalle cartelle in maiuscolo', () => {
+    expect(nomeCategoria('FILM')).toBe('Film')
+    expect(nomeCategoria('SERIE TV')).toBe('Serie TV')
+    expect(nomeCategoria('CARTONI')).toBe('Cartoni')
+    expect(nomeCategoria(null)).toBe('Altro')
+  })
+
+  it('film, serie, anime, cartoni per primi, poi le altre, «Altro» in fondo; col numero di video', () => {
+    const c = (categoria: string | null) => ({ categoria })
+    expect(
+      schedeCategorie([c('CARTONI'), c('DOCUMENTARI'), c(null), c('FILM'), c('FILM'), c('ANIME'), c('SERIE TV')]),
+    ).toEqual([
+      { cartella: 'FILM', nome: 'Film', quanti: 2 },
+      { cartella: 'SERIE TV', nome: 'Serie TV', quanti: 1 },
+      { cartella: 'ANIME', nome: 'Anime', quanti: 1 },
+      { cartella: 'CARTONI', nome: 'Cartoni', quanti: 1 },
+      { cartella: 'DOCUMENTARI', nome: 'Documentari', quanti: 1 },
+      { cartella: null, nome: 'Altro', quanti: 1 },
+    ])
   })
 })

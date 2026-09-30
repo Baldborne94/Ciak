@@ -14,22 +14,23 @@ const SRT = '1\n00:00:01,000 --> 00:00:03,000\nC\'era una volta\n'
 const FILE: Record<string, unknown> = {
   'video-song-0001': {
     id: 'video-song-0001',
-    name: 'Song.of.the.Sea.2014.1080p.mkv',
+    name: 'Song.of.the.Sea.2014.1080p.mp4',
     size: '2147483648',
-    mimeType: 'video/x-matroska',
+    mimeType: 'video/mp4',
     parents: ['cartella-song'],
   },
   'cartella-song': {
     id: 'cartella-song',
     name: 'Song of the Sea (2014) [1080p]',
     mimeType: CARTELLA,
-    parents: ['cartella-ciak'],
+    parents: ['cartella-film'],
   },
 }
 
 // Risponde alle richieste a Drive come farebbe un Drive con:
-//   Ciak/B99 S7E2.mp4
-//   Ciak/Song of the Sea (2014) [1080p]/Song.of.the.Sea.2014.1080p.mkv
+//   Ciak/SERIE TV/B99 S7E2.mp4
+//   Ciak/FILM/Song of the Sea (2014) [1080p]/Song.of.the.Sea.2014.1080p.mp4
+//   Ciak/FILM/The.Secret.of.Kells.2009.mkv (nascosto: Ciak riproduce gli MP4)
 //   (e, se richiesto, …/Song.of.the.Sea.it.srt)
 // Le scritture (salvataggio e cestino dei sottotitoli) finiscono in `scritture`.
 async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaCartella = false } = {}) {
@@ -65,9 +66,15 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
     } else if (q.includes("name = 'Ciak'")) {
       files = conCartellaCiak ? [{ id: 'cartella-ciak', name: 'Ciak' }] : []
     } else if (q.includes(CARTELLA)) {
+      // Ciak/FILM e Ciak/SERIE TV, le categorie; in FILM la cartella del film.
       files = q.includes("'cartella-ciak' in parents")
-        ? [{ id: 'cartella-song', name: 'Song of the Sea (2014) [1080p]' }]
-        : []
+        ? [
+            { id: 'cartella-film', name: 'FILM', parents: ['cartella-ciak'] },
+            { id: 'cartella-serie', name: 'SERIE TV', parents: ['cartella-ciak'] },
+          ]
+        : q.includes("'cartella-film' in parents")
+          ? [{ id: 'cartella-song', name: 'Song of the Sea (2014) [1080p]', parents: ['cartella-film'] }]
+          : []
     } else if (q.includes("mimeType contains 'video/'")) {
       files = [
         FILE['video-song-0001'],
@@ -76,7 +83,14 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
           name: 'B99 S7E2.mp4',
           size: '325058560',
           mimeType: 'video/mp4',
-          parents: ['cartella-ciak'],
+          parents: ['cartella-serie'],
+        },
+        {
+          id: 'video-kells-0001',
+          name: 'The.Secret.of.Kells.2009.mkv',
+          size: '2901526000',
+          mimeType: 'video/x-matroska',
+          parents: ['cartella-film'],
         },
       ]
     }
@@ -164,14 +178,17 @@ test('«Streaming» elenca i film della cartella Ciak e li apre nel player', asy
   await mockDrive(page)
   await page.goto('/streaming')
 
-  await expect(page.getByRole('heading', { name: 'I miei film' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'La mia videoteca' })).toBeVisible()
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
   // Il film in una sottocartella prende il nome della cartella; l'altro quello
   // del file senza estensione.
   await expect(page.getByText('Song of the Sea (2014) [1080p]')).toBeVisible()
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await expect(page.getByText(/MKV · 2,0 GB · Song\.of\.the\.Sea/)).toBeVisible()
+  await expect(page.getByText(/MP4 · 2,0 GB · Song\.of\.the\.Sea/)).toBeVisible()
+  // L'MKV non compare, ma la pagina dice che c'è e come renderlo visibile.
+  await expect(page.getByText('The.Secret.of.Kells.2009', { exact: false })).toHaveCount(0)
+  await expect(page.getByText(/1 video in un altro formato \(MKV, AVI…\) è nascosto/)).toBeVisible()
 
   // Aprendo il film si va alla pagina del player, grande. Senza service worker
   // (qui non c'è) il lettore di Ciak non può partire: si usa quello di Drive.
@@ -435,7 +452,7 @@ test('un film si scarica sul dispositivo e da lì si guarda anche senza rete', a
 
   // Nell'elenco il film è segnato come disponibile offline.
   await page.getByRole('link', { name: /Torna ai film/ }).click()
-  await expect(page.getByText('Sul dispositivo')).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Sul dispositivo/ })).toBeVisible()
   await expect(page.getByText('Disponibile offline', { exact: false })).toBeVisible()
 
   // Senza rete: niente Drive, ma il film scaricato si apre col lettore di Ciak
@@ -508,13 +525,13 @@ test('la lista riconosce i film di Drive e li mostra col titolo e la locandina',
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
-  // Il file «Song.of.the.Sea.2014.1080p.mkv» è diventato il film di TMDB.
+  // Il file «Song.of.the.Sea.2014.1080p.mp4» è diventato il film di TMDB.
   await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001')).toMatchObject({
     tmdb_id: 110416,
     media_type: 'movie',
     titolo: 'Song of the Sea',
-    nome_file: 'Song.of.the.Sea.2014.1080p.mkv',
+    nome_file: 'Song.of.the.Sea.2014.1080p.mp4',
   })
   // «B99» non somiglia abbastanza a niente: resta il nome del file, e la riga
   // senza titolo evita di ricercarlo a ogni apertura.
@@ -706,4 +723,27 @@ test('un film che non parte (un MKV che il browser non apre) lo dice e propone D
   await expect(avviso).toContainText('Il browser non riesce ad aprire questo file')
   await avviso.getByRole('button', { name: 'Usa il lettore di Drive' }).click()
   await expect(page.locator('iframe')).toBeVisible()
+})
+
+test('le cartelle dentro Ciak diventano le schede della videoteca', async ({ page }) => {
+  await mockDrive(page)
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  const schede = page.getByRole('tablist', { name: 'Categorie della videoteca' })
+  await expect(schede.getByRole('tab')).toHaveText(['Tutto 2', 'Film 1', 'Serie TV 1'])
+
+  // «FILM» è una categoria, non il titolo di un film: il file dentro una
+  // cartella di categoria prende il suo nome, non «FILM».
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await expect(page.getByText('FILM', { exact: true })).toHaveCount(0)
+
+  await schede.getByRole('tab', { name: /Serie TV/ }).click()
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await expect(page.getByText('Song of the Sea (2014) [1080p]', { exact: true })).toHaveCount(0)
+
+  // La scheda scelta resta scelta alla prossima apertura.
+  await page.reload()
+  await expect(page.getByRole('tab', { name: /Serie TV/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByText('Song of the Sea (2014) [1080p]', { exact: true })).toHaveCount(0)
 })
