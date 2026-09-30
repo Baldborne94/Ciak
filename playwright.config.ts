@@ -54,6 +54,8 @@ export default defineConfig({
       TMDB_API_KEY: 'e2e-fake-tmdb-key',
       VITE_SUPABASE_URL: 'https://e2e-fake.supabase.co',
       VITE_SUPABASE_ANON_KEY: 'e2e-fake-anon-key',
+      // Abilita la funzione "I miei film (Drive)": GIS e Drive sono mockati.
+      VITE_GOOGLE_CLIENT_ID: 'e2e-fake-google-client-id',
     },
   },
 })

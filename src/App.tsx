@@ -17,6 +17,7 @@ const CustomListPage = lazy(() => import('./pages/CustomListPage'))
 const PublicListPage = lazy(() => import('./pages/PublicListPage'))
 const PublicWatchlistPage = lazy(() => import('./pages/PublicWatchlistPage'))
 const DiaryPage = lazy(() => import('./pages/DiaryPage'))
+const DrivePage = lazy(() => import('./pages/DrivePage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
 const UpcomingPage = lazy(() => import('./pages/UpcomingPage'))
 const DaRecuperare = lazy(() => import('./pages/DaRecuperare'))
@@ -113,6 +114,14 @@ export default function App() {
           element={
             <RequireAuth>
               <DiaryPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="drive"
+          element={
+            <RequireAuth>
+              <DrivePage />
             </RequireAuth>
           }
         />
