@@ -6,6 +6,7 @@
 //  - Le locandine di TMDB: cache-first in una cache a parte, con un tetto.
 //    Senza, offline la collezione si apre ma è una griglia di riquadri vuoti —
 //    e una collezione di film senza copertine non si riconosce.
+//  - /drive-video/{id}: i film di Google Drive per il lettore di Ciak (sotto).
 //  - Tutto il resto cross-origin (API TMDB, Supabase, Anthropic) non si tocca:
 //    sono dati che cambiano e richieste autenticate, non roba da cache muta.
 
@@ -45,6 +46,11 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return
 
   const url = new URL(req.url)
+
+  if (url.origin === self.location.origin && url.pathname.startsWith('/drive-video/')) {
+    event.respondWith(videoDaDrive(event, url))
+    return
+  }
 
   // Locandine e ritratti: cache-first, perché non cambiano mai e sono ciò che
   // rende riconoscibile la collezione quando la rete non c'è.
@@ -102,6 +108,40 @@ function sfoltisci(cache) {
   return cache.keys().then((chiavi) => {
     if (chiavi.length <= MAX_IMMAGINI) return
     return Promise.all(chiavi.slice(0, chiavi.length - MAX_IMMAGINI).map((k) => cache.delete(k)))
+  })
+}
+
+// ── I film di Google Drive ──────────────────────────────────────────────────
+// Un <video> non sa aggiungere l'intestazione Authorization e Drive non accetta
+// più il token nell'URL. Il video chiede quindi /drive-video/{id} a noi; qui ci
+// si fa dare il token dalla pagina che lo sta guardando (resta solo lì, mai in
+// un URL o in una cache) e si gira la richiesta a Drive, Range compreso, così
+// si può saltare avanti e indietro senza scaricare il file intero.
+function videoDaDrive(event, url) {
+  const id = url.pathname.slice('/drive-video/'.length)
+  if (!/^[\w-]{10,}$/.test(id)) return Promise.resolve(new Response('', { status: 400 }))
+  return self.clients
+    .get(event.clientId)
+    .then((client) => (client ? chiediToken(client) : null))
+    .then((token) => {
+      if (!token) return new Response('', { status: 401 })
+      const headers = { Authorization: 'Bearer ' + token }
+      const range = event.request.headers.get('Range')
+      if (range) headers.Range = range
+      return fetch('https://www.googleapis.com/drive/v3/files/' + id + '?alt=media', { headers })
+    })
+}
+
+// Chiede il token alla pagina; se non risponde entro poco, niente token.
+function chiediToken(client) {
+  return new Promise((resolve) => {
+    const canale = new MessageChannel()
+    const scadenza = setTimeout(() => resolve(null), 3000)
+    canale.port1.onmessage = (e) => {
+      clearTimeout(scadenza)
+      resolve((e.data && e.data.token) || null)
+    }
+    client.postMessage({ tipo: 'ciak:drive-token' }, [canale.port2])
   })
 }
 
