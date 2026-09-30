@@ -21,6 +21,9 @@ export const TABELLE_ESPORTATE = [
   'user_alerts',
   'user_trailers',
   'user_preferences',
+  // Quale file di Drive è quale film, e dove ti eri fermato: rifare gli
+  // abbinamenti scelti a mano è lavoro dell'utente, non una cache.
+  'user_streaming',
 ] as const
 
 // Volutamente fuori: `user_song_cache` e `ai_usage` sono cache e contatori

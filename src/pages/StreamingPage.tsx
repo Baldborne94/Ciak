@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { logFailure } from '../lib/logFailure'
+import { useAuth } from '../lib/auth'
+import { posterUrl } from '../lib/tmdb'
+import { riconosciNuovi } from '../lib/riconoscimento'
+import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
 import { ascoltaFilmOffline, elencaFilmOffline, offlineDisponibile, spazio, taglia, type FilmOffline } from '../lib/filmOffline'
 import {
   CARTELLA_CIAK,
@@ -26,6 +30,9 @@ function formato(mime: string): string {
 
 export default function StreamingPage() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  // Il legame di ogni file col suo titolo (locandina, «visto», punto di ripresa).
+  const [archivio, setArchivio] = useState<Map<string, VoceStreaming>>(new Map())
   const [connesso, setConnesso] = useState(driveConnesso())
   const [video, setVideo] = useState<DriveVideo[]>([])
   const [cartellaTrovata, setCartellaTrovata] = useState(true)
@@ -67,6 +74,17 @@ export default function StreamingPage() {
       setCartellaTrovata(esito.cartellaTrovata)
       setVideo(esito.video)
       setCaricato(true)
+      // Locandine e titoli: prima ciò che è già collegato, poi si riconoscono
+      // i file nuovi. Best effort: senza, la lista resta quella dei file.
+      if (user) {
+        try {
+          const noti = new Map((await elencaStreaming(user.id)).map((v) => [v.drive_file_id, v]))
+          setArchivio(noti)
+          setArchivio(await riconosciNuovi(user.id, esito.video, noti))
+        } catch (e) {
+          logFailure('Titoli dei film di Drive')(e)
+        }
+      }
     } catch (e) {
       setErrore((e as Error).message)
       // Un 401 ha già dimenticato il token: torniamo a proporre il collegamento.
@@ -74,7 +92,7 @@ export default function StreamingPage() {
     } finally {
       setCaricando(false)
     }
-  }, [])
+  }, [user])
 
   // Già collegati (token ancora valido in questa scheda): elenco subito, senza
   // chiedere di nuovo il permesso.
@@ -215,30 +233,48 @@ export default function StreamingPage() {
         />
       ) : (
         <ul className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
-          {video.map((v) => (
-            <li key={v.id}>
-              <button
-                onClick={() =>
-                  navigate(`/streaming/${v.id}`, { state: { titolo: titoloVideo(v), file: v.name } })
-                }
-                className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-theatre-800/60"
-              >
-                <span className="text-xl">{scaricati.has(v.id) ? '📱' : '🎬'}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-zinc-100">
-                    {titoloVideo(v)}
+          {video.map((v) => {
+            const voce = archivio.get(v.id)
+            const nome = (voce && titoloDaMostrare(voce)) ?? titoloVideo(v)
+            const avanzamento = voce?.durata ? Math.min(1, voce.posizione / voce.durata) : 0
+            return (
+              <li key={v.id}>
+                <button
+                  onClick={() => navigate(`/streaming/${v.id}`, { state: { titolo: nome, file: v.name } })}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-theatre-800/60"
+                >
+                  {voce?.poster_path ? (
+                    <img
+                      src={posterUrl(voce.poster_path, 'w185') ?? undefined}
+                      alt=""
+                      loading="lazy"
+                      className="h-14 w-10 shrink-0 rounded object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-14 w-10 shrink-0 items-center justify-center text-xl">
+                      {scaricati.has(v.id) ? '📱' : '🎬'}
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-zinc-100">{nome}</span>
+                    <span className="block truncate text-xs text-zinc-500">
+                      {voce?.visto_il && '✓ Visto · '}
+                      {scaricati.has(v.id) && 'Offline · '}
+                      {formato(v.mimeType)}
+                      {taglia(v.size) && ` · ${taglia(v.size)}`}
+                      {` · ${v.name}`}
+                    </span>
+                    {avanzamento > 0.02 && !voce?.visto_il && (
+                      <span className="mt-1 block h-1 overflow-hidden rounded bg-theatre-800" aria-hidden="true">
+                        <span className="block h-full bg-projector" style={{ width: `${Math.round(avanzamento * 100)}%` }} />
+                      </span>
+                    )}
                   </span>
-                  <span className="block truncate text-xs text-zinc-500">
-                    {scaricati.has(v.id) && 'Offline · '}
-                    {formato(v.mimeType)}
-                    {taglia(v.size) && ` · ${taglia(v.size)}`}
-                    {v.cartella && ` · ${v.name}`}
-                  </span>
-                </span>
-                <span className="shrink-0 text-projector">▶ Guarda</span>
-              </button>
-            </li>
-          ))}
+                  <span className="shrink-0 text-projector">{avanzamento > 0.02 && !voce?.visto_il ? '▶ Riprendi' : '▶ Guarda'}</span>
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
     </div>

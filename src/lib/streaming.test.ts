@@ -1,0 +1,167 @@
+import { describe, it, expect } from 'vitest'
+import {
+  abbinamentoDa,
+  arrivatoAllaFine,
+  contaComeVisto,
+  formattaTempo,
+  normalizzaTitolo,
+  posizionePiuRecente,
+  prossimoEpisodio,
+  puntoDiRipresa,
+  scegliAbbinamento,
+  titoloDaMostrare,
+  type VoceStreaming,
+} from './streaming'
+import type { MediaItem } from './types'
+
+const media = (over: Partial<MediaItem>): MediaItem => ({
+  id: 1,
+  mediaType: 'movie',
+  title: 'Titolo',
+  originalTitle: null,
+  overview: '',
+  posterPath: null,
+  backdropPath: null,
+  releaseDate: null,
+  voteAverage: 0,
+  genreIds: [],
+  originalLanguage: null,
+  ...over,
+})
+
+describe('normalizzaTitolo', () => {
+  it('ignora accenti, maiuscole e punteggiatura', () => {
+    expect(normalizzaTitolo('Shōgun')).toBe('shogun')
+    expect(normalizzaTitolo('Song.of.the.Sea')).toBe('song of the sea')
+    expect(normalizzaTitolo('Fast & Furious')).toBe('fast and furious')
+  })
+})
+
+describe('scegliAbbinamento', () => {
+  const songFilm = media({ id: 110416, title: 'La canzone del mare', originalTitle: 'Song of the Sea', releaseDate: '2014-09-06' })
+  const omonimo = media({ id: 999, title: 'Song of the Sea', releaseDate: '1952-01-01' })
+
+  it('trova il film col titolo originale e l’anno', () => {
+    expect(scegliAbbinamento({ titolo: 'Song of the Sea', anno: 2014 }, [omonimo, songFilm])?.id).toBe(110416)
+  })
+
+  it('scarta un film omonimo di un altro anno', () => {
+    expect(scegliAbbinamento({ titolo: 'Song of the Sea', anno: 2014 }, [omonimo])).toBeNull()
+  })
+
+  it('un episodio vuole una serie, anche se il film omonimo è più popolare', () => {
+    const film = media({ id: 1, mediaType: 'movie', title: 'Shogun', releaseDate: '1980-01-01' })
+    const serie = media({ id: 126308, mediaType: 'tv', title: 'Shōgun', releaseDate: '2024-02-27' })
+    expect(scegliAbbinamento({ titolo: 'Shogun', stagione: 1, episodio: 3 }, [film, serie])?.id).toBe(126308)
+  })
+
+  it('senza abbastanza somiglianza non indovina: meglio chiedere', () => {
+    expect(scegliAbbinamento({ titolo: 'B99' }, [media({ title: 'Brooklyn Nine-Nine', mediaType: 'tv' })])).toBeNull()
+    expect(scegliAbbinamento({ titolo: '' }, [songFilm])).toBeNull()
+  })
+})
+
+describe('abbinamentoDa', () => {
+  it('per una serie tiene stagione ed episodio del file', () => {
+    const serie = media({ id: 126308, mediaType: 'tv', title: 'Shōgun', posterPath: '/p.jpg' })
+    expect(abbinamentoDa(serie, { titolo: 'Shogun', stagione: 1, episodio: 3 })).toEqual({
+      tmdb_id: 126308,
+      media_type: 'tv',
+      titolo: 'Shōgun',
+      poster_path: '/p.jpg',
+      stagione: 1,
+      episodio: 3,
+    })
+  })
+
+  it('per un film niente stagione né episodio', () => {
+    expect(abbinamentoDa(media({ id: 5 }), { titolo: 'X', stagione: 1, episodio: 2 })).toMatchObject({
+      stagione: null,
+      episodio: null,
+    })
+  })
+})
+
+describe('quando un film conta come visto', () => {
+  it('oltre il 90% o negli ultimi tre minuti è arrivato alla fine', () => {
+    expect(arrivatoAllaFine(5100, 5640)).toBe(true) // 90,4%
+    expect(arrivatoAllaFine(5500, 5640)).toBe(true) // ultimi 140 s
+    expect(arrivatoAllaFine(3000, 5640)).toBe(false)
+    expect(arrivatoAllaFine(3000, null)).toBe(false)
+  })
+
+  it('saltare alla fine senza averlo guardato non vale', () => {
+    expect(contaComeVisto(5200, 5640, 60)).toBe(false)
+    expect(contaComeVisto(5200, 5640, 4000)).toBe(true)
+  })
+})
+
+describe('puntoDiRipresa', () => {
+  it('riparte qualche secondo prima di dove ci si era fermati', () => {
+    expect(puntoDiRipresa(1345, 5640)).toBe(1340)
+  })
+
+  it('dall’inizio se si era appena cominciato o già finito', () => {
+    expect(puntoDiRipresa(12, 5640)).toBe(0)
+    expect(puntoDiRipresa(5600, 5640)).toBe(0)
+  })
+})
+
+describe('formattaTempo', () => {
+  it('ore solo quando servono', () => {
+    expect(formattaTempo(1345)).toBe('22:25')
+    expect(formattaTempo(5640)).toBe('1:34:00')
+  })
+})
+
+describe('prossimoEpisodio', () => {
+  const ep = (id: string, stagione: number, episodio: number, tmdb = 126308): VoceStreaming => ({
+    drive_file_id: id,
+    nome_file: null,
+    tmdb_id: tmdb,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    poster_path: null,
+    stagione,
+    episodio,
+    abbinato_a_mano: false,
+    posizione: 0,
+    durata: null,
+    secondi_visti: 0,
+    visto_il: null,
+  })
+  const tutte = [ep('e3', 1, 3), ep('e1', 1, 1), ep('e2', 1, 2), ep('s2e1', 2, 1), ep('altra', 1, 2, 42)]
+
+  it('il successivo della stessa stagione, della stessa serie', () => {
+    expect(prossimoEpisodio(ep('e1', 1, 1), tutte)?.drive_file_id).toBe('e2')
+  })
+
+  it('finita la stagione, il primo della successiva', () => {
+    expect(prossimoEpisodio(ep('e3', 1, 3), tutte)?.drive_file_id).toBe('s2e1')
+  })
+
+  it('nessuno dopo l’ultimo, e nessuno per un film', () => {
+    expect(prossimoEpisodio(ep('s2e1', 2, 1), tutte)).toBeNull()
+    expect(prossimoEpisodio({ ...ep('f', 1, 1), media_type: 'movie' }, tutte)).toBeNull()
+  })
+})
+
+describe('titoloDaMostrare', () => {
+  it('per un episodio aggiunge stagione ed episodio', () => {
+    expect(titoloDaMostrare({ titolo: 'Shōgun', media_type: 'tv', stagione: 1, episodio: 3 })).toBe('Shōgun · S1E3')
+    expect(titoloDaMostrare({ titolo: 'La canzone del mare', media_type: 'movie', stagione: null, episodio: null })).toBe(
+      'La canzone del mare',
+    )
+    expect(titoloDaMostrare({ titolo: null, media_type: null, stagione: null, episodio: null })).toBeNull()
+  })
+})
+
+describe('posizionePiuRecente', () => {
+  it('vince la copia più recente fra server e dispositivo', () => {
+    const server = { posizione: 600, updated_at: '2026-09-30T10:00:00Z' }
+    expect(posizionePiuRecente(server, { posizione: 900, quando: Date.parse('2026-09-30T11:00:00Z') })).toBe(900)
+    expect(posizionePiuRecente(server, { posizione: 900, quando: Date.parse('2026-09-30T09:00:00Z') })).toBe(600)
+    expect(posizionePiuRecente(null, { posizione: 300, quando: 1 })).toBe(300)
+    expect(posizionePiuRecente(null, null)).toBe(0)
+  })
+})
