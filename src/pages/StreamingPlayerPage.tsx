@@ -18,6 +18,7 @@ import {
   versioneWorker,
 } from '../lib/googleDrive'
 import {
+  ATTESA_AVVIO_MS,
   decidiErrore,
   descriviDiagnostica,
   senzaAudio,
@@ -60,6 +61,8 @@ const MESSAGGI: Record<Problema, string> = {
   muto: 'Il video parte ma senza audio: probabilmente è in un formato (come il Dolby E-AC3) che il browser non legge. Il lettore di Drive lo converte da sé.',
   sessione: 'La sessione Google è scaduta: ricollega Google Drive per continuare da dove eri.',
   rete: 'La connessione con Drive si è interrotta più volte di fila. Riprova tra poco, o usa il lettore di Drive.',
+  avvio:
+    "Il browser non riesce ad aprire questo file: capita spesso con gli MKV, che Chrome legge solo in parte. Il lettore di Drive lo converte da sé (ma senza i sottotitoli di Ciak).",
   salto: 'Il salto non è riuscito: Drive non ha mandato il pezzo di film richiesto. Riprova, o usa il lettore di Drive (i dettagli tecnici qui sotto dicono cosa ha risposto).',
 }
 
@@ -115,7 +118,20 @@ function LettoreStreaming() {
   const [versione, setVersione] = useState<string | null | undefined>(undefined)
   const [inScadenza, setInScadenza] = useState(false)
   const vigilanza = useRef(vigilanzaSalto(() => segnala('salto')))
-  useEffect(() => () => vigilanza.current.fine(), [])
+  // Lo stesso guardiano per l'avvio: se i metadati non arrivano, il film non
+  // partirà — e il browser non lo dice.
+  const vigilanzaAvvio = useRef(vigilanzaSalto(() => segnala('avvio'), ATTESA_AVVIO_MS))
+  useEffect(
+    () => () => {
+      vigilanza.current.fine()
+      vigilanzaAvvio.current.fine()
+    },
+    [],
+  )
+  useEffect(() => {
+    if (lettore !== 'ciak') return vigilanzaAvvio.current.fine()
+    vigilanzaAvvio.current.inizio()
+  }, [lettore, chiaveVideo])
 
   // Il film scaricato si guarda col lettore di Ciak anche senza Drive: è il
   // caso in cui serve di più (in giro, senza rete).
@@ -368,6 +384,7 @@ function LettoreStreaming() {
             className="h-full w-full"
             onError={(e) => suErrore(e.currentTarget)}
             onLoadedMetadata={(e) => {
+              vigilanzaAvvio.current.fine()
               // Dopo un'interruzione o un ricollegamento si riparte da dove si era.
               const v = e.currentTarget
               if (daRiprendere.current > 0) {

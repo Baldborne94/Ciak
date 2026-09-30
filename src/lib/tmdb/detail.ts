@@ -80,6 +80,17 @@ export async function fetchReadableTitle(type: TmdbType, id: number): Promise<st
   return resolveReadableTitle(normalise(raw, type), raw)
 }
 
+// Il titolo originale, tradotto solo se non si legge (giapponese, coreano,
+// cirillico…): per i film di Drive, dove il file è quello e si guarda in lingua
+// originale, «Song of the Sea» resta «Song of the Sea».
+export async function fetchOriginalTitle(type: TmdbType, id: number): Promise<string> {
+  const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, {
+    append_to_response: 'translations,alternative_titles',
+  })
+  const base = normalise(raw, type)
+  return isReadableTitle(base.originalTitle) ? (base.originalTitle as string) : resolveReadableTitle(base, raw)
+}
+
 export async function fetchTitleFacts(type: TmdbType, id: number): Promise<TitleFacts> {
   const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, { append_to_response: 'credits' })
   const crew = raw.credits?.crew ?? []

@@ -4,6 +4,7 @@ import { logFailure } from './logFailure'
 import { addDiaryEntry, quickRate, updateDiaryEntry } from './diary'
 import { listWatchedEpisodes, markEpisode, syncSeriesStatus } from './episodes'
 import { getDetail } from './tmdb'
+import { titoloDaSalvare } from './riconoscimento'
 import { getUserTitle, upsertUserTitle } from './userTitles'
 import {
   abbinamentoDa,
@@ -227,7 +228,7 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
   const cambiaAbbinamento = useCallback(
     async (item: MediaItem, nome: NomeFilm) => {
       if (!user) return
-      const campi = { ...abbinamentoDa(item, nome), abbinato_a_mano: true }
+      const campi = { ...abbinamentoDa(item, nome), titolo: await titoloDaSalvare(item), abbinato_a_mano: true }
       await salvaStreaming(user.id, fileId, campi)
       setVoce((prima) => ({ ...(prima ?? ({ drive_file_id: fileId } as VoceStreaming)), ...campi }) as VoceStreaming)
     },
