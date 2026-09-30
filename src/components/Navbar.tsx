@@ -8,6 +8,9 @@ import { driveConfigurato } from '../lib/googleDrive'
 const primary = [
   { to: '/', label: 'Sala', end: true },
   { to: '/search', label: 'Cerca' },
+  // Lo streaming dei film su Google Drive ha una voce sua, non dentro «Le mie
+  // liste». Solo se il collegamento è configurato: senza Client ID sparisce.
+  ...(driveConfigurato() ? [{ to: '/streaming', label: '🎬 Streaming' }] : []),
 ]
 
 // Personal lists grouped under a dropdown. "Visti" e "Diario" ora sono una sola
@@ -19,9 +22,6 @@ const lists = [
   { to: '/diario', label: 'Visti & Diario' },
   { to: '/favorites', label: 'Preferiti' },
   { to: '/liste', label: 'Liste personali' },
-  // "I miei film" (streaming da Google Drive) solo se il collegamento è
-  // configurato: senza Client ID la funzione non esiste e la voce sparisce.
-  ...(driveConfigurato() ? [{ to: '/drive', label: '🎬 I miei film' }] : []),
 ]
 
 // "Profilo" non è qui: sul desktop si apre cliccando l'avatar/nome in alto a

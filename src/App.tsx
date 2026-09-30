@@ -17,7 +17,8 @@ const CustomListPage = lazy(() => import('./pages/CustomListPage'))
 const PublicListPage = lazy(() => import('./pages/PublicListPage'))
 const PublicWatchlistPage = lazy(() => import('./pages/PublicWatchlistPage'))
 const DiaryPage = lazy(() => import('./pages/DiaryPage'))
-const DrivePage = lazy(() => import('./pages/DrivePage'))
+const StreamingPage = lazy(() => import('./pages/StreamingPage'))
+const StreamingPlayerPage = lazy(() => import('./pages/StreamingPlayerPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
 const UpcomingPage = lazy(() => import('./pages/UpcomingPage'))
 const DaRecuperare = lazy(() => import('./pages/DaRecuperare'))
@@ -118,13 +119,23 @@ export default function App() {
           }
         />
         <Route
-          path="drive"
+          path="streaming"
           element={
             <RequireAuth>
-              <DrivePage />
+              <StreamingPage />
             </RequireAuth>
           }
         />
+        <Route
+          path="streaming/:fileId"
+          element={
+            <RequireAuth>
+              <StreamingPlayerPage />
+            </RequireAuth>
+          }
+        />
+        {/* Il primo indirizzo della sezione, prima che diventasse «Streaming». */}
+        <Route path="drive" element={<Navigate to="/streaming" replace />} />
         <Route
           path="statistiche"
           element={
