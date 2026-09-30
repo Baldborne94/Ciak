@@ -5,7 +5,7 @@ import { logFailure } from './logFailure'
 import { chiaveCollezione, leggiCopia, salvaCopia } from './offlineCache'
 import { segnalaCopia, segnalaDatiFreschi } from './offlineState'
 import { missingTitleRows } from './diaryBackfill'
-import { fetchGenreIds } from './tmdb'
+import { fetchGenreIds, fetchReadableTitle, isReadableTitle } from './tmdb'
 import type {
   DiaryEntry,
   MediaItem,
@@ -216,6 +216,69 @@ export async function backfillTitlesFromDiary(
     )
   if (error) throw new Error(error.message)
   return mancanti.length
+}
+
+// Backfill una tantum dei titoli storici: le righe salvate quando un titolo
+// straniero non veniva reso leggibile mostrano ancora lo script originale
+// («오징어 게임» invece di «Squid Game»), sia nel diario sia in collezione. Qui
+// si rileggono da TMDB solo i titoli NON leggibili e si riscrivono con la
+// versione risolta, in `user_titles` e in `user_diary`. Best-effort: gli errori
+// sui singoli titoli non bloccano gli altri. Torna quante righe ha aggiornato.
+export async function backfillReadableTitles(
+  userId: string,
+  diary: DiaryEntry[],
+  titles: UserTitle[],
+): Promise<number> {
+  const db = client()
+  const titleRows = titles.filter((t) => !isReadableTitle(t.title))
+  const diaryRows = diary.filter((e) => !isReadableTitle(e.title))
+  if (titleRows.length === 0 && diaryRows.length === 0) return 0
+
+  const keyOf = (r: { tmdb_id: number; media_type: MediaType }): string =>
+    `${r.media_type === 'tv' ? 'tv' : 'movie'}-${r.tmdb_id}`
+
+  // Un solo titolo leggibile per ogni (tipo, id) distinto — una richiesta
+  // ciascuno — riusato poi per tutte le righe con quello stesso titolo nelle due
+  // tabelle. Solo i titoli davvero leggibili entrano nella mappa: se TMDB non ne
+  // conosce uno migliore, la riga si lascia com'è invece di riscriverla uguale.
+  const refs = new Map<string, TmdbType>()
+  for (const r of [...titleRows, ...diaryRows]) {
+    refs.set(keyOf(r), r.media_type === 'tv' ? 'tv' : 'movie')
+  }
+  const risolti = new Map<string, string>()
+  await mapLimit([...refs], 6, async ([key, type]) => {
+    try {
+      const nuovo = await fetchReadableTitle(type, Number(key.slice(key.indexOf('-') + 1)))
+      if (isReadableTitle(nuovo)) risolti.set(key, nuovo)
+    } catch {
+      /* best-effort: un titolo che TMDB non sa dire resta com'è */
+    }
+  })
+
+  let aggiornati = 0
+  let falliti = 0
+  const aggiorna = async (tabella: string, id: string, nuovo: string) => {
+    const { error } = await db.from(tabella).update({ title: nuovo }).eq('user_id', userId).eq('id', id)
+    if (error) falliti++
+    else aggiornati++
+  }
+
+  await mapLimit(titleRows, 6, async (r) => {
+    const nuovo = risolti.get(keyOf(r))
+    if (nuovo && nuovo !== r.title) await aggiorna(TABLE, r.id, nuovo)
+  })
+  await mapLimit(diaryRows, 6, async (r) => {
+    const nuovo = risolti.get(keyOf(r))
+    if (nuovo && nuovo !== r.title) await aggiorna('user_diary', r.id, nuovo)
+  })
+
+  // Una riga sola col totale, non una per titolo (vedi backfillGenreIds).
+  if (falliti > 0) {
+    logFailure('titoli storici non riscritti')(
+      new Error(`${falliti} righe su ${titleRows.length + diaryRows.length} non aggiornate`),
+    )
+  }
+  return aggiornati
 }
 
 // I titoli salvati prima del fix sui generi hanno `genre_ids` vuoto: il

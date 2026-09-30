@@ -33,6 +33,7 @@ export {
 export {
   fetchTitleFacts,
   fetchGenreIds,
+  fetchReadableTitle,
   getDetail,
   getSeason,
   getRecommendations,

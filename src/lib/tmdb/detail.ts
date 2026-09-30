@@ -49,6 +49,36 @@ export async function fetchGenreIds(type: TmdbType, id: number): Promise<number[
   return (raw.genres ?? []).map((g) => g.id)
 }
 
+// Il titolo da mostrare: l'italiano se leggibile, altrimenti la migliore
+// versione leggibile che TMDB conosce (inglese, un titolo alternativo, un'altra
+// traduzione). Estratto perché lo usa sia getDetail sia fetchReadableTitle (il
+// backfill dei titoli storici), così la regola è una sola.
+export function resolveReadableTitle(
+  base: { title: string; originalTitle: string | null },
+  raw: RawDetail,
+): string {
+  const allTranslations = raw.translations?.translations ?? []
+  const englishTitle =
+    allTranslations.find((t) => t.iso_639_1 === 'en' && (t.data?.title || t.data?.name))?.data
+      ?.title ??
+    allTranslations.find((t) => t.iso_639_1 === 'en' && t.data?.name)?.data?.name ??
+    null
+  const alternativeTitles = raw.alternative_titles?.titles ?? raw.alternative_titles?.results ?? []
+  const readableFallback = fallbackReadableTitle(englishTitle, alternativeTitles, allTranslations)
+  return !isReadableTitle(base.title) && !isReadableTitle(base.originalTitle) && readableFallback
+    ? readableFallback
+    : base.title
+}
+
+// Solo il titolo leggibile di un titolo, con UNA richiesta (getDetail ne fa
+// tre): serve al backfill dei titoli storici salvati in uno script non latino.
+export async function fetchReadableTitle(type: TmdbType, id: number): Promise<string> {
+  const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, {
+    append_to_response: 'translations,alternative_titles',
+  })
+  return resolveReadableTitle(normalise(raw, type), raw)
+}
+
 export async function fetchTitleFacts(type: TmdbType, id: number): Promise<TitleFacts> {
   const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, { append_to_response: 'credits' })
   const crew = raw.credits?.crew ?? []
@@ -103,21 +133,10 @@ export async function getDetail(
   // TMDB può elencare più voci "en" (en-US, en-GB) e lasciarne alcune vuote:
   // cerchiamo la prima che porti davvero un testo, invece di fermarci alla
   // prima in elenco e concludere che l'inglese non esista.
-  const englishTitle =
-    allTranslations.find((t) => t.iso_639_1 === 'en' && (t.data?.title || t.data?.name))?.data
-      ?.title ??
-    allTranslations.find((t) => t.iso_639_1 === 'en' && t.data?.name)?.data?.name ??
-    null
   const englishOverview =
     allTranslations.find((t) => t.iso_639_1 === 'en' && t.data?.overview?.trim())?.data?.overview ??
     null
-  const alternativeTitles =
-    raw.alternative_titles?.titles ?? raw.alternative_titles?.results ?? []
-  const readableFallback = fallbackReadableTitle(englishTitle, alternativeTitles, allTranslations)
-  const title =
-    !isReadableTitle(base.title) && !isReadableTitle(base.originalTitle) && readableFallback
-      ? readableFallback
-      : base.title
+  const title = resolveReadableTitle(base, raw)
   const overview = base.overview?.trim() ? base.overview : englishOverview ?? base.overview
   const cast: CastMember[] = (raw.credits?.cast ?? []).slice(0, 12).map((c) => ({
     id: c.id,
