@@ -67,6 +67,12 @@ describe('descriviDiagnostica', () => {
     )
   })
 
+  it('una richiesta rifiutata dal browser si legge col suo motivo', () => {
+    expect(descriviDiagnostica({ ...base, status: 0, esito: 'rifiutata', errore: 'Failed to fetch' })).toContain(
+      'il browser ha rifiutato la richiesta a Drive (Failed to fetch)',
+    )
+  })
+
   it('segnala un reindirizzamento e una dimensione sconosciuta', () => {
     const riga = descriviDiagnostica({ ...base, range: null, redirect: 'altro.googleusercontent.com', totale: null })
     expect(riga).toContain('chiesto tutto il file')

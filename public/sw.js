@@ -11,6 +11,9 @@
 //    sono dati che cambiano e richieste autenticate, non roba da cache muta.
 
 const CACHE = 'ciak-v3'
+// Mostrata nei «Dettagli tecnici» del lettore: dice se il browser ha davvero
+// preso l'ultimo worker o se ne sta ancora usando uno vecchio.
+const VERSIONE_WORKER = '2026-09-30.5'
 const IMG_CACHE = 'ciak-img-v1'
 // Circa la collezione di una persona più parecchio navigato: tenendone di più
 // si evita di ri-scaricare le stesse locandine quando si sfoglia molto (anime,
@@ -211,6 +214,22 @@ function rispostaVideo(id, token, range, clientId) {
         'Accept-Ranges': 'bytes',
       },
     })
+  }).catch((errore) => {
+    // La richiesta non ha avuto risposta: il browser l'ha rifiutata (CORS,
+    // rete caduta, reindirizzamento non permesso). Senza questo rapporto il
+    // video mostrava «errore di rete» e nient'altro.
+    diagnostica(clientId, {
+      quando: inizioMs,
+      ms: Date.now() - inizioMs,
+      range: range || null,
+      status: 0,
+      redirect: null,
+      contentLength: null,
+      totale: dimensioni.get(id) || null,
+      esito: 'rifiutata',
+      errore: String(errore && errore.message ? errore.message : errore),
+    })
+    return new Response('', { status: 502 })
   })
 }
 
@@ -221,7 +240,9 @@ function rispostaVideo(id, token, range, clientId) {
 // non chiedono niente: il loro arrivo basta a non far fermare il worker, che
 // altrimenti chiuderebbe con sé la richiesta del film a Drive.
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.tipo === 'ciak:prendi-controllo') event.waitUntil(self.clients.claim())
+  if (!event.data) return
+  if (event.data.tipo === 'ciak:prendi-controllo') event.waitUntil(self.clients.claim())
+  if (event.data.tipo === 'ciak:versione' && event.ports[0]) event.ports[0].postMessage({ versione: VERSIONE_WORKER })
 })
 
 // Chiede il token alla pagina; se non risponde entro poco, niente token.

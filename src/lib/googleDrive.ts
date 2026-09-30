@@ -405,6 +405,27 @@ export function tieniSveglioIlLettore(): () => void {
   return () => clearInterval(timer)
 }
 
+// La versione del service worker che controlla la scheda; null se non risponde
+// (worker vecchio, che non conosce la domanda, o assente).
+export function versioneWorker(attesaMs = 2000): Promise<string | null> {
+  const controller = typeof navigator !== 'undefined' ? navigator.serviceWorker?.controller : undefined
+  if (!controller) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    const canale = new MessageChannel()
+    const scadenza = setTimeout(() => resolve(null), attesaMs)
+    canale.port1.onmessage = (e) => {
+      clearTimeout(scadenza)
+      resolve(typeof e.data?.versione === 'string' ? e.data.versione : null)
+    }
+    try {
+      controller.postMessage({ tipo: 'ciak:versione' }, [canale.port2])
+    } catch {
+      clearTimeout(scadenza)
+      resolve(null)
+    }
+  })
+}
+
 // Riceve dal service worker cosa ha risposto Drive a ogni pezzo di film.
 export function ascoltaDiagnostica(cb: (d: DiagnosticaVideo) => void): () => void {
   const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined
