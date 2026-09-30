@@ -22,17 +22,27 @@ import {
   type SottotitoloDrive,
 } from './sottotitoli'
 
-// I sottotitoli del lettore di Ciak, in quest'ordine:
-//   1. un .srt/.vtt accanto al video nella cartella su Drive;
-//   2. se manca, OpenSubtitles (italiano, poi inglese) — e quello trovato si
-//      salva nella cartella, così la volta dopo è già lì e non costa download.
-// «Prova un altro» passa al candidato successivo, per quando la sincronia è
-// sbagliata; se quello scartato l'aveva salvato Ciak, finisce nel cestino.
+// I sottotitoli del lettore di Ciak, una traccia per lingua (italiano e
+// inglese, più quelle della cartella di cui non si capisce la lingua):
+//   1. per ogni lingua, prima un .srt/.vtt accanto al video su Drive;
+//   2. le lingue che mancano si cercano su OpenSubtitles — una ricerca sola per
+//      tutte — e quello trovato si salva nella cartella, così la volta dopo è
+//      già lì e non costa download.
+// «Prova un altro» vale per una lingua: passa al suo candidato successivo, per
+// quando la sincronia è sbagliata; se quello scartato l'aveva salvato Ciak,
+// finisce nel cestino.
+
+// Le lingue che il lettore offre sempre, se si trovano.
+export const LINGUE_VOLUTE = ['it', 'en'] as const
+// La corsia dei sottotitoli della cartella di cui non si capisce la lingua.
+const ALTRO = 'altro'
 
 export interface Traccia {
+  chiave: string // 'it' | 'en' | 'altro'
   url: string // blob: con il WebVTT, per il <track>
   lingua: string | null
   etichetta: string // es. «Italiano · da OpenSubtitles»
+  vtt: string // il testo, per salvarlo con il film scaricato
 }
 
 export type StatoSottotitoli = 'cerco' | 'pronti' | 'nessuno' | 'errore'
@@ -44,6 +54,12 @@ interface CandidatoOnline {
 }
 
 type Fonte = { tipo: 'drive'; sub: SottotitoloDrive } | { tipo: 'online'; sub: CandidatoOnline }
+
+interface Corsia {
+  fonti: Fonte[]
+  indice: number
+  salvatoDaCiak: string | null
+}
 
 class ErroreApi extends Error {
   nonConfigurato = false
@@ -85,36 +101,66 @@ async function hashDelVideo(info: InfoFile): Promise<string | undefined> {
   }
 }
 
+function corsiaDi(lingua: string | null): string {
+  return lingua === 'it' || lingua === 'en' ? lingua : ALTRO
+}
+
+const ORDINE_CORSIE = ['it', 'en', ALTRO]
+
 export function useSottotitoli(fileId: string, attivo: boolean) {
   const [info, setInfo] = useState<InfoFile | null>(null)
   const [cartella, setCartella] = useState<string | null>(null)
-  const [traccia, setTraccia] = useState<Traccia | null>(null)
-  const [stato, setStato] = useState<StatoSottotitoli>('cerco')
+  const [tracce, setTracce] = useState<Traccia[]>([])
+  const [cercando, setCercando] = useState(true)
   const [messaggio, setMessaggio] = useState<string | null>(null)
-  const [altriPossibili, setAltriPossibili] = useState(false)
+  const [errore, setErrore] = useState<string | null>(null)
+  // Per ogni corsia: se c'è un altro candidato da provare.
+  const [altri, setAltri] = useState<Record<string, boolean>>({})
 
   // Lo stato della ricerca che non serve a disegnare la pagina.
   const lavoro = useRef<{
     info: InfoFile | null
     cartella: string | null
-    fonti: Fonte[]
-    indice: number
+    corsie: Map<string, Corsia>
     onlineCercati: boolean
-    salvatoDaCiak: string | null
     annullato: boolean
-  }>({ info: null, cartella: null, fonti: [], indice: -1, onlineCercati: false, salvatoDaCiak: null, annullato: false })
+  }>({ info: null, cartella: null, corsie: new Map(), onlineCercati: false, annullato: false })
 
-  const urlTraccia = useRef<string | null>(null)
+  const urlTracce = useRef(new Map<string, string>())
 
-  const mostra = useCallback((testo: string, lingua: string | null, origine: string) => {
-    const url = URL.createObjectURL(new Blob([srtAVtt(testo)], { type: 'text/vtt' }))
-    if (urlTraccia.current) URL.revokeObjectURL(urlTraccia.current)
-    urlTraccia.current = url
-    setTraccia({ url, lingua, etichetta: `${nomeLingua(lingua)} · ${origine}` })
-    setStato('pronti')
-    setMessaggio(null)
+  const aggiornaAltri = useCallback(() => {
+    const l = lavoro.current
+    const esito: Record<string, boolean> = {}
+    for (const [chiave, c] of l.corsie) esito[chiave] = c.indice + 1 < c.fonti.length || !l.onlineCercati
+    setAltri(esito)
   }, [])
 
+  const mostra = useCallback((chiave: string, testo: string, lingua: string | null, origine: string) => {
+    const vtt = srtAVtt(testo)
+    const url = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }))
+    const prima = urlTracce.current.get(chiave)
+    if (prima) URL.revokeObjectURL(prima)
+    urlTracce.current.set(chiave, url)
+    const nuova: Traccia = { chiave, url, lingua, etichetta: `${nomeLingua(lingua)} · ${origine}`, vtt }
+    setTracce((attuali) =>
+      [...attuali.filter((t) => t.chiave !== chiave), nuova].sort(
+        (a, b) => ORDINE_CORSIE.indexOf(a.chiave) - ORDINE_CORSIE.indexOf(b.chiave),
+      ),
+    )
+  }, [])
+
+  const corsia = (chiave: string): Corsia => {
+    const l = lavoro.current
+    let c = l.corsie.get(chiave)
+    if (!c) {
+      c = { fonti: [], indice: -1, salvatoDaCiak: null }
+      l.corsie.set(chiave, c)
+    }
+    return c
+  }
+
+  // Una ricerca sola, per tutte le lingue: i candidati finiscono ciascuno nella
+  // corsia della sua lingua, in coda a quelli trovati su Drive.
   const cercaOnline = useCallback(async () => {
     const l = lavoro.current
     l.onlineCercati = true
@@ -122,42 +168,40 @@ export function useSottotitoli(fileId: string, attivo: boolean) {
     const film = filmDaCercare(l.info.name, l.cartella)
     const hash = await hashDelVideo(l.info)
     const { candidati } = await apiSottotitoli<{ candidati: CandidatoOnline[] }>({ azione: 'cerca', ...film, query: film.titolo, hash })
-    l.fonti.push(...candidati.map((sub) => ({ tipo: 'online' as const, sub })))
+    for (const sub of candidati) corsia(corsiaDi(sub.lingua)).fonti.push({ tipo: 'online', sub })
   }, [])
 
-  // Carica la fonte numero `indice`, cercando online se le fonti su Drive sono finite.
+  // Carica la fonte numero `indice` di una corsia, cercando online se quelle
+  // su Drive sono finite. Torna false se non c'era niente da caricare.
   const caricaFonte = useCallback(
-    async (indice: number) => {
+    async (chiave: string, indice: number): Promise<boolean> => {
       const l = lavoro.current
-      if (indice >= l.fonti.length && !l.onlineCercati) await cercaOnline()
-      if (l.annullato) return
-      const fonte = l.fonti[indice]
-      l.indice = indice
-      if (!fonte) {
-        setStato('nessuno')
-        setAltriPossibili(false)
-        return
-      }
+      const c = corsia(chiave)
+      if (indice >= c.fonti.length && !l.onlineCercati && chiave !== ALTRO) await cercaOnline()
+      if (l.annullato) return false
+      const fonte = c.fonti[indice]
+      if (!fonte) return false
+      c.indice = indice
       if (fonte.tipo === 'drive') {
         const testo = decodificaTesto(await scaricaByte(fonte.sub.id))
-        if (l.annullato) return
-        mostra(testo, fonte.sub.lingua, 'dalla cartella su Drive')
+        if (l.annullato) return false
+        mostra(chiave, testo, fonte.sub.lingua, 'dalla cartella su Drive')
       } else {
         const { testo } = await apiSottotitoli<{ testo: string }>({ azione: 'scarica', fileId: fonte.sub.fileId })
-        if (l.annullato) return
+        if (l.annullato) return false
         let origine = 'da OpenSubtitles'
         const idCartella = l.info?.parents[0]
         if (l.info && idCartella) {
           try {
-            l.salvatoDaCiak = await creaFileTesto(idCartella, nomeSottotitoloSalvato(l.info.name, fonte.sub.lingua), testo)
+            c.salvatoDaCiak = await creaFileTesto(idCartella, nomeSottotitoloSalvato(l.info.name, fonte.sub.lingua), testo)
             origine = 'da OpenSubtitles, salvato nella cartella'
           } catch (e) {
             logFailure('Salvataggio del sottotitolo su Drive')(e)
           }
         }
-        mostra(testo, fonte.sub.lingua, origine)
+        mostra(chiave, testo, fonte.sub.lingua, origine)
       }
-      setAltriPossibili(indice + 1 < l.fonti.length || !l.onlineCercati)
+      return true
     },
     [cercaOnline, mostra],
   )
@@ -165,25 +209,22 @@ export function useSottotitoli(fileId: string, attivo: boolean) {
   const gestisciErrore = useCallback((e: unknown) => {
     if (lavoro.current.annullato) return
     if (e instanceof ErroreApi && e.nonConfigurato) {
-      setStato('nessuno')
-      setMessaggio('Nessun sottotitolo nella cartella, e la ricerca online non è ancora configurata.')
+      setMessaggio('La ricerca online dei sottotitoli non è ancora configurata: uso solo quelli nella cartella.')
     } else {
-      setStato('errore')
-      setMessaggio(e instanceof Error ? e.message : 'Sottotitoli non disponibili.')
+      setErrore(e instanceof Error ? e.message : 'Sottotitoli non disponibili.')
     }
-    setAltriPossibili(false)
   }, [])
 
   useEffect(() => {
     if (!attivo) return
     const l = lavoro.current
     l.annullato = false
-    l.fonti = []
-    l.indice = -1
+    l.corsie = new Map()
     l.onlineCercati = false
-    l.salvatoDaCiak = null
-    setStato('cerco')
+    setTracce([])
+    setCercando(true)
     setMessaggio(null)
+    setErrore(null)
     ;(async () => {
       const video = await infoFile(fileId)
       const idCartella = video.parents[0]
@@ -196,30 +237,76 @@ export function useSottotitoli(fileId: string, attivo: boolean) {
       l.cartella = nomeCartella && nomeCartella !== CARTELLA_CIAK ? nomeCartella : null
       setInfo(video)
       setCartella(l.cartella)
-      l.fonti = sottotitoliPerVideo(video.name, vicini).map((sub) => ({ tipo: 'drive' as const, sub }))
-      await caricaFonte(0)
-    })().catch(gestisciErrore)
+      for (const sub of sottotitoliPerVideo(video.name, vicini)) {
+        corsia(corsiaDi(sub.lingua)).fonti.push({ tipo: 'drive', sub })
+      }
+      // Le lingue volute ci sono sempre come corsie, anche vuote: così una
+      // lingua che manca su Drive fa partire la ricerca online.
+      for (const lingua of LINGUE_VOLUTE) corsia(lingua)
+      const mancanti: string[] = []
+      for (const chiave of ORDINE_CORSIE) {
+        if (!l.corsie.has(chiave)) continue
+        try {
+          const trovata = await caricaFonte(chiave, 0)
+          if (!trovata && chiave !== ALTRO) mancanti.push(nomeLingua(chiave).toLowerCase())
+        } catch (e) {
+          gestisciErrore(e)
+          // Una ricerca online non configurata non va ripetuta per ogni lingua.
+          if (e instanceof ErroreApi && e.nonConfigurato) l.onlineCercati = true
+        }
+        if (l.annullato) return
+      }
+      if (mancanti.length > 0 && l.onlineCercati) {
+        setMessaggio((m) => m ?? `Nessun sottotitolo in ${mancanti.join(' né in ')}, né nella cartella né su OpenSubtitles.`)
+      }
+      aggiornaAltri()
+      setCercando(false)
+    })().catch((e) => {
+      gestisciErrore(e)
+      setCercando(false)
+    })
     return () => {
       l.annullato = true
     }
-  }, [fileId, attivo, caricaFonte, gestisciErrore])
+  }, [fileId, attivo, caricaFonte, gestisciErrore, aggiornaAltri])
 
-  // Libera il blob dell'ultima traccia quando si lascia la pagina.
+  // Libera i blob delle tracce quando si lascia la pagina.
   useEffect(
     () => () => {
-      if (urlTraccia.current) URL.revokeObjectURL(urlTraccia.current)
+      for (const url of urlTracce.current.values()) URL.revokeObjectURL(url)
     },
     [],
   )
 
-  const provaAltro = useCallback(() => {
-    const l = lavoro.current
-    const scartato = l.salvatoDaCiak
-    l.salvatoDaCiak = null
-    if (scartato) cestinaFile(scartato).catch(logFailure('Cestino del sottotitolo scartato'))
-    setStato('cerco')
-    caricaFonte(l.indice + 1).catch(gestisciErrore)
-  }, [caricaFonte, gestisciErrore])
+  const provaAltro = useCallback(
+    (chiave: string) => {
+      const l = lavoro.current
+      const c = l.corsie.get(chiave)
+      if (!c) return
+      const scartato = c.salvatoDaCiak
+      c.salvatoDaCiak = null
+      if (scartato) cestinaFile(scartato).catch(logFailure('Cestino del sottotitolo scartato'))
+      setCercando(true)
+      caricaFonte(chiave, c.indice + 1)
+        .then((trovata) => {
+          if (!trovata) setMessaggio(`Non ci sono altri sottotitoli in ${nomeLingua(chiave).toLowerCase()} da provare.`)
+        })
+        .catch(gestisciErrore)
+        .finally(() => {
+          aggiornaAltri()
+          setCercando(false)
+        })
+    },
+    [caricaFonte, gestisciErrore, aggiornaAltri],
+  )
 
-  return { info, cartella, traccia, stato, messaggio, altriPossibili, provaAltro }
+  const stato: StatoSottotitoli = cercando
+    ? 'cerco'
+    : tracce.length > 0
+      ? 'pronti'
+      : errore
+        ? 'errore'
+        : 'nessuno'
+
+  return { info, cartella, tracce, stato, messaggio: errore ?? messaggio, altri, provaAltro }
 }

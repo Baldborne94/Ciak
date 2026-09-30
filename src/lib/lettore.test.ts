@@ -67,6 +67,12 @@ describe('descriviDiagnostica', () => {
     )
   })
 
+  it('un pezzo servito dal film scaricato lo dice', () => {
+    expect(descriviDiagnostica({ ...base, esito: 'dispositivo' })).toContain(
+      'chiesto bytes=1000- → servito dal film scaricato sul dispositivo (10000 byte)',
+    )
+  })
+
   it('una richiesta rifiutata dal browser si legge col suo motivo', () => {
     expect(descriviDiagnostica({ ...base, status: 0, esito: 'rifiutata', errore: 'Failed to fetch' })).toContain(
       'il browser ha rifiutato la richiesta a Drive (Failed to fetch)',

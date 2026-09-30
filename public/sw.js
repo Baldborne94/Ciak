@@ -13,7 +13,11 @@
 const CACHE = 'ciak-v3'
 // Mostrata nei «Dettagli tecnici» del lettore: dice se il browser ha davvero
 // preso l'ultimo worker o se ne sta ancora usando uno vecchio.
-const VERSIONE_WORKER = '2026-09-30.5'
+const VERSIONE_WORKER = '2026-09-30.6'
+// I film scaricati sul dispositivo per vederli offline. Una cache a parte, che
+// sopravvive ai deploy come quella delle immagini: ributtarla vorrebbe dire
+// riscaricare gigabyte a ogni aggiornamento dell'app.
+const FILM_CACHE = 'ciak-film-v1'
 const IMG_CACHE = 'ciak-img-v1'
 // Circa la collezione di una persona più parecchio navigato: tenendone di più
 // si evita di ri-scaricare le stesse locandine quando si sfoglia molto (anime,
@@ -36,7 +40,7 @@ self.addEventListener('activate', (event) => {
           keys
             // La cache delle immagini sopravvive ai deploy: le locandine non
             // cambiano, e ributtarle a ogni versione vanificherebbe l'offline.
-            .filter((k) => k !== CACHE && k !== IMG_CACHE)
+            .filter((k) => k !== CACHE && k !== IMG_CACHE && k !== FILM_CACHE)
             .map((k) => caches.delete(k)),
         ),
       )
@@ -123,14 +127,124 @@ function sfoltisci(cache) {
 function videoDaDrive(event, url) {
   const id = url.pathname.slice('/drive-video/'.length)
   if (!/^[\w-]{10,}$/.test(id)) return Promise.resolve(new Response('', { status: 400 }))
-  return self.clients
-    .get(event.clientId)
-    .then((client) => (client ? chiediToken(client) : null))
-    .then((token) => {
-      if (!token) return new Response('', { status: 401 })
-      return rispostaVideo(id, token, event.request.headers.get('Range'), event.clientId)
-    })
+  const range = event.request.headers.get('Range')
+  // Prima il dispositivo: un film scaricato non chiede niente a Drive, quindi
+  // parte anche offline e i salti sono istantanei.
+  return filmSulDispositivo(id).then((locale) => {
+    if (locale) {
+      diagnostica(event.clientId, {
+        quando: Date.now(),
+        ms: 0,
+        range: range || null,
+        status: 206,
+        redirect: null,
+        contentLength: null,
+        totale: locale.blob.size,
+        esito: 'dispositivo',
+      })
+      return rispostaDaBlob(locale.blob, locale.tipo, range)
+    }
+    return self.clients
+      .get(event.clientId)
+      .then((client) => (client ? chiediToken(client) : null))
+      .then((token) => {
+        if (!token) return new Response('', { status: 401 })
+        return rispostaVideo(id, token, range, event.clientId)
+      })
+  })
 }
+
+// ── Film sul dispositivo ────────────────────────────────────────────────────
+function filmSulDispositivo(id) {
+  return caches
+    .open(FILM_CACHE)
+    .then((cache) => cache.match('/film-offline/' + id))
+    .then((res) => (res ? res.blob().then((blob) => ({ blob, tipo: res.headers.get('Content-Type') || 'video/mp4' })) : null))
+    .catch(() => null)
+}
+
+// Il pezzo richiesto di un film salvato: la risposta in cache è il file intero,
+// e `slice` su un blob non lo legge tutto — prende solo il tratto che serve.
+function rispostaDaBlob(blob, tipo, range) {
+  const totale = blob.size
+  const intervallo = range && /^bytes=(\d+)-(\d*)$/.exec(range)
+  if (!intervallo) {
+    return new Response(blob, {
+      status: 200,
+      headers: { 'Content-Type': tipo, 'Content-Length': String(totale), 'Accept-Ranges': 'bytes' },
+    })
+  }
+  const inizio = Number(intervallo[1])
+  if (inizio >= totale) {
+    return new Response('', { status: 416, headers: { 'Content-Range': 'bytes */' + totale } })
+  }
+  const fine = intervallo[2] ? Math.min(Number(intervallo[2]), totale - 1) : totale - 1
+  return new Response(blob.slice(inizio, fine + 1), {
+    status: 206,
+    headers: {
+      'Content-Type': tipo,
+      'Content-Length': String(fine - inizio + 1),
+      'Content-Range': 'bytes ' + inizio + '-' + fine + '/' + totale,
+      'Accept-Ranges': 'bytes',
+    },
+  })
+}
+
+// Download in sottofondo (Background Fetch, Chrome su Android): continua a
+// schermo spento e con l'app chiusa, con la notifica di sistema. Qui arriva la
+// fine: si mette il film nella cache e si segna completo.
+function finisciDownload(event, riuscito) {
+  const reg = event.registration
+  const id = reg.id.replace(/^ciak-film-/, '')
+  return caches.open(FILM_CACHE).then((cache) =>
+    cache
+      .match('/film-offline/' + id + '/info.json')
+      .then((r) => (r ? r.json() : null))
+      .then((info) => {
+        const titolo = (info && info.titolo) || 'Film'
+        const salvaInfo = (dati) =>
+          cache.put('/film-offline/' + id + '/info.json', new Response(JSON.stringify(dati), { headers: { 'Content-Type': 'application/json' } }))
+        if (!riuscito) {
+          return salvaInfo({ ...(info || { id }), stato: 'errore' })
+            .then(() => avvisaPagine({ tipo: 'ciak:film-offline', id, stato: 'errore' }))
+            .then(() => event.updateUI({ title: 'Download non riuscito: ' + titolo }))
+        }
+        return reg
+          .matchAll()
+          .then((record) => (record[0] ? record[0].responseReady : null))
+          .then((res) => {
+            if (!res || !res.ok) throw new Error('Drive ha risposto ' + (res ? res.status : 'niente'))
+            const tipo = res.headers.get('Content-Type') || 'video/mp4'
+            return cache.put('/film-offline/' + id, new Response(res.body, { headers: { 'Content-Type': tipo } }))
+          })
+          .then(() => salvaInfo({ ...(info || { id }), stato: 'completo', scaricatoIl: Date.now() }))
+          .then(() => avvisaPagine({ tipo: 'ciak:film-offline', id, stato: 'completo' }))
+          .then(() => event.updateUI({ title: titolo + ' è pronto da vedere offline' }))
+          .catch((errore) =>
+            salvaInfo({ ...(info || { id }), stato: 'errore', errore: String(errore && errore.message ? errore.message : errore) })
+              .then(() => avvisaPagine({ tipo: 'ciak:film-offline', id, stato: 'errore' }))
+              .then(() => event.updateUI({ title: 'Download non riuscito: ' + titolo })),
+          )
+      }),
+  )
+}
+
+function avvisaPagine(messaggio) {
+  return self.clients.matchAll({ type: 'window' }).then((pagine) => pagine.forEach((p) => p.postMessage(messaggio)))
+}
+
+self.addEventListener('backgroundfetchsuccess', (event) => event.waitUntil(finisciDownload(event, true)))
+self.addEventListener('backgroundfetchfail', (event) => event.waitUntil(finisciDownload(event, false)))
+self.addEventListener('backgroundfetchabort', (event) => {
+  const id = event.registration.id.replace(/^ciak-film-/, '')
+  event.waitUntil(
+    caches
+      .open(FILM_CACHE)
+      .then((cache) => cache.delete('/film-offline/' + id + '/info.json'))
+      .then(() => avvisaPagine({ tipo: 'ciak:film-offline', id, stato: 'annullato' })),
+  )
+})
+self.addEventListener('backgroundfetchclick', (event) => event.waitUntil(self.clients.openWindow('/streaming')))
 
 // Racconta alla pagina cosa ha risposto Drive a ogni pezzo di film: è l'unico
 // modo di capire, da uno screenshot, perché un salto avanti non funziona.

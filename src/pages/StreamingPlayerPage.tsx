@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
 import { ErrorState } from '../components/States'
 import {
@@ -25,13 +25,28 @@ import {
   type DiagnosticaVideo,
   type Problema,
 } from '../lib/lettore'
+import {
+  annullaDownload,
+  ascoltaFilmOffline,
+  downloadInCorso,
+  eliminaFilm,
+  filmOffline,
+  offlineDisponibile,
+  salvaSottotitoliOffline,
+  scaricaFilm,
+  taglia,
+  type Avanzamento,
+  type FilmOffline,
+} from '../lib/filmOffline'
 import { registraErrore } from '../lib/errorLog'
 import { logFailure } from '../lib/logFailure'
+import { nomeLingua } from '../lib/sottotitoli'
 import { useSottotitoli } from '../lib/useSottotitoli'
 
 // Due lettori per lo stesso film:
 //  - quello di Ciak, un <video> che legge il file originale da Drive (tramite
-//    il service worker) e può mostrare i sottotitoli che Ciak trova da sé;
+//    il service worker) o, se il film è stato scaricato, dal dispositivo — e
+//    mostra i sottotitoli che Ciak trova da sé, in italiano e in inglese;
 //  - quello di Google Drive, in un iframe, che converte al volo ogni formato
 //    ma non accetta sottotitoli dall'esterno.
 // Si parte da quello di Ciak; se il browser non legge il file o l'audio resta
@@ -50,13 +65,21 @@ export default function StreamingPlayerPage() {
   const stato = useLocation().state as { titolo?: string; file?: string } | null
   const valido = idDriveValido(fileId)
 
+  // Il film sul dispositivo: undefined finché non si è guardato in cache.
+  const [locale, setLocale] = useState<FilmOffline | null | undefined>(undefined)
+  const [avanzamento, setAvanzamento] = useState<Avanzamento | null>(null)
+  const [scaricando, setScaricando] = useState(false)
+  const [erroreDownload, setErroreDownload] = useState<string | null>(null)
+  const scaricato = locale?.stato === 'completo'
+
   const [connesso, setConnesso] = useState(driveConnesso)
   const [ciakPronto, setCiakPronto] = useState(lettoreCiakDisponibile)
   const [lettore, setLettore] = useState<'ciak' | 'drive'>(() =>
     lettoreCiakDisponibile() && driveConnesso() ? 'ciak' : 'drive',
   )
-  // I sottotitoli si cercano solo quando serve davvero il lettore di Ciak: nel
-  // lettore di Drive non si vedrebbero, e un download online ha un tetto.
+  // I sottotitoli si cercano su Drive solo quando serve davvero il lettore di
+  // Ciak e il film non è già sul dispositivo coi suoi: nel lettore di Drive
+  // non si vedrebbero, e un download online ha un tetto.
   const [sottotitoliAttivi, setSottotitoliAttivi] = useState(lettore === 'ciak')
   const [problema, setProblema] = useState<Problema | null>(null)
   const [chiaveVideo, setChiaveVideo] = useState(0)
@@ -64,6 +87,9 @@ export default function StreamingPlayerPage() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const posizione = useRef(0)
   const audioControllato = useRef(false)
+  // Chi ha scelto a mano il lettore di Drive ci resta, anche se quello di Ciak
+  // diventa pronto dopo.
+  const sceltaDrive = useRef(false)
   // Riprese automatiche dopo un errore di rete, e da che punto è partita l'ultima:
   // il conto si azzera quando il film torna a scorrere per un po'.
   const tentativi = useRef(0)
@@ -76,23 +102,48 @@ export default function StreamingPlayerPage() {
   const [diagnostica, setDiagnostica] = useState<DiagnosticaVideo[]>([])
   // undefined: non ancora chiesta; null: il worker non risponde (vecchio o assente).
   const [versione, setVersione] = useState<string | null | undefined>(undefined)
+  const [inScadenza, setInScadenza] = useState(false)
   const vigilanza = useRef(vigilanzaSalto(() => segnala('salto')))
   useEffect(() => () => vigilanza.current.fine(), [])
-  const [inScadenza, setInScadenza] = useState(false)
-  // Chi ha scelto a mano il lettore di Drive ci resta, anche se quello di Ciak
-  // diventa pronto dopo.
-  const sceltaDrive = useRef(false)
+
+  // Il film scaricato si guarda col lettore di Ciak anche senza Drive: è il
+  // caso in cui serve di più (in giro, senza rete).
+  useEffect(() => {
+    if (!valido) return
+    let attivo = true
+    void filmOffline(fileId).then((f) => {
+      if (!attivo) return
+      setLocale(f)
+      if (f?.stato === 'completo' && lettoreCiakDisponibile() && !sceltaDrive.current) setLettore('ciak')
+    })
+    return () => {
+      attivo = false
+    }
+  }, [fileId, valido])
+
+  useEffect(
+    () =>
+      ascoltaFilmOffline((evento) => {
+        if (evento.id !== fileId) return
+        if (evento.avanzamento) setAvanzamento(evento.avanzamento)
+        if (evento.stato !== 'in-corso') {
+          setAvanzamento(null)
+          void filmOffline(fileId).then(setLocale)
+        }
+      }),
+    [fileId],
+  )
 
   useEffect(
     () =>
       attendiLettoreCiak(() => {
         setCiakPronto(true)
-        if (!sceltaDrive.current && driveConnesso()) {
+        if (!sceltaDrive.current && (driveConnesso() || scaricato)) {
           setLettore('ciak')
           setSottotitoliAttivi(true)
         }
       }),
-    [],
+    [scaricato],
   )
 
   useEffect(() => (lettore === 'ciak' ? tieniSveglioIlLettore() : undefined), [lettore])
@@ -106,19 +157,49 @@ export default function StreamingPlayerPage() {
     }
   }, [lettore, ciakPronto])
 
-  const sub = useSottotitoli(fileId, valido && connesso && sottotitoliAttivi)
+  // Coi sottotitoli già salvati insieme al film, Drive non serve: si usano
+  // quelli. Altrimenti (o se si vuole cambiarli) li si cerca come sempre.
+  const usaSalvati = scaricato && !connesso && (locale?.sottotitoli?.length ?? 0) > 0
+  const sub = useSottotitoli(fileId, valido && connesso && sottotitoliAttivi && !usaSalvati)
 
-  // Una traccia aggiunta a video già avviato non si accende da sola: la si
-  // accende a mano, spegnendo le altre.
+  const tracceSalvate = useMemo(() => {
+    if (!usaSalvati || !locale?.sottotitoli) return []
+    return locale.sottotitoli.map((s) => ({
+      ...s,
+      url: URL.createObjectURL(new Blob([s.vtt], { type: 'text/vtt' })),
+    }))
+  }, [usaSalvati, locale])
+  useEffect(() => () => tracceSalvate.forEach((t) => URL.revokeObjectURL(t.url)), [tracceSalvate])
+
+  const tracce = usaSalvati ? tracceSalvate : sub.tracce
+
+  // I sottotitoli trovati dopo il download, o cambiati, raggiungono la scheda
+  // del film sul dispositivo: offline si vedono quelli.
   useEffect(() => {
-    const tracce = videoRef.current?.textTracks
-    if (!tracce || !sub.traccia) return
-    for (let i = 0; i < tracce.length; i++) tracce[i].mode = i === tracce.length - 1 ? 'showing' : 'disabled'
-  }, [sub.traccia, chiaveVideo])
+    if (!locale || usaSalvati || sub.tracce.length === 0) return
+    void salvaSottotitoliOffline(
+      fileId,
+      sub.tracce.map(({ chiave, lingua, etichetta, vtt }) => ({ chiave, lingua, etichetta, vtt })),
+    ).catch(logFailure('Sottotitoli nella scheda del film offline'))
+  }, [fileId, locale, usaSalvati, sub.tracce])
+
+  // Le tracce aggiunte a video già avviato non si accendono da sole: la prima
+  // (l'italiano, se c'è) si accende a mano, le altre restano disponibili dal
+  // pulsante CC. Se l'utente ne ha già scelta una, non la si tocca.
+  useEffect(() => {
+    const elenco = videoRef.current?.textTracks
+    if (!elenco || tracce.length === 0) return
+    let mostrata = false
+    for (let i = 0; i < elenco.length; i++) if (elenco[i].mode === 'showing') mostrata = true
+    if (mostrata) return
+    for (let i = 0; i < elenco.length; i++) elenco[i].mode = i === 0 ? 'showing' : 'hidden'
+  }, [tracce, chiaveVideo])
 
   const titolo =
-    stato?.titolo ?? (sub.info ? titoloVideo({ name: sub.info.name, cartella: sub.cartella }) : 'Film')
-  const nomeFile = stato?.file ?? sub.info?.name
+    stato?.titolo ??
+    locale?.titolo ??
+    (sub.info ? titoloVideo({ name: sub.info.name, cartella: sub.cartella }) : 'Film')
+  const nomeFile = stato?.file ?? locale?.file ?? sub.info?.name
 
   const indietro = (
     <Link to="/streaming" className="text-sm text-zinc-400 transition hover:text-projector">
@@ -161,7 +242,7 @@ export default function StreamingPlayerPage() {
       codice: v.error?.code,
       posizione: posizione.current,
       tentativi: tentativi.current,
-      connesso: driveConnesso(),
+      connesso: driveConnesso() || scaricato,
     })
     // Nel diario, con le ultime risposte di Drive: un errore del lettore che
     // resta solo a schermo non si può più indagare.
@@ -170,6 +251,7 @@ export default function StreamingPlayerPage() {
       messaggio: v.error?.message,
       posizione: posizione.current,
       decisione,
+      scaricato,
       drive: diagnostica.slice(-3),
     })
     if (decisione !== 'riprova') return segnala(decisione)
@@ -209,14 +291,40 @@ export default function StreamingPlayerPage() {
     }
   }
 
+  async function scarica() {
+    setErroreDownload(null)
+    setScaricando(true)
+    try {
+      const esito = await scaricaFilm(
+        { id: fileId, titolo, file: nomeFile ?? titolo, dimensione: sub.info?.size ?? null },
+        sub.tracce.map(({ chiave, lingua, etichetta, vtt }) => ({ chiave, lingua, etichetta, vtt })),
+      )
+      if (esito === 'sottofondo') setLocale(await filmOffline(fileId))
+    } catch (e) {
+      setErroreDownload(e instanceof Error ? e.message : 'Download non riuscito.')
+      logFailure('Download del film per l’offline')(e)
+    } finally {
+      setScaricando(false)
+    }
+  }
+
+  async function elimina() {
+    await eliminaFilm(fileId).catch(logFailure('Eliminazione del film offline'))
+    setLocale(null)
+  }
+
   const testoSottotitoli =
-    sub.stato === 'cerco'
+    sub.stato === 'cerco' && !usaSalvati
       ? 'Cerco i sottotitoli…'
-      : sub.stato === 'pronti' && sub.traccia
-        ? sub.traccia.etichetta
-        : sub.stato === 'nessuno'
-          ? (sub.messaggio ?? 'Nessun sottotitolo, né nella cartella né su OpenSubtitles.')
-          : `Sottotitoli non disponibili: ${sub.messaggio ?? 'errore sconosciuto'}`
+      : tracce.length > 0
+        ? // Le tracce trovate e, se una lingua manca, anche questo: altrimenti
+          // chi cerca l'inglese non capisce perché non c'è.
+          [tracce.map((t) => t.etichetta).join(' · '), !usaSalvati && sub.messaggio].filter(Boolean).join(' · ')
+        : sub.stato === 'errore'
+          ? `Sottotitoli non disponibili: ${sub.messaggio ?? 'errore sconosciuto'}`
+          : (sub.messaggio ?? 'Nessun sottotitolo, né nella cartella né su OpenSubtitles.')
+
+  const inCorso = scaricando || locale?.stato === 'in-corso' || downloadInCorso(fileId)
 
   return (
     <div className="space-y-4">
@@ -259,7 +367,7 @@ export default function StreamingPlayerPage() {
               const v = e.currentTarget
               posizione.current = v.currentTime
               if (tentativi.current > 0 && v.currentTime > ripresoDa.current + 30) tentativi.current = 0
-              const scade = sessioneInScadenza(scadenzaDrive(), Date.now())
+              const scade = !scaricato && sessioneInScadenza(scadenzaDrive(), Date.now())
               if (scade !== inScadenza) setInScadenza(scade)
               if (!audioControllato.current && v.currentTime >= 3) {
                 audioControllato.current = true
@@ -267,16 +375,16 @@ export default function StreamingPlayerPage() {
               }
             }}
           >
-            {sub.traccia && (
+            {tracce.map((t, i) => (
               <track
-                key={sub.traccia.url}
+                key={t.url}
                 kind="subtitles"
-                src={sub.traccia.url}
-                srcLang={sub.traccia.lingua ?? undefined}
-                label={sub.traccia.etichetta.split(' · ')[0]}
-                default
+                src={t.url}
+                srcLang={t.lingua ?? undefined}
+                label={nomeLingua(t.lingua)}
+                default={i === 0}
               />
-            )}
+            ))}
           </video>
         ) : (
           <iframe
@@ -323,34 +431,70 @@ export default function StreamingPlayerPage() {
         </div>
       )}
       {errore && <p className="text-sm text-red-400">{errore}</p>}
-      {lettore === 'ciak' && (
-        <details className="rounded-xl border border-theatre-800 bg-theatre-900/40 px-4 py-2 text-xs text-zinc-400">
-          <summary className="cursor-pointer text-zinc-300">Dettagli tecnici (cosa risponde Drive)</summary>
-          <ul className="mt-2 space-y-1 font-mono">
-            <li>
-              {versione === undefined
-                ? 'Service worker: …'
-                : versione === null
-                  ? 'Service worker: non risponde (versione vecchia o assente: ricarica la pagina)'
-                  : `Service worker: ${versione}`}
-            </li>
-            {diagnostica.length === 0 && <li>Nessuna richiesta a Drive registrata finora.</li>}
-            {diagnostica.map((d, i) => (
-              <li key={`${d.quando}-${i}`}>{descriviDiagnostica(d)}</li>
-            ))}
-          </ul>
-        </details>
+
+      {/* Sul dispositivo: scaricare, avanzamento, eliminare. */}
+      {offlineDisponibile() && locale !== undefined && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900/40 p-3 text-sm">
+          {scaricato ? (
+            <>
+              <p className="flex-1 text-zinc-300">
+                📱 Scaricato sul dispositivo{locale?.dimensione ? ` (${taglia(locale.dimensione)})` : ''}: si vede anche
+                offline, e i salti sono istantanei.
+              </p>
+              <button type="button" onClick={elimina} className="btn-ghost px-3 py-1.5">
+                Elimina dal dispositivo
+              </button>
+            </>
+          ) : inCorso ? (
+            <>
+              <p className="flex-1 text-zinc-300">
+                ⬇️ Download in corso
+                {avanzamento
+                  ? `: ${taglia(avanzamento.ricevuti)}${avanzamento.totale ? ` di ${taglia(avanzamento.totale)}` : ''}`
+                  : locale?.stato === 'in-corso' && !downloadInCorso(fileId)
+                    ? ' in sottofondo: puoi chiudere Ciak, ti avvisa quando è pronto.'
+                    : '…'}
+              </p>
+              {downloadInCorso(fileId) && (
+                <button type="button" onClick={() => annullaDownload(fileId)} className="btn-ghost px-3 py-1.5">
+                  Annulla
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="flex-1 text-zinc-400">
+                {locale?.stato === 'errore'
+                  ? `L'ultimo download non è riuscito${locale.errore ? ` (${locale.errore})` : ''}.`
+                  : 'Scaricalo sul dispositivo per vederlo anche senza rete, in giro.'}
+              </p>
+              <button type="button" onClick={scarica} disabled={!connesso || !ciakPronto} className="btn-primary px-3 py-1.5">
+                Scarica per l'offline
+              </button>
+            </>
+          )}
+          {erroreDownload && <p className="w-full text-red-400">{erroreDownload}</p>}
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {lettore === 'ciak' && (
           <>
             <p className="text-zinc-300">💬 {testoSottotitoli}</p>
-            {sub.altriPossibili && sub.stato === 'pronti' && (
-              <button type="button" onClick={sub.provaAltro} className="btn-ghost px-3 py-1.5">
-                Fuori sincrono? Prova un altro sottotitolo
-              </button>
-            )}
+            {!usaSalvati &&
+              sub.stato === 'pronti' &&
+              sub.tracce
+                .filter((t) => sub.altri[t.chiave])
+                .map((t) => (
+                  <button
+                    key={t.chiave}
+                    type="button"
+                    onClick={() => sub.provaAltro(t.chiave)}
+                    className="btn-ghost px-3 py-1.5"
+                  >
+                    {nomeLingua(t.lingua)} fuori sincrono? Prova un altro
+                  </button>
+                ))}
           </>
         )}
         <span className="flex-1" />
@@ -358,7 +502,7 @@ export default function StreamingPlayerPage() {
           <button type="button" onClick={usaDrive} className="btn-ghost px-3 py-1.5">
             Usa il lettore di Drive
           </button>
-        ) : !connesso ? (
+        ) : !connesso && !scaricato ? (
           <button type="button" onClick={ricollega} className="btn-ghost px-3 py-1.5">
             Collega Google Drive per i sottotitoli
           </button>
@@ -378,6 +522,25 @@ export default function StreamingPlayerPage() {
         )}
       </div>
 
+      {lettore === 'ciak' && (
+        <details className="rounded-xl border border-theatre-800 bg-theatre-900/40 px-4 py-2 text-xs text-zinc-400">
+          <summary className="cursor-pointer text-zinc-300">Dettagli tecnici (cosa risponde Drive)</summary>
+          <ul className="mt-2 space-y-1 font-mono">
+            <li>
+              {versione === undefined
+                ? 'Service worker: …'
+                : versione === null
+                  ? 'Service worker: non risponde (versione vecchia o assente: ricarica la pagina)'
+                  : `Service worker: ${versione}`}
+            </li>
+            {diagnostica.length === 0 && <li>Nessuna richiesta a Drive registrata finora.</li>}
+            {diagnostica.map((d, i) => (
+              <li key={`${d.quando}-${i}`}>{descriviDiagnostica(d)}</li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       <div className="grid gap-3 text-sm text-zinc-400 sm:grid-cols-2">
         {lettore === 'ciak' ? (
           <>
@@ -385,15 +548,14 @@ export default function StreamingPlayerPage() {
               <p className="mb-1 font-medium text-zinc-200">📺 Il lettore di Ciak</p>
               <p>
                 Legge il file originale, alla sua qualità piena, anche appena caricato. I sottotitoli
-                si scelgono dal pulsante CC del lettore; ⛶ per lo schermo intero.
+                (italiano e inglese) si scelgono dal pulsante CC del lettore; ⛶ per lo schermo intero.
               </p>
             </div>
             <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
               <p className="mb-1 font-medium text-zinc-200">💬 Da dove arrivano i sottotitoli</p>
               <p>
-                Prima un file <code>.srt</code> accanto al film nella cartella su Drive; se manca,
-                OpenSubtitles (italiano, poi inglese), e quello trovato viene salvato nella cartella
-                per la volta dopo.
+                Prima un file <code>.srt</code> accanto al film nella cartella su Drive; se manca una
+                lingua, OpenSubtitles, e quello trovato viene salvato nella cartella per la volta dopo.
               </p>
             </div>
           </>
