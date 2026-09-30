@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useIdentityCtx } from '../lib/identityCtx'
+import { driveConfigurato } from '../lib/googleDrive'
 
 // Primary links shown inline. Anime/Cartoni now live inside "Cerca".
 const primary = [
@@ -18,6 +19,9 @@ const lists = [
   { to: '/diario', label: 'Visti & Diario' },
   { to: '/favorites', label: 'Preferiti' },
   { to: '/liste', label: 'Liste personali' },
+  // "I miei film" (streaming da Google Drive) solo se il collegamento è
+  // configurato: senza Client ID la funzione non esiste e la voce sparisce.
+  ...(driveConfigurato() ? [{ to: '/drive', label: '🎬 I miei film' }] : []),
 ]
 
 // "Profilo" non è qui: sul desktop si apre cliccando l'avatar/nome in alto a
