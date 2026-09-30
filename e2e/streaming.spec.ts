@@ -7,14 +7,61 @@ import { mockTmdb, mockSupabase, signIn } from './support/mocks'
 
 const CARTELLA = 'application/vnd.google-apps.folder'
 
-// Risponde alle query di Drive come farebbe un Drive con:
+const SRT = '1\n00:00:01,000 --> 00:00:03,000\nC\'era una volta\n'
+
+// I singoli file, come li restituisce files.get.
+const FILE: Record<string, unknown> = {
+  'video-song-0001': {
+    id: 'video-song-0001',
+    name: 'Song.of.the.Sea.2014.1080p.mkv',
+    size: '2147483648',
+    mimeType: 'video/x-matroska',
+    parents: ['cartella-song'],
+  },
+  'cartella-song': {
+    id: 'cartella-song',
+    name: 'Song of the Sea (2014) [1080p]',
+    mimeType: CARTELLA,
+    parents: ['cartella-ciak'],
+  },
+}
+
+// Risponde alle richieste a Drive come farebbe un Drive con:
 //   Ciak/B99 S7E2.mp4
 //   Ciak/Song of the Sea (2014) [1080p]/Song.of.the.Sea.2014.1080p.mkv
-async function mockDrive(page: Page, { conCartellaCiak = true } = {}) {
-  await page.route('https://www.googleapis.com/drive/v3/files*', (route) => {
-    const q = new URL(route.request().url()).searchParams.get('q') ?? ''
+//   (e, se richiesto, …/Song.of.the.Sea.it.srt)
+// Le scritture (salvataggio e cestino dei sottotitoli) finiscono in `scritture`.
+async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaCartella = false } = {}) {
+  const scritture: { metodo: string; url: string; corpo: string }[] = []
+  await page.route(/^https:\/\/www\.googleapis\.com\/(upload\/)?drive\/v3\/files/, (route) => {
+    const req = route.request()
+    const url = new URL(req.url())
+    if (req.method() !== 'GET') {
+      scritture.push({ metodo: req.method(), url: req.url(), corpo: req.postData() ?? '' })
+      return route.fulfill({ json: { id: 'sottotitolo-salvato-01' } })
+    }
+
+    const id = url.pathname.split('/files/')[1]
+    if (id) {
+      if (url.searchParams.get('alt') === 'media') {
+        if (id === 'sub-song-it-0001') return route.fulfill({ contentType: 'application/x-subrip', body: SRT })
+        // I due pezzi da 64 KB per l'hash di OpenSubtitles: zeri.
+        return route.fulfill({ status: 206, body: Buffer.alloc(65536) })
+      }
+      return route.fulfill({ json: FILE[id] ?? {} })
+    }
+
+    const q = url.searchParams.get('q') ?? ''
     let files: unknown[] = []
-    if (q.includes("name = 'Ciak'")) {
+    if (q.includes('mimeType != ')) {
+      // I file accanto al film.
+      files = [
+        FILE['video-song-0001'],
+        ...(sottotitoliNellaCartella
+          ? [{ id: 'sub-song-it-0001', name: 'Song.of.the.Sea.it.srt', mimeType: 'application/x-subrip' }]
+          : []),
+      ]
+    } else if (q.includes("name = 'Ciak'")) {
       files = conCartellaCiak ? [{ id: 'cartella-ciak', name: 'Ciak' }] : []
     } else if (q.includes(CARTELLA)) {
       files = q.includes("'cartella-ciak' in parents")
@@ -22,13 +69,7 @@ async function mockDrive(page: Page, { conCartellaCiak = true } = {}) {
         : []
     } else if (q.includes("mimeType contains 'video/'")) {
       files = [
-        {
-          id: 'video-song-0001',
-          name: 'Song.of.the.Sea.2014.1080p.mkv',
-          size: '2147483648',
-          mimeType: 'video/x-matroska',
-          parents: ['cartella-song'],
-        },
+        FILE['video-song-0001'],
         {
           id: 'video-b99-00001',
           name: 'B99 S7E2.mp4',
@@ -40,6 +81,31 @@ async function mockDrive(page: Page, { conCartellaCiak = true } = {}) {
     }
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ files }) })
   })
+  return { scritture }
+}
+
+// Il lettore di Ciak passa dal service worker, che nel dev server dei test non
+// c'è: si finge che controlli la pagina e si risponde noi a /drive-video/.
+// `video: 'fermo'` lascia la richiesta in sospeso (il film «sta caricando»),
+// `'illeggibile'` risponde con un errore, come un formato che il browser non legge.
+async function conLettoreCiak(page: Page, video: 'fermo' | 'illeggibile' = 'fermo') {
+  await page.addInitScript(() => {
+    Object.defineProperty(ServiceWorkerContainer.prototype, 'controller', {
+      get: () => ({}),
+      configurable: true,
+    })
+  })
+  await page.route('**/drive-video/**', (route) => {
+    if (video === 'illeggibile') return route.fulfill({ status: 415, body: '' })
+    // In sospeso: il film resta «in caricamento» per tutto il test.
+  })
+}
+
+async function apriSongOfTheSea(page: Page) {
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.getByRole('button', { name: /Song of the Sea/ }).click()
+  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
 }
 
 test.beforeEach(async ({ page }) => {
@@ -91,7 +157,8 @@ test('«Streaming» elenca i film della cartella Ciak e li apre nel player', asy
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
   await expect(page.getByText(/MKV · 2,0 GB · Song\.of\.the\.Sea/)).toBeVisible()
 
-  // Aprendo il film si va alla pagina del player, grande, col lettore di Drive.
+  // Aprendo il film si va alla pagina del player, grande. Senza service worker
+  // (qui non c'è) il lettore di Ciak non può partire: si usa quello di Drive.
   await page.getByRole('button', { name: /Song of the Sea/ }).click()
   await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
   await expect(page.getByRole('heading', { name: 'Song of the Sea (2014) [1080p]' })).toBeVisible()
@@ -148,4 +215,86 @@ test('un indirizzo di film non valido non finisce nel lettore', async ({ page })
   await page.goto('/streaming/bad')
   await expect(page.getByText('Film non trovato')).toBeVisible()
   await expect(page.locator('iframe')).toHaveCount(0)
+})
+
+test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  let ricercheOnline = 0
+  await page.route('**/api/sottotitoli', (route) => {
+    ricercheOnline++
+    return route.fulfill({ json: { candidati: [] } })
+  })
+
+  await apriSongOfTheSea(page)
+
+  // Il video arriva dal service worker, non dall'iframe di Drive.
+  await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
+  await expect(page.locator('iframe')).toHaveCount(0)
+  await expect(page.getByText('Italiano · dalla cartella su Drive')).toBeVisible()
+  await expect(page.locator('video track[kind="subtitles"]')).toHaveAttribute('label', 'Italiano')
+  // C'era già: niente ricerca online, niente download consumati.
+  expect(ricercheOnline).toBe(0)
+})
+
+test('senza sottotitoli nella cartella li cerca online e li salva accanto al film', async ({ page }) => {
+  await conLettoreCiak(page)
+  const { scritture } = await mockDrive(page)
+  const richieste: Record<string, unknown>[] = []
+  await page.route('**/api/sottotitoli', (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    richieste.push(body)
+    if (body.azione === 'cerca') {
+      return route.fulfill({
+        json: {
+          candidati: [
+            { fileId: 111, lingua: 'it', nome: 'song.it.srt', download: 50, hash: true },
+            { fileId: 222, lingua: 'en', nome: 'song.en.srt', download: 900, hash: false },
+          ],
+        },
+      })
+    }
+    return route.fulfill({ json: { testo: SRT, rimasti: 9 } })
+  })
+
+  await apriSongOfTheSea(page)
+
+  await expect(page.getByText('Italiano · da OpenSubtitles, salvato nella cartella')).toBeVisible()
+  // Il film si cerca per titolo e anno, e con l'hash del file per trovare
+  // sottotitoli già sincronizzati (qui i pezzi sono zeri: resta la dimensione).
+  expect(richieste[0]).toMatchObject({
+    azione: 'cerca',
+    query: 'Song of the Sea',
+    anno: 2014,
+    hash: '0000000080000000',
+  })
+  expect(richieste[1]).toEqual({ azione: 'scarica', fileId: 111 })
+  // Salvato nella cartella del film, col nome del video: la volta dopo c'è già.
+  expect(scritture).toHaveLength(1)
+  expect(scritture[0].corpo).toContain('"name":"Song.of.the.Sea.2014.1080p.it.srt"')
+  expect(scritture[0].corpo).toContain('"parents":["cartella-song"]')
+
+  // Fuori sincrono: si passa al candidato dopo e quello scartato va nel cestino.
+  await page.getByRole('button', { name: /Prova un altro sottotitolo/ }).click()
+  await expect(page.getByText('Inglese · da OpenSubtitles, salvato nella cartella')).toBeVisible()
+  expect(richieste[2]).toEqual({ azione: 'scarica', fileId: 222 })
+  const cestino = scritture.find((s) => s.metodo === 'PATCH')
+  expect(cestino?.url).toContain('/files/sottotitolo-salvato-01')
+  expect(JSON.parse(cestino?.corpo ?? '{}')).toEqual({ trashed: true })
+})
+
+test('se il browser non legge il file propone il lettore di Drive', async ({ page }) => {
+  await conLettoreCiak(page, 'illeggibile')
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+
+  await apriSongOfTheSea(page)
+
+  const avviso = page.getByRole('alert')
+  await expect(avviso).toContainText('Il browser non riesce a leggere questo file')
+  await avviso.getByRole('button', { name: 'Usa il lettore di Drive' }).click()
+  await expect(page.locator('iframe')).toHaveAttribute(
+    'src',
+    'https://drive.google.com/file/d/video-song-0001/preview',
+  )
+  await expect(page.locator('video')).toHaveCount(0)
 })

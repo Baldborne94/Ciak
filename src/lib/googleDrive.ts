@@ -1,16 +1,24 @@
 // I tuoi film restano su Google Drive, nella cartella «Ciak»: qui li si ELENCA e
-// li si riproduce in streaming (via il lettore di Google), senza scaricarli.
+// li si riproduce in streaming — col lettore di Google o con quello di Ciak, che
+// legge il file originale e mostra i sottotitoli — senza scaricarli.
 //
 // Autenticazione: Google Identity Services (GIS), flusso token per una SPA — il
-// Client ID è pubblico (nessun segreto lato client), lo scope è in sola lettura.
+// Client ID è pubblico (nessun segreto lato client). Gli scope: lettura di tutto
+// il Drive (per trovare i film) e scrittura dei SOLI file creati da Ciak
+// (`drive.file`): è ciò che serve a salvare accanto al film un sottotitolo
+// scaricato, senza poter toccare nient'altro.
 // Il token scade dopo ~1h e senza backend non c'è refresh: lo teniamo in
 // sessionStorage (solo questa scheda, sparisce alla chiusura) così un
 // ricaricamento della pagina non costringe a ricollegarsi ogni volta.
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
-const SCOPE = 'https://www.googleapis.com/auth/drive.readonly'
+const SCOPE = [
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.file',
+].join(' ')
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
 const API = 'https://www.googleapis.com/drive/v3/files'
+const API_CARICAMENTO = 'https://www.googleapis.com/upload/drive/v3/files'
 const CHIAVE_SESSIONE = 'ciak:drive-token'
 
 // La cartella, nella radice di «Il mio Drive», da cui si prendono i film.
@@ -180,10 +188,23 @@ interface FileGrezzo {
   parents?: string[]
 }
 
-// Una query a Drive, seguendo le pagine. Un 401 vuol dire token scaduto o
+// Una richiesta all'API di Drive col token. Un 401 vuol dire token scaduto o
 // revocato: lo dimentichiamo, così la pagina torna a proporre il collegamento.
-async function cercaFile(q: string, campi: string): Promise<FileGrezzo[]> {
+async function richiestaDrive(url: string, init: RequestInit = {}): Promise<Response> {
   if (!driveConnesso() || !accessToken) throw new Error('Google Drive non collegato.')
+  const headers = new Headers(init.headers)
+  headers.set('Authorization', `Bearer ${accessToken}`)
+  const res = await fetch(url, { ...init, headers })
+  if (res.status === 401) {
+    driveDisconnetti()
+    throw new Error('La sessione Google è scaduta: ricollega Google Drive.')
+  }
+  if (!res.ok) throw new Error(`Google Drive ha risposto ${res.status}.`)
+  return res
+}
+
+// Una query a Drive, seguendo le pagine.
+async function cercaFile(q: string, campi: string): Promise<FileGrezzo[]> {
   const risultati: FileGrezzo[] = []
   let pageToken: string | undefined
   do {
@@ -193,14 +214,7 @@ async function cercaFile(q: string, campi: string): Promise<FileGrezzo[]> {
       pageSize: '1000',
     })
     if (pageToken) params.set('pageToken', pageToken)
-    const res = await fetch(`${API}?${params}`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-    if (res.status === 401) {
-      driveDisconnetti()
-      throw new Error('La sessione Google è scaduta: ricollega Google Drive.')
-    }
-    if (!res.ok) throw new Error(`Google Drive ha risposto ${res.status}.`)
+    const res = await richiestaDrive(`${API}?${params}`)
     const data = (await res.json()) as { files?: FileGrezzo[]; nextPageToken?: string }
     risultati.push(...(data.files ?? []))
     pageToken = data.nextPageToken
@@ -270,4 +284,95 @@ export function anteprimaUrl(id: string): string {
 // Lo stesso file aperto su Drive (dove si gestiscono anche i sottotitoli).
 export function apriSuDriveUrl(id: string): string {
   return `https://drive.google.com/file/d/${id}/view`
+}
+
+export interface InfoFile {
+  id: string
+  name: string
+  size: number | null
+  mimeType: string
+  parents: string[]
+}
+
+// Nome, dimensione e cartella di un file: il lettore li chiede da sé, perché
+// arrivando da un link o da un ricaricamento non ha l'elenco a disposizione.
+export async function infoFile(id: string): Promise<InfoFile> {
+  if (!idDriveValido(id)) throw new Error('File non valido.')
+  const res = await richiestaDrive(`${API}/${id}?fields=${encodeURIComponent('id, name, size, mimeType, parents')}`)
+  const f = (await res.json()) as FileGrezzo
+  return {
+    id: f.id,
+    name: f.name,
+    size: f.size ? Number(f.size) : null,
+    mimeType: f.mimeType,
+    parents: f.parents ?? [],
+  }
+}
+
+// I file (non le cartelle) che stanno accanto a un video.
+export async function fileNellaCartella(idCartella: string): Promise<FileGrezzo[]> {
+  if (!idDriveValido(idCartella)) return []
+  const [q] = queryInCartelle([idCartella], `mimeType != '${MIME_CARTELLA}'`)
+  return cercaFile(q, 'id, name, mimeType')
+}
+
+// Il contenuto di un file, tutto o solo un intervallo di byte (per l'hash).
+export async function scaricaByte(id: string, intervallo?: [number, number]): Promise<ArrayBuffer> {
+  if (!idDriveValido(id)) throw new Error('File non valido.')
+  const headers: Record<string, string> = {}
+  if (intervallo) headers.Range = `bytes=${intervallo[0]}-${intervallo[1]}`
+  const res = await richiestaDrive(`${API}/${id}?alt=media`, { headers })
+  return res.arrayBuffer()
+}
+
+// Salva un file di testo in una cartella (serve lo scope `drive.file`).
+export async function creaFileTesto(idCartella: string, nome: string, testo: string): Promise<string> {
+  const confine = `ciak-${Math.random().toString(36).slice(2)}`
+  const metadati = { name: nome, parents: [idCartella], mimeType: 'application/x-subrip' }
+  const corpo =
+    `--${confine}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadati)}\r\n` +
+    `--${confine}\r\nContent-Type: application/x-subrip; charset=UTF-8\r\n\r\n${testo}\r\n--${confine}--`
+  const res = await richiestaDrive(`${API_CARICAMENTO}?uploadType=multipart&fields=id`, {
+    method: 'POST',
+    headers: { 'Content-Type': `multipart/related; boundary=${confine}` },
+    body: corpo,
+  })
+  return ((await res.json()) as { id: string }).id
+}
+
+// Sposta nel cestino un file creato da Ciak (un sottotitolo scartato).
+export async function cestinaFile(id: string): Promise<void> {
+  if (!idDriveValido(id)) return
+  await richiestaDrive(`${API}/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ trashed: true }),
+  })
+}
+
+// ── Il lettore di Ciak ──────────────────────────────────────────────────────
+// Un <video> non sa mandare l'intestazione Authorization, e Drive non accetta
+// più il token nell'URL. Il service worker (public/sw.js) fa da tramite: il
+// video chiede /drive-video/{id} alla nostra origine, il worker si fa dare il
+// token da questa pagina con un messaggio e gira la richiesta a Drive. Così il
+// token non finisce mai in un URL.
+
+export function flussoVideoUrl(id: string): string {
+  return `/drive-video/${id}`
+}
+
+// Senza un service worker che controlla la pagina (primo caricamento, sviluppo,
+// browser senza supporto) /drive-video/ non porta da nessuna parte: si usa il
+// lettore di Drive.
+export function lettoreCiakDisponibile(): boolean {
+  return typeof navigator !== 'undefined' && !!navigator.serviceWorker?.controller
+}
+
+if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener('message', (evento: MessageEvent) => {
+    if ((evento.data as { tipo?: string } | null)?.tipo !== 'ciak:drive-token') return
+    evento.ports[0]?.postMessage({ token: driveConnesso() ? accessToken : null })
+  })
+  // I messaggi del worker restano in coda finché la pagina non li accetta.
+  navigator.serviceWorker.startMessages?.()
 }
