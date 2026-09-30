@@ -126,3 +126,22 @@ test('il nome del regista, nei credits di un film, ripiega sulla traslitterazion
   await expect(page.getByText('Bong Joon-ho')).toBeVisible()
   await expect(page.getByText('봉준호')).toHaveCount(0)
 })
+
+// Anche gli studi di produzione elencati su una scheda film: un nome in script
+// non latino va reso leggibile via i nomi alternativi della compagnia.
+test('lo studio di produzione in script non latino, sulla scheda film, diventa leggibile', async ({
+  page,
+}) => {
+  await mockTmdb(page, {
+    detail: movieDetail(9200, 'Parasite', {
+      production_companies: [{ id: 300, name: 'CJ 엔터테인먼트', logo_path: null }],
+    }),
+    // /company/{id}/alternative_names porta il nome internazionale.
+    companyAltNames: [{ name: 'CJ ENM', type: 'International' }],
+  })
+
+  await page.goto('/title/movie/9200')
+
+  await expect(page.getByText('CJ ENM')).toBeVisible()
+  await expect(page.getByText('CJ 엔터테인먼트')).toHaveCount(0)
+})

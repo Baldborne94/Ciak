@@ -24,25 +24,26 @@ export async function searchCompany(query: string): Promise<Company[]> {
   }))
 }
 
+// Un nome di compagnia leggibile: TMDB non traduce i nomi degli studi e non
+// espone un `original_name`, quindi per un nome in uno script non latino l'unica
+// fonte di una versione latina sono i nomi alternativi/internazionali. Solo per
+// i nomi NON leggibili — nessuna chiamata extra per gli studi "occidentali"; se
+// non ne esiste uno leggibile resta il nome originale. Best-effort.
+export async function readableCompanyName(id: number, name: string): Promise<string> {
+  if (isReadableTitle(name)) return name
+  try {
+    const alt = await tmdbFetch<{ results?: { name: string }[] }>(
+      `/company/${id}/alternative_names`,
+    )
+    return (alt.results ?? []).map((r) => r.name).find((n) => isReadableTitle(n)) ?? name
+  } catch {
+    return name
+  }
+}
+
 export async function getCompany(id: number): Promise<Company> {
   const raw = await tmdbFetch<RawCompany>(`/company/${id}`)
-  let name = raw.name
-  // TMDB non traduce i nomi delle compagnie e non espone un `original_name`:
-  // quando il nome è in uno script non leggibile, l'unica fonte di una versione
-  // latina sono i nomi alternativi/internazionali. Best-effort: solo per i nomi
-  // non leggibili (nessuna chiamata extra per gli studi "occidentali").
-  if (!isReadableTitle(name)) {
-    try {
-      const alt = await tmdbFetch<{ results?: { name: string }[] }>(
-        `/company/${id}/alternative_names`,
-      )
-      const readable = (alt.results ?? []).map((r) => r.name).find((n) => isReadableTitle(n))
-      if (readable) name = readable
-    } catch {
-      /* best-effort: se salta, resta il nome originale */
-    }
-  }
-  return { id: raw.id, name, logoPath: raw.logo_path ?? null }
+  return { id: raw.id, name: await readableCompanyName(id, raw.name), logoPath: raw.logo_path ?? null }
 }
 
 export async function discoverByCompany(

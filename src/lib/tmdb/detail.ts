@@ -1,6 +1,7 @@
 import { tmdbFetch } from './client'
 import { normalise, countryName, type RawMedia, type RawDetail, type RawEpisode, type RawVideo, type RawProvider, type RawPerson } from './raw'
 import { patchReadableTitles, fallbackReadableTitle, isReadableTitle, readablePersonName } from './titles'
+import { readableCompanyName } from './companies'
 import type { CastMember, Company, CountryProviders, CrewMember, Episode, MediaDetail, MediaItem, Provider, TitleFacts, TmdbType } from '../types'
 
 // "Se ti è piaciuto, guarda anche": TMDB's raw /recommendations feed is noisy
@@ -185,11 +186,16 @@ export async function getDetail(
   const readableName = <T extends { id: number; name: string }>(p: T): T =>
     nameOverrides.has(p.id) ? { ...p, name: nameOverrides.get(p.id)! } : p
 
-  const productionCompanies: Company[] = (raw.production_companies ?? []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    logoPath: c.logo_path ?? null,
-  }))
+  // Nomi degli studi in script non latino resi leggibili (via i nomi
+  // alternativi, come la scheda studio): solo per quelli non leggibili, così per
+  // i film "occidentali" nessuna chiamata extra.
+  const productionCompanies: Company[] = await Promise.all(
+    (raw.production_companies ?? []).map(async (c) => ({
+      id: c.id,
+      name: await readableCompanyName(c.id, c.name),
+      logoPath: c.logo_path ?? null,
+    })),
+  )
 
   const recommendations = buildRecommendations(raw, type)
 
