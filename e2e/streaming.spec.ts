@@ -238,6 +238,28 @@ test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', as
   await expect(page.locator('video track[kind="subtitles"]')).toHaveAttribute('label', 'Italiano')
   // C'era già: niente ricerca online, niente download consumati.
   expect(ricercheOnline).toBe(0)
+
+  // Il service worker racconta cosa risponde Drive: la pagina lo mostra nei
+  // dettagli tecnici, così un salto che non funziona si spiega da uno screenshot.
+  await page.evaluate(() => {
+    navigator.serviceWorker.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          tipo: 'ciak:diagnostica',
+          quando: Date.now(),
+          ms: 380,
+          range: 'bytes=1048576-',
+          status: 200,
+          redirect: null,
+          contentLength: '2147483648',
+          totale: 2147483648,
+          esito: 'range-ignorato',
+        },
+      }),
+    )
+  })
+  await page.getByText('Dettagli tecnici (cosa risponde Drive)').click()
+  await expect(page.getByText(/chiesto bytes=1048576- → Drive ha ignorato il Range/)).toBeVisible()
 })
 
 test('senza sottotitoli nella cartella li cerca online e li salva accanto al film', async ({ page }) => {

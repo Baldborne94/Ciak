@@ -1,3 +1,5 @@
+import type { DiagnosticaVideo } from './lettore'
+
 // I tuoi film restano su Google Drive, nella cartella «Ciak»: qui li si ELENCA e
 // li si riproduce in streaming — col lettore di Google o con quello di Ciak, che
 // legge il file originale e mostra i sottotitoli — senza scaricarli.
@@ -401,6 +403,18 @@ export function tieniSveglioIlLettore(): () => void {
   if (!sw) return () => {}
   const timer = setInterval(() => sw.controller?.postMessage({ tipo: 'ciak:tieni-vivo' }), 20_000)
   return () => clearInterval(timer)
+}
+
+// Riceve dal service worker cosa ha risposto Drive a ogni pezzo di film.
+export function ascoltaDiagnostica(cb: (d: DiagnosticaVideo) => void): () => void {
+  const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : undefined
+  if (!sw) return () => {}
+  const suMessaggio = (evento: MessageEvent) => {
+    const dati = evento.data as ({ tipo?: string } & DiagnosticaVideo) | null
+    if (dati?.tipo === 'ciak:diagnostica') cb(dati)
+  }
+  sw.addEventListener('message', suMessaggio)
+  return () => sw.removeEventListener('message', suMessaggio)
 }
 
 if (typeof navigator !== 'undefined' && navigator.serviceWorker) {
