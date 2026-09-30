@@ -14,6 +14,7 @@ import {
   scadenzaDrive,
   tieniSveglioIlLettore,
   titoloVideo,
+  versioneWorker,
 } from '../lib/googleDrive'
 import {
   decidiErrore,
@@ -73,6 +74,8 @@ export default function StreamingPlayerPage() {
   const daRiprendere = useRef(0)
   // Cosa ha risposto Drive agli ultimi pezzi di film, dal service worker.
   const [diagnostica, setDiagnostica] = useState<DiagnosticaVideo[]>([])
+  // undefined: non ancora chiesta; null: il worker non risponde (vecchio o assente).
+  const [versione, setVersione] = useState<string | null | undefined>(undefined)
   const vigilanza = useRef(vigilanzaSalto(() => segnala('salto')))
   useEffect(() => () => vigilanza.current.fine(), [])
   const [inScadenza, setInScadenza] = useState(false)
@@ -94,6 +97,14 @@ export default function StreamingPlayerPage() {
 
   useEffect(() => (lettore === 'ciak' ? tieniSveglioIlLettore() : undefined), [lettore])
   useEffect(() => ascoltaDiagnostica((d) => setDiagnostica((prima) => [...prima.slice(-7), d])), [])
+  useEffect(() => {
+    if (lettore !== 'ciak') return
+    let attivo = true
+    void versioneWorker().then((v) => attivo && setVersione(v))
+    return () => {
+      attivo = false
+    }
+  }, [lettore, ciakPronto])
 
   const sub = useSottotitoli(fileId, valido && connesso && sottotitoliAttivi)
 
@@ -312,10 +323,18 @@ export default function StreamingPlayerPage() {
         </div>
       )}
       {errore && <p className="text-sm text-red-400">{errore}</p>}
-      {lettore === 'ciak' && diagnostica.length > 0 && (
+      {lettore === 'ciak' && (
         <details className="rounded-xl border border-theatre-800 bg-theatre-900/40 px-4 py-2 text-xs text-zinc-400">
           <summary className="cursor-pointer text-zinc-300">Dettagli tecnici (cosa risponde Drive)</summary>
           <ul className="mt-2 space-y-1 font-mono">
+            <li>
+              {versione === undefined
+                ? 'Service worker: …'
+                : versione === null
+                  ? 'Service worker: non risponde (versione vecchia o assente: ricarica la pagina)'
+                  : `Service worker: ${versione}`}
+            </li>
+            {diagnostica.length === 0 && <li>Nessuna richiesta a Drive registrata finora.</li>}
             {diagnostica.map((d, i) => (
               <li key={`${d.quando}-${i}`}>{descriviDiagnostica(d)}</li>
             ))}

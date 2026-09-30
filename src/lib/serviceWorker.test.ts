@@ -152,19 +152,43 @@ describe('service worker: diagnostica per la pagina', () => {
   })
 })
 
+describe('service worker: richiesta rifiutata dal browser', () => {
+  it('lo racconta alla pagina col motivo, invece di sparire in un errore di rete', async () => {
+    const { richiedi, fetchFinto, diagnostiche } = avviaWorker({ token: 'tok-123' })
+    fetchFinto.mockImplementation(async (url: string) => {
+      if (url.includes('fields=size')) return new Response(JSON.stringify({ size: '1000' }))
+      throw new TypeError('Failed to fetch')
+    })
+    const risposta = await richiedi('https://ciak.test/drive-video/video-song-0001', { Range: 'bytes=600-' })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(risposta?.status).toBe(502)
+    expect(diagnostiche()[0]).toMatchObject({ esito: 'rifiutata', errore: 'Failed to fetch', range: 'bytes=600-' })
+  })
+})
+
+describe('service worker: versione', () => {
+  it('risponde alla pagina con la propria versione', () => {
+    const { gestori } = avviaWorker({ token: null })
+    const canale = new MessageChannel()
+    const risposta = new Promise((resolve) => (canale.port1.onmessage = (e) => resolve(e.data)))
+    gestori.message({ data: { tipo: 'ciak:versione' }, ports: [canale.port2], waitUntil: () => {} })
+    return expect(risposta).resolves.toEqual({ versione: expect.stringMatching(/^\d{4}-\d{2}-\d{2}\.\d+$/) })
+  })
+})
+
 describe('service worker: prendere una scheda non controllata', () => {
   it('su richiesta della pagina prende il controllo delle schede', () => {
     const { gestori, self } = avviaWorker({ token: null })
     const attese: Promise<unknown>[] = []
-    gestori.message({ data: { tipo: 'ciak:prendi-controllo' }, waitUntil: (p: Promise<unknown>) => attese.push(p) })
+    gestori.message({ data: { tipo: 'ciak:prendi-controllo' }, ports: [], waitUntil: (p: Promise<unknown>) => attese.push(p) })
     expect(self.clients.claim).toHaveBeenCalledTimes(1)
     expect(attese).toHaveLength(1)
   })
 
   it('ignora gli altri messaggi', () => {
     const { gestori, self } = avviaWorker({ token: null })
-    gestori.message({ data: { tipo: 'altro' }, waitUntil: () => {} })
-    gestori.message({ data: null, waitUntil: () => {} })
+    gestori.message({ data: { tipo: 'altro' }, ports: [], waitUntil: () => {} })
+    gestori.message({ data: null, ports: [], waitUntil: () => {} })
     expect(self.clients.claim).not.toHaveBeenCalled()
   })
 })

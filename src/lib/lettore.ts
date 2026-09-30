@@ -62,7 +62,9 @@ export interface DiagnosticaVideo {
   redirect: string | null
   contentLength: string | null
   totale: number | null
-  esito: 'ok' | 'errore' | 'range-ignorato'
+  esito: 'ok' | 'errore' | 'range-ignorato' | 'rifiutata'
+  // Solo per «rifiutata»: il messaggio del browser.
+  errore?: string
 }
 
 // Una riga per il pannello «Dettagli tecnici»: quello che serve a capire da
@@ -71,7 +73,9 @@ export function descriviDiagnostica(d: DiagnosticaVideo): string {
   const ora = new Date(d.quando).toLocaleTimeString('it-IT')
   const chiesto = d.range ? `chiesto ${d.range}` : 'chiesto tutto il file'
   const esito =
-    d.esito === 'range-ignorato'
+    d.esito === 'rifiutata'
+      ? `il browser ha rifiutato la richiesta a Drive${d.errore ? ` (${d.errore})` : ''}`
+      : d.esito === 'range-ignorato'
       ? 'Drive ha ignorato il Range e ha mandato tutto il file'
       : d.esito === 'errore'
         ? `Drive ha risposto ${d.status}`

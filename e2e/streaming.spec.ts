@@ -90,8 +90,14 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
 // `'illeggibile'` risponde con un errore, come un formato che il browser non legge.
 async function conLettoreCiak(page: Page, video: 'fermo' | 'illeggibile' = 'fermo') {
   await page.addInitScript(() => {
+    // Il finto worker sa dire la sua versione, come quello vero.
+    const controller = {
+      postMessage: (m: { tipo?: string }, transfer?: MessagePort[]) => {
+        if (m?.tipo === 'ciak:versione' && transfer?.[0]) transfer[0].postMessage({ versione: 'e2e-test' })
+      },
+    }
     Object.defineProperty(ServiceWorkerContainer.prototype, 'controller', {
-      get: () => ({}),
+      get: () => controller,
       configurable: true,
     })
   })
@@ -259,6 +265,8 @@ test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', as
     )
   })
   await page.getByText('Dettagli tecnici (cosa risponde Drive)').click()
+  // La versione del worker dice se il browser ha preso davvero l'ultimo.
+  await expect(page.getByText('Service worker: e2e-test')).toBeVisible()
   await expect(page.getByText(/chiesto bytes=1048576- → Drive ha ignorato il Range/)).toBeVisible()
 })
 
