@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   abbinamentoDa,
   arrivatoAllaFine,
+  etichettaGuarda,
+  fileDaGuardare,
   contaComeVisto,
   formattaTempo,
   normalizzaTitolo,
@@ -163,5 +165,50 @@ describe('posizionePiuRecente', () => {
     expect(posizionePiuRecente(server, { posizione: 900, quando: Date.parse('2026-09-30T09:00:00Z') })).toBe(600)
     expect(posizionePiuRecente(null, { posizione: 300, quando: 1 })).toBe(300)
     expect(posizionePiuRecente(null, null)).toBe(0)
+  })
+})
+
+describe('«Guarda ora»: quale file far partire', () => {
+  const riga = (id: string, over: Partial<VoceStreaming> = {}): VoceStreaming => ({
+    drive_file_id: id,
+    nome_file: null,
+    tmdb_id: 110416,
+    media_type: 'movie',
+    titolo: 'Song of the Sea',
+    poster_path: null,
+    stagione: null,
+    episodio: null,
+    abbinato_a_mano: false,
+    posizione: 0,
+    durata: 5640,
+    secondi_visti: 0,
+    visto_il: null,
+    ...over,
+  })
+
+  it('nessun file per il titolo, nessun pulsante', () => {
+    expect(fileDaGuardare([riga('a')], 999, 'movie')).toBeNull()
+    // Stesso numero, altro tipo: gli id TMDB sono unici solo dentro un tipo.
+    expect(fileDaGuardare([riga('a')], 110416, 'tv')).toBeNull()
+  })
+
+  it('un film lasciato a metà si riprende, con l’ora nel pulsante', () => {
+    const scelto = fileDaGuardare([riga('intero'), riga('a-meta', { posizione: 1345 })], 110416, 'movie')
+    expect(scelto?.drive_file_id).toBe('a-meta')
+    expect(etichettaGuarda(scelto as VoceStreaming)).toBe('▶ Riprendi da 22:20')
+    expect(etichettaGuarda(riga('nuovo'))).toBe('▶ Guarda ora')
+    // Già visto: si riguarda dall'inizio.
+    expect(etichettaGuarda(riga('visto', { posizione: 1345, visto_il: '2026-09-30' }))).toBe('▶ Guarda ora')
+  })
+
+  it('una serie: l’episodio chiesto, altrimenti il primo non visto', () => {
+    const ep = (id: string, stagione: number, episodio: number, visto = false) =>
+      riga(id, { media_type: 'tv', tmdb_id: 126308, stagione, episodio, visto_il: visto ? '2026-09-30' : null })
+    const righe = [ep('s1e2', 1, 2), ep('s1e1', 1, 1, true), ep('s1e3', 1, 3)]
+    expect(fileDaGuardare(righe, 126308, 'tv')?.drive_file_id).toBe('s1e2')
+    expect(fileDaGuardare(righe, 126308, 'tv', { stagione: 1, episodio: 3 })?.drive_file_id).toBe('s1e3')
+    // Episodio chiesto che non è nella videoteca: il primo non visto.
+    expect(fileDaGuardare(righe, 126308, 'tv', { stagione: 2, episodio: 1 })?.drive_file_id).toBe('s1e2')
+    expect(etichettaGuarda(righe[2])).toBe('▶ Guarda S1E3')
   })
 })

@@ -52,7 +52,9 @@ export default function SavedTitleCard({
           </p>
         </div>
       </Link>
-      {children && <div className="border-t border-theatre-800 p-3">{children}</div>}
+      {/* empty:hidden: un figlio che non ha niente da mostrare (es. «Guarda ora»
+          per un titolo senza file) non lascia un riquadro vuoto. */}
+      {children && <div className="border-t border-theatre-800 p-3 empty:hidden">{children}</div>}
     </div>
   )
 }

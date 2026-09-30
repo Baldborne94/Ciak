@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { ErrorState, Loader } from '../components/States'
 import MediaGrid from '../components/MediaGrid'
 import TitleActions from '../components/TitleActions'
+import GuardaOra from '../components/GuardaOra'
+import { useVideoteca } from '../lib/useVideoteca'
 import AddToListButton from '../components/AddToListButton'
 import LogDiaryButton from '../components/LogDiaryButton'
 import ShareTitleButton from '../components/ShareTitleButton'
@@ -49,6 +51,7 @@ export default function TitleDetail() {
   const { mediaType, id } = useParams<{ mediaType: TmdbType; id: string }>()
   const { user } = useAuth()
   const { showToast } = useToast()
+  const videoteca = useVideoteca()
   const [detail, setDetail] = useState<MediaDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -256,6 +259,11 @@ export default function TitleDetail() {
             <p className="mt-5 max-w-2xl text-zinc-300">
               {detail.overview || 'Nessuna trama disponibile.'}
             </p>
+
+            {/* Il titolo è nella videoteca (un file su Drive): si guarda da qui. */}
+            <div className="mt-5">
+              <GuardaOra videoteca={videoteca} tmdbId={detail.id} mediaType={detail.mediaType} grande />
+            </div>
 
             {/* Personal actions — persisted to Supabase (user_titles). */}
             <TitleActions
