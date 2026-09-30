@@ -15,7 +15,8 @@ import {
   setWatchlistPublic,
   upsertUserTitle,
 } from '../lib/userTitles'
-import { getReleaseYears } from '../lib/tmdb'
+import { getReleaseYears, getSearchTitles } from '../lib/tmdb'
+import { corrispondeRicerca } from '../lib/ricercaLista'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
 const ANIME_CARTOON_GENRE = 16 // Animazione
@@ -71,6 +72,9 @@ export default function ListPage({ status }: { status: TitleStatus }) {
   // user_titles non lo salva, quindi lo recuperiamo da TMDB solo per ordinare/
   // filtrare qui, senza bloccare il rendering della lista.
   const [releaseYears, setReleaseYears] = useState<Map<string, string | null>>(new Map())
+  // Titolo originale e inglese per chiave composta, per cercare «Song of the
+  // Sea» e trovare «La canzone del mare»: user_titles salva solo l'italiano.
+  const [searchTitles, setSearchTitles] = useState<Map<string, string[]>>(new Map())
 
   useEffect(() => {
     if (!user) return
@@ -79,6 +83,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
     setKind('all')
     setSort('recent')
     setReleaseYears(new Map())
+    setSearchTitles(new Map())
     // La watchlist "Da vedere" include anche i film visti marcati "Da rivedere".
     const load = status === 'to_watch' ? listWatchlist(user.id) : listByStatus(user.id, status)
     load
@@ -87,13 +92,21 @@ export default function ListPage({ status }: { status: TitleStatus }) {
         getReleaseYears(data.map((r) => ({ tmdbId: r.tmdb_id, mediaType: r.media_type === 'tv' ? 'tv' : 'movie' })))
           .then(setReleaseYears)
           .catch(logFailure('anni di uscita non caricati'))
+        const refs = data.map((r) => ({ tmdbId: r.tmdb_id, mediaType: r.media_type === 'tv' ? ('tv' as const) : ('movie' as const) }))
+        getSearchTitles(refs)
+          .then(({ titoli, falliti }) => {
+            setSearchTitles(titoli)
+            if (falliti > 0) {
+              logFailure('Titoli originali per la ricerca nella lista')(new Error(`${falliti} titoli su ${refs.length} non caricati`))
+            }
+          })
+          .catch(logFailure('Titoli originali per la ricerca nella lista'))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [user, status])
 
   const filteredSorted = useMemo(() => {
-    const q = search.trim().toLowerCase()
     const list = items
       .filter((r) => {
         const isAnimation = (r.genre_ids ?? []).includes(ANIME_CARTOON_GENRE)
@@ -102,7 +115,9 @@ export default function ListPage({ status }: { status: TitleStatus }) {
         if (kind === 'animation') return isAnimation
         return true
       })
-      .filter((r) => q === '' || r.title.toLowerCase().includes(q))
+      .filter((r) =>
+        corrispondeRicerca(search, [r.title, ...(searchTitles.get(`${r.media_type === 'tv' ? 'tv' : 'movie'}-${r.tmdb_id}`) ?? [])]),
+      )
     const yearOf = (r: UserTitle) => releaseYears.get(`${r.media_type === 'tv' ? 'tv' : 'movie'}-${r.tmdb_id}`) ?? ''
     if (sort === 'title') return [...list].sort((a, b) => a.title.localeCompare(b.title, 'it'))
     if (sort === 'oldest') return [...list].sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -113,7 +128,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
       return ya.localeCompare(yb)
     })
     return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at)) // recent (default)
-  }, [items, kind, sort, search, releaseYears])
+  }, [items, kind, sort, search, releaseYears, searchTitles])
 
   useEffect(() => {
     if (!user || !shareable) return
@@ -223,7 +238,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
             <input
               type="search"
               aria-label="Cerca nella lista"
-              placeholder="🔍 Cerca un titolo…"
+              placeholder="🔍 Cerca un titolo, anche in originale…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className={filterSelectClass}

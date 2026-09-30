@@ -3,6 +3,7 @@ import { normalise, type RawCollection, type RawMedia } from './raw'
 import { patchReadableTitles } from './titles'
 import { mapLimit } from '../mapLimit'
 import { cacheYears, getCachedYears } from '../releaseYearCache'
+import { cacheSearchTitles, getCachedSearchTitles } from '../searchTitleCache'
 import type { Collection, CollectionDetail, MediaItem, TmdbType } from '../types'
 
 export async function resolveSagas(names: string[]): Promise<Collection[]> {
@@ -80,26 +81,41 @@ export async function getMovieCollectionId(movieId: number): Promise<number | nu
 // stesso titolo nello stesso momento, la seconda aspetta la prima invece di
 // aprire una richiesta gemella. La cache da sola non basta, perché viene
 // scritta solo quando la risposta è arrivata.
-const yearInFlight = new Map<string, Promise<string | null>>()
+// Una sola richiesta, in inglese, porta sia l'anno (che non dipende dalla
+// lingua) sia i titoli per la ricerca: originale e inglese. Anno e titoli si
+// chiedono insieme all'apertura di una lista, e così costano una richiesta
+// per titolo invece di due.
+interface TitleLookup {
+  year: string | null
+  titoli: string[]
+}
+const lookupInFlight = new Map<string, Promise<TitleLookup>>()
 
-function fetchYearOnce(mediaType: TmdbType, tmdbId: number, key: string): Promise<string | null> {
-  const pending = yearInFlight.get(key)
+function fetchLookupOnce(mediaType: TmdbType, tmdbId: number, key: string): Promise<TitleLookup> {
+  const pending = lookupInFlight.get(key)
   if (pending) return pending
 
-  const p = (async () => {
-    try {
-      const raw = await tmdbFetch<{ release_date?: string; first_air_date?: string }>(
-        `/${mediaType}/${tmdbId}`,
-      )
-      return (raw.release_date || raw.first_air_date)?.slice(0, 4) ?? null
-    } catch {
-      // Un titolo che non risponde non deve far fallire tutta la lista.
-      return null
-    }
-  })().finally(() => yearInFlight.delete(key))
+  const p = tmdbFetch<{
+    release_date?: string
+    first_air_date?: string
+    title?: string
+    name?: string
+    original_title?: string
+    original_name?: string
+  }>(`/${mediaType}/${tmdbId}`, { language: 'en-US' })
+    .then((raw) => ({
+      year: (raw.release_date || raw.first_air_date)?.slice(0, 4) ?? null,
+      titoli: [...new Set([raw.title ?? raw.name, raw.original_title ?? raw.original_name].filter((x): x is string => !!x))],
+    }))
+    .finally(() => lookupInFlight.delete(key))
 
-  yearInFlight.set(key, p)
+  lookupInFlight.set(key, p)
   return p
+}
+
+function fetchYearOnce(mediaType: TmdbType, tmdbId: number, key: string): Promise<string | null> {
+  // Un titolo che non risponde non deve far fallire tutta la lista.
+  return fetchLookupOnce(mediaType, tmdbId, key).then((l) => l.year, () => null)
 }
 
 export async function getReleaseYears(
@@ -123,6 +139,34 @@ export async function getReleaseYears(
   cacheYears(nuovi)
   for (const [k, v] of nuovi) years.set(k, v)
   return years
+}
+
+// I titoli con cui cercare nelle liste personali, oltre a quello italiano
+// salvato: l'originale e quello inglese («Song of the Sea» per «La canzone del
+// mare»). La richiesta è la stessa degli anni (`fetchLookupOnce`).
+// Offline si usa solo ciò che è già sul dispositivo. `falliti` conta le
+// richieste andate male, per segnalarle una volta sola col totale.
+export async function getSearchTitles(
+  refs: { tmdbId: number; mediaType: TmdbType }[],
+): Promise<{ titoli: Map<string, string[]>; falliti: number }> {
+  const keyOf = (r: { tmdbId: number; mediaType: TmdbType }) => `${r.mediaType}-${r.tmdbId}`
+  const unique = new Map(refs.map((r) => [keyOf(r), r]))
+  const titoli = getCachedSearchTitles([...unique.keys()])
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return { titoli, falliti: 0 }
+  const missing = [...unique.values()].filter((r) => !titoli.has(keyOf(r)))
+  let falliti = 0
+  const fetched = await mapLimit(missing, 6, async (r) => {
+    try {
+      return [keyOf(r), (await fetchLookupOnce(r.mediaType, r.tmdbId, keyOf(r))).titoli] as const
+    } catch {
+      falliti++
+      return null
+    }
+  })
+  const nuovi = new Map(fetched.filter((x): x is readonly [string, string[]] => x !== null))
+  cacheSearchTitles(nuovi)
+  for (const [k, v] of nuovi) titoli.set(k, v)
+  return { titoli, falliti }
 }
 
 export interface SagaContinuation {
