@@ -6,7 +6,7 @@ import StarRating from '../components/StarRating'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { addDiaryEntry, deleteDiaryEntry, listDiary, updateDiaryEntry } from '../lib/diary'
-import { backfillTitlesFromDiary, listAll, upsertUserTitle } from '../lib/userTitles'
+import { backfillReadableTitles, backfillTitlesFromDiary, listAll, upsertUserTitle } from '../lib/userTitles'
 import { useToast } from '../lib/toastCtx'
 import { logFailure } from '../lib/logFailure'
 import { useLibrary } from '../lib/libraryCtx'
@@ -116,23 +116,51 @@ export default function DiaryPage() {
         // entravano nelle statistiche. Il flag evita di riscansionare a ogni
         // apertura, come per la riparazione dei generi nel Profilo di gusto.
         const flag = `ciak:diary-titles-backfill:${user.id}`
-        if (localStorage.getItem(flag)) return
-        const create = await backfillTitlesFromDiary(user.id, diary, all).catch((e: Error) => {
-          logFailure('schede mancanti non ricostruite dal diario')(e)
-          return 0
-        })
-        localStorage.setItem(flag, '1')
-        if (create > 0) {
-          // Ricarichiamo la collezione e l'indice dei badge, così le schede
-          // appena ricostruite si vedono senza dover ricaricare la pagina.
-          await listAll(user.id).then(setTitles).catch(logFailure('collezione non ricaricata'))
-          refresh()
-          showToast(
-            create === 1
-              ? 'Ho ritrovato 1 titolo visto che mancava dalla collezione.'
-              : `Ho ritrovato ${create} titoli visti che mancavano dalla collezione.`,
-            'success',
-          )
+        if (!localStorage.getItem(flag)) {
+          const create = await backfillTitlesFromDiary(user.id, diary, all).catch((e: Error) => {
+            logFailure('schede mancanti non ricostruite dal diario')(e)
+            return 0
+          })
+          localStorage.setItem(flag, '1')
+          if (create > 0) {
+            // Ricarichiamo la collezione e l'indice dei badge, così le schede
+            // appena ricostruite si vedono senza dover ricaricare la pagina.
+            await listAll(user.id).then(setTitles).catch(logFailure('collezione non ricaricata'))
+            refresh()
+            showToast(
+              create === 1
+                ? 'Ho ritrovato 1 titolo visto che mancava dalla collezione.'
+                : `Ho ritrovato ${create} titoli visti che mancavano dalla collezione.`,
+              'success',
+            )
+          }
+        }
+
+        // Seconda riparazione una tantum: i titoli stranieri salvati prima del
+        // ripiego sull'inglese sono ancora nello script originale (es. «오징어
+        // 게임»). Li rileggiamo da TMDB e li riscriviamo leggibili, qui e in
+        // collezione. Flag a parte: chi aveva già fatto la prima riparazione
+        // deve poter fare anche questa.
+        const flagTitoli = `ciak:diary-readable-titles-backfill:${user.id}`
+        if (!localStorage.getItem(flagTitoli)) {
+          const fixed = await backfillReadableTitles(user.id, diary, all).catch((e: Error) => {
+            logFailure('titoli storici non resi leggibili')(e)
+            return 0
+          })
+          localStorage.setItem(flagTitoli, '1')
+          if (fixed > 0) {
+            await Promise.all([
+              listDiary(user.id).then(setEntries).catch(logFailure('diario non ricaricato')),
+              listAll(user.id).then(setTitles).catch(logFailure('collezione non ricaricata')),
+            ])
+            refresh()
+            showToast(
+              fixed === 1
+                ? 'Ho reso leggibile 1 titolo straniero nello storico.'
+                : `Ho reso leggibili ${fixed} titoli stranieri nello storico.`,
+              'success',
+            )
+          }
         }
       })
       .catch((e: Error) => setError(e.message))

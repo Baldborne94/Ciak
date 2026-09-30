@@ -273,3 +273,38 @@ test('la riparazione non tocca niente se la collezione è già in ordine', async
   expect(db.tables.user_titles).toHaveLength(1)
   await expect(page.getByText(/Ho ritrovato/)).toHaveCount(0)
 })
+
+test('lo storico riscrive i titoli stranieri in una versione leggibile', async ({ page }) => {
+  // I titoli salvati prima del ripiego sull'inglese sono ancora nello script
+  // originale, sia nel diario sia in collezione. Aprendo il diario, un backfill
+  // una tantum li rilegge da TMDB e li riscrive leggibili in entrambe le tabelle.
+  const CORE = '오징어 게임' // "Squid Game" in coreano
+  await mockTmdb(page, {
+    detail: movieDetail(700, CORE, {
+      original_title: CORE,
+      original_language: 'ko',
+      translations: { translations: [{ iso_639_1: 'en', data: { title: 'Squid Game', overview: '' } }] },
+      alternative_titles: { titles: [] },
+    }),
+  })
+  const db = await mockSupabase(page, {
+    user_titles: [watchedTitle({ id: 'r700', tmdb_id: 700, title: CORE, personal_rating: null })],
+    user_diary: [
+      {
+        id: 'd700', user_id: E2E_USER.id, tmdb_id: 700, media_type: 'movie', title: CORE,
+        poster_path: '/p.jpg', watched_on: '2025-03-01', rating: null, note: null,
+        created_at: '2025-03-01T00:00:00Z',
+      },
+    ],
+  })
+
+  await page.goto('/diario')
+
+  // A schermo il titolo compare leggibile, non più in hangul.
+  await expect(page.getByText('Squid Game').first()).toBeVisible()
+  await expect(page.getByText(CORE)).toHaveCount(0)
+
+  // E le righe salvate sono state riscritte in entrambe le tabelle.
+  await expect.poll(() => (db.tables.user_diary[0] as Record<string, unknown>).title).toBe('Squid Game')
+  await expect.poll(() => (db.tables.user_titles[0] as Record<string, unknown>).title).toBe('Squid Game')
+})
