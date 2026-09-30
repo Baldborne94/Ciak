@@ -328,3 +328,28 @@ test('quando il service worker prende la scheda passa da solo al lettore di Ciak
   await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
   await expect(page.getByText('Italiano · dalla cartella su Drive')).toBeVisible()
 })
+
+test('mentre il film va, il lettore tiene sveglio il service worker', async ({ page }) => {
+  // Chrome ferma un worker fermo da 30 secondi, e con lui la richiesta del
+  // film: era l'«errore di rete» a metà film. Si accelera l'orologio.
+  await page.clock.install()
+  await page.addInitScript(() => {
+    const w = window as unknown as { __messaggi: unknown[] }
+    w.__messaggi = []
+    Object.defineProperty(ServiceWorkerContainer.prototype, 'controller', {
+      get: () => ({ postMessage: (m: unknown) => w.__messaggi.push(m) }),
+      configurable: true,
+    })
+  })
+  await page.route('**/drive-video/**', () => {
+    // In sospeso: il film «sta caricando».
+  })
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+
+  await apriSongOfTheSea(page)
+  await expect(page.locator('video')).toBeVisible()
+  await page.clock.runFor(61_000)
+
+  const messaggi = await page.evaluate(() => (window as unknown as { __messaggi: unknown[] }).__messaggi)
+  expect(messaggi.filter((m) => (m as { tipo?: string }).tipo === 'ciak:tieni-vivo').length).toBeGreaterThanOrEqual(3)
+})
