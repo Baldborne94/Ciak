@@ -38,6 +38,26 @@ function segnaControllato(fileId: string): void {
   }
 }
 
+// Quando Ciak impara a leggere meglio i nomi (le cartelle di stagione delle
+// serie, per esempio), i file rimasti senza titolo meritano un nuovo tentativo:
+// uno solo per versione e per dispositivo.
+const VERSIONE_RICONOSCIMENTO = 2
+const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
+function giaRiprovato(fileId: string): boolean {
+  try {
+    return localStorage.getItem(CHIAVE_RIPROVATO + fileId) === '1'
+  } catch {
+    return true
+  }
+}
+function segnaRiprovato(fileId: string): void {
+  try {
+    localStorage.setItem(CHIAVE_RIPROVATO + fileId, '1')
+  } catch {
+    /* pazienza: si riproverà */
+  }
+}
+
 // Collega ai titoli di TMDB i file di Drive che non lo sono ancora. Si prova
 // una volta sola per file: se non si trova niente la riga resta senza titolo,
 // e l'abbinamento si sceglie a mano dal lettore. Riprovare a ogni apertura
@@ -47,11 +67,15 @@ export async function riconosciNuovi(
   video: DriveVideo[],
   noti: Map<string, VoceStreaming>,
 ): Promise<Map<string, VoceStreaming>> {
-  const daFare = video.filter((v) => !noti.has(v.id))
+  const senzaTitolo = (v: DriveVideo) => {
+    const r = noti.get(v.id)
+    return !!r && !r.tmdb_id && !r.abbinato_a_mano && !giaRiprovato(v.id)
+  }
+  const daFare = video.filter((v) => !noti.has(v.id) || senzaTitolo(v))
   const esito = new Map(noti)
   let falliti = 0
   await mapLimit(daFare, 3, async (v) => {
-    const nome = filmDaCercare(v.name, v.cartella)
+    const nome = filmDaCercare(v.name, v.cartella, v.serie ?? null)
     let campi: Partial<VoceStreaming> = { nome_file: v.name }
     try {
       const scelto = scegliAbbinamento(nome, await searchMulti(nome.titolo))
@@ -60,7 +84,8 @@ export async function riconosciNuovi(
         segnaControllato(v.id)
       }
       await salvaStreaming(userId, v.id, campi)
-      esito.set(v.id, voceVuota(v.id, campi))
+      esito.set(v.id, { ...(noti.get(v.id) ?? voceVuota(v.id)), ...campi })
+      segnaRiprovato(v.id)
     } catch {
       falliti++
     }

@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { mockTmdb, mockSupabase, signIn } from './support/mocks'
+import { mockTmdb, mockSupabase, signIn, E2E_USER } from './support/mocks'
 import { movieDetail } from './support/fixtures'
 
 // «Streaming»: i film nella cartella «Ciak» di Google Drive, riprodotti col
@@ -34,7 +34,7 @@ const FILE: Record<string, unknown> = {
 //   Ciak/FILM/The.Secret.of.Kells.2009.mkv (nascosto: Ciak riproduce gli MP4)
 //   (e, se richiesto, …/Song.of.the.Sea.it.srt)
 // Le scritture (salvataggio e cestino dei sottotitoli) finiscono in `scritture`.
-async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaCartella = false } = {}) {
+async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false } = {}) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   await page.route(/^https:\/\/www\.googleapis\.com\/(upload\/)?drive\/v3\/files/, (route) => {
     const req = route.request()
@@ -68,14 +68,19 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
       files = conCartellaCiak ? [{ id: 'cartella-ciak', name: 'Ciak' }] : []
     } else if (q.includes(CARTELLA)) {
       // Ciak/FILM e Ciak/SERIE TV, le categorie; in FILM la cartella del film.
-      files = q.includes("'cartella-ciak' in parents")
-        ? [
-            { id: 'cartella-film', name: 'FILM', parents: ['cartella-ciak'] },
-            { id: 'cartella-serie', name: 'SERIE TV', parents: ['cartella-ciak'] },
-          ]
-        : q.includes("'cartella-film' in parents")
-          ? [{ id: 'cartella-song', name: 'Song of the Sea (2014) [1080p]', parents: ['cartella-film'] }]
-          : []
+      // Le sottocartelle di ciascuna cartella chiesta (Ciak le chiede a blocchi).
+      const sotto: Record<string, unknown[]> = {
+        'cartella-ciak': [
+          { id: 'cartella-film', name: 'FILM', parents: ['cartella-ciak'] },
+          { id: 'cartella-serie', name: 'SERIE TV', parents: ['cartella-ciak'] },
+        ],
+        'cartella-film': [{ id: 'cartella-song', name: 'Song of the Sea (2014) [1080p]', parents: ['cartella-film'] }],
+        ...(conSerie && {
+          'cartella-serie': [{ id: 'cartella-southpark', name: 'South Park', parents: ['cartella-serie'] }],
+          'cartella-southpark': [{ id: 'cartella-sp-s03', name: 'Season 03', parents: ['cartella-southpark'] }],
+        }),
+      }
+      files = Object.entries(sotto).flatMap(([id, figli]) => (q.includes(`'${id}' in parents`) ? figli : []))
     } else if (q.includes("mimeType contains 'video/'")) {
       files = [
         FILE['video-song-0001'],
@@ -87,6 +92,17 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
           parents: ['cartella-serie'],
           createdTime: '2026-09-20T10:00:00Z',
         },
+        ...(conSerie
+          ? [
+              {
+                id: 'video-sp-000301',
+                name: '01 Rainforest Shmainforest.mp4',
+                size: '173015040',
+                mimeType: 'video/mp4',
+                parents: ['cartella-sp-s03'],
+              },
+            ]
+          : []),
         {
           id: 'video-kells-0001',
           name: 'The.Secret.of.Kells.2009.mkv',
@@ -659,6 +675,39 @@ test('la videoteca si cerca, si ordina e si filtra per genere', async ({ page })
   // L'ordine scelto resta alla visita successiva.
   await page.reload()
   await expect(page.getByRole('combobox', { name: 'Ordina la videoteca' })).toHaveValue('aggiunti')
+})
+
+test('le serie in cartelle di stagione prendono il nome della serie e vengono riconosciute', async ({ page }) => {
+  // SERIE TV/South Park/Season 03/01 Rainforest Shmainforest.mp4: mostrava
+  // «Season 03» e cercava «01 Rainforest Shmainforest». Il file era già stato
+  // provato una volta senza successo: con il nome nuovo si riprova.
+  const db = await mockSupabase(page, {
+    user_streaming: [{ user_id: E2E_USER.id, drive_file_id: 'video-sp-000301', nome_file: '01 Rainforest Shmainforest.mp4', abbinato_a_mano: false, posizione: 0, secondi_visti: 0 }],
+  })
+  await mockDrive(page, { conSerie: true })
+  const cercati: string[] = []
+  page.on('request', (r) => {
+    const u = new URL(r.url())
+    if (u.searchParams.get('path') === '/search/multi') cercati.push(u.searchParams.get('query') ?? '')
+  })
+  await cercaTmdb(page, [
+    SONG,
+    { id: 2190, media_type: 'tv', name: 'South Park', original_name: 'South Park', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] },
+  ])
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  await expect(page.getByText('South Park · S3E1', { exact: true })).toBeVisible()
+  await expect(page.getByText('Season 03', { exact: true })).toHaveCount(0)
+  expect(cercati).toContain('South Park')
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-000301')).toMatchObject({
+    tmdb_id: 2190,
+    media_type: 'tv',
+    titolo: 'South Park',
+    stagione: 3,
+    episodio: 1,
+  })
 })
 
 test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede il voto', async ({ page }) => {

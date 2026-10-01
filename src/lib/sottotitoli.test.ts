@@ -3,6 +3,7 @@ import {
   analizzaNomeFilm,
   decodificaTesto,
   filmDaCercare,
+  stagioneDaCartella,
   hashOpenSubtitles,
   linguaDaNome,
   nomeSottotitoloSalvato,
@@ -110,6 +111,46 @@ describe('filmDaCercare', () => {
 
   it('un episodio resta un episodio anche dentro una cartella', () => {
     expect(filmDaCercare('Shogun.S01E02.mkv', 'Shogun (2024)')).toEqual({ titolo: 'Shogun', stagione: 1, episodio: 2 })
+  })
+
+  it('dentro una cartella di stagione il titolo è quello della serie, e l episodio il numero del file', () => {
+    // South Park/Season 03/01 Rainforest Shmainforest.mp4: il titolo cercato
+    // era «01 Rainforest Shmainforest», e la serie non si trovava.
+    expect(filmDaCercare('01 Rainforest Shmainforest.mp4', 'Season 03', 'South Park')).toEqual({
+      titolo: 'South Park',
+      stagione: 3,
+      episodio: 1,
+    })
+    expect(filmDaCercare('Episodio 12.mkv', 'Stagione 2', 'Lupin III (1977)')).toEqual({
+      titolo: 'Lupin III',
+      anno: 1977,
+      stagione: 2,
+      episodio: 12,
+    })
+    // Se il file dice già SxxEyy, vince il file.
+    expect(filmDaCercare('South.Park.S03E05.mp4', 'Season 03', 'South Park')).toMatchObject({ stagione: 3, episodio: 5 })
+  })
+
+  it('un file che è solo «S03E01» prende il titolo dalla cartella della serie', () => {
+    expect(filmDaCercare('S03E01.mp4', 'South Park')).toEqual({ titolo: 'South Park', stagione: 3, episodio: 1 })
+  })
+})
+
+describe('stagioneDaCartella', () => {
+  it('riconosce i modi comuni di chiamare una stagione', () => {
+    expect(stagioneDaCartella('Season 03')).toBe(3)
+    expect(stagioneDaCartella('Stagione 2')).toBe(2)
+    expect(stagioneDaCartella('S01')).toBe(1)
+    expect(stagioneDaCartella('Series 7')).toBe(7)
+    expect(stagioneDaCartella('season.04 (2000)')).toBe(4)
+  })
+
+  it('non scambia per stagioni le cartelle dei film o delle categorie', () => {
+    expect(stagioneDaCartella('Serie TV')).toBeNull()
+    expect(stagioneDaCartella('Supernatural')).toBeNull()
+    expect(stagioneDaCartella('Se7en (1995)')).toBeNull()
+    expect(stagioneDaCartella('S.W.A.T.')).toBeNull()
+    expect(stagioneDaCartella('Song of the Sea (2014)')).toBeNull()
   })
 })
 

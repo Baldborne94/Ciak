@@ -13,6 +13,18 @@ describe('titoloVideo', () => {
     expect(titoloVideo({ name: 'Shogun.S01E01.mkv', cartella: null })).toBe('Shogun.S01E01')
   })
 
+  it('un episodio in una cartella di stagione prende il nome della serie', () => {
+    // Mostrava «Season 03» per ogni episodio di South Park.
+    expect(titoloVideo({ name: '01 Rainforest Shmainforest.mp4', cartella: 'Season 03', serie: 'South Park' })).toBe(
+      'South Park · S3E1',
+    )
+    expect(titoloVideo({ name: 'Extra.mp4', cartella: 'Season 03', serie: 'South Park' })).toBe('South Park · Season 03')
+  })
+
+  it('gli episodi nella cartella della serie non hanno tutti lo stesso nome', () => {
+    expect(titoloVideo({ name: 'Shogun.S01E02.mkv', cartella: 'Shogun (2024)' })).toBe('Shogun (2024) · S1E2')
+  })
+
   it('non taglia un nome che non ha estensione', () => {
     expect(titoloVideo({ name: 'Film senza estensione', cartella: null })).toBe('Film senza estensione')
   })

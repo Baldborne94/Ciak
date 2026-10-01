@@ -1,4 +1,5 @@
 import type { DiagnosticaVideo } from './lettore'
+import { filmDaCercare, stagioneDaCartella } from './sottotitoli'
 import {
   CHIAVE_ATTESA_DRIVE,
   CHIAVE_ERRORE_DRIVE,
@@ -55,6 +56,9 @@ export interface DriveVideo {
   // La cartella di primo livello dentro Ciak (FILM, SERIE TV, ANIME…): è la
   // scheda della videoteca in cui compare. null se sta direttamente in Ciak.
   categoria?: string | null
+  // La cartella della serie, quando il file sta in una cartella di stagione
+  // («South Park» per South Park/Season 03/01 Rainforest….mp4).
+  serie?: string | null
   // Quando è stato caricato su Drive (ISO), per «Aggiunti di recente».
   aggiunto?: string | null
 }
@@ -301,9 +305,14 @@ export function schedeCategorie(video: Pick<DriveVideo, 'categoria'>[]): { carte
 }
 
 // Il titolo da mostrare: il nome della sottocartella se c'è (di solito il film,
-// «Song of the Sea (2014) [1080p]»), altrimenti il nome del file senza estensione.
-export function titoloVideo(v: Pick<DriveVideo, 'name' | 'cartella'>): string {
-  if (v.cartella) return v.cartella
+// «Song of the Sea (2014) [1080p]»), altrimenti il nome del file senza
+// estensione. Per un episodio, la serie con stagione ed episodio: senza, tutti
+// gli episodi di una cartella avrebbero lo stesso nome.
+export function titoloVideo(v: Pick<DriveVideo, 'name' | 'cartella' | 'serie'>): string {
+  const nome = filmDaCercare(v.name, v.cartella, v.serie ?? null)
+  const episodio = nome.stagione !== undefined && nome.episodio !== undefined ? `S${nome.stagione}E${nome.episodio}` : null
+  if (v.serie && stagioneDaCartella(v.cartella)) return `${v.serie} · ${episodio ?? v.cartella}`
+  if (v.cartella) return episodio ? `${v.cartella} · ${episodio}` : v.cartella
   return v.name.replace(/\.[a-z0-9]{2,4}$/i, '')
 }
 
@@ -362,6 +371,7 @@ export async function elencaVideo(): Promise<ElencoVideo> {
 
   const idRadici = new Set(radici.map((r) => r.id))
   const nomiCartelle = new Map<string, string>()
+  const genitoreDi = new Map<string, string>()
   // La categoria di ogni cartella: il nome della sua antenata di primo livello.
   const categoriaDi = new Map<string, string>()
   // Le cartelle di primo livello: sono categorie, non film.
@@ -378,6 +388,7 @@ export async function elencaVideo(): Promise<ElencoVideo> {
       if (nomiCartelle.has(f.id) || idRadici.has(f.id) || tutte.length >= CARTELLE_MAX) continue
       nomiCartelle.set(f.id, f.name)
       const genitore = f.parents?.[0]
+      if (genitore) genitoreDi.set(f.id, genitore)
       const categoria = profondita === 0 ? f.name : genitore ? categoriaDi.get(genitore) : undefined
       if (categoria) categoriaDi.set(f.id, categoria)
       if (profondita === 0) cartelleCategoria.add(f.id)
@@ -395,12 +406,17 @@ export async function elencaVideo(): Promise<ElencoVideo> {
     const genitore = f.parents?.[0]
     // Né la cartella Ciak né una di categoria (FILM, ANIME…) sono il titolo del film.
     const titoloDaCartella = !!genitore && !idRadici.has(genitore) && !cartelleCategoria.has(genitore)
+    // Una cartella di stagione dice solo il numero: la serie è quella sopra,
+    // purché non sia Ciak né una categoria.
+    const nonno = titoloDaCartella && stagioneDaCartella(nomiCartelle.get(genitore as string)) !== null ? genitoreDi.get(genitore as string) : undefined
+    const serie = nonno && !idRadici.has(nonno) && !cartelleCategoria.has(nonno) ? (nomiCartelle.get(nonno) ?? null) : null
     return {
       id: f.id,
       name: f.name,
       size: f.size ? Number(f.size) : null,
       mimeType: f.mimeType,
       cartella: titoloDaCartella ? (nomiCartelle.get(genitore as string) ?? null) : null,
+      serie,
       categoria: genitore ? (categoriaDi.get(genitore) ?? null) : null,
       aggiunto: f.createdTime ?? null,
     }

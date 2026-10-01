@@ -15,6 +15,7 @@ import {
   BLOCCO_HASH,
   decodificaTesto,
   filmDaCercare,
+  stagioneDaCartella,
   hashOpenSubtitles,
   nomeLingua,
   nomeSottotitoloSalvato,
@@ -111,6 +112,7 @@ const ORDINE_CORSIE = ['it', 'en', ALTRO]
 export function useSottotitoli(fileId: string, attivo: boolean) {
   const [info, setInfo] = useState<InfoFile | null>(null)
   const [cartella, setCartella] = useState<string | null>(null)
+  const [serie, setSerie] = useState<string | null>(null)
   const [tracce, setTracce] = useState<Traccia[]>([])
   const [cercando, setCercando] = useState(true)
   const [messaggio, setMessaggio] = useState<string | null>(null)
@@ -122,10 +124,11 @@ export function useSottotitoli(fileId: string, attivo: boolean) {
   const lavoro = useRef<{
     info: InfoFile | null
     cartella: string | null
+    serie: string | null
     corsie: Map<string, Corsia>
     onlineCercati: boolean
     annullato: boolean
-  }>({ info: null, cartella: null, corsie: new Map(), onlineCercati: false, annullato: false })
+  }>({ info: null, cartella: null, serie: null, corsie: new Map(), onlineCercati: false, annullato: false })
 
   const urlTracce = useRef(new Map<string, string>())
 
@@ -166,7 +169,7 @@ export function useSottotitoli(fileId: string, attivo: boolean) {
     const l = lavoro.current
     l.onlineCercati = true
     if (!l.info) return
-    const film = filmDaCercare(l.info.name, l.cartella)
+    const film = filmDaCercare(l.info.name, l.cartella, l.serie)
     const hash = await hashDelVideo(l.info)
     const { candidati } = await apiSottotitoli<{ candidati: CandidatoOnline[] }>({ azione: 'cerca', ...film, query: film.titolo, hash })
     for (const sub of candidati) corsia(corsiaDi(sub.lingua)).fonti.push({ tipo: 'online', sub })
@@ -229,20 +232,28 @@ export function useSottotitoli(fileId: string, attivo: boolean) {
     ;(async () => {
       const video = await infoFile(fileId)
       const idCartella = video.parents[0]
-      const [nomeCartella, vicini] = idCartella
-        ? await Promise.all([infoFile(idCartella).then((c) => c.name), fileNellaCartella(idCartella)])
+      const [datiCartella, vicini] = idCartella
+        ? await Promise.all([infoFile(idCartella), fileNellaCartella(idCartella)])
         : [null, []]
+      const nomeCartella = datiCartella?.name ?? null
+      // Una cartella di stagione («Season 03») dice solo il numero: la serie è
+      // la cartella sopra.
+      const idSerie = stagioneDaCartella(nomeCartella) !== null ? datiCartella?.parents[0] : undefined
+      const nomeSerie = idSerie ? await infoFile(idSerie).then((c) => c.name) : null
       if (l.annullato) return
       l.info = video
-      // La cartella «Ciak» non dice niente del film: conta solo una sottocartella.
       // Né «Ciak» né una categoria (FILM, ANIME…) dicono qualcosa del film: conta
-      // solo una cartella dedicata, che di solito porta l'anno.
+      // solo una cartella dedicata, che di solito porta l'anno, o una stagione.
       l.cartella =
-        nomeCartella && nomeCartella !== CARTELLA_CIAK && analizzaNomeFilm(nomeCartella).anno !== undefined
+        nomeCartella &&
+        nomeCartella !== CARTELLA_CIAK &&
+        (analizzaNomeFilm(nomeCartella).anno !== undefined || stagioneDaCartella(nomeCartella) !== null)
           ? nomeCartella
           : null
+      l.serie = nomeSerie && nomeSerie !== CARTELLA_CIAK ? nomeSerie : null
       setInfo(video)
       setCartella(l.cartella)
+      setSerie(l.serie)
       for (const sub of sottotitoliPerVideo(video.name, vicini)) {
         corsia(corsiaDi(sub.lingua)).fonti.push({ tipo: 'drive', sub })
       }
@@ -314,5 +325,5 @@ export function useSottotitoli(fileId: string, attivo: boolean) {
         ? 'errore'
         : 'nessuno'
 
-  return { info, cartella, tracce, stato, messaggio: errore ?? messaggio, altri, provaAltro }
+  return { info, cartella, serie, tracce, stato, messaggio: errore ?? messaggio, altri, provaAltro }
 }
