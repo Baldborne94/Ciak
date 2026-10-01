@@ -13,7 +13,7 @@
 const CACHE = 'ciak-v3'
 // Mostrata nei «Dettagli tecnici» del lettore: dice se il browser ha davvero
 // preso l'ultimo worker o se ne sta ancora usando uno vecchio.
-const VERSIONE_WORKER = '2026-09-30.6'
+const VERSIONE_WORKER = '2026-10-01.1'
 // I film scaricati sul dispositivo per vederli offline. Una cache a parte, che
 // sopravvive ai deploy come quella delle immagini: ributtarla vorrebbe dire
 // riscaricare gigabyte a ogni aggiornamento dell'app.
@@ -79,6 +79,10 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin !== self.location.origin) return // don't touch APIs / Supabase
+
+  // La versione pubblicata va chiesta sempre alla rete: servita dalla cache
+  // direbbe per sempre che non c'è niente di nuovo.
+  if (url.pathname === '/versione.json') return
 
   // App navigations → network-first with offline fallback to the cached shell.
   if (req.mode === 'navigate') {

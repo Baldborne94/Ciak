@@ -38,9 +38,27 @@ function tmdbDev(env: Record<string, string>): Plugin {
   }
 }
 
+// L'identità di questa build: il commit su Vercel, altrimenti l'ora del build.
+// Finisce nel codice (VITE_VERSIONE_APP) e in /versione.json: l'app aperta
+// rilegge il file e, se non è più la sua, propone di aggiornare. Senza, una
+// scheda aperta da ieri continuava a usare il codice vecchio, e le correzioni
+// appena pubblicate «non funzionavano».
+function versioneApp(): Plugin {
+  const versione = (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 12) || new Date().toISOString()
+  return {
+    name: 'ciak-versione',
+    config(_, { command }) {
+      return { define: { 'import.meta.env.VITE_VERSIONE_APP': JSON.stringify(command === 'build' ? versione : 'dev') } }
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'versione.json', source: JSON.stringify({ versione }) })
+    },
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), tmdbDev(loadEnv(mode, process.cwd(), ''))],
+  plugins: [react(), tmdbDev(loadEnv(mode, process.cwd(), '')), versioneApp()],
   server: {
     port: 5173,
   },
