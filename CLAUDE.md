@@ -121,6 +121,7 @@ src/lib/tmdb/    il catalogo, diviso per responsabilità
 api/             funzioni serverless Vercel (AI, proxy TMDB, cron avvisi)
 e2e/             test end-to-end + mock
 supabase/        schema SQL e policy
+strumenti/       script per il PC dell'utente (preparare i video per Drive)
 ```
 
 `src/lib/tmdb.ts` è una **facciata**: ri-esporta e basta. Il codice vero sta in
