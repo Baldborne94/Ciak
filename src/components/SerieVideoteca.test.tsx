@@ -13,6 +13,7 @@ function ep(stagione: number, episodio: number, over: Partial<EpisodioVideoteca>
     episodio,
     visto: false,
     posizione: 0,
+    secondiVisti: 0,
     durata: 1320,
     guardato: null,
     ...over,
@@ -75,7 +76,7 @@ describe('SerieVideoteca', () => {
   })
 
   it('un episodio lasciato a metà si riprende', () => {
-    monta([ep(1, 2), ep(1, 3, { posizione: 600, guardato: '2026-10-01T20:00:00Z' })])
+    monta([ep(1, 2), ep(1, 3, { posizione: 600, secondiVisti: 600, guardato: '2026-10-01T20:00:00Z' })])
     expect(screen.getByRole('button', { name: '▶ Riprendi S1E3' })).toBeInTheDocument()
   })
 

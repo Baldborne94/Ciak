@@ -63,7 +63,8 @@ export function scegliAbbinamento(
 ): MediaItem | null {
   const cercato = normalizzaTitolo(nome.titolo)
   if (!cercato) return null
-  const episodio = nome.stagione !== undefined && nome.episodio !== undefined
+  // Basta la stagione: anche uno speciale senza numero è di una serie.
+  const episodio = nome.stagione !== undefined
   let migliore: { item: MediaItem; punti: number } | null = null
   risultati.forEach((item, posizione) => {
     if (episodio && item.mediaType !== 'tv') return
@@ -195,14 +196,15 @@ export async function salvaStreaming(
 }
 
 export function abbinamentoDa(item: MediaItem, nome: NomeFilm): Partial<VoceStreaming> {
-  const episodio = item.mediaType === 'tv' && nome.stagione !== undefined && nome.episodio !== undefined
+  const tv = item.mediaType === 'tv'
   return {
     tmdb_id: item.id,
     media_type: item.mediaType,
     titolo: item.title,
     poster_path: item.posterPath,
-    stagione: episodio ? (nome.stagione as number) : null,
-    episodio: episodio ? (nome.episodio as number) : null,
+    // Uno speciale senza numero («S01E13.5») resta stagione 0, episodio null.
+    stagione: tv && nome.stagione !== undefined ? nome.stagione : null,
+    episodio: tv && nome.stagione !== undefined && nome.episodio !== undefined ? nome.episodio : null,
   }
 }
 
@@ -277,6 +279,7 @@ export function fileDaGuardare(
     episodio: r.episodio,
     visto: !!r.visto_il,
     posizione: r.posizione,
+    secondiVisti: r.secondi_visti ?? 0,
     durata: r.durata,
     guardato: r.posizione > 0 ? (r.updated_at ?? null) : null,
   }))

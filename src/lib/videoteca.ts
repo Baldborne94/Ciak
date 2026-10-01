@@ -88,6 +88,7 @@ export interface EpisodioVideoteca {
   episodio: number | null
   visto: boolean
   posizione: number
+  secondiVisti: number // il tempo guardato davvero, senza i salti
   durata: number | null
   guardato: string | null // l'ultima volta che lo si è guardato (ISO)
 }
@@ -104,9 +105,14 @@ export function ordinaEpisodi(episodi: EpisodioVideoteca[]): EpisodioVideoteca[]
   )
 }
 
-// Iniziato e non finito: lo stesso 2% oltre cui la lista mostra la barra.
+// Iniziato e non finito: oltre il 2%, come la barra della lista, e con almeno
+// un minuto guardato davvero. La sola posizione non basta: aprire l'OAD 8 per
+// provare il lettore, o spostare la barra, lo faceva «da riprendere», e la
+// serie proponeva quello invece del primo episodio.
+export const SECONDI_PER_INIZIATO = 60
+
 export function episodioIniziato(e: EpisodioVideoteca): boolean {
-  if (e.visto) return false
+  if (e.visto || e.secondiVisti < SECONDI_PER_INIZIATO) return false
   return e.durata ? e.posizione / e.durata > 0.02 : e.posizione > 30
 }
 
@@ -153,7 +159,17 @@ export interface VideoDaRaggruppare {
   serie: string | null
   voce?: Pick<
     VoceStreaming,
-    'tmdb_id' | 'media_type' | 'titolo' | 'stagione' | 'episodio' | 'visto_il' | 'posizione' | 'durata' | 'updated_at' | 'poster_path'
+    | 'tmdb_id'
+    | 'media_type'
+    | 'titolo'
+    | 'stagione'
+    | 'episodio'
+    | 'visto_il'
+    | 'posizione'
+    | 'secondi_visti'
+    | 'durata'
+    | 'updated_at'
+    | 'poster_path'
   > | null
 }
 
@@ -207,7 +223,8 @@ export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]
     const letto = filmDaCercare(v.name, v.cartella, v.serie)
     const daCartella = nomeSerieDaFile(v)
     const tv = voce?.media_type === 'tv' && !!voce.tmdb_id
-    const episodico = tv || (letto.stagione !== undefined && letto.episodio !== undefined) || !!v.serie
+    // Basta la stagione: un mezzo episodio è uno speciale senza numero.
+    const episodico = tv || letto.stagione !== undefined || !!v.serie
     if (!episodico) {
       sciolti.push(v.id)
       continue
@@ -225,14 +242,17 @@ export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]
       riconosciuta: !!nota,
     }
     if (!g.posterPath && voce?.poster_path) g.posterPath = voce.poster_path
+    // Un mezzo episodio («S01E13.5») salvato prima come E13: vale il nome.
+    const mezzo = letto.stagione === 0 && letto.episodio === undefined
     g.episodi.push({
       id: v.id,
       nome: v.name.replace(/\.[a-z0-9]{2,4}$/i, ''),
       file: v.name,
-      stagione: voce?.stagione ?? letto.stagione ?? null,
-      episodio: voce?.episodio ?? letto.episodio ?? null,
+      stagione: mezzo ? 0 : (voce?.stagione ?? letto.stagione ?? null),
+      episodio: mezzo ? null : (voce?.episodio ?? letto.episodio ?? null),
       visto: !!voce?.visto_il,
       posizione: voce?.posizione ?? 0,
+      secondiVisti: voce?.secondi_visti ?? 0,
       durata: voce?.durata ?? null,
       guardato: voce && voce.posizione > 0 ? (voce.updated_at ?? null) : null,
     })
