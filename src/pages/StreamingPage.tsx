@@ -15,6 +15,7 @@ import {
   driveConnesso,
   driveDisconnetti,
   collegaDrive,
+  erroreRitornoDrive,
   elencaVideo,
   schedeCategorie,
   soloRiproducibili,
@@ -46,6 +47,12 @@ export default function StreamingPage() {
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
+  // Un consenso a Drive andato male nell'app installata torna qui da Google:
+  // lo si dice invece di riproporre il pulsante come se niente fosse.
+  useEffect(() => {
+    const e = erroreRitornoDrive()
+    if (e) setErrore(e)
+  }, [])
   // I film sul dispositivo: si vedono anche senza rete, ed è il motivo per cui
   // esistono. Si controlla `onLine` prima di tentare Drive: aspettare un
   // timeout offline vuol dire fissare una pagina vuota per secondi.
