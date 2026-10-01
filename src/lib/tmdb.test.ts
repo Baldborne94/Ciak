@@ -181,7 +181,7 @@ describe('la facciata di tmdb', () => {
       'getCartoons', 'getCollection', 'getCompany', 'getDetail', 'getGenres',
       'getPersonDetail', 'getPervertitoAnime', 'getRecentReleases',
       'getRecommendations', 'getRelatedCollections', 'getReleaseYears',
-      'getSagaContinuations', 'getSearchTitles', 'getSeason', 'getTrending', 'getUpcoming',
+      'getSagaContinuations', 'getSearchTitles', 'getSeason', 'getTitleGenres', 'getTrending', 'getUpcoming',
       'isReadableTitle', 'logoUrl', 'posterUrl', 'profileUrl',
       'resolveKeywordIds', 'resolvePeople', 'resolveSagaIds', 'resolveSagas',
       'resolveStudios', 'resolveSuggestions', 'searchCollection',

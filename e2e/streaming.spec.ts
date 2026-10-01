@@ -18,6 +18,7 @@ const FILE: Record<string, unknown> = {
     size: '2147483648',
     mimeType: 'video/mp4',
     parents: ['cartella-song'],
+    createdTime: '2026-09-01T10:00:00Z',
   },
   'cartella-song': {
     id: 'cartella-song',
@@ -84,6 +85,7 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
           size: '325058560',
           mimeType: 'video/mp4',
           parents: ['cartella-serie'],
+          createdTime: '2026-09-20T10:00:00Z',
         },
         {
           id: 'video-kells-0001',
@@ -611,6 +613,52 @@ test('la lista riconosce i film di Drive e li mostra col titolo e la locandina',
     .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-b99-00001'))
     .toMatchObject({ nome_file: 'B99 S7E2.mp4' })
   expect(db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-b99-00001')?.tmdb_id).toBeUndefined()
+})
+
+test('la videoteca si cerca, si ordina e si filtra per genere', async ({ page }) => {
+  await mockDrive(page)
+  // Song of the Sea riconosciuto: la sua scheda dice anno (2020 nel finto
+  // catalogo) e genere (Horror); B99 resta un file senza titolo.
+  await cercaTmdb(page, [SONG])
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  const righe = () => page.getByRole('list', { name: 'Video della videoteca' }).getByRole('listitem').allTextContents()
+
+  // Ricerca: per titolo tradotto, per nome del file.
+  const cerca = page.getByRole('searchbox', { name: 'Cerca nella videoteca' })
+  await cerca.fill('canzone del')
+  await expect(page.getByText('B99 S7E2', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  await expect(page.getByText('1 di 2')).toBeVisible()
+  await cerca.fill('s7e2')
+  await expect(page.getByText('Song of the Sea', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await cerca.fill('nessun film così')
+  await expect(page.getByText('Nessun video corrisponde alla ricerca o al genere scelto.')).toBeVisible()
+  await cerca.fill('')
+
+  // Genere: compaiono solo quelli presenti, col numero di titoli.
+  const genere = page.getByRole('combobox', { name: 'Filtra per genere' })
+  await expect(genere.locator('option', { hasText: 'Horror (1)' })).toHaveCount(1)
+  await genere.selectOption({ label: 'Horror (1)' })
+  await expect(page.getByText('B99 S7E2', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  await genere.selectOption({ label: 'Tutti i generi' })
+
+  // Ordine: per titolo, per anno (chi non ha l'anno in fondo), per arrivo su Drive.
+  const ordina = page.getByRole('combobox', { name: 'Ordina la videoteca' })
+  await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('Song of the Sea')])
+  await ordina.selectOption({ label: 'Anno: più recenti' })
+  await expect.poll(righe).toEqual([expect.stringContaining('Song of the Sea'), expect.stringContaining('B99 S7E2')])
+  await expect(page.getByText(/^2020 · MP4/)).toBeVisible()
+  await ordina.selectOption({ label: 'Aggiunti di recente' })
+  await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('Song of the Sea')])
+
+  // L'ordine scelto resta alla visita successiva.
+  await page.reload()
+  await expect(page.getByRole('combobox', { name: 'Ordina la videoteca' })).toHaveValue('aggiunti')
 })
 
 test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede il voto', async ({ page }) => {

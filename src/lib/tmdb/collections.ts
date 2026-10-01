@@ -3,7 +3,8 @@ import { normalise, type RawCollection, type RawMedia } from './raw'
 import { patchReadableTitles } from './titles'
 import { mapLimit } from '../mapLimit'
 import { cacheYears, getCachedYears } from '../releaseYearCache'
-import { cacheSearchTitles, getCachedSearchTitles } from '../searchTitleCache'
+import { cacheGeneri, cacheSearchTitles, getCachedSearchTitles } from '../searchTitleCache'
+import type { CacheLocale } from '../cacheLocale'
 import type { Collection, CollectionDetail, MediaItem, TmdbType } from '../types'
 
 export async function resolveSagas(names: string[]): Promise<Collection[]> {
@@ -88,6 +89,7 @@ export async function getMovieCollectionId(movieId: number): Promise<number | nu
 interface TitleLookup {
   year: string | null
   titoli: string[]
+  generi: number[]
 }
 const lookupInFlight = new Map<string, Promise<TitleLookup>>()
 
@@ -102,10 +104,12 @@ function fetchLookupOnce(mediaType: TmdbType, tmdbId: number, key: string): Prom
     name?: string
     original_title?: string
     original_name?: string
+    genres?: { id: number }[]
   }>(`/${mediaType}/${tmdbId}`, { language: 'en-US' })
     .then((raw) => ({
       year: (raw.release_date || raw.first_air_date)?.slice(0, 4) ?? null,
       titoli: [...new Set([raw.title ?? raw.name, raw.original_title ?? raw.original_name].filter((x): x is string => !!x))],
+      generi: (raw.genres ?? []).map((g) => g.id),
     }))
     .finally(() => lookupInFlight.delete(key))
 
@@ -141,32 +145,52 @@ export async function getReleaseYears(
   return years
 }
 
-// I titoli con cui cercare nelle liste personali, oltre a quello italiano
-// salvato: l'originale e quello inglese («Song of the Sea» per «La canzone del
-// mare»). La richiesta è la stessa degli anni (`fetchLookupOnce`).
-// Offline si usa solo ciò che è già sul dispositivo. `falliti` conta le
-// richieste andate male, per segnalarle una volta sola col totale.
-export async function getSearchTitles(
+// Un dato per titolo preso dalla stessa richiesta degli anni
+// (`fetchLookupOnce`), con la sua cache sul dispositivo. Offline si usa solo
+// ciò che c'è già. `falliti` conta le richieste andate male, per segnalarle
+// una volta sola col totale.
+async function perTitolo<T>(
   refs: { tmdbId: number; mediaType: TmdbType }[],
-): Promise<{ titoli: Map<string, string[]>; falliti: number }> {
+  cache: CacheLocale<T>,
+  estrai: (l: TitleLookup) => T,
+): Promise<{ valori: Map<string, T>; falliti: number }> {
   const keyOf = (r: { tmdbId: number; mediaType: TmdbType }) => `${r.mediaType}-${r.tmdbId}`
   const unique = new Map(refs.map((r) => [keyOf(r), r]))
-  const titoli = getCachedSearchTitles([...unique.keys()])
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return { titoli, falliti: 0 }
-  const missing = [...unique.values()].filter((r) => !titoli.has(keyOf(r)))
+  const valori = cache.leggi([...unique.keys()])
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return { valori, falliti: 0 }
+  const missing = [...unique.values()].filter((r) => !valori.has(keyOf(r)))
   let falliti = 0
   const fetched = await mapLimit(missing, 6, async (r) => {
     try {
-      return [keyOf(r), (await fetchLookupOnce(r.mediaType, r.tmdbId, keyOf(r))).titoli] as const
+      return [keyOf(r), estrai(await fetchLookupOnce(r.mediaType, r.tmdbId, keyOf(r)))] as const
     } catch {
       falliti++
       return null
     }
   })
-  const nuovi = new Map(fetched.filter((x): x is readonly [string, string[]] => x !== null))
-  cacheSearchTitles(nuovi)
-  for (const [k, v] of nuovi) titoli.set(k, v)
-  return { titoli, falliti }
+  const nuovi = new Map(fetched.filter((x): x is readonly [string, Awaited<T>] => x !== null))
+  cache.scrivi(nuovi)
+  for (const [k, v] of nuovi) valori.set(k, v)
+  return { valori, falliti }
+}
+
+// I titoli con cui cercare nelle liste personali, oltre a quello italiano
+// salvato: l'originale e quello inglese («Song of the Sea» per «La canzone del
+// mare»).
+export async function getSearchTitles(
+  refs: { tmdbId: number; mediaType: TmdbType }[],
+): Promise<{ titoli: Map<string, string[]>; falliti: number }> {
+  const cache: CacheLocale<string[]> = { leggi: getCachedSearchTitles, scrivi: cacheSearchTitles }
+  const { valori, falliti } = await perTitolo(refs, cache, (l) => l.titoli)
+  return { titoli: valori, falliti }
+}
+
+// I generi (id di TMDB) di ogni titolo, per filtrare la videoteca.
+export async function getTitleGenres(
+  refs: { tmdbId: number; mediaType: TmdbType }[],
+): Promise<{ generi: Map<string, number[]>; falliti: number }> {
+  const { valori, falliti } = await perTitolo(refs, cacheGeneri, (l) => l.generi)
+  return { generi: valori, falliti }
 }
 
 export interface SagaContinuation {

@@ -5,7 +5,16 @@ import { EmptyState, ErrorState, Loader } from '../components/States'
 import { logFailure } from '../lib/logFailure'
 import { useAuth } from '../lib/auth'
 import { usePersistedState } from '../lib/usePersistedState'
-import { posterUrl } from '../lib/tmdb'
+import { getGenres, getReleaseYears, getSearchTitles, getTitleGenres, posterUrl } from '../lib/tmdb'
+import { filterSelectClass } from '../components/FilterBar'
+import {
+  filtraVideoteca,
+  generiPresenti,
+  ORDINI_VIDEOTECA,
+  ordinaVideoteca,
+  type OrdineVideoteca,
+  type RigaVideoteca,
+} from '../lib/videoteca'
 import { riconosciNuovi } from '../lib/riconoscimento'
 import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
 import { ascoltaFilmOffline, elencaFilmOffline, offlineDisponibile, spazio, taglia, type FilmOffline } from '../lib/filmOffline'
@@ -44,6 +53,19 @@ export default function StreamingPage() {
   // e l'altra. '*' = tutto.
   const [scheda, setScheda] = usePersistedState<string>('ciak:videoteca-scheda', '*')
   const [cartellaTrovata, setCartellaTrovata] = useState(true)
+  // Ricerca, ordine e genere: l'ordine si ricorda, gli altri due no (riaprendo
+  // la videoteca la si vuole vedere tutta).
+  const [query, setQuery] = useState('')
+  const [ordine, setOrdine] = usePersistedState<OrdineVideoteca>('ciak:videoteca-ordine', 'titolo')
+  const [genere, setGenere] = useState<number | null>(null)
+  // Anno, generi e titoli originali dei titoli riconosciuti (chiave composta
+  // `${tipo}-${id}`), e i nomi italiani dei generi.
+  const [infoTitoli, setInfoTitoli] = useState<{
+    anni: Map<string, string | null>
+    generi: Map<string, number[]>
+    titoli: Map<string, string[]>
+  }>({ anni: new Map(), generi: new Map(), titoli: new Map() })
+  const [nomiGeneri, setNomiGeneri] = useState<Map<number, string>>(new Map())
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
@@ -110,6 +132,37 @@ export default function StreamingPage() {
     }
   }, [user])
 
+  // Anno, generi e titoli originali per ordinare, filtrare e cercare: una
+  // richiesta per titolo la prima volta, poi dalla cache del dispositivo. Si
+  // ricarica solo quando cambiano i titoli riconosciuti, non a ogni salvataggio.
+  const chiaviTitoli = [...new Set([...archivio.values()].filter((v) => v.tmdb_id && v.media_type).map((v) => `${v.media_type}-${v.tmdb_id}`))]
+    .sort()
+    .join(',')
+  useEffect(() => {
+    if (!chiaviTitoli) return
+    const refs = chiaviTitoli.split(',').map((k) => {
+      const [tipo, id] = k.split('-')
+      return { tmdbId: Number(id), mediaType: tipo === 'tv' ? ('tv' as const) : ('movie' as const) }
+    })
+    let vivo = true
+    Promise.all([getReleaseYears(refs), getTitleGenres(refs), getSearchTitles(refs)])
+      .then(([anni, { generi, falliti: f1 }, { titoli, falliti: f2 }]) => {
+        if (vivo) setInfoTitoli({ anni, generi, titoli })
+        const falliti = Math.max(f1, f2)
+        if (falliti > 0) logFailure('Dettagli dei titoli della videoteca')(new Error(`${falliti} titoli su ${refs.length} senza generi o titoli originali`))
+      })
+      .catch(logFailure('Dettagli dei titoli della videoteca'))
+    return () => {
+      vivo = false
+    }
+  }, [chiaviTitoli])
+  useEffect(() => {
+    if (!navigator.onLine) return
+    Promise.all([getGenres('movie'), getGenres('tv')])
+      .then(([film, serie]) => setNomiGeneri(new Map([...serie, ...film].map((g) => [g.id, g.name]))))
+      .catch(logFailure('Nomi dei generi per la videoteca'))
+  }, [])
+
   // Già collegati (token ancora valido in questa scheda): elenco subito, senza
   // chiedere di nuovo il permesso.
   useEffect(() => {
@@ -143,6 +196,27 @@ export default function StreamingPage() {
   const schede = schedeCategorie(video)
   const schedaValida = scheda === '*' || schede.some((c) => (c.cartella ?? '') === scheda) ? scheda : '*'
   const mostrati = schedaValida === '*' ? video : video.filter((v) => (v.categoria ?? '') === schedaValida)
+
+  // Le righe della scheda, con ciò che serve a cercarle e ordinarle.
+  const righe: RigaVideoteca[] = mostrati.map((v) => {
+    const voce = archivio.get(v.id)
+    const chiave = voce?.tmdb_id && voce.media_type ? `${voce.media_type}-${voce.tmdb_id}` : ''
+    return {
+      id: v.id,
+      nome: (voce && titoloDaMostrare(voce)) ?? titoloVideo(v),
+      file: v.name,
+      anno: infoTitoli.anni.get(chiave) ?? null,
+      generi: infoTitoli.generi.get(chiave) ?? [],
+      titoli: infoTitoli.titoli.get(chiave) ?? [],
+      aggiunto: v.aggiunto ?? null,
+      guardato: voce && voce.posizione > 0 ? (voce.updated_at ?? null) : null,
+    }
+  })
+  const generiScheda = generiPresenti(righe, nomiGeneri)
+  // Un genere che in questa scheda non c'è (cambiando scheda) vale «tutti».
+  const genereValido = genere !== null && generiScheda.some((g) => g.id === genere) ? genere : null
+  const elenco = ordinaVideoteca(filtraVideoteca(righe, { query, genere: genereValido }), ordine)
+  const videoPerId = new Map(mostrati.map((v) => [v.id, v]))
 
   // Senza Client ID configurato la funzione non esiste: lo diciamo invece di
   // mostrare un pulsante che non farebbe nulla.
@@ -283,10 +357,51 @@ export default function StreamingPage() {
             : Ciak riproduce gli MP4. Convertili con <code>converti-mkv.bat</code> e premi «Aggiorna».
           </p>
         )}
-        <ul className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
-          {mostrati.map((v) => {
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <input
+            type="search"
+            aria-label="Cerca nella videoteca"
+            placeholder="🔍 Cerca un titolo…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className={`${filterSelectClass} min-w-0 flex-1 sm:max-w-xs`}
+          />
+          <select aria-label="Ordina la videoteca" value={ordine} onChange={(e) => setOrdine(e.target.value as OrdineVideoteca)} className={filterSelectClass}>
+            {ORDINI_VIDEOTECA.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {generiScheda.length > 0 && (
+            <select
+              aria-label="Filtra per genere"
+              value={genereValido ?? ''}
+              onChange={(e) => setGenere(e.target.value ? Number(e.target.value) : null)}
+              className={filterSelectClass}
+            >
+              <option value="">Tutti i generi</option>
+              {generiScheda.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.nome} ({g.quanti})
+                </option>
+              ))}
+            </select>
+          )}
+          {elenco.length !== righe.length && (
+            <span className="text-sm text-zinc-500">
+              {elenco.length} di {righe.length}
+            </span>
+          )}
+        </div>
+        {elenco.length === 0 ? (
+          <EmptyState title="Nessun titolo" message="Nessun video corrisponde alla ricerca o al genere scelto." icon="🔍" />
+        ) : (
+        <ul aria-label="Video della videoteca" className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
+          {elenco.map((riga) => {
+            const v = videoPerId.get(riga.id) as DriveVideo
             const voce = archivio.get(v.id)
-            const nome = (voce && titoloDaMostrare(voce)) ?? titoloVideo(v)
+            const nome = riga.nome
             const avanzamento = voce?.durata ? Math.min(1, voce.posizione / voce.durata) : 0
             return (
               <li key={v.id}>
@@ -309,6 +424,7 @@ export default function StreamingPage() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-zinc-100">{nome}</span>
                     <span className="block truncate text-xs text-zinc-500">
+                      {riga.anno && `${riga.anno} · `}
                       {voce?.visto_il && '✓ Visto · '}
                       {scaricati.has(v.id) && 'Offline · '}
                       {formato(v.mimeType)}
@@ -327,6 +443,7 @@ export default function StreamingPage() {
             )
           })}
         </ul>
+        )}
         </>
       )}
     </div>
