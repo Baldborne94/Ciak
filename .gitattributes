@@ -1,0 +1,4 @@
+# Gli script per Windows restano con i fine riga di Windows anche scaricati
+# da GitHub: un .bat con i soli "a capo" di Linux puo' fermarsi a meta'.
+strumenti/*.bat -text
+strumenti/*.ps1 -text
