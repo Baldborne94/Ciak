@@ -55,6 +55,8 @@ export interface DriveVideo {
   // La cartella di primo livello dentro Ciak (FILM, SERIE TV, ANIME…): è la
   // scheda della videoteca in cui compare. null se sta direttamente in Ciak.
   categoria?: string | null
+  // Quando è stato caricato su Drive (ISO), per «Aggiunti di recente».
+  aggiunto?: string | null
 }
 
 export interface ElencoVideo {
@@ -311,6 +313,7 @@ interface FileGrezzo {
   size?: string
   mimeType: string
   parents?: string[]
+  createdTime?: string
 }
 
 // Una richiesta all'API di Drive col token. Un 401 vuol dire token scaduto o
@@ -385,7 +388,7 @@ export async function elencaVideo(): Promise<ElencoVideo> {
 
   const grezzi: FileGrezzo[] = []
   for (const q of queryInCartelle(tutte, "mimeType contains 'video/'")) {
-    grezzi.push(...(await cercaFile(q, 'id, name, size, mimeType, parents')))
+    grezzi.push(...(await cercaFile(q, 'id, name, size, mimeType, parents, createdTime')))
   }
 
   const video = grezzi.map((f) => {
@@ -399,6 +402,7 @@ export async function elencaVideo(): Promise<ElencoVideo> {
       mimeType: f.mimeType,
       cartella: titoloDaCartella ? (nomiCartelle.get(genitore as string) ?? null) : null,
       categoria: genitore ? (categoriaDi.get(genitore) ?? null) : null,
+      aggiunto: f.createdTime ?? null,
     }
   })
   video.sort((a, b) => titoloVideo(a).localeCompare(titoloVideo(b), 'it', { numeric: true }))
