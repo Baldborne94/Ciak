@@ -220,4 +220,24 @@ describe('«Guarda ora»: quale file far partire', () => {
     expect(fileDaGuardare(righe, 126308, 'tv', { stagione: 2, episodio: 1 })?.drive_file_id).toBe('s1e2')
     expect(etichettaGuarda(righe[2])).toBe('▶ Guarda S1E3')
   })
+
+  it('una serie: lo stesso episodio che propone la videoteca, con gli speciali in fondo', () => {
+    // La scheda proponeva S1E2 mentre la videoteca diceva «Riprendi S0E8»: due
+    // regole diverse. Ora è la stessa: quello lasciato a metà, poi il seguito
+    // dell'ultimo visto, poi il primo non visto — e gli speciali dopo le stagioni.
+    const ep = (id: string, stagione: number, episodio: number, over: Partial<VoceStreaming> = {}) =>
+      riga(id, { media_type: 'tv', tmdb_id: 1429, stagione, episodio, durata: 1400, ...over })
+    const oad = ep('oad1', 0, 1)
+    expect(fileDaGuardare([oad, ep('s1e2', 1, 2), ep('s1e1', 1, 1)], 1429, 'tv')?.drive_file_id).toBe('s1e1')
+    const aMeta = ep('oad8', 0, 8, { posizione: 700, updated_at: '2026-10-01T20:00:00Z' })
+    expect(fileDaGuardare([oad, aMeta, ep('s1e1', 1, 1)], 1429, 'tv')?.drive_file_id).toBe('oad8')
+    const visto = ep('s1e1', 1, 1, { visto_il: '2026-10-01', posizione: 1400, updated_at: '2026-10-01T21:00:00Z' })
+    expect(fileDaGuardare([visto, ep('s1e2', 1, 2), oad], 1429, 'tv')?.drive_file_id).toBe('s1e2')
+  })
+
+  it('gli speciali si chiamano «Speciale», non S0', () => {
+    const oad = riga('oad8', { media_type: 'tv', stagione: 0, episodio: 8, titolo: "L'attacco dei giganti" })
+    expect(etichettaGuarda(oad)).toBe('▶ Guarda Speciale 8')
+    expect(titoloDaMostrare(oad)).toBe("L'attacco dei giganti · Speciale 8")
+  })
 })

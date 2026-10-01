@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { MediaItem, TmdbType } from './types'
 import type { NomeFilm } from './sottotitoli'
+import { ordinaEpisodi, prossimoDaGuardare, sigla, type EpisodioVideoteca } from './videoteca'
 
 // Il legame fra un file su Drive e l'archivio: quale titolo è, dove ci si è
 // fermati, quando lo si è finito. È ciò che permette al lettore di segnare un
@@ -154,10 +155,8 @@ export function prossimoEpisodio(voce: VoceStreaming, tutte: VoceStreaming[]): V
 // anche stagione ed episodio.
 export function titoloDaMostrare(voce: Pick<VoceStreaming, 'titolo' | 'media_type' | 'stagione' | 'episodio'>): string | null {
   if (!voce.titolo) return null
-  if (voce.media_type === 'tv' && voce.stagione != null && voce.episodio != null) {
-    return `${voce.titolo} · S${voce.stagione}E${voce.episodio}`
-  }
-  return voce.titolo
+  const s = voce.media_type === 'tv' ? sigla(voce) : null
+  return s ? `${voce.titolo} · ${s}` : voce.titolo
 }
 
 // ── Lettura e scrittura ─────────────────────────────────────────────────────
@@ -261,21 +260,34 @@ export function fileDaGuardare(
   if (mediaType === 'movie') {
     return suoi.find((r) => !r.visto_il && puntoDiRipresa(r.posizione, r.durata) > 0) ?? suoi[0]
   }
-  const inOrdine = suoi
-    .filter((r) => r.stagione != null && r.episodio != null)
-    .sort((a, b) => (a.stagione as number) - (b.stagione as number) || (a.episodio as number) - (b.episodio as number))
+  const numerati = suoi.filter((r) => r.stagione != null && r.episodio != null)
   if (episodio) {
-    const esatto = inOrdine.find((r) => r.stagione === episodio.stagione && r.episodio === episodio.episodio)
+    const esatto = numerati.find((r) => r.stagione === episodio.stagione && r.episodio === episodio.episodio)
     if (esatto) return esatto
   }
-  return inOrdine.find((r) => !r.visto_il) ?? inOrdine[0] ?? suoi[0]
+  // La stessa scelta di «▶ Continua» nella videoteca: la pagina della serie e
+  // la videoteca non devono proporre due episodi diversi. Prima qui vinceva il
+  // primo non visto con gli speciali (stagione 0) davanti alla prima stagione.
+  const perId = new Map(numerati.map((r) => [r.drive_file_id, r]))
+  const episodi: EpisodioVideoteca[] = numerati.map((r) => ({
+    id: r.drive_file_id,
+    nome: r.nome_file ?? '',
+    file: r.nome_file ?? '',
+    stagione: r.stagione,
+    episodio: r.episodio,
+    visto: !!r.visto_il,
+    posizione: r.posizione,
+    durata: r.durata,
+    guardato: r.posizione > 0 ? (r.updated_at ?? null) : null,
+  }))
+  const scelto = prossimoDaGuardare(episodi) ?? ordinaEpisodi(episodi)[0]
+  return (scelto && perId.get(scelto.id)) ?? suoi[0]
 }
 
 // Il testo del pulsante: dice cosa succede cliccando.
 export function etichettaGuarda(voce: VoceStreaming): string {
-  if (voce.media_type === 'tv' && voce.stagione != null && voce.episodio != null) {
-    return `▶ Guarda S${voce.stagione}E${voce.episodio}`
-  }
+  const s = voce.media_type === 'tv' ? sigla(voce) : null
+  if (s) return `▶ Guarda ${s}`
   const ripresa = voce.visto_il ? 0 : puntoDiRipresa(voce.posizione, voce.durata)
   return ripresa > 0 ? `▶ Riprendi da ${formattaTempo(ripresa)}` : '▶ Guarda ora'
 }

@@ -757,20 +757,26 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   // Si vedevano due «South Park»: una coi 50 episodi abbinati a TMDB e una coi
   // 264 non ancora abbinati.
   const riga = (id: string, extra: Record<string, unknown>) => ({ user_id: E2E_USER.id, drive_file_id: id, abbinato_a_mano: false, posizione: 0, secondi_visti: 0, ...extra })
-  await mockSupabase(page, {
+  const db = await mockSupabase(page, {
     user_streaming: [
       riga('video-sp-000301', { nome_file: '01 Rainforest Shmainforest.mp4', tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', poster_path: '/sp.jpg', stagione: 3, episodio: 1 }),
       riga('video-sp-000302', { nome_file: '02 Spontaneous Combustion.mp4' }),
     ],
   })
-  // Il secondo è già stato provato e non si riprova: resta senza titolo.
+  // Il secondo è già stato provato senza esito: la ricerca non si ripete
   // (e il titolo del primo è già stato controllato: niente richieste a TMDB).
   await page.addInitScript(() => {
-    localStorage.setItem('ciak:riconoscimento-v2:video-sp-000302', '1')
+    localStorage.setItem('ciak:riconoscimento-v3:video-sp-000302', '1')
     localStorage.setItem('ciak:titolo-originale-v1:video-sp-000301', '1')
   })
   await mockDrive(page, { conSerie: true })
   await cercaTmdb(page, [SONG])
+
+  const cercati: string[] = []
+  page.on('request', (r) => {
+    const u = new URL(r.url())
+    if (u.searchParams.get('path') === '/search/multi') cercati.push(u.searchParams.get('query') ?? '')
+  })
 
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
@@ -780,6 +786,18 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   await page.getByRole('button', { name: /^South Park/ }).click()
   const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
   await expect(stagione3.getByRole('button')).toHaveCount(2)
+
+  // E nell'archivio eredita la serie dal fratello, senza cercarla di nuovo: la
+  // scheda della serie proponeva «Guarda S1E2» perché S1E1, provato prima della
+  // correzione per «Shingeki no Kyojin», era rimasto senza titolo.
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-000302')).toMatchObject({
+    tmdb_id: 2190,
+    media_type: 'tv',
+    titolo: 'South Park',
+    stagione: 3,
+    episodio: 2,
+  })
+  expect(cercati.filter((q) => q === 'South Park')).toHaveLength(0)
 })
 
 test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli altri nomi del titolo', async ({ page }) => {

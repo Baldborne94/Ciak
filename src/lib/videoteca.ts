@@ -138,8 +138,10 @@ export function perStagione(episodi: EpisodioVideoteca[]): { stagione: number | 
   return gruppi
 }
 
+// «S0E8» non lo capisce nessuno: la stagione 0 sono gli speciali.
 export function sigla(e: Pick<EpisodioVideoteca, 'stagione' | 'episodio'>): string | null {
-  return e.stagione !== null && e.episodio !== null ? `S${e.stagione}E${e.episodio}` : null
+  if (e.stagione === null || e.episodio === null) return null
+  return e.stagione === 0 ? `Speciale ${e.episodio}` : `S${e.stagione}E${e.episodio}`
 }
 
 // ── Quali file sono episodi, e di quale serie ───────────────────────────────
@@ -169,7 +171,7 @@ export interface GruppoSerie {
 
 // La serie di un file secondo le cartelle: «South Park (1997)/Season 03/…» e
 // «South Park S01E01.mp4» sono la stessa serie.
-function nomeSerieDaFile(v: VideoDaRaggruppare): { chiave: string; nome: string } {
+function nomeSerieDaFile(v: Pick<VideoDaRaggruppare, 'name' | 'cartella' | 'serie'>): { chiave: string; nome: string } {
   const letto = filmDaCercare(v.name, v.cartella, v.serie)
   const grezzo = v.serie ?? (letto.stagione !== undefined && v.cartella && stagioneDaCartella(v.cartella) === null ? v.cartella : null) ?? letto.titolo
   // «Shingeki no Kyojin [10bits x265]» si mostra senza le etichette della
@@ -177,6 +179,12 @@ function nomeSerieDaFile(v: VideoDaRaggruppare): { chiave: string; nome: string 
   const pulito = analizzaNomeFilm(grezzo)
   const nome = pulito.anno !== undefined ? `${pulito.titolo} (${pulito.anno})` : pulito.titolo
   return { chiave: normalizzaRicerca(pulito.titolo), nome }
+}
+
+// La stessa chiave di cartella, per chi deve riconoscere un episodio dalla
+// serie dei suoi vicini (il riconoscimento) senza raggrupparli.
+export function chiaveSerie(v: { name: string; cartella: string | null; serie?: string | null }): string {
+  return nomeSerieDaFile({ ...v, serie: v.serie ?? null }).chiave
 }
 
 // Gli episodi raccolti per serie e i file che restano a sé (i film, e un
