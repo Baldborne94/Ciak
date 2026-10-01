@@ -52,14 +52,23 @@ function annoDi(item: MediaItem): number | null {
 // Il risultato di TMDB che corrisponde al file, o null se nessuno convince
 // abbastanza (meglio chiedere che sbagliare: un film sbagliato finirebbe nel
 // diario). Un episodio vuole una serie; l'anno, se c'è, deve combaciare.
-export function scegliAbbinamento(nome: NomeFilm, risultati: MediaItem[]): MediaItem | null {
+// `altriTitoli`: gli altri nomi di un risultato (chiave `${mediaType}-${id}`),
+// quando titolo e titolo originale non bastano — «Shingeki no Kyojin» non è
+// né «L'attacco dei giganti» né «進撃の巨人».
+export function scegliAbbinamento(
+  nome: NomeFilm,
+  risultati: MediaItem[],
+  altriTitoli: Map<string, string[]> = new Map(),
+): MediaItem | null {
   const cercato = normalizzaTitolo(nome.titolo)
   if (!cercato) return null
   const episodio = nome.stagione !== undefined && nome.episodio !== undefined
   let migliore: { item: MediaItem; punti: number } | null = null
   risultati.forEach((item, posizione) => {
     if (episodio && item.mediaType !== 'tv') return
-    const titoli = [item.title, item.originalTitle].filter((t): t is string => !!t).map(normalizzaTitolo)
+    const titoli = [item.title, item.originalTitle, ...(altriTitoli.get(`${item.mediaType}-${item.id}`) ?? [])]
+      .filter((t): t is string => !!t)
+      .map(normalizzaTitolo)
     let punti = 0
     if (titoli.includes(cercato)) punti += 10
     else if (titoli.some((t) => t.startsWith(cercato + ' ') || cercato.startsWith(t + ' '))) punti += 4

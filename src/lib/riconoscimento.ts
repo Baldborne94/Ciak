@@ -1,10 +1,11 @@
 import { mapLimit } from './mapLimit'
 import { logFailure } from './logFailure'
-import { fetchOriginalTitle, isReadableTitle, searchMulti } from './tmdb'
+import { fetchAlternativeTitles, fetchOriginalTitle, isReadableTitle, searchMulti } from './tmdb'
 import { filmDaCercare } from './sottotitoli'
 import { abbinamentoDa, salvaStreaming, scegliAbbinamento, type VoceStreaming } from './streaming'
 import type { DriveVideo } from './googleDrive'
 import type { MediaItem } from './types'
+import type { NomeFilm } from './sottotitoli'
 
 // Il titolo da salvare: quello originale del film, che è poi quello del file
 // che si guarda; tradotto solo se è in un alfabeto che non si legge. La
@@ -89,6 +90,27 @@ export async function riconosciNuovi(
     }
     return p
   }
+  // Se nessun titolo combacia, gli altri nomi dei primi risultati: TMDB li
+  // trova cercando («Shingeki no Kyojin» porta ad Attack on Titan) ma non li
+  // riporta. Una richiesta per candidato, solo quando serve, e una sola volta
+  // per serie.
+  const alternativi = new Map<string, Promise<string[]>>()
+  const conAltriTitoli = async (nome: NomeFilm, risultati: MediaItem[]): Promise<MediaItem | null> => {
+    const episodio = nome.stagione !== undefined && nome.episodio !== undefined
+    const candidati = risultati.filter((r) => !episodio || r.mediaType === 'tv').slice(0, 3)
+    if (candidati.length === 0) return null
+    const altri = new Map<string, string[]>()
+    for (const c of candidati) {
+      const k = `${c.mediaType}-${c.id}`
+      let p = alternativi.get(k)
+      if (!p) {
+        p = fetchAlternativeTitles(c.mediaType, c.id).catch(() => [] as string[])
+        alternativi.set(k, p)
+      }
+      altri.set(k, await p)
+    }
+    return scegliAbbinamento(nome, risultati, altri)
+  }
   const titoli = new Map<string, Promise<string>>()
   const titoloDi = (item: MediaItem) => {
     const k = `${item.mediaType}-${item.id}`
@@ -103,7 +125,8 @@ export async function riconosciNuovi(
     const nome = filmDaCercare(v.name, v.cartella, v.serie ?? null)
     let campi: Partial<VoceStreaming> = { nome_file: v.name }
     try {
-      const scelto = scegliAbbinamento(nome, await cerca(nome.titolo))
+      const risultati = await cerca(nome.titolo)
+      const scelto = scegliAbbinamento(nome, risultati) ?? (await conAltriTitoli(nome, risultati))
       if (scelto) {
         campi = { ...campi, ...abbinamentoDa(scelto, nome), titolo: await titoloDi(scelto) }
         segnaControllato(v.id)

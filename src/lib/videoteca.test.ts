@@ -89,8 +89,9 @@ describe('le serie, per stagioni', () => {
   const s2e1 = ep({ id: 's2e1', stagione: 2, episodio: 1 })
   const extra = ep({ id: 'extra', nome: 'Speciale', stagione: null, episodio: null })
 
-  it('ordina per stagione ed episodio, con chi non li ha in fondo', () => {
-    expect(ordinaEpisodi([extra, s2e1, s1e10, s1e2]).map((e) => e.id)).toEqual(['s1e2', 's1e10', 's2e1', 'extra'])
+  it('ordina per stagione ed episodio, con gli speciali dopo e chi non ha niente in fondo', () => {
+    const oad = ep({ id: 'oad', stagione: 0, episodio: 1 })
+    expect(ordinaEpisodi([extra, oad, s2e1, s1e10, s1e2]).map((e) => e.id)).toEqual(['s1e2', 's1e10', 's2e1', 'oad', 'extra'])
   })
 
   it('divide per stagione', () => {
@@ -155,6 +156,20 @@ describe('raggruppaSerie', () => {
       { id: 'a', name: 'South Park S01E01.mp4', cartella: 'South Park', serie: null, voce: { ...sp, stagione: 1, episodio: 1 } },
     ])
     expect(serie.map((s) => [s.chiave, s.titolo, s.ids])).toEqual([['tv-2190', 'South Park', ['b', 'a']]])
+  })
+
+  it('gli OAD stanno sotto la serie, con gli episodi normali', () => {
+    const { serie, sciolti } = raggruppaSerie([
+      { id: 'oad1', name: 'Shingeki no Kyojin - OADE01 - Ilse.mp4', cartella: 'OADs', serie: 'Shingeki no Kyojin [10bits x265]' },
+      { id: 's1e4', name: 'Shingeki no Kyojin - S01E04 - Night.mp4', cartella: 'Shingeki no Kyojin [10bits x265]', serie: null },
+    ])
+    expect(sciolti).toEqual([])
+    expect(serie).toHaveLength(1)
+    expect(serie[0].titolo).toBe('Shingeki no Kyojin')
+    expect(serie[0].episodi.map((e) => [e.id, e.stagione, e.episodio])).toEqual([
+      ['oad1', 0, 1],
+      ['s1e4', 1, 4],
+    ])
   })
 
   it('senza nessun episodio riconosciuto raggruppa per cartella; un episodio isolato resta a sé', () => {

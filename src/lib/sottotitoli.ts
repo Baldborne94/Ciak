@@ -64,7 +64,7 @@ export interface NomeFilm {
 
 // Ciò che nei nomi delle release viene dopo il titolo: qualità, sorgente, codec.
 const ETICHETTE =
-  /\b(2160p|1080p|720p|576p|480p|4k|uhd|bluray|blu ray|brrip|bdrip|remux|web dl|webdl|webrip|hdtv|dvdrip|hdrip|x264|x265|h264|h265|h 264|h 265|hevc|avc|hdr|hdr10|10bit|ddp5 1|dd5 1|aac|ac3|proper|repack|extended|yify|yts|ita|eng)\b/i
+  /\b(2160p|1080p|720p|576p|480p|4k|uhd|bluray|blu ray|brrip|bdrip|remux|web dl|webdl|webrip|hdtv|dvdrip|hdrip|x264|x265|h264|h265|h 264|h 265|hevc|avc|hdr|hdr10|10bits?|8bits?|hi10p|ddp5 1|dd5 1|aac|ac3|proper|repack|extended|yify|yts|ita|eng)\b/i
 
 // Il film (o l'episodio) da cercare online, dal nome del file o della cartella:
 // «Song.of.the.Sea.2014.1080p.BluRay.x264.YIFY.mp4» → Song of the Sea, 2014;
@@ -80,10 +80,17 @@ export function analizzaNomeFilm(nome: string): NomeFilm {
   const risultato: Omit<NomeFilm, 'titolo'> = {}
 
   const ep = /\bS(\d{1,2}) ?E(\d{1,3})\b/i.exec(s) ?? /\b(\d{1,2})x(\d{2,3})\b/.exec(s)
+  // Gli speciali degli anime: «OADE01», «OVA 3», «Special 1». Su TMDB sono la
+  // stagione 0, ed è lì che si spuntano.
+  const speciale = ep ? null : /\b(?:OAD|OVA|ONA|Special|Speciale)\s*E?\s*(\d{1,3})\b/i.exec(s)
   if (ep) {
     risultato.stagione = Number(ep[1])
     risultato.episodio = Number(ep[2])
     fine = Math.min(fine, ep.index)
+  } else if (speciale) {
+    risultato.stagione = 0
+    risultato.episodio = Number(speciale[1])
+    fine = Math.min(fine, speciale.index)
   }
 
   const etichetta = ETICHETTE.exec(s)
@@ -110,10 +117,12 @@ export function analizzaNomeFilm(nome: string): NomeFilm {
 // Una cartella di stagione: «Season 03», «Stagione 2», «S01», «Series 7».
 // Subito dopo la parola ci vuole il numero: «Serie TV», «Supernatural» o
 // «Se7en» non sono stagioni.
+// Gli speciali (OAD, OVA, extra) sono la stagione 0, come su TMDB.
 export function stagioneDaCartella(nome: string | null | undefined): number | null {
   if (!nome) return null
   const m = /^\s*(?:season|stagione|series|serie|s)\s*[._-]?\s*(\d{1,2})(?!\d)/i.exec(nome)
-  return m ? Number(m[1]) : null
+  if (m) return Number(m[1])
+  return /^\s*(?:OADs?|OVAs?|ONAs?|Specials?|Speciali|Extras?)\s*$/i.test(nome) ? 0 : null
 }
 
 // L'episodio di un file dentro una cartella di stagione, quando il nome non
@@ -122,7 +131,7 @@ function episodioDaNomeFile(nomeFile: string): number | undefined {
   const s = nomeFile.replace(ESTENSIONE_VIDEO, '').replace(/[._]+/g, ' ')
   const m =
     /^\s*(?:e|ep|episode|episodio)?\s*[-.]?\s*(\d{1,3})(?!\d)/i.exec(s) ??
-    /\b(?:e|ep|episode|episodio)\s*[-.]?\s*(\d{1,3})(?!\d)/i.exec(s)
+    /\b(?:e|ep|episode|episodio|OAD|OVA|ONA|special|speciale)\s*[-.]?\s*E?\s*(\d{1,3})(?!\d)/i.exec(s)
   return m ? Number(m[1]) : undefined
 }
 
