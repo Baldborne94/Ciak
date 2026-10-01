@@ -12,12 +12,11 @@ import {
   generiPresenti,
   ORDINI_VIDEOTECA,
   ordinaVideoteca,
+  raggruppaSerie,
   sigla,
-  type EpisodioVideoteca,
   type OrdineVideoteca,
   type RigaVideoteca,
 } from '../lib/videoteca'
-import { filmDaCercare } from '../lib/sottotitoli'
 import SerieVideoteca from '../components/SerieVideoteca'
 import { riconosciNuovi } from '../lib/riconoscimento'
 import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
@@ -202,80 +201,45 @@ export default function StreamingPage() {
   const mostrati = schedaValida === '*' ? video : video.filter((v) => (v.categoria ?? '') === schedaValida)
 
   // Le righe della scheda, con ciò che serve a cercarle e ordinarle.
-  // Ogni video è un film o l'episodio di una serie. Gli episodi si raccolgono
-  // sotto la loro serie: quella di TMDB se riconosciuta, altrimenti la cartella
-  // della serie. Un episodio isolato e non riconosciuto resta una riga a sé.
+  // Ogni video è un film o l'episodio di una serie: gli episodi si raccolgono
+  // sotto la loro serie (`raggruppaSerie`), i film restano una riga ciascuno.
   const infoDi = (chiave: string) => ({
     anno: infoTitoli.anni.get(chiave) ?? null,
     generi: infoTitoli.generi.get(chiave) ?? [],
     titoli: infoTitoli.titoli.get(chiave) ?? [],
   })
+  const videoPerId = new Map(mostrati.map((v) => [v.id, v]))
+  const raggruppati = raggruppaSerie(
+    mostrati.map((v) => ({ id: v.id, name: v.name, cartella: v.cartella, serie: v.serie ?? null, voce: archivio.get(v.id) })),
+  )
   // Le righe dell'elenco: i film e una per serie.
-  const voci: { riga: RigaVideoteca; video: DriveVideo }[] = []
-  const gruppi = new Map<string, { titolo: string; tmdb: string; poster: string | null; riconosciuta: boolean; episodi: EpisodioVideoteca[]; video: DriveVideo[] }>()
-  for (const v of mostrati) {
-    const voce = archivio.get(v.id)
-    const letto = filmDaCercare(v.name, v.cartella ?? null, v.serie ?? null)
-    const riconosciuta = voce?.media_type === 'tv' && !!voce.tmdb_id
-    const episodico = riconosciuta || (letto.stagione !== undefined && letto.episodio !== undefined) || !!v.serie
-    const chiave = riconosciuta ? `tv-${voce?.tmdb_id}` : episodico ? `cartella-${v.serie ?? v.cartella ?? letto.titolo}` : null
-    const guardato = voce && voce.posizione > 0 ? (voce.updated_at ?? null) : null
-    if (chiave) {
-      const g = gruppi.get(chiave) ?? {
-        titolo: (riconosciuta && voce?.titolo) || v.serie || v.cartella || letto.titolo,
-        tmdb: riconosciuta ? `tv-${voce?.tmdb_id}` : '',
-        poster: null,
-        riconosciuta,
-        episodi: [],
-        video: [],
-      }
-      if (!g.poster && voce?.poster_path) g.poster = posterUrl(voce.poster_path, 'w185') ?? null
-      g.episodi.push({
-        id: v.id,
-        nome: v.name.replace(/\.[a-z0-9]{2,4}$/i, ''),
-        file: v.name,
-        stagione: voce?.stagione ?? letto.stagione ?? null,
-        episodio: voce?.episodio ?? letto.episodio ?? null,
-        visto: !!voce?.visto_il,
-        posizione: voce?.posizione ?? 0,
-        durata: voce?.durata ?? null,
-        guardato,
-      })
-      g.video.push(v)
-      gruppi.set(chiave, g)
-      continue
-    }
-    const tmdb = voce?.tmdb_id && voce.media_type ? `${voce.media_type}-${voce.tmdb_id}` : ''
-    voci.push({
+  const voci: { riga: RigaVideoteca; video: DriveVideo }[] = raggruppati.sciolti.map((id) => {
+    const v = videoPerId.get(id) as DriveVideo
+    const voce = archivio.get(id)
+    return {
       video: v,
       riga: {
-        id: v.id,
+        id,
         nome: (voce && titoloDaMostrare(voce)) ?? titoloVideo(v),
         file: v.name,
-        ...infoDi(tmdb),
+        ...infoDi(voce?.tmdb_id && voce.media_type ? `${voce.media_type}-${voce.tmdb_id}` : ''),
         aggiunto: v.aggiunto ?? null,
-        guardato,
+        guardato: voce && voce.posizione > 0 ? (voce.updated_at ?? null) : null,
       },
-    })
-  }
-  const serie = new Map<string, { titolo: string; poster: string | null; episodi: EpisodioVideoteca[] }>()
-  for (const [chiave, g] of gruppi) {
-    // Un solo episodio di una serie non riconosciuta resta un video qualunque.
-    if (!g.riconosciuta && g.episodi.length < 2) {
-      const v = g.video[0]
-      voci.push({ video: v, riga: { id: v.id, nome: titoloVideo(v), file: v.name, ...infoDi(''), aggiunto: v.aggiunto ?? null, guardato: g.episodi[0].guardato } })
-      continue
     }
-    serie.set(chiave, g)
+  })
+  const serie = new Map(raggruppati.serie.map((g) => [g.chiave, g]))
+  for (const g of raggruppati.serie) {
+    const video = g.ids.map((id) => videoPerId.get(id) as DriveVideo)
     voci.push({
-      video: g.video[0],
+      video: video[0],
       riga: {
-        id: chiave,
+        id: g.chiave,
         nome: g.titolo,
         // Si trova anche cercando un episodio, per nome del file o per sigla.
         file: g.episodi.map((e) => `${e.file} ${sigla(e) ?? ''}`).join('\n'),
         ...infoDi(g.tmdb),
-        aggiunto: g.video.map((v) => v.aggiunto ?? '').sort().pop() || null,
+        aggiunto: video.map((v) => v.aggiunto ?? '').sort().pop() || null,
         guardato: g.episodi.map((e) => e.guardato ?? '').sort().pop() || null,
       },
     })
@@ -474,7 +438,7 @@ export default function StreamingPage() {
                 <li key={riga.id}>
                   <SerieVideoteca
                     titolo={gruppo.titolo}
-                    poster={gruppo.poster}
+                    poster={gruppo.posterPath ? (posterUrl(gruppo.posterPath, 'w185') ?? null) : null}
                     anno={riga.anno}
                     episodi={gruppo.episodi}
                     scaricati={scaricati}

@@ -74,13 +74,38 @@ export async function riconosciNuovi(
   const daFare = video.filter((v) => !noti.has(v.id) || senzaTitolo(v))
   const esito = new Map(noti)
   let falliti = 0
+  // Gli episodi di una serie cercano tutti la stessa cosa («South Park»): una
+  // ricerca e un titolo originale per serie, non uno per file. Con 264
+  // episodi erano 264 ricerche identiche, e il riconoscimento non finiva mai.
+  const ricerche = new Map<string, Promise<MediaItem[]>>()
+  const cerca = (q: string) => {
+    const k = q.trim().toLowerCase()
+    let p = ricerche.get(k)
+    if (!p) {
+      p = searchMulti(q)
+      // Una ricerca fallita si riprova al file dopo, invece di far fallire tutti.
+      p.catch(() => ricerche.delete(k))
+      ricerche.set(k, p)
+    }
+    return p
+  }
+  const titoli = new Map<string, Promise<string>>()
+  const titoloDi = (item: MediaItem) => {
+    const k = `${item.mediaType}-${item.id}`
+    let p = titoli.get(k)
+    if (!p) {
+      p = titoloDaSalvare(item)
+      titoli.set(k, p)
+    }
+    return p
+  }
   await mapLimit(daFare, 3, async (v) => {
     const nome = filmDaCercare(v.name, v.cartella, v.serie ?? null)
     let campi: Partial<VoceStreaming> = { nome_file: v.name }
     try {
-      const scelto = scegliAbbinamento(nome, await searchMulti(nome.titolo))
+      const scelto = scegliAbbinamento(nome, await cerca(nome.titolo))
       if (scelto) {
-        campi = { ...campi, ...abbinamentoDa(scelto, nome), titolo: await titoloDaSalvare(scelto) }
+        campi = { ...campi, ...abbinamentoDa(scelto, nome), titolo: await titoloDi(scelto) }
         segnaControllato(v.id)
       }
       await salvaStreaming(userId, v.id, campi)
@@ -95,9 +120,18 @@ export async function riconosciNuovi(
   const daCorreggere = [...esito.values()].filter(
     (r) => r.tmdb_id && r.media_type && !giaControllato(r.drive_file_id),
   )
+  // Anche qui una richiesta per titolo, non per episodio.
+  const originali = new Map<string, Promise<string>>()
   await mapLimit(daCorreggere, 3, async (r) => {
     try {
-      const titolo = await fetchOriginalTitle(r.media_type as 'movie' | 'tv', r.tmdb_id as number)
+      const k = `${r.media_type}-${r.tmdb_id}`
+      let p = originali.get(k)
+      if (!p) {
+        p = fetchOriginalTitle(r.media_type as 'movie' | 'tv', r.tmdb_id as number)
+        p.catch(() => originali.delete(k))
+        originali.set(k, p)
+      }
+      const titolo = await p
       if (titolo && titolo !== r.titolo) {
         await salvaStreaming(userId, r.drive_file_id, { titolo })
         esito.set(r.drive_file_id, { ...r, titolo })

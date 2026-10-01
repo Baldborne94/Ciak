@@ -101,6 +101,13 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
                 mimeType: 'video/mp4',
                 parents: ['cartella-sp-s03'],
               },
+              {
+                id: 'video-sp-000302',
+                name: '02 Spontaneous Combustion.mp4',
+                size: '171015040',
+                mimeType: 'video/mp4',
+                parents: ['cartella-sp-s03'],
+              },
             ]
           : []),
         {
@@ -688,7 +695,8 @@ test('le serie in cartelle di stagione prendono il nome della serie e vengono ri
   const cercati: string[] = []
   page.on('request', (r) => {
     const u = new URL(r.url())
-    if (u.searchParams.get('path') === '/search/multi') cercati.push(u.searchParams.get('query') ?? '')
+    // Una ricerca sono due richieste, in italiano e in inglese: conta la prima.
+    if (u.searchParams.get('path') === '/search/multi' && u.searchParams.get('language') === 'it-IT') cercati.push(u.searchParams.get('query') ?? '')
   })
   await cercaTmdb(page, [
     SONG,
@@ -702,9 +710,10 @@ test('le serie in cartelle di stagione prendono il nome della serie e vengono ri
   // Riconosciuto, l'episodio va sotto la serie, divisa per stagioni.
   const serie = page.getByRole('button', { name: /^South Park/ })
   await expect(serie).toBeVisible()
-  expect(cercati).toContain('South Park')
   await serie.click()
-  await expect(page.getByRole('list', { name: 'Stagione 3' }).getByText('01 Rainforest Shmainforest')).toBeVisible()
+  const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
+  await expect(stagione3.getByText('01 Rainforest Shmainforest')).toBeVisible()
+  await expect(stagione3.getByText('02 Spontaneous Combustion')).toBeVisible()
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-000301')).toMatchObject({
     tmdb_id: 2190,
     media_type: 'tv',
@@ -712,6 +721,38 @@ test('le serie in cartelle di stagione prendono il nome della serie e vengono ri
     stagione: 3,
     episodio: 1,
   })
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-000302')?.tmdb_id).toBe(2190)
+  // Due episodi della stessa serie: una ricerca sola, non una per file.
+  expect(cercati.filter((q) => q === 'South Park')).toHaveLength(1)
+})
+
+test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, non in una seconda riga', async ({ page }) => {
+  // Si vedevano due «South Park»: una coi 50 episodi abbinati a TMDB e una coi
+  // 264 non ancora abbinati.
+  const riga = (id: string, extra: Record<string, unknown>) => ({ user_id: E2E_USER.id, drive_file_id: id, abbinato_a_mano: false, posizione: 0, secondi_visti: 0, ...extra })
+  await mockSupabase(page, {
+    user_streaming: [
+      riga('video-sp-000301', { nome_file: '01 Rainforest Shmainforest.mp4', tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', poster_path: '/sp.jpg', stagione: 3, episodio: 1 }),
+      riga('video-sp-000302', { nome_file: '02 Spontaneous Combustion.mp4' }),
+    ],
+  })
+  // Il secondo è già stato provato e non si riprova: resta senza titolo.
+  // (e il titolo del primo è già stato controllato: niente richieste a TMDB).
+  await page.addInitScript(() => {
+    localStorage.setItem('ciak:riconoscimento-v2:video-sp-000302', '1')
+    localStorage.setItem('ciak:titolo-originale-v1:video-sp-000301', '1')
+  })
+  await mockDrive(page, { conSerie: true })
+  await cercaTmdb(page, [SONG])
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^South Park/ })).toHaveCount(1)
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
+  await expect(stagione3.getByRole('button')).toHaveCount(2)
 })
 
 test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede il voto', async ({ page }) => {
