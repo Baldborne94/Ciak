@@ -6,6 +6,7 @@ import {
   ordinaVideoteca,
   perStagione,
   prossimoDaGuardare,
+  raggruppaSerie,
   sigla,
   type EpisodioVideoteca,
   type RigaVideoteca,
@@ -125,5 +126,45 @@ describe('le serie, per stagioni', () => {
   it('la sigla dell episodio', () => {
     expect(sigla(s1e10)).toBe('S1E10')
     expect(sigla(extra)).toBeNull()
+  })
+})
+
+describe('raggruppaSerie', () => {
+  const sp = { tmdb_id: 2190, media_type: 'tv' as const, titolo: 'South Park', poster_path: '/sp.jpg', visto_il: null, posizione: 0, durata: 1320, updated_at: undefined }
+
+  it('gli episodi non ancora riconosciuti vanno sotto la serie riconosciuta della stessa cartella', () => {
+    // Prima: due «South Park», una con 50 episodi abbinati e una con 264 no.
+    const { serie, sciolti } = raggruppaSerie([
+      { id: 'a', name: 'South Park S01E01.mp4', cartella: 'South Park', serie: null, voce: { ...sp, stagione: 1, episodio: 1 } },
+      { id: 'b', name: '01 Rainforest Shmainforest.mp4', cartella: 'Season 03', serie: 'South Park (1997)', voce: null },
+      { id: 'c', name: 'South.Park.S02E05.mp4', cartella: null, serie: null },
+    ])
+    expect(sciolti).toEqual([])
+    expect(serie).toHaveLength(1)
+    expect(serie[0]).toMatchObject({ chiave: 'tv-2190', titolo: 'South Park', tmdb: 'tv-2190', posterPath: '/sp.jpg' })
+    expect(serie[0].episodi.map((e) => [e.id, e.stagione, e.episodio])).toEqual([
+      ['a', 1, 1],
+      ['b', 3, 1],
+      ['c', 2, 5],
+    ])
+  })
+
+  it('anche se il primo file della serie non è quello riconosciuto', () => {
+    const { serie } = raggruppaSerie([
+      { id: 'b', name: '02 Volcano.mp4', cartella: 'Season 01', serie: 'South Park' },
+      { id: 'a', name: 'South Park S01E01.mp4', cartella: 'South Park', serie: null, voce: { ...sp, stagione: 1, episodio: 1 } },
+    ])
+    expect(serie.map((s) => [s.chiave, s.titolo, s.ids])).toEqual([['tv-2190', 'South Park', ['b', 'a']]])
+  })
+
+  it('senza nessun episodio riconosciuto raggruppa per cartella; un episodio isolato resta a sé', () => {
+    const { serie, sciolti } = raggruppaSerie([
+      { id: 'x1', name: '01 Pilot.mp4', cartella: 'Season 01', serie: 'Serie Ignota' },
+      { id: 'x2', name: '02 Secondo.mp4', cartella: 'Season 01', serie: 'Serie Ignota' },
+      { id: 'b99', name: 'B99 S7E2.mp4', cartella: null, serie: null },
+      { id: 'film', name: 'Song.of.the.Sea.2014.mp4', cartella: 'Song of the Sea (2014)', serie: null },
+    ])
+    expect(serie.map((s) => [s.chiave, s.titolo, s.tmdb])).toEqual([['cartella-serie ignota', 'Serie Ignota', '']])
+    expect(sciolti).toEqual(['film', 'b99'])
   })
 })

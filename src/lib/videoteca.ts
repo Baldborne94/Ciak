@@ -1,4 +1,6 @@
-import { corrispondeRicerca } from './ricercaLista'
+import { corrispondeRicerca, normalizzaRicerca } from './ricercaLista'
+import { analizzaNomeFilm, filmDaCercare, stagioneDaCartella } from './sottotitoli'
+import type { VoceStreaming } from './streaming'
 
 // Cercare, filtrare e ordinare la videoteca: con centinaia di file l'ordine
 // alfabetico dei nomi da solo non basta più per ritrovare qualcosa.
@@ -137,4 +139,95 @@ export function perStagione(episodi: EpisodioVideoteca[]): { stagione: number | 
 
 export function sigla(e: Pick<EpisodioVideoteca, 'stagione' | 'episodio'>): string | null {
   return e.stagione !== null && e.episodio !== null ? `S${e.stagione}E${e.episodio}` : null
+}
+
+// ── Quali file sono episodi, e di quale serie ───────────────────────────────
+
+export interface VideoDaRaggruppare {
+  id: string
+  name: string
+  cartella: string | null
+  serie: string | null
+  voce?: Pick<
+    VoceStreaming,
+    'tmdb_id' | 'media_type' | 'titolo' | 'stagione' | 'episodio' | 'visto_il' | 'posizione' | 'durata' | 'updated_at' | 'poster_path'
+  > | null
+}
+
+export interface GruppoSerie {
+  chiave: string // `tv-${id}` se riconosciuta su TMDB, altrimenti `cartella-…`
+  titolo: string
+  tmdb: string // la chiave dei dati di TMDB (anno, generi), '' se non riconosciuta
+  posterPath: string | null
+  episodi: EpisodioVideoteca[]
+  ids: string[]
+}
+
+// La serie di un file secondo le cartelle: «South Park (1997)/Season 03/…» e
+// «South Park S01E01.mp4» sono la stessa serie.
+function nomeSerieDaFile(v: VideoDaRaggruppare): { chiave: string; nome: string } {
+  const letto = filmDaCercare(v.name, v.cartella, v.serie)
+  const nome = v.serie ?? (letto.stagione !== undefined && v.cartella && stagioneDaCartella(v.cartella) === null ? v.cartella : null) ?? letto.titolo
+  return { chiave: normalizzaRicerca(analizzaNomeFilm(nome).titolo), nome }
+}
+
+// Gli episodi raccolti per serie e i file che restano a sé (i film, e un
+// episodio isolato e non riconosciuto). Un episodio non ancora riconosciuto
+// va sotto la serie riconosciuta della stessa cartella: altrimenti la stessa
+// serie compariva due volte, una con gli episodi abbinati a TMDB e una con
+// gli altri.
+export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]; serie: GruppoSerie[] } {
+  const riconosciute = new Map<string, { chiave: string; titolo: string }>()
+  for (const v of video) {
+    if (v.voce?.media_type !== 'tv' || !v.voce.tmdb_id) continue
+    const { chiave } = nomeSerieDaFile(v)
+    if (!riconosciute.has(chiave)) riconosciute.set(chiave, { chiave: `tv-${v.voce.tmdb_id}`, titolo: v.voce.titolo ?? chiave })
+  }
+
+  const gruppi = new Map<string, GruppoSerie & { riconosciuta: boolean }>()
+  const sciolti: string[] = []
+  for (const v of video) {
+    const voce = v.voce ?? null
+    const letto = filmDaCercare(v.name, v.cartella, v.serie)
+    const daCartella = nomeSerieDaFile(v)
+    const tv = voce?.media_type === 'tv' && !!voce.tmdb_id
+    const episodico = tv || (letto.stagione !== undefined && letto.episodio !== undefined) || !!v.serie
+    if (!episodico) {
+      sciolti.push(v.id)
+      continue
+    }
+    const nota = tv ? { chiave: `tv-${voce?.tmdb_id}`, titolo: voce?.titolo ?? daCartella.nome } : riconosciute.get(daCartella.chiave)
+    const chiave = nota?.chiave ?? `cartella-${daCartella.chiave}`
+    const g = gruppi.get(chiave) ?? {
+      chiave,
+      titolo: nota?.titolo ?? daCartella.nome,
+      tmdb: nota ? chiave : '',
+      posterPath: null,
+      episodi: [],
+      ids: [],
+      riconosciuta: !!nota,
+    }
+    if (!g.posterPath && voce?.poster_path) g.posterPath = voce.poster_path
+    g.episodi.push({
+      id: v.id,
+      nome: v.name.replace(/\.[a-z0-9]{2,4}$/i, ''),
+      file: v.name,
+      stagione: voce?.stagione ?? letto.stagione ?? null,
+      episodio: voce?.episodio ?? letto.episodio ?? null,
+      visto: !!voce?.visto_il,
+      posizione: voce?.posizione ?? 0,
+      durata: voce?.durata ?? null,
+      guardato: voce && voce.posizione > 0 ? (voce.updated_at ?? null) : null,
+    })
+    g.ids.push(v.id)
+    gruppi.set(chiave, g)
+  }
+
+  const serie: GruppoSerie[] = []
+  for (const { riconosciuta, ...g } of gruppi.values()) {
+    // Un solo episodio di una serie non riconosciuta resta un video qualunque.
+    if (!riconosciuta && g.ids.length < 2) sciolti.push(...g.ids)
+    else serie.push(g)
+  }
+  return { sciolti, serie }
 }
