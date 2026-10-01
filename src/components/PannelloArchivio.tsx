@@ -5,6 +5,7 @@ import { posterUrl, searchMulti } from '../lib/tmdb'
 import { logFailure } from '../lib/logFailure'
 import { formattaTempo, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
 import type { NomeFilm } from '../lib/sottotitoli'
+import { sigla } from '../lib/videoteca'
 import type { Visto } from '../lib/useArchivioStreaming'
 import type { MediaItem } from '../lib/types'
 
@@ -79,7 +80,7 @@ export default function PannelloArchivio({
       }
       className="btn-primary px-3 py-1.5"
     >
-      ▶ Prossimo episodio: S{prossimo.stagione}E{prossimo.episodio}
+      ▶ Prossimo episodio: {sigla(prossimo)}
     </button>
   )
 

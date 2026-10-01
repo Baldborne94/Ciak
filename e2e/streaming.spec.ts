@@ -626,6 +626,74 @@ async function portaIlVideoA(page: Page, secondi: number, durata: number) {
   )
 }
 
+test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte da solo restando a schermo intero', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page)
+  const riga = (id: string, episodio: number) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: id,
+    nome_file: `Shogun.S01E0${episodio}.mkv`,
+    tmdb_id: 126308,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    stagione: 1,
+    episodio,
+    posizione: 0,
+    durata: 3600,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: false,
+  })
+  await mockSupabase(page, { user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2)] })
+  await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
+  await expect(page.getByRole('heading', { name: 'Shōgun · S1E1' })).toBeVisible()
+
+  // Schermo intero di Ciak: è la pagina, così passa indenne all'episodio dopo.
+  await page.getByRole('button', { name: 'Schermo intero' }).click()
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === document.documentElement)).toBe(true)
+
+  // La sigla iniziale: il video va avanti della durata scelta per la serie.
+  await page.evaluate(() => {
+    const v = document.querySelector('video') as HTMLVideoElement & { salto?: number }
+    Object.defineProperty(v, 'duration', { configurable: true, get: () => 3600 })
+    Object.defineProperty(v, 'currentTime', { configurable: true, get: () => 30, set: (t: number) => (v.salto = t) })
+    v.dispatchEvent(new Event('timeupdate'))
+  })
+  await page.getByRole('button', { name: '⏭ Salta sigla' }).click()
+  expect(await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { salto?: number }).salto)).toBe(120)
+  await expect(page.getByRole('button', { name: '⏭ Salta sigla' })).toHaveCount(0)
+  // Una serie con la sigla più corta la cambia una volta per tutte.
+  await page.getByLabel('Durata della sigla').selectOption({ label: '0:45' })
+  expect(await page.evaluate(() => localStorage.getItem('ciak:durata-sigla:tv-126308'))).toBe('45')
+
+  // La sigla finale: si può già passare all'episodio dopo, ma non parte da solo.
+  await portaIlVideoA(page, 3500, 3600)
+  const prossimo = page.getByRole('region', { name: 'Prossimo episodio' })
+  await expect(prossimo.getByRole('button', { name: '⏭ Prossimo episodio: S1E2' })).toBeVisible()
+
+  // Finito l'episodio, il conto alla rovescia e poi l'episodio dopo da solo.
+  await page.evaluate(() => document.querySelector('video')?.dispatchEvent(new Event('ended')))
+  await expect(prossimo.getByText(/S1E2 fra \d+ s/)).toBeVisible()
+  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/, { timeout: 15_000 })
+  await expect(page.getByRole('heading', { name: 'Shōgun · S1E2' })).toBeVisible()
+  expect(await page.evaluate(() => document.fullscreenElement === document.documentElement)).toBe(true)
+
+  await page.getByRole('button', { name: 'Esci dallo schermo intero' }).click()
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull()
+
+  // Uscendo dal lettore si esce anche dallo schermo intero.
+  await page.getByRole('button', { name: 'Schermo intero' }).click()
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement === document.documentElement)).toBe(true)
+  await page.goBack()
+  await page.goBack()
+  await expect(page).toHaveURL(/\/streaming$/)
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull()
+})
+
 test('la lista riconosce i film di Drive e li mostra col titolo e la locandina', async ({ page }) => {
   const db = await mockSupabase(page)
   await mockDrive(page)
