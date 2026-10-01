@@ -58,6 +58,17 @@ test('gli anni di uscita non vengono richiesti di nuovo alla visita successiva',
   // originali per la ricerca viaggiano nella stessa, non in una seconda.
   await expect.poll(detailRequests).toBe(3)
 
+  // Prima di tornare, le risposte devono essere arrivate e salvate: contare le
+  // richieste partite non basta, e ricaricando troppo presto (CI carica) la
+  // seconda visita le richiedeva tutte, facendo fallire il test a caso.
+  const salvati = () =>
+    page.evaluate(() =>
+      ['ciak:release-years:v1', 'ciak:titoli-ricerca:v1'].map(
+        (k) => Object.keys(JSON.parse(localStorage.getItem(k) ?? '{}')).length,
+      ),
+    )
+  await expect.poll(salvati).toEqual([3, 3])
+
   const dopoLaPrimaVisita = detailRequests()
   await page.goto('/lists/watchlist')
   await expect(page.getByText('Fight Club')).toBeVisible()

@@ -8,6 +8,7 @@ import {
   ascoltaDiagnostica,
   attendiLettoreCiak,
   collegaDrive,
+  erroreRitornoDrive,
   driveConnesso,
   flussoVideoUrl,
   idDriveValido,
@@ -98,6 +99,12 @@ function LettoreStreaming() {
   const [problema, setProblema] = useState<Problema | null>(null)
   const [chiaveVideo, setChiaveVideo] = useState(0)
   const [errore, setErrore] = useState<string | null>(null)
+  // Un consenso a Drive andato male nell'app installata torna qui da Google:
+  // lo si dice invece di riproporre il pulsante come se niente fosse.
+  useEffect(() => {
+    const e = erroreRitornoDrive()
+    if (e) setErrore(e)
+  }, [])
   const videoRef = useRef<HTMLVideoElement>(null)
   const posizione = useRef(0)
   const audioControllato = useRef(false)

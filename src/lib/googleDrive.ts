@@ -1,4 +1,11 @@
 import type { DiagnosticaVideo } from './lettore'
+import {
+  CHIAVE_ATTESA_DRIVE,
+  CHIAVE_ERRORE_DRIVE,
+  CHIAVE_TOKEN_DRIVE,
+  PERCORSO_RITORNO_DRIVE,
+  PREFISSO_STATO_DRIVE,
+} from './ritornoDrive'
 
 // I tuoi film restano su Google Drive, nella cartella «Ciak»: qui li si ELENCA e
 // li si riproduce in streaming — col lettore di Google o con quello di Ciak, che
@@ -21,7 +28,7 @@ const SCOPE = [
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
 const API = 'https://www.googleapis.com/drive/v3/files'
 const API_CARICAMENTO = 'https://www.googleapis.com/upload/drive/v3/files'
-const CHIAVE_SESSIONE = 'ciak:drive-token'
+const CHIAVE_SESSIONE = CHIAVE_TOKEN_DRIVE
 
 // La cartella, nella radice di «Il mio Drive», da cui si prendono i film.
 export const CARTELLA_CIAK = 'Ciak'
@@ -69,6 +76,7 @@ interface GoogleOauth2 {
     client_id: string
     scope: string
     callback: (resp: TokenResponse) => void
+    error_callback?: (err: { type?: string }) => void
   }) => TokenClient
 }
 declare global {
@@ -155,19 +163,77 @@ function caricaGis(): Promise<void> {
   })
 }
 
+// L'app installata (icona sulla home, a schermo intero): lì il popup di Google
+// non riesce a tornare all'app, e si usa il redirect (vedi `ritornoDrive`).
+export function inAppInstallata(): boolean {
+  try {
+    if ((navigator as Navigator & { standalone?: boolean }).standalone) return true
+    return ['standalone', 'fullscreen', 'minimal-ui'].some((m) => window.matchMedia(`(display-mode: ${m})`).matches)
+  } catch {
+    return false
+  }
+}
+
+// L'indirizzo del consenso Google per il flusso a redirect: lo stesso permesso
+// del popup, che torna in `redirectUri` col token nel frammento.
+export function urlConsensoDrive(clientId: string, redirectUri: string, stato: string): string {
+  const u = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+  u.searchParams.set('client_id', clientId)
+  u.searchParams.set('redirect_uri', redirectUri)
+  u.searchParams.set('response_type', 'token')
+  u.searchParams.set('scope', SCOPE)
+  u.searchParams.set('include_granted_scopes', 'true')
+  u.searchParams.set('state', stato)
+  return u.toString()
+}
+
+// L'errore con cui Google è tornato dall'ultimo redirect, una volta sola.
+export function erroreRitornoDrive(): string | null {
+  try {
+    const e = sessionStorage.getItem(CHIAVE_ERRORE_DRIVE)
+    if (e) sessionStorage.removeItem(CHIAVE_ERRORE_DRIVE)
+    return e
+  } catch {
+    return null
+  }
+}
+
+function consensoConRedirect(clientId: string): Promise<never> {
+  const casuali = crypto.getRandomValues(new Uint8Array(16))
+  const stato = PREFISSO_STATO_DRIVE + Array.from(casuali, (b) => b.toString(16).padStart(2, '0')).join('')
+  const ritorno = window.location.pathname + window.location.search
+  sessionStorage.setItem(CHIAVE_ATTESA_DRIVE, JSON.stringify({ stato, ritorno }))
+  window.location.assign(urlConsensoDrive(clientId, window.location.origin + PERCORSO_RITORNO_DRIVE, stato))
+  // La pagina se ne va: chi aspetta resta in attesa fino al ritorno.
+  return new Promise<never>(() => {})
+}
+
 // Apre il consenso Google e mette da parte il token. Da chiamare su gesto utente
 // (un click): il popup di Google richiede un'interazione.
 export async function collegaDrive(): Promise<void> {
   if (!CLIENT_ID) throw new Error('Google Drive non è configurato.')
+  if (inAppInstallata()) return consensoConRedirect(CLIENT_ID)
   await caricaGis()
   const oauth2 = window.google?.accounts?.oauth2
   if (!oauth2) throw new Error('Google Identity Services non disponibile.')
 
-  const resp = await new Promise<TokenResponse>((resolve) => {
+  const resp = await new Promise<TokenResponse>((resolve, reject) => {
     const client = oauth2.initTokenClient({
       client_id: CLIENT_ID,
       scope: SCOPE,
       callback: resolve,
+      // Senza, un popup chiuso o bloccato lasciava il pulsante su
+      // «Collegamento…» per sempre.
+      error_callback: (err) =>
+        reject(
+          new Error(
+            err.type === 'popup_failed_to_open'
+              ? 'Il browser ha bloccato la finestra di Google: consenti i popup per Ciak e riprova.'
+              : err.type === 'popup_closed'
+                ? 'La finestra di Google è stata chiusa prima di finire.'
+                : 'Accesso a Google Drive non riuscito.',
+          ),
+        ),
     })
     client.requestAccessToken()
   })

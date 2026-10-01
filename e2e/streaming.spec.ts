@@ -226,6 +226,77 @@ test('ricaricando la pagina il collegamento a Drive resta', async ({ page }) => 
   await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
 })
 
+// Nell'app installata su Android il popup di Google non torna all'app: si
+// sceglie l'account e poi niente. Lì si va su Google con un redirect vero.
+async function comeAppInstallata(page: Page) {
+  await page.addInitScript(() => {
+    const originale = window.matchMedia.bind(window)
+    window.matchMedia = (q: string) =>
+      q === '(display-mode: standalone)' ? ({ ...originale(q), matches: true } as MediaQueryList) : originale(q)
+  })
+}
+
+// Google: risponde al consenso rimandando all'app, come farebbe davvero.
+async function googleRimanda(page: Page, risposta: (state: string) => string) {
+  const consensi: URL[] = []
+  await page.route('https://accounts.google.com/o/oauth2/v2/auth**', (route) => {
+    const url = new URL(route.request().url())
+    consensi.push(url)
+    const ritorno = url.searchParams.get('redirect_uri') ?? ''
+    return route.fulfill({ status: 302, headers: { location: `${ritorno}#${risposta(url.searchParams.get('state') ?? '')}` } })
+  })
+  return consensi
+}
+
+test('nell app installata il collegamento a Drive passa da un redirect e torna alla videoteca', async ({ page }) => {
+  await comeAppInstallata(page)
+  await mockDrive(page)
+  const autorizzazioni: string[] = []
+  page.on('request', (r) => {
+    if (r.url().startsWith('https://www.googleapis.com/drive/')) autorizzazioni.push(r.headers()['authorization'] ?? '')
+  })
+  const consensi = await googleRimanda(page, (state) => `access_token=token-dal-redirect&token_type=Bearer&expires_in=3599&state=${state}`)
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  // Si torna alla videoteca, collegati, col token che Google ha mandato.
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  expect(consensi).toHaveLength(1)
+  expect(consensi[0].searchParams.get('response_type')).toBe('token')
+  expect(new URL(consensi[0].searchParams.get('redirect_uri') ?? '').pathname).toBe('/streaming')
+  expect(autorizzazioni).toContain('Bearer token-dal-redirect')
+  // Il token non resta nell'indirizzo, e l'account di Ciak non si perde per
+  // strada (Supabase non l'ha scambiato per un suo login).
+  await expect(page).toHaveURL(/\/streaming$/)
+  await expect(page.getByRole('heading', { name: 'La mia videoteca' })).toBeVisible()
+
+  // Come col popup, ricaricando si resta collegati.
+  await page.reload()
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+})
+
+test('nell app installata un consenso negato lo dice', async ({ page }) => {
+  await comeAppInstallata(page)
+  await mockDrive(page)
+  await googleRimanda(page, (state) => `error=access_denied&state=${state}`)
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  await expect(page.getByText('Accesso a Google Drive negato.')).toBeVisible()
+  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toBeVisible()
+})
+
+test('un token con uno state che non è partito da qui non si usa', async ({ page }) => {
+  await mockDrive(page)
+  await page.goto('/streaming#access_token=rubato&expires_in=3599&state=ciak-drive-forgiato')
+
+  await expect(page.getByText(/Risposta di Google non riconosciuta/)).toBeVisible()
+  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toBeVisible()
+  await expect(page).toHaveURL(/\/streaming$/)
+})
+
 test('senza la cartella «Ciak» spiega come crearla', async ({ page }) => {
   await mockDrive(page, { conCartellaCiak: false })
   await page.goto('/streaming')
