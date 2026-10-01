@@ -61,6 +61,9 @@ export default function StreamingPage() {
   const [query, setQuery] = useState('')
   const [ordine, setOrdine] = usePersistedState<OrdineVideoteca>('ciak:videoteca-ordine', 'titolo')
   const [genere, setGenere] = useState<number | null>(null)
+  // Le serie aperte, per nome di cartella: la chiave della serie cambia quando
+  // viene riconosciuta, e la lista aperta si richiudeva da sola.
+  const [serieAperte, setSerieAperte] = useState<Set<string>>(new Set())
   // Anno, generi e titoli originali dei titoli riconosciuti (chiave composta
   // `${tipo}-${id}`), e i nomi italiani dei generi.
   const [infoTitoli, setInfoTitoli] = useState<{
@@ -442,6 +445,15 @@ export default function StreamingPage() {
                     anno={riga.anno}
                     episodi={gruppo.episodi}
                     scaricati={scaricati}
+                    aperta={serieAperte.has(gruppo.cartella)}
+                    onAperta={(aperta) =>
+                      setSerieAperte((prima) => {
+                        const dopo = new Set(prima)
+                        if (aperta) dopo.add(gruppo.cartella)
+                        else dopo.delete(gruppo.cartella)
+                        return dopo
+                      })
+                    }
                     onApri={(e) =>
                       navigate(`/streaming/${e.id}`, {
                         state: { titolo: sigla(e) ? `${gruppo.titolo} · ${sigla(e)}` : e.nome, file: e.file },

@@ -150,6 +150,14 @@ describe('raggruppaSerie', () => {
     ])
   })
 
+  it('la cartella della serie resta la stessa prima e dopo il riconoscimento', () => {
+    const file = { id: 'b', name: '01 Rainforest Shmainforest.mp4', cartella: 'Season 03', serie: 'South Park' }
+    const prima = raggruppaSerie([file, { ...file, id: 'c', name: '02 Volcano.mp4' }]).serie[0]
+    const dopo = raggruppaSerie([{ ...file, voce: { ...sp, stagione: 3, episodio: 1 } }, { ...file, id: 'c', name: '02 Volcano.mp4' }]).serie[0]
+    expect(prima.chiave).not.toBe(dopo.chiave)
+    expect(prima.cartella).toBe(dopo.cartella)
+  })
+
   it('anche se il primo file della serie non è quello riconosciuto', () => {
     const { serie } = raggruppaSerie([
       { id: 'b', name: '02 Volcano.mp4', cartella: 'Season 01', serie: 'South Park' },

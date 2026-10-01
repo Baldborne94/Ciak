@@ -715,17 +715,32 @@ test('le serie in cartelle di stagione prendono il nome della serie e vengono ri
     { id: 2190, media_type: 'tv', name: 'South Park', original_name: 'South Park', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] },
   ])
 
+  // TMDB risponde solo dopo che la serie è stata aperta: è il momento in cui,
+  // riconosciuta, la serie cambiava identità e la lista aperta si richiudeva
+  // da sola (e il test, a seconda dei tempi, a volte falliva).
+  let rispondi!: () => void
+  const risposta = new Promise<void>((r) => (rispondi = r))
+  await page.route('**/api/tmdb*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('path') === '/search/multi') await risposta
+    return route.fallback()
+  })
+
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
   await expect(page.getByText('Season 03', { exact: true })).toHaveCount(0)
-  // Riconosciuto, l'episodio va sotto la serie, divisa per stagioni.
+  // Ancora da riconoscere, gli episodi stanno già sotto la serie della cartella.
   const serie = page.getByRole('button', { name: /^South Park/ })
   await expect(serie).toBeVisible()
   await serie.click()
   const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
   await expect(stagione3.getByText('01 Rainforest Shmainforest')).toBeVisible()
   await expect(stagione3.getByText('02 Spontaneous Combustion')).toBeVisible()
+
+  // Riconosciuta mentre è aperta: arriva la locandina, e la lista resta aperta.
+  rispondi()
+  await expect(page.locator('img[src*="/sp.jpg"]')).toBeVisible()
+  await expect(stagione3.getByText('01 Rainforest Shmainforest')).toBeVisible()
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-000301')).toMatchObject({
     tmdb_id: 2190,
     media_type: 'tv',

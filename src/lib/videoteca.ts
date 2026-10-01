@@ -157,6 +157,9 @@ export interface VideoDaRaggruppare {
 
 export interface GruppoSerie {
   chiave: string // `tv-${id}` se riconosciuta su TMDB, altrimenti `cartella-…`
+  // Il nome della cartella, normalizzato: non cambia quando la serie viene
+  // riconosciuta, ed è ciò che ricorda quali serie sono aperte.
+  cartella: string
   titolo: string
   tmdb: string // la chiave dei dati di TMDB (anno, generi), '' se non riconosciuta
   posterPath: string | null
@@ -205,6 +208,7 @@ export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]
     const chiave = nota?.chiave ?? `cartella-${daCartella.chiave}`
     const g = gruppi.get(chiave) ?? {
       chiave,
+      cartella: daCartella.chiave,
       titolo: nota?.titolo ?? daCartella.nome,
       tmdb: nota ? chiave : '',
       posterPath: null,
