@@ -698,9 +698,13 @@ test('le serie in cartelle di stagione prendono il nome della serie e vengono ri
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
-  await expect(page.getByText('South Park · S3E1', { exact: true })).toBeVisible()
   await expect(page.getByText('Season 03', { exact: true })).toHaveCount(0)
+  // Riconosciuto, l'episodio va sotto la serie, divisa per stagioni.
+  const serie = page.getByRole('button', { name: /^South Park/ })
+  await expect(serie).toBeVisible()
   expect(cercati).toContain('South Park')
+  await serie.click()
+  await expect(page.getByRole('list', { name: 'Stagione 3' }).getByText('01 Rainforest Shmainforest')).toBeVisible()
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-000301')).toMatchObject({
     tmdb_id: 2190,
     media_type: 'tv',
@@ -835,7 +839,11 @@ test('a fine episodio lo spunta, mette la serie in corso e propone il prossimo',
     seasons: [{ id: 1, season_number: 1, episode_count: 10, name: 'Stagione 1', poster_path: null, air_date: '2024-02-27' }],
   }))
 
-  await apriSongOfTheSea(page)
+  // Nella videoteca l'episodio sta sotto la sua serie: si parte da «▶ Inizia».
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
+  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
   await expect(page.getByRole('link', { name: 'Shōgun · S1E1' })).toHaveAttribute('href', '/title/tv/126308?season=1&episode=1')
   await portaIlVideoA(page, 3500, 3600)
 
@@ -868,7 +876,8 @@ test('i titoli restano quelli originali del film, tradotti solo se illeggibili',
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
   await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
-  await expect(page.getByText('Brooklyn Nine-Nine · S7E2', { exact: true })).toBeVisible()
+  // L'episodio sta sotto la sua serie, che ha il titolo originale.
+  await expect(page.getByRole('button', { name: /^Brooklyn Nine-Nine/ })).toBeVisible()
   await expect
     .poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-song-0001')?.titolo)
     .toBe('Song of the Sea')

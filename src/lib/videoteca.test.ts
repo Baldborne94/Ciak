@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { filtraVideoteca, generiPresenti, ordinaVideoteca, type RigaVideoteca } from './videoteca'
+import {
+  filtraVideoteca,
+  generiPresenti,
+  ordinaEpisodi,
+  ordinaVideoteca,
+  perStagione,
+  prossimoDaGuardare,
+  sigla,
+  type EpisodioVideoteca,
+  type RigaVideoteca,
+} from './videoteca'
 
 function riga(over: Partial<RigaVideoteca>): RigaVideoteca {
   return { id: 'x', nome: 'X', file: 'x.mp4', anno: null, generi: [], titoli: [], aggiunto: null, guardato: null, ...over }
@@ -65,5 +75,55 @@ describe('generiPresenti', () => {
       { id: 14, nome: 'Fantasy', quanti: 1 },
       { id: 27, nome: 'Horror', quanti: 1 },
     ])
+  })
+})
+
+function ep(over: Partial<EpisodioVideoteca>): EpisodioVideoteca {
+  return { id: 'e', nome: 'e', file: 'e.mp4', stagione: 1, episodio: 1, visto: false, posizione: 0, durata: 1320, guardato: null, ...over }
+}
+
+describe('le serie, per stagioni', () => {
+  const s1e2 = ep({ id: 's1e2', stagione: 1, episodio: 2 })
+  const s1e10 = ep({ id: 's1e10', stagione: 1, episodio: 10 })
+  const s2e1 = ep({ id: 's2e1', stagione: 2, episodio: 1 })
+  const extra = ep({ id: 'extra', nome: 'Speciale', stagione: null, episodio: null })
+
+  it('ordina per stagione ed episodio, con chi non li ha in fondo', () => {
+    expect(ordinaEpisodi([extra, s2e1, s1e10, s1e2]).map((e) => e.id)).toEqual(['s1e2', 's1e10', 's2e1', 'extra'])
+  })
+
+  it('divide per stagione', () => {
+    expect(perStagione([s2e1, s1e10, extra, s1e2]).map((g) => [g.stagione, g.episodi.map((e) => e.id)])).toEqual([
+      [1, ['s1e2', 's1e10']],
+      [2, ['s2e1']],
+      [null, ['extra']],
+    ])
+  })
+
+  it('senza niente di visto si comincia dal primo', () => {
+    expect(prossimoDaGuardare([s2e1, s1e10, s1e2])?.id).toBe('s1e2')
+  })
+
+  it('si riprende l episodio lasciato a metà', () => {
+    const aMeta = { ...s1e10, posizione: 600, guardato: '2026-10-01T20:00:00Z' }
+    expect(prossimoDaGuardare([s1e2, aMeta, s2e1])?.id).toBe('s1e10')
+  })
+
+  it('dopo l ultimo finito viene il successivo, non il primo non visto', () => {
+    // Chi ha visto solo la seconda stagione non deve tornare alla prima.
+    const visto = { ...s2e1, visto: true, guardato: '2026-10-01T20:00:00Z' }
+    const s2e2 = ep({ id: 's2e2', stagione: 2, episodio: 2 })
+    expect(prossimoDaGuardare([s1e2, visto, s2e2])?.id).toBe('s2e2')
+    // Finita l'ultima, si torna al primo rimasto indietro.
+    expect(prossimoDaGuardare([s1e2, visto])?.id).toBe('s1e2')
+  })
+
+  it('tutto visto: niente da continuare', () => {
+    expect(prossimoDaGuardare([{ ...s1e2, visto: true }])).toBeNull()
+  })
+
+  it('la sigla dell episodio', () => {
+    expect(sigla(s1e10)).toBe('S1E10')
+    expect(sigla(extra)).toBeNull()
   })
 })
