@@ -18,14 +18,30 @@ interface Props {
   episodi: EpisodioVideoteca[]
   scaricati: Set<string>
   onApri: (episodio: EpisodioVideoteca) => void
+  // Aperta o chiusa la può decidere la pagina: una serie riconosciuta mentre
+  // la si guarda cambia identità, e con lo stato qui dentro si richiudeva.
+  aperta?: boolean
+  onAperta?: (aperta: boolean) => void
+}
+
+// La stagione 0 sono gli speciali (OAD, OVA), come su TMDB.
+function nomeStagione(stagione: number | null): string {
+  if (stagione === null) return 'Altri episodi'
+  return stagione === 0 ? 'Speciali' : `Stagione ${stagione}`
 }
 
 function avanzamento(e: EpisodioVideoteca): number {
   return e.durata ? Math.min(1, e.posizione / e.durata) : 0
 }
 
-export default function SerieVideoteca({ titolo, poster, anno, episodi, scaricati, onApri }: Props) {
-  const [aperta, setAperta] = useState(false)
+export default function SerieVideoteca({ titolo, poster, anno, episodi, scaricati, onApri, aperta: apertaFuori, onAperta }: Props) {
+  const [apertaQui, setApertaQui] = useState(false)
+  const aperta = apertaFuori ?? apertaQui
+  const setAperta = (cambia: (a: boolean) => boolean) => {
+    const nuova = cambia(aperta)
+    setApertaQui(nuova)
+    onAperta?.(nuova)
+  }
   const visti = episodi.filter((e) => e.visto).length
   const prossimo = prossimoDaGuardare(episodi)
   const stagioni = perStagione(episodi)
@@ -84,12 +100,12 @@ export default function SerieVideoteca({ titolo, poster, anno, episodi, scaricat
             return (
               <section key={s.stagione ?? 'altro'} className="pt-3">
                 <h3 className="mb-1 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                  {s.stagione !== null ? `Stagione ${s.stagione}` : 'Altri episodi'}
+                  {nomeStagione(s.stagione)}
                   <span className="font-normal normal-case tracking-normal text-zinc-600">
                     {vistiStagione}/{s.episodi.length} visti
                   </span>
                 </h3>
-                <ul aria-label={s.stagione !== null ? `Stagione ${s.stagione}` : 'Altri episodi'}>
+                <ul aria-label={nomeStagione(s.stagione)}>
                   {s.episodi.map((e) => {
                     const iniziato = episodioIniziato(e)
                     return (

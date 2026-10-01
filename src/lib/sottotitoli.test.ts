@@ -131,6 +131,24 @@ describe('filmDaCercare', () => {
     expect(filmDaCercare('South.Park.S03E05.mp4', 'Season 03', 'South Park')).toMatchObject({ stagione: 3, episodio: 5 })
   })
 
+  it('un OAD in una cartella di speciali è la stagione 0 della serie', () => {
+    expect(
+      filmDaCercare("Shingeki no Kyojin - OADE01 - Ilse's Notebook.mp4", 'OADs', 'Shingeki no Kyojin [10bits x265]'),
+    ).toEqual({ titolo: 'Shingeki no Kyojin', stagione: 0, episodio: 1 })
+    expect(filmDaCercare('OVA 3.mkv', 'OVA', 'Lupin III (1977)')).toEqual({
+      titolo: 'Lupin III',
+      anno: 1977,
+      stagione: 0,
+      episodio: 3,
+    })
+  })
+
+  it('«OADE01» nel nome del file vale come stagione 0, episodio 1, anche senza cartella', () => {
+    expect(analizzaNomeFilm('Shingeki.no.Kyojin.OADE02.mkv')).toEqual({ titolo: 'Shingeki no Kyojin', stagione: 0, episodio: 2 })
+    expect(analizzaNomeFilm('Naruto OVA 3.mkv')).toEqual({ titolo: 'Naruto', stagione: 0, episodio: 3 })
+    expect(analizzaNomeFilm('Bleach Special 1.mkv')).toEqual({ titolo: 'Bleach', stagione: 0, episodio: 1 })
+  })
+
   it('un file che è solo «S03E01» prende il titolo dalla cartella della serie', () => {
     expect(filmDaCercare('S03E01.mp4', 'South Park')).toEqual({ titolo: 'South Park', stagione: 3, episodio: 1 })
   })
@@ -143,6 +161,16 @@ describe('stagioneDaCartella', () => {
     expect(stagioneDaCartella('S01')).toBe(1)
     expect(stagioneDaCartella('Series 7')).toBe(7)
     expect(stagioneDaCartella('season.04 (2000)')).toBe(4)
+  })
+
+  it('gli speciali (OAD, OVA, extra) sono la stagione 0, come su TMDB', () => {
+    // Shingeki no Kyojin [10bits x265]/OADs/… compariva come «OADs», un video
+    // alla volta, fuori dalla serie.
+    expect(stagioneDaCartella('OADs')).toBe(0)
+    expect(stagioneDaCartella('OVA')).toBe(0)
+    expect(stagioneDaCartella('Specials')).toBe(0)
+    expect(stagioneDaCartella('Extras')).toBe(0)
+    expect(stagioneDaCartella('Speciali')).toBe(0)
   })
 
   it('non scambia per stagioni le cartelle dei film o delle categorie', () => {

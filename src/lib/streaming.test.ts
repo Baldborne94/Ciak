@@ -47,6 +47,15 @@ describe('scegliAbbinamento', () => {
     expect(scegliAbbinamento({ titolo: 'Song of the Sea', anno: 2014 }, [omonimo, songFilm])?.id).toBe(110416)
   })
 
+  it('con gli altri nomi del titolo: «Shingeki no Kyojin» è Attack on Titan', () => {
+    const aot = media({ id: 1429, mediaType: 'tv', title: "L'attacco dei giganti", originalTitle: '進撃の巨人', releaseDate: '2013-04-07' })
+    const nome = { titolo: 'Shingeki no Kyojin', stagione: 1, episodio: 4 }
+    expect(scegliAbbinamento(nome, [aot])).toBeNull()
+    expect(scegliAbbinamento(nome, [aot], new Map([['tv-1429', ['Shingeki no Kyojin', 'AoT']]]))?.id).toBe(1429)
+    // Gli altri nomi di un altro titolo non contano.
+    expect(scegliAbbinamento(nome, [aot], new Map([['movie-1429', ['Shingeki no Kyojin']]]))).toBeNull()
+  })
+
   it('scarta un film omonimo di un altro anno', () => {
     expect(scegliAbbinamento({ titolo: 'Song of the Sea', anno: 2014 }, [omonimo])).toBeNull()
   })

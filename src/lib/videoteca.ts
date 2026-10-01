@@ -92,9 +92,10 @@ export interface EpisodioVideoteca {
   guardato: string | null // l'ultima volta che lo si è guardato (ISO)
 }
 
-// Stagione ed episodio in ordine numerico; chi non li ha va in fondo, per nome.
+// Stagione ed episodio in ordine numerico; gli speciali (stagione 0) dopo le
+// stagioni vere, e chi non ha niente in fondo, per nome.
 export function ordinaEpisodi(episodi: EpisodioVideoteca[]): EpisodioVideoteca[] {
-  const n = (x: number | null) => (x === null ? Number.MAX_SAFE_INTEGER : x)
+  const n = (x: number | null) => (x === null ? Number.MAX_SAFE_INTEGER : x === 0 ? Number.MAX_SAFE_INTEGER - 1 : x)
   return [...episodi].sort(
     (a, b) =>
       n(a.stagione) - n(b.stagione) ||
@@ -156,6 +157,9 @@ export interface VideoDaRaggruppare {
 
 export interface GruppoSerie {
   chiave: string // `tv-${id}` se riconosciuta su TMDB, altrimenti `cartella-…`
+  // Il nome della cartella, normalizzato: non cambia quando la serie viene
+  // riconosciuta, ed è ciò che ricorda quali serie sono aperte.
+  cartella: string
   titolo: string
   tmdb: string // la chiave dei dati di TMDB (anno, generi), '' se non riconosciuta
   posterPath: string | null
@@ -167,8 +171,12 @@ export interface GruppoSerie {
 // «South Park S01E01.mp4» sono la stessa serie.
 function nomeSerieDaFile(v: VideoDaRaggruppare): { chiave: string; nome: string } {
   const letto = filmDaCercare(v.name, v.cartella, v.serie)
-  const nome = v.serie ?? (letto.stagione !== undefined && v.cartella && stagioneDaCartella(v.cartella) === null ? v.cartella : null) ?? letto.titolo
-  return { chiave: normalizzaRicerca(analizzaNomeFilm(nome).titolo), nome }
+  const grezzo = v.serie ?? (letto.stagione !== undefined && v.cartella && stagioneDaCartella(v.cartella) === null ? v.cartella : null) ?? letto.titolo
+  // «Shingeki no Kyojin [10bits x265]» si mostra senza le etichette della
+  // release; l'anno, se c'è, resta: distingue i remake.
+  const pulito = analizzaNomeFilm(grezzo)
+  const nome = pulito.anno !== undefined ? `${pulito.titolo} (${pulito.anno})` : pulito.titolo
+  return { chiave: normalizzaRicerca(pulito.titolo), nome }
 }
 
 // Gli episodi raccolti per serie e i file che restano a sé (i film, e un
@@ -200,6 +208,7 @@ export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]
     const chiave = nota?.chiave ?? `cartella-${daCartella.chiave}`
     const g = gruppi.get(chiave) ?? {
       chiave,
+      cartella: daCartella.chiave,
       titolo: nota?.titolo ?? daCartella.nome,
       tmdb: nota ? chiave : '',
       posterPath: null,

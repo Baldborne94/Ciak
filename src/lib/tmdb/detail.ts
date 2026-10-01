@@ -91,6 +91,16 @@ export async function fetchOriginalTitle(type: TmdbType, id: number): Promise<st
   return isReadableTitle(base.originalTitle) ? (base.originalTitle as string) : resolveReadableTitle(base, raw)
 }
 
+// Gli altri nomi con cui un titolo è conosciuto («Shingeki no Kyojin» per
+// Attack on Titan): la ricerca di TMDB li trova, ma i risultati non li
+// riportano, e il confronto col nome del file fallirebbe.
+export async function fetchAlternativeTitles(type: TmdbType, id: number): Promise<string[]> {
+  const raw = await tmdbFetch<{ titles?: { title: string }[]; results?: { title: string }[] }>(
+    `/${type}/${id}/alternative_titles`,
+  )
+  return (raw.titles ?? raw.results ?? []).map((t) => t.title).filter(Boolean)
+}
+
 export async function fetchTitleFacts(type: TmdbType, id: number): Promise<TitleFacts> {
   const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, { append_to_response: 'credits' })
   const crew = raw.credits?.crew ?? []

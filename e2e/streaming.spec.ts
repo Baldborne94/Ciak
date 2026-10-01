@@ -34,7 +34,7 @@ const FILE: Record<string, unknown> = {
 //   Ciak/FILM/The.Secret.of.Kells.2009.mkv (nascosto: Ciak riproduce gli MP4)
 //   (e, se richiesto, …/Song.of.the.Sea.it.srt)
 // Le scritture (salvataggio e cestino dei sottotitoli) finiscono in `scritture`.
-async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false } = {}) {
+async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false } = {}) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   await page.route(/^https:\/\/www\.googleapis\.com\/(upload\/)?drive\/v3\/files/, (route) => {
     const req = route.request()
@@ -73,7 +73,13 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
         'cartella-ciak': [
           { id: 'cartella-film', name: 'FILM', parents: ['cartella-ciak'] },
           { id: 'cartella-serie', name: 'SERIE TV', parents: ['cartella-ciak'] },
+          ...(conAnime ? [{ id: 'cartella-anime', name: 'ANIME', parents: ['cartella-ciak'] }] : []),
         ],
+        // ANIME/Shingeki no Kyojin [10bits x265]/{S01E04, OADs/OADE01}
+        ...(conAnime && {
+          'cartella-anime': [{ id: 'cartella-snk', name: 'Shingeki no Kyojin [10bits x265]', parents: ['cartella-anime'] }],
+          'cartella-snk': [{ id: 'cartella-snk-oad', name: 'OADs', parents: ['cartella-snk'] }],
+        }),
         'cartella-film': [{ id: 'cartella-song', name: 'Song of the Sea (2014) [1080p]', parents: ['cartella-film'] }],
         ...(conSerie && {
           'cartella-serie': [{ id: 'cartella-southpark', name: 'South Park', parents: ['cartella-serie'] }],
@@ -92,6 +98,12 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
           parents: ['cartella-serie'],
           createdTime: '2026-09-20T10:00:00Z',
         },
+        ...(conAnime
+          ? [
+              { id: 'video-snk-s01e04', name: 'Shingeki no Kyojin - S01E04 - Night of the Graduation Ceremony.mp4', size: '758000000', mimeType: 'video/mp4', parents: ['cartella-snk'] },
+              { id: 'video-snk-oad01', name: "Shingeki no Kyojin - OADE01 - Ilse's Notebook.mp4", size: '566000000', mimeType: 'video/mp4', parents: ['cartella-snk-oad'] },
+            ]
+          : []),
         ...(conSerie
           ? [
               {
@@ -703,17 +715,32 @@ test('le serie in cartelle di stagione prendono il nome della serie e vengono ri
     { id: 2190, media_type: 'tv', name: 'South Park', original_name: 'South Park', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] },
   ])
 
+  // TMDB risponde solo dopo che la serie è stata aperta: è il momento in cui,
+  // riconosciuta, la serie cambiava identità e la lista aperta si richiudeva
+  // da sola (e il test, a seconda dei tempi, a volte falliva).
+  let rispondi!: () => void
+  const risposta = new Promise<void>((r) => (rispondi = r))
+  await page.route('**/api/tmdb*', async (route) => {
+    if (new URL(route.request().url()).searchParams.get('path') === '/search/multi') await risposta
+    return route.fallback()
+  })
+
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
   await expect(page.getByText('Season 03', { exact: true })).toHaveCount(0)
-  // Riconosciuto, l'episodio va sotto la serie, divisa per stagioni.
+  // Ancora da riconoscere, gli episodi stanno già sotto la serie della cartella.
   const serie = page.getByRole('button', { name: /^South Park/ })
   await expect(serie).toBeVisible()
   await serie.click()
   const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
   await expect(stagione3.getByText('01 Rainforest Shmainforest')).toBeVisible()
   await expect(stagione3.getByText('02 Spontaneous Combustion')).toBeVisible()
+
+  // Riconosciuta mentre è aperta: arriva la locandina, e la lista resta aperta.
+  rispondi()
+  await expect(page.locator('img[src*="/sp.jpg"]')).toBeVisible()
+  await expect(stagione3.getByText('01 Rainforest Shmainforest')).toBeVisible()
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-000301')).toMatchObject({
     tmdb_id: 2190,
     media_type: 'tv',
@@ -753,6 +780,48 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   await page.getByRole('button', { name: /^South Park/ }).click()
   const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
   await expect(stagione3.getByRole('button')).toHaveCount(2)
+})
+
+test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli altri nomi del titolo', async ({ page }) => {
+  // «Shingeki no Kyojin [10bits x265]/OADs/… OADE01 …» compariva come «OADs»,
+  // un video alla volta, e la serie non si trovava: TMDB la chiama «L'attacco
+  // dei giganti» / «進撃の巨人», e «Shingeki no Kyojin» sta fra gli altri nomi.
+  const db = await mockSupabase(page)
+  await mockDrive(page, { conAnime: true })
+  const aot = { id: 1429, media_type: 'tv', name: "L'attacco dei giganti", original_name: '進撃の巨人', first_air_date: '2013-04-07', poster_path: '/aot.jpg', genre_ids: [16] }
+  await cercaTmdb(page, [SONG, aot], movieDetail(1429, "L'attacco dei giganti", {
+    name: "L'attacco dei giganti",
+    original_name: '進撃の巨人',
+    original_title: '進撃の巨人',
+    seasons: [{ id: 1, season_number: 1, episode_count: 25, name: 'Stagione 1', poster_path: null, air_date: '2013-04-07' }],
+  }))
+  const altriNomi: string[] = []
+  await page.route('**/api/tmdb*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    if (path === '/tv/1429/alternative_titles') {
+      altriNomi.push(path)
+      return route.fulfill({ json: { id: 1429, results: [{ iso_3166_1: 'JP', title: 'Shingeki no Kyojin', type: 'romaji' }] } })
+    }
+    return route.fallback()
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  const serie = page.getByRole('button', { name: /^L'attacco dei giganti/ })
+  await expect(serie).toBeVisible()
+  await expect(page.getByText('OADs', { exact: true })).toHaveCount(0)
+  await serie.click()
+  await expect(page.getByRole('list', { name: 'Stagione 1' }).getByText(/S01E04/)).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Speciali' }).getByText(/OADE01/)).toBeVisible()
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-snk-oad01')).toMatchObject({
+    tmdb_id: 1429,
+    media_type: 'tv',
+    stagione: 0,
+    episodio: 1,
+  })
+  // Gli altri nomi si chiedono una volta per serie, non per episodio.
+  expect(altriNomi).toHaveLength(1)
 })
 
 test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede il voto', async ({ page }) => {
