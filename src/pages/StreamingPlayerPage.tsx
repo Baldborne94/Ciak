@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ErrorState } from '../components/States'
 import PannelloArchivio from '../components/PannelloArchivio'
+import ProssimoEpisodio from '../components/ProssimoEpisodio'
 import {
   anteprimaUrl,
   apriSuDriveUrl,
@@ -44,7 +45,16 @@ import {
 import { registraErrore } from '../lib/errorLog'
 import { logFailure } from '../lib/logFailure'
 import { filmDaCercare, nomeLingua } from '../lib/sottotitoli'
-import { titoloDaMostrare } from '../lib/streaming'
+import {
+  DURATE_SIGLA,
+  dopoLaSigla,
+  inSiglaFinale,
+  leggiDurataSigla,
+  mostraSaltaSigla,
+  salvaDurataSigla,
+} from '../lib/sigle'
+import { formattaTempo, titoloDaMostrare } from '../lib/streaming'
+import { sigla } from '../lib/videoteca'
 import { useArchivioStreaming } from '../lib/useArchivioStreaming'
 import { useSottotitoli } from '../lib/useSottotitoli'
 
@@ -72,6 +82,17 @@ const MESSAGGI: Record<Problema, string> = {
 // dell'episodio precedente.
 export default function StreamingPlayerPage() {
   const { fileId = '' } = useParams()
+  // Lo schermo intero vale per tutti gli episodi di fila, ma non per il resto
+  // dell'app: uscendo dal lettore si torna alla finestra. Il Layout rifà la
+  // pagina a ogni indirizzo, anche passando all'episodio dopo: si guarda dove
+  // si sta andando (l'indirizzo è già quello nuovo quando si smonta).
+  useEffect(
+    () => () => {
+      if (/^\/streaming\/[^/]+$/.test(window.location.pathname)) return
+      if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
+    },
+    [],
+  )
   return <LettoreStreaming key={fileId} />
 }
 
@@ -106,6 +127,23 @@ function LettoreStreaming() {
     if (e) setErrore(e)
   }, [])
   const videoRef = useRef<HTMLVideoElement>(null)
+  const navigate = useNavigate()
+  // Lo schermo intero di Ciak è quello della pagina, non del <video>: passando
+  // all'episodio dopo il <video> si rifà da capo, e col suo schermo intero si
+  // tornava ogni volta alla finestra. E sopra il video restano visibili i
+  // pulsanti per saltare le sigle.
+  const [schermoIntero, setSchermoIntero] = useState(() => document.fullscreenElement === document.documentElement)
+  useEffect(() => {
+    const cambia = () => setSchermoIntero(document.fullscreenElement === document.documentElement)
+    document.addEventListener('fullscreenchange', cambia)
+    return () => document.removeEventListener('fullscreenchange', cambia)
+  }, [])
+  // Dove si è nell'episodio: all'inizio (si può saltare la sigla), nella sigla
+  // finale, finito. Si aggiornano solo quando cambiano, non a ogni timeupdate.
+  const [allInizio, setAllInizio] = useState(true)
+  const [inCoda, setInCoda] = useState(false)
+  const [finito, setFinito] = useState(false)
+  const [siglaSaltata, setSiglaSaltata] = useState(false)
   const posizione = useRef(0)
   const audioControllato = useRef(false)
   // Chi ha scelto a mano il lettore di Drive ci resta, anche se quello di Ciak
@@ -210,7 +248,17 @@ function LettoreStreaming() {
   // Il legame con l'archivio: quale titolo è, dove ci si era fermati, e a fine
   // visione «visto» nel diario (o l'episodio spuntato) e il voto.
   const archivio = useArchivioStreaming(fileId, valido)
-  const { caricata: archivioCaricato, applicaRipresa } = archivio
+  const { caricata: archivioCaricato, applicaRipresa, prossimo } = archivio
+  const serie = archivio.voce?.media_type === 'tv' && archivio.voce.tmdb_id ? `tv-${archivio.voce.tmdb_id}` : null
+  const [durataSigla, setDurataSigla] = useState<number | null>(null)
+  useEffect(() => setDurataSigla(serie ? leggiDurataSigla(serie) : null), [serie])
+  const etichettaProssimo = prossimo ? sigla(prossimo) : null
+  const vaiAlProssimo = useCallback(() => {
+    if (!prossimo) return
+    navigate(`/streaming/${prossimo.drive_file_id}`, {
+      state: { titolo: titoloDaMostrare(prossimo) ?? undefined, file: prossimo.nome_file ?? undefined },
+    })
+  }, [navigate, prossimo])
   useEffect(() => {
     const v = videoRef.current
     if (archivioCaricato && v && v.readyState >= 1) applicaRipresa(v)
@@ -279,6 +327,18 @@ function LettoreStreaming() {
   function segnala(p: Problema) {
     setProblema(p)
     if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
+  }
+
+  function alternaSchermoIntero() {
+    if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
+    else document.documentElement.requestFullscreen().catch(logFailure('Schermo intero del lettore'))
+  }
+
+  function saltaSigla() {
+    const v = videoRef.current
+    if (!v || durataSigla === null) return
+    v.currentTime = dopoLaSigla(v.currentTime, durataSigla, Number.isFinite(v.duration) ? v.duration : null)
+    setSiglaSaltata(true)
   }
 
   function suErrore(v: HTMLVideoElement) {
@@ -378,13 +438,23 @@ function LettoreStreaming() {
         {nomeFile && nomeFile !== titolo && <p className="mt-1 truncate text-xs text-zinc-500">{nomeFile}</p>}
       </div>
 
-      <div className="aspect-video w-full overflow-hidden rounded-xl bg-black shadow-reel">
+      <div
+        className={
+          lettore === 'ciak' && schermoIntero
+            ? 'fixed inset-0 z-[100] bg-black'
+            : 'relative aspect-video w-full overflow-hidden rounded-xl bg-black shadow-reel'
+        }
+      >
         {lettore === 'ciak' ? (
           <video
             key={chiaveVideo}
             ref={videoRef}
             src={flussoVideoUrl(fileId)}
             controls
+            // Lo schermo intero del <video> si perderebbe a ogni episodio: c'è
+            // quello di Ciak (⛶ in alto a destra). Firefox il pulsante lo mostra
+            // comunque.
+            controlsList="nofullscreen"
             autoPlay
             playsInline
             aria-label={titolo}
@@ -404,6 +474,8 @@ function LettoreStreaming() {
               }
             }}
             onPause={() => archivio.suPausa()}
+            onEnded={() => setFinito(true)}
+            onPlay={() => setFinito(false)}
             // Un salto fallito riprende dal punto scelto, non da quello di prima;
             // uno che non finisce mai viene segnalato.
             onSeeking={(e) => {
@@ -416,6 +488,10 @@ function LettoreStreaming() {
               const v = e.currentTarget
               posizione.current = v.currentTime
               archivio.suTempo(v)
+              const inizio = mostraSaltaSigla(v.currentTime)
+              if (inizio !== allInizio) setAllInizio(inizio)
+              const coda = inSiglaFinale(v.currentTime, Number.isFinite(v.duration) ? v.duration : null)
+              if (coda !== inCoda) setInCoda(coda)
               if (tentativi.current > 0 && v.currentTime > ripresoDa.current + 30) tentativi.current = 0
               const scade = !scaricato && sessioneInScadenza(scadenzaDrive(), Date.now())
               if (scade !== inScadenza) setInScadenza(scade)
@@ -445,7 +521,54 @@ function LettoreStreaming() {
             className="h-full w-full border-0"
           />
         )}
+        {lettore === 'ciak' && (
+          <>
+            <button
+              type="button"
+              onClick={alternaSchermoIntero}
+              aria-label={schermoIntero ? 'Esci dallo schermo intero' : 'Schermo intero'}
+              title={schermoIntero ? 'Esci dallo schermo intero' : 'Schermo intero'}
+              className="absolute right-2 top-2 rounded-lg bg-black/50 px-2 py-1 text-lg text-zinc-200 opacity-70 transition hover:opacity-100"
+            >
+              ⛶
+            </button>
+            {/* Sopra la barra dei comandi del video, in basso a destra. */}
+            <div className="absolute bottom-14 right-3 flex flex-col items-end gap-2">
+              {durataSigla !== null && allInizio && !siglaSaltata && !finito && (
+                <button type="button" onClick={saltaSigla} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">
+                  ⏭ Salta sigla
+                </button>
+              )}
+              {etichettaProssimo && (inCoda || finito) && (
+                <ProssimoEpisodio etichetta={etichettaProssimo} finito={finito} onVai={vaiAlProssimo} />
+              )}
+            </div>
+          </>
+        )}
       </div>
+
+      {lettore === 'ciak' && serie && durataSigla !== null && (
+        <label className="flex flex-wrap items-center gap-2 text-sm text-zinc-400">
+          ⏭ «Salta sigla» va avanti di
+          <select
+            value={durataSigla}
+            onChange={(e) => {
+              const secondi = Number(e.target.value)
+              setDurataSigla(secondi)
+              salvaDurataSigla(serie, secondi)
+            }}
+            aria-label="Durata della sigla"
+            className="rounded-lg border border-theatre-800 bg-theatre-900 px-2 py-1 text-zinc-200"
+          >
+            {DURATE_SIGLA.map((d) => (
+              <option key={d} value={d}>
+                {formattaTempo(d)}
+              </option>
+            ))}
+          </select>
+          in tutti gli episodi di questa serie.
+        </label>
+      )}
 
       {problema && lettore === 'ciak' && (
         <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-projector/40 bg-projector/10 p-4 text-sm text-zinc-200">

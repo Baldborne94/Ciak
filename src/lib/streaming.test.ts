@@ -155,6 +155,15 @@ describe('prossimoEpisodio', () => {
     expect(prossimoEpisodio(ep('s2e1', 2, 1), tutte)).toBeNull()
     expect(prossimoEpisodio({ ...ep('f', 1, 1), media_type: 'movie' }, tutte)).toBeNull()
   })
+
+  it('dopo uno speciale viene lo speciale dopo, non la prima stagione', () => {
+    // Con la riproduzione automatica, finito l'OAD 8 si ripartiva da S1E1.
+    const conSpeciali = [...tutte, ep('oad1', 0, 1), ep('oad2', 0, 2)]
+    expect(prossimoEpisodio(ep('oad1', 0, 1), conSpeciali)?.drive_file_id).toBe('oad2')
+    expect(prossimoEpisodio(ep('oad2', 0, 2), conSpeciali)).toBeNull()
+    // E dalle stagioni vere non si finisce negli speciali.
+    expect(prossimoEpisodio(ep('e3', 1, 3), conSpeciali)?.drive_file_id).toBe('s2e1')
+  })
 })
 
 describe('titoloDaMostrare', () => {

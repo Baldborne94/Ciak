@@ -139,8 +139,16 @@ export function formattaTempo(secondi: number): string {
 // stessa stagione, altrimenti il primo della stagione dopo.
 export function prossimoEpisodio(voce: VoceStreaming, tutte: VoceStreaming[]): VoceStreaming | null {
   if (voce.media_type !== 'tv' || voce.stagione == null || voce.episodio == null) return null
+  // Gli speciali (stagione 0) proseguono fra loro: dopo l'ultimo OAD non si
+  // ricomincia da S1E1, e dalle stagioni vere non si finisce negli speciali.
+  const speciale = voce.stagione === 0
   const stessaSerie = tutte.filter(
-    (v) => v.media_type === 'tv' && v.tmdb_id === voce.tmdb_id && v.stagione != null && v.episodio != null,
+    (v) =>
+      v.media_type === 'tv' &&
+      v.tmdb_id === voce.tmdb_id &&
+      v.stagione != null &&
+      v.episodio != null &&
+      (v.stagione === 0) === speciale,
   )
   const dopo = stessaSerie
     .filter(
