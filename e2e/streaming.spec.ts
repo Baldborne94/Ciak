@@ -663,6 +663,11 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
     Object.defineProperty(v, 'currentTime', { configurable: true, get: () => 30, set: (t: number) => (v.salto = t) })
     v.dispatchEvent(new Event('timeupdate'))
   })
+  // In alto sul video: in basso la barra dei comandi di Firefox, alta il
+  // doppio di quella di Chrome, lo copriva.
+  const salta = await page.getByRole('button', { name: '⏭ Salta sigla' }).boundingBox()
+  const video = await page.locator('video').boundingBox()
+  expect(salta && video && salta.y + salta.height < video.y + video.height / 2).toBe(true)
   await page.getByRole('button', { name: '⏭ Salta sigla' }).click()
   expect(await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { salto?: number }).salto)).toBe(120)
   await expect(page.getByRole('button', { name: '⏭ Salta sigla' })).toHaveCount(0)
@@ -692,6 +697,84 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
   await page.goBack()
   await expect(page).toHaveURL(/\/streaming$/)
   await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull()
+})
+
+// Il video a un certo punto, ricordando dove lo si fa saltare (in `salto`).
+async function videoA(page: Page, secondi: number, durata = 3600) {
+  await page.evaluate(
+    ([t, d]) => {
+      const v = document.querySelector('video') as HTMLVideoElement & { salto?: number }
+      Object.defineProperty(v, 'duration', { configurable: true, get: () => d })
+      Object.defineProperty(v, 'paused', { configurable: true, get: () => false })
+      Object.defineProperty(v, 'currentTime', { configurable: true, get: () => t, set: (n: number) => (v.salto = n) })
+      v.dispatchEvent(new Event('timeupdate'))
+    },
+    [secondi, durata],
+  )
+}
+const saltoDelVideo = (page: Page) =>
+  page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { salto?: number }).salto)
+
+test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole a mano', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page)
+  const riga = (id: string, episodio: number) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: id,
+    nome_file: `Shogun.S01E0${episodio}.mkv`,
+    tmdb_id: 126308,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    stagione: 1,
+    episodio,
+    posizione: 0,
+    durata: 3600,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: false,
+  })
+  await mockSupabase(page, {
+    user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2), riga('video-shogun-03', 3)],
+  })
+  await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
+  await expect(page.getByRole('heading', { name: 'Shōgun · S1E1' })).toBeVisible()
+
+  await page.getByLabel('Salta sempre la sigla iniziale').check()
+  await page.getByLabel('Salta anche la sigla finale').check()
+  expect(await page.evaluate(() => localStorage.getItem('ciak:salta-sigle'))).toBe('{"inizio":true,"fine":true}')
+  // Il punto non si sa ancora: lo si dice, invece di non saltare niente in silenzio.
+  await expect(page.getByText(/La prima volta premi «⏭ Salta sigla»/)).toBeVisible()
+
+  // Episodio 1: le sigle si saltano a mano, e Ciak impara dove stanno.
+  await videoA(page, 95)
+  await page.getByRole('button', { name: '⏭ Salta sigla' }).click()
+  expect(await saltoDelVideo(page)).toBe(185)
+  await videoA(page, 3480)
+  await page.getByRole('button', { name: '⏭ Prossimo episodio: S1E2' }).click()
+  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
+  expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBe('{"inizio":95,"coda":120}')
+
+  // Episodio 2: la sigla iniziale si salta da sola, passandoci sopra…
+  await expect(page.getByRole('heading', { name: 'Shōgun · S1E2' })).toBeVisible()
+  await videoA(page, 60)
+  expect(await saltoDelVideo(page)).toBeUndefined()
+  await videoA(page, 95.25)
+  expect(await saltoDelVideo(page)).toBe(185.25)
+  // …e se il punto era sbagliato si torna indietro.
+  await page.getByRole('button', { name: '↩ Rivedi la sigla' }).click()
+  expect(await saltoDelVideo(page)).toBe(95.25)
+
+  // La sigla finale: il conto alla rovescia parte da lì, senza aspettare la fine.
+  await videoA(page, 3470)
+  await expect(page.getByRole('button', { name: '⏭ Prossimo episodio: S1E3' })).toBeVisible()
+  await expect(page.getByText(/S1E3 fra \d+ s/)).toHaveCount(0)
+  await videoA(page, 3485)
+  await expect(page.getByRole('region', { name: 'Prossimo episodio' }).getByText(/S1E3 fra \d+ s/)).toBeVisible()
+  await expect(page).toHaveURL(/\/streaming\/video-shogun-03$/, { timeout: 15_000 })
 })
 
 test('la lista riconosce i film di Drive e li mostra col titolo e la locandina', async ({ page }) => {

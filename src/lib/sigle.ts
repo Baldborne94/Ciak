@@ -51,3 +51,82 @@ export function salvaDurataSigla(serie: string, secondi: number): void {
     /* storage pieno o negato: resta quella di base */
   }
 }
+
+// ── Saltarle da sole ────────────────────────────────────────────────────────
+// Due caselle valide per tutte le serie: saltare sempre la sigla iniziale, e
+// anche quella finale. Dove stanno lo si impara da chi guarda: il punto in cui
+// ha premuto «⏭ Salta sigla» l'ultima volta in quella serie, e quanto mancava
+// alla fine quando ha premuto «⏭ Prossimo episodio». La sigla finale, misurata
+// dalla fine, cade quasi sempre allo stesso punto; quella iniziale meno,
+// perché la scena prima della sigla cambia lunghezza: per questo, saltata da
+// sola, si può tornare indietro.
+
+export interface SaltaSigle {
+  inizio: boolean
+  fine: boolean
+}
+
+const CHIAVE_SCELTE = 'ciak:salta-sigle'
+
+export function leggiSaltaSigle(): SaltaSigle {
+  try {
+    const v = JSON.parse(localStorage.getItem(CHIAVE_SCELTE) ?? '{}') as Partial<SaltaSigle>
+    return { inizio: v.inizio === true, fine: v.fine === true }
+  } catch {
+    return { inizio: false, fine: false }
+  }
+}
+
+export function salvaSaltaSigle(scelte: SaltaSigle): void {
+  try {
+    localStorage.setItem(CHIAVE_SCELTE, JSON.stringify(scelte))
+  } catch {
+    /* storage negato: le caselle tornano vuote alla prossima apertura */
+  }
+}
+
+// I punti imparati per una serie: dove comincia la sigla iniziale (secondi
+// dall'inizio) e la sigla finale (secondi prima della fine).
+export interface PuntiSigla {
+  inizio: number | null
+  coda: number | null
+}
+
+const CHIAVE_PUNTI = 'ciak:punti-sigla:'
+
+const numeroValido = (n: unknown): number | null => (typeof n === 'number' && Number.isFinite(n) && n >= 0 ? n : null)
+
+export function leggiPuntiSigla(serie: string): PuntiSigla {
+  try {
+    const v = JSON.parse(localStorage.getItem(CHIAVE_PUNTI + serie) ?? '{}') as Record<string, unknown>
+    return { inizio: numeroValido(v.inizio), coda: numeroValido(v.coda) }
+  } catch {
+    return { inizio: null, coda: null }
+  }
+}
+
+export function salvaPuntiSigla(serie: string, punti: PuntiSigla): void {
+  try {
+    localStorage.setItem(CHIAVE_PUNTI + serie, JSON.stringify(punti))
+  } catch {
+    /* storage negato: si impareranno di nuovo */
+  }
+}
+
+// La sigla iniziale si salta da sola solo passandoci sopra mentre il video
+// scorre (un timeupdate arriva ogni quarto di secondo circa): chi riprende un
+// episodio già oltre quel punto, o ci torna apposta, non viene rimandato avanti.
+const MARGINE_PASSAGGIO = 2
+
+export function inizioSiglaRaggiunto(posizione: number, inizio: number | null): boolean {
+  return inizio !== null && posizione >= inizio && posizione < inizio + MARGINE_PASSAGGIO
+}
+
+export function codaSiglaRaggiunta(posizione: number, durata: number | null, coda: number | null): boolean {
+  return coda !== null && !!durata && durata - posizione <= coda
+}
+
+// Quanto manca alla fine, da ricordare come inizio della sigla finale.
+export function secondiAllaFine(posizione: number, durata: number | null): number | null {
+  return durata ? Math.max(0, Math.round(durata - posizione)) : null
+}
