@@ -73,3 +73,68 @@ export function generiPresenti(righe: RigaVideoteca[], nomi: Map<number, string>
     .map(([id, quanti]) => ({ id, nome: nomi.get(id) as string, quanti }))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'it'))
 }
+
+// ── Le serie: una riga sola, divisa per stagioni ────────────────────────────
+// Con South Park in videoteca (più di 300 episodi) una riga per file rendeva
+// l'elenco inservibile: gli episodi si raccolgono sotto la loro serie.
+
+export interface EpisodioVideoteca {
+  id: string
+  nome: string // ciò che si mostra della riga (il file senza estensione)
+  file: string
+  stagione: number | null
+  episodio: number | null
+  visto: boolean
+  posizione: number
+  durata: number | null
+  guardato: string | null // l'ultima volta che lo si è guardato (ISO)
+}
+
+// Stagione ed episodio in ordine numerico; chi non li ha va in fondo, per nome.
+export function ordinaEpisodi(episodi: EpisodioVideoteca[]): EpisodioVideoteca[] {
+  const n = (x: number | null) => (x === null ? Number.MAX_SAFE_INTEGER : x)
+  return [...episodi].sort(
+    (a, b) =>
+      n(a.stagione) - n(b.stagione) ||
+      n(a.episodio) - n(b.episodio) ||
+      a.nome.localeCompare(b.nome, 'it', { numeric: true }),
+  )
+}
+
+// Iniziato e non finito: lo stesso 2% oltre cui la lista mostra la barra.
+export function episodioIniziato(e: EpisodioVideoteca): boolean {
+  if (e.visto) return false
+  return e.durata ? e.posizione / e.durata > 0.02 : e.posizione > 30
+}
+
+const piuRecente = (a: EpisodioVideoteca, b: EpisodioVideoteca) => (b.guardato ?? '').localeCompare(a.guardato ?? '')
+
+// L'episodio che «▶ Continua» fa partire: quello lasciato a metà più di
+// recente; altrimenti quello dopo l'ultimo finito; altrimenti il primo non
+// visto. Seguire l'ultimo visto, e non il primo non visto in assoluto, vuol
+// dire che chi guarda solo la terza stagione non viene rimandato alla prima.
+export function prossimoDaGuardare(episodi: EpisodioVideoteca[]): EpisodioVideoteca | null {
+  const ordinati = ordinaEpisodi(episodi)
+  const iniziato = ordinati.filter(episodioIniziato).sort(piuRecente)[0]
+  if (iniziato) return iniziato
+  const ultimoVisto = ordinati.filter((e) => e.visto).sort(piuRecente)[0]
+  if (ultimoVisto) {
+    const dopo = ordinati.slice(ordinati.indexOf(ultimoVisto) + 1).find((e) => !e.visto)
+    if (dopo) return dopo
+  }
+  return ordinati.find((e) => !e.visto) ?? null
+}
+
+export function perStagione(episodi: EpisodioVideoteca[]): { stagione: number | null; episodi: EpisodioVideoteca[] }[] {
+  const gruppi: { stagione: number | null; episodi: EpisodioVideoteca[] }[] = []
+  for (const e of ordinaEpisodi(episodi)) {
+    const ultimo = gruppi[gruppi.length - 1]
+    if (ultimo && ultimo.stagione === e.stagione) ultimo.episodi.push(e)
+    else gruppi.push({ stagione: e.stagione, episodi: [e] })
+  }
+  return gruppi
+}
+
+export function sigla(e: Pick<EpisodioVideoteca, 'stagione' | 'episodio'>): string | null {
+  return e.stagione !== null && e.episodio !== null ? `S${e.stagione}E${e.episodio}` : null
+}
