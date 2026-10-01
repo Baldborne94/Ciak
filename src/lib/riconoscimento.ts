@@ -2,6 +2,7 @@ import { mapLimit } from './mapLimit'
 import { logFailure } from './logFailure'
 import { fetchAlternativeTitles, fetchOriginalTitle, isReadableTitle, searchMulti } from './tmdb'
 import { filmDaCercare } from './sottotitoli'
+import { chiaveSerie } from './videoteca'
 import { abbinamentoDa, salvaStreaming, scegliAbbinamento, type VoceStreaming } from './streaming'
 import type { DriveVideo } from './googleDrive'
 import type { MediaItem } from './types'
@@ -42,7 +43,8 @@ function segnaControllato(fileId: string): void {
 // Quando Ciak impara a leggere meglio i nomi (le cartelle di stagione delle
 // serie, per esempio), i file rimasti senza titolo meritano un nuovo tentativo:
 // uno solo per versione e per dispositivo.
-const VERSIONE_RICONOSCIMENTO = 2
+// v3: i file provati prima che si leggessero i titoli alternativi.
+const VERSIONE_RICONOSCIMENTO = 3
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {
@@ -68,13 +70,55 @@ export async function riconosciNuovi(
   video: DriveVideo[],
   noti: Map<string, VoceStreaming>,
 ): Promise<Map<string, VoceStreaming>> {
+  const esito = new Map(noti)
+  let falliti = 0
+  // Un episodio prende la serie dai suoi vicini di cartella già riconosciuti,
+  // senza cercare niente, anche se un tentativo l'aveva già fatto: S1E1 provato
+  // prima che Ciak sapesse leggere «Shingeki no Kyojin» restava scoperto per
+  // sempre, e la pagina della serie proponeva di cominciare da S1E2.
+  const serieNote = new Map<string, VoceStreaming>()
+  for (const v of video) {
+    const r = noti.get(v.id)
+    if (r?.media_type === 'tv' && r.tmdb_id && !serieNote.has(chiaveSerie(v))) serieNote.set(chiaveSerie(v), r)
+  }
+  const ereditati = new Set<string>()
+  await mapLimit(
+    video.filter((v) => {
+      const r = noti.get(v.id)
+      return !r?.tmdb_id && !r?.abbinato_a_mano && serieNote.has(chiaveSerie(v))
+    }),
+    3,
+    async (v) => {
+      const nome = filmDaCercare(v.name, v.cartella, v.serie ?? null)
+      const serie = serieNote.get(chiaveSerie(v)) as VoceStreaming
+      if (nome.stagione === undefined || nome.episodio === undefined) return
+      const campi: Partial<VoceStreaming> = {
+        nome_file: v.name,
+        tmdb_id: serie.tmdb_id,
+        media_type: 'tv',
+        titolo: serie.titolo,
+        poster_path: serie.poster_path,
+        stagione: nome.stagione,
+        episodio: nome.episodio,
+      }
+      try {
+        await salvaStreaming(userId, v.id, campi)
+        esito.set(v.id, { ...(noti.get(v.id) ?? voceVuota(v.id)), ...campi })
+        ereditati.add(v.id)
+        segnaRiprovato(v.id)
+        // Il titolo è quello del fratello: se il suo è già verificato, lo è anche questo.
+        if (giaControllato(serie.drive_file_id)) segnaControllato(v.id)
+      } catch {
+        falliti++
+      }
+    },
+  )
+
   const senzaTitolo = (v: DriveVideo) => {
     const r = noti.get(v.id)
     return !!r && !r.tmdb_id && !r.abbinato_a_mano && !giaRiprovato(v.id)
   }
-  const daFare = video.filter((v) => !noti.has(v.id) || senzaTitolo(v))
-  const esito = new Map(noti)
-  let falliti = 0
+  const daFare = video.filter((v) => !ereditati.has(v.id) && (!noti.has(v.id) || senzaTitolo(v)))
   // Gli episodi di una serie cercano tutti la stessa cosa («South Park»): una
   // ricerca e un titolo originale per serie, non uno per file. Con 264
   // episodi erano 264 ricerche identiche, e il riconoscimento non finiva mai.

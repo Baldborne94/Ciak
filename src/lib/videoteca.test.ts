@@ -127,6 +127,7 @@ describe('le serie, per stagioni', () => {
   it('la sigla dell episodio', () => {
     expect(sigla(s1e10)).toBe('S1E10')
     expect(sigla(extra)).toBeNull()
+    expect(sigla(ep({ stagione: 0, episodio: 8 }))).toBe('Speciale 8')
   })
 })
 
