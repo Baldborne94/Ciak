@@ -107,11 +107,48 @@ export function analizzaNomeFilm(nome: string): NomeFilm {
   return { titolo: titolo || s, ...risultato }
 }
 
+// Una cartella di stagione: «Season 03», «Stagione 2», «S01», «Series 7».
+// Subito dopo la parola ci vuole il numero: «Serie TV», «Supernatural» o
+// «Se7en» non sono stagioni.
+export function stagioneDaCartella(nome: string | null | undefined): number | null {
+  if (!nome) return null
+  const m = /^\s*(?:season|stagione|series|serie|s)\s*[._-]?\s*(\d{1,2})(?!\d)/i.exec(nome)
+  return m ? Number(m[1]) : null
+}
+
+// L'episodio di un file dentro una cartella di stagione, quando il nome non
+// dice «S03E01»: «01 Rainforest Shmainforest», «E05», «Episodio 12».
+function episodioDaNomeFile(nomeFile: string): number | undefined {
+  const s = nomeFile.replace(ESTENSIONE_VIDEO, '').replace(/[._]+/g, ' ')
+  const m =
+    /^\s*(?:e|ep|episode|episodio)?\s*[-.]?\s*(\d{1,3})(?!\d)/i.exec(s) ??
+    /\b(?:e|ep|episode|episodio)\s*[-.]?\s*(\d{1,3})(?!\d)/i.exec(s)
+  return m ? Number(m[1]) : undefined
+}
+
 // Il nome del file dice di più (è lì che stanno stagione ed episodio); la
 // cartella dedicata al film, se c'è, è spesso più pulita e porta l'anno.
-export function filmDaCercare(nomeFile: string, cartella: string | null): NomeFilm {
+// `serie` è la cartella sopra una cartella di stagione: «South Park/Season 03/
+// 01 Rainforest Shmainforest.mp4» è South Park, stagione 3, episodio 1.
+export function filmDaCercare(nomeFile: string, cartella: string | null, serie: string | null = null): NomeFilm {
   const daFile = analizzaNomeFilm(nomeFile)
-  if (!cartella || daFile.stagione !== undefined || daFile.anno !== undefined) return daFile
+  const stagione = stagioneDaCartella(cartella)
+  if (serie && stagione !== null) {
+    const daSerie = analizzaNomeFilm(serie)
+    const episodio = daFile.episodio ?? episodioDaNomeFile(nomeFile)
+    return {
+      titolo: daSerie.titolo,
+      ...(daSerie.anno !== undefined && { anno: daSerie.anno }),
+      stagione: daFile.stagione ?? stagione,
+      ...(episodio !== undefined && { episodio }),
+    }
+  }
+  if (!cartella || daFile.anno !== undefined) return daFile
+  if (daFile.stagione !== undefined) {
+    // «S03E01.mp4» nella cartella della serie: il titolo è quello della cartella.
+    const senzaTitolo = /^S\d{1,2} ?E\d{1,3}$/i.test(daFile.titolo) || /^\d{1,2}x\d{2,3}$/.test(daFile.titolo)
+    return senzaTitolo ? { ...daFile, titolo: analizzaNomeFilm(cartella).titolo } : daFile
+  }
   const daCartella = analizzaNomeFilm(cartella)
   return daCartella.anno !== undefined ? daCartella : daFile
 }

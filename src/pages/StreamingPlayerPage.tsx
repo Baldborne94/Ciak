@@ -242,7 +242,7 @@ function LettoreStreaming() {
     stato?.titolo ??
     locale?.titolo ??
     (archivio.voce ? titoloDaMostrare(archivio.voce) : null) ??
-    (sub.info ? titoloVideo({ name: sub.info.name, cartella: sub.cartella }) : 'Film')
+    (sub.info ? titoloVideo({ name: sub.info.name, cartella: sub.cartella, serie: sub.serie }) : 'Film')
   const nomeFile = stato?.file ?? locale?.file ?? sub.info?.name
 
   const indietro = (
@@ -485,7 +485,7 @@ function LettoreStreaming() {
       {archivio.caricata && (
         <PannelloArchivio
           voce={archivio.voce}
-          nome={filmDaCercare(nomeFile ?? titolo, sub.cartella)}
+          nome={filmDaCercare(nomeFile ?? titolo, sub.cartella, sub.serie)}
           ripresoDa={archivio.ripresoDa}
           visto={archivio.visto}
           votoSalvato={archivio.votoSalvato}
