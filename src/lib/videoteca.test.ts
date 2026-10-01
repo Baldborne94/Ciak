@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  episodioIniziato,
   filtraVideoteca,
   generiPresenti,
   ordinaEpisodi,
@@ -80,7 +81,7 @@ describe('generiPresenti', () => {
 })
 
 function ep(over: Partial<EpisodioVideoteca>): EpisodioVideoteca {
-  return { id: 'e', nome: 'e', file: 'e.mp4', stagione: 1, episodio: 1, visto: false, posizione: 0, durata: 1320, guardato: null, ...over }
+  return { id: 'e', nome: 'e', file: 'e.mp4', stagione: 1, episodio: 1, visto: false, posizione: 0, secondiVisti: 0, durata: 1320, guardato: null, ...over }
 }
 
 describe('le serie, per stagioni', () => {
@@ -107,8 +108,17 @@ describe('le serie, per stagioni', () => {
   })
 
   it('si riprende l episodio lasciato a metà', () => {
-    const aMeta = { ...s1e10, posizione: 600, guardato: '2026-10-01T20:00:00Z' }
+    const aMeta = { ...s1e10, posizione: 600, secondiVisti: 600, guardato: '2026-10-01T20:00:00Z' }
     expect(prossimoDaGuardare([s1e2, aMeta, s2e1])?.id).toBe('s1e10')
+  })
+
+  it('aperto un attimo, o solo spostando la barra, non è «iniziato»', () => {
+    // L'OAD 8 aperto per provare il lettore proponeva «Riprendi Speciale 8»
+    // a chi non aveva ancora visto niente.
+    const provato = ep({ id: 'oad8', stagione: 0, episodio: 8, posizione: 700, secondiVisti: 20, guardato: '2026-10-01T20:00:00Z' })
+    expect(episodioIniziato(provato)).toBe(false)
+    expect(prossimoDaGuardare([provato, s2e1, s1e2])?.id).toBe('s1e2')
+    expect(episodioIniziato({ ...provato, secondiVisti: 120 })).toBe(true)
   })
 
   it('dopo l ultimo finito viene il successivo, non il primo non visto', () => {
@@ -132,7 +142,7 @@ describe('le serie, per stagioni', () => {
 })
 
 describe('raggruppaSerie', () => {
-  const sp = { tmdb_id: 2190, media_type: 'tv' as const, titolo: 'South Park', poster_path: '/sp.jpg', visto_il: null, posizione: 0, durata: 1320, updated_at: undefined }
+  const sp = { tmdb_id: 2190, media_type: 'tv' as const, titolo: 'South Park', poster_path: '/sp.jpg', visto_il: null, posizione: 0, secondi_visti: 0, durata: 1320, updated_at: undefined }
 
   it('gli episodi non ancora riconosciuti vanno sotto la serie riconosciuta della stessa cartella', () => {
     // Prima: due «South Park», una con 50 episodi abbinati e una con 264 no.
@@ -178,6 +188,19 @@ describe('raggruppaSerie', () => {
     expect(serie[0].episodi.map((e) => [e.id, e.stagione, e.episodio])).toEqual([
       ['oad1', 0, 1],
       ['s1e4', 1, 4],
+    ])
+  })
+
+  it('il riassunto «S01E13.5» sta fra gli speciali, anche se era stato salvato come S1E13', () => {
+    const snk = { ...sp, tmdb_id: 1429, titolo: "L'attacco dei giganti" }
+    const cartella = 'Shingeki no Kyojin [10bits x265]'
+    const { serie } = raggruppaSerie([
+      { id: 's1e13', name: 'Shingeki no Kyojin - S01E13 - Primal Desires.mp4', cartella, serie: null, voce: { ...snk, stagione: 1, episodio: 13 } },
+      { id: 'mezzo', name: 'Shingeki no Kyojin - S01E13.5 - Since That Day.mp4', cartella, serie: null, voce: { ...snk, stagione: 1, episodio: 13 } },
+    ])
+    expect(serie[0].episodi.map((e) => [e.id, e.stagione, e.episodio])).toEqual([
+      ['s1e13', 1, 13],
+      ['mezzo', 0, null],
     ])
   })
 

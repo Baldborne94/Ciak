@@ -102,6 +102,7 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
           ? [
               { id: 'video-snk-s01e04', name: 'Shingeki no Kyojin - S01E04 - Night of the Graduation Ceremony.mp4', size: '758000000', mimeType: 'video/mp4', parents: ['cartella-snk'] },
               { id: 'video-snk-oad01', name: "Shingeki no Kyojin - OADE01 - Ilse's Notebook.mp4", size: '566000000', mimeType: 'video/mp4', parents: ['cartella-snk-oad'] },
+              { id: 'video-snk-s01e135', name: 'Shingeki no Kyojin - S01E13.5 - Since That Day.mp4', size: '700000000', mimeType: 'video/mp4', parents: ['cartella-snk'] },
             ]
           : []),
         ...(conSerie
@@ -832,14 +833,58 @@ test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli 
   await serie.click()
   await expect(page.getByRole('list', { name: 'Stagione 1' }).getByText(/S01E04/)).toBeVisible()
   await expect(page.getByRole('list', { name: 'Speciali' }).getByText(/OADE01/)).toBeVisible()
+  // Il riassunto «S01E13.5» non è un secondo episodio 13: sta fra gli speciali.
+  await expect(page.getByRole('list', { name: 'Speciali' }).getByText(/S01E13\.5/)).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Stagione 1' }).getByText(/S01E13\.5/)).toHaveCount(0)
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-snk-oad01')).toMatchObject({
     tmdb_id: 1429,
     media_type: 'tv',
     stagione: 0,
     episodio: 1,
   })
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-snk-s01e135')).toMatchObject({
+    tmdb_id: 1429,
+    media_type: 'tv',
+    stagione: 0,
+    episodio: null,
+  })
   // Gli altri nomi si chiedono una volta per serie, non per episodio.
   expect(altriNomi).toHaveLength(1)
+})
+
+test('un mezzo episodio già salvato come S1E13 passa fra gli speciali, senza cercare di nuovo', async ({ page }) => {
+  // «S01E13.5 - Since That Day» compariva come un secondo «Ep. 13».
+  const riga = (id: string, extra: Record<string, unknown>) => ({ user_id: E2E_USER.id, drive_file_id: id, abbinato_a_mano: false, posizione: 0, secondi_visti: 0, tmdb_id: 1429, media_type: 'tv', titolo: "L'attacco dei giganti", poster_path: '/aot.jpg', ...extra })
+  const db = await mockSupabase(page, {
+    user_streaming: [
+      riga('video-snk-s01e04', { nome_file: 'Shingeki no Kyojin - S01E04 - Night of the Graduation Ceremony.mp4', stagione: 1, episodio: 4 }),
+      riga('video-snk-oad01', { nome_file: "Shingeki no Kyojin - OADE01 - Ilse's Notebook.mp4", stagione: 0, episodio: 1 }),
+      riga('video-snk-s01e135', { nome_file: 'Shingeki no Kyojin - S01E13.5 - Since That Day.mp4', stagione: 1, episodio: 13 }),
+    ],
+  })
+  await page.addInitScript(() => {
+    for (const id of ['video-snk-s01e04', 'video-snk-oad01', 'video-snk-s01e135']) localStorage.setItem(`ciak:titolo-originale-v1:${id}`, '1')
+  })
+  await mockDrive(page, { conAnime: true })
+  await cercaTmdb(page, [SONG])
+  const cercati: string[] = []
+  page.on('request', (r) => {
+    const u = new URL(r.url())
+    if (u.searchParams.get('path') === '/search/multi') cercati.push(u.searchParams.get('query') ?? '')
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.getByRole('button', { name: /^L'attacco dei giganti/ }).click()
+  await expect(page.getByRole('list', { name: 'Speciali' }).getByText(/S01E13\.5/)).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Stagione 1' }).getByText(/S01E13\.5/)).toHaveCount(0)
+
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-snk-s01e135')).toMatchObject({
+    tmdb_id: 1429,
+    stagione: 0,
+    episodio: null,
+  })
+  expect(cercati.filter((q) => /Shingeki/.test(q))).toHaveLength(0)
 })
 
 test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede il voto', async ({ page }) => {

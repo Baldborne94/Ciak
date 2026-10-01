@@ -83,7 +83,13 @@ export function analizzaNomeFilm(nome: string): NomeFilm {
   // Gli speciali degli anime: «OADE01», «OVA 3», «Special 1». Su TMDB sono la
   // stagione 0, ed è lì che si spuntano.
   const speciale = ep ? null : /\b(?:OAD|OVA|ONA|Special|Speciale)\s*E?\s*(\d{1,3})\b/i.exec(s)
-  if (ep) {
+  if (ep && mezzoEpisodio(nome)) {
+    // «S01E13.5» è un riassunto fra due episodi: su TMDB sta fra gli speciali,
+    // con un numero che dal nome non si ricava. Leggerlo come E13 ne faceva
+    // un secondo episodio 13.
+    risultato.stagione = 0
+    fine = Math.min(fine, ep.index)
+  } else if (ep) {
     risultato.stagione = Number(ep[1])
     risultato.episodio = Number(ep[2])
     fine = Math.min(fine, ep.index)
@@ -125,6 +131,14 @@ export function stagioneDaCartella(nome: string | null | undefined): number | nu
   return /^\s*(?:OADs?|OVAs?|ONAs?|Specials?|Speciali|Extras?)\s*$/i.test(nome) ? 0 : null
 }
 
+// «S01E13.5» o, in una cartella di stagione, «13.5 Since That Day». Si guarda
+// il nome com'è, prima che i punti diventino spazi: «S01E13 - 5 cose» non lo
+// è, e nemmeno «S01E13.720p» (dopo la cifra non c'è uno stacco).
+function mezzoEpisodio(nomeFile: string): boolean {
+  const s = nomeFile.replace(ESTENSIONE_VIDEO, '')
+  return /\bS\d{1,2} ?E\d{1,3}[.,]\d\b/i.test(s) || /^\s*(?:e|ep|episode|episodio)?\s*[-.]?\s*\d{1,3}[.,]\d\b/i.test(s)
+}
+
 // L'episodio di un file dentro una cartella di stagione, quando il nome non
 // dice «S03E01»: «01 Rainforest Shmainforest», «E05», «Episodio 12».
 function episodioDaNomeFile(nomeFile: string): number | undefined {
@@ -144,11 +158,12 @@ export function filmDaCercare(nomeFile: string, cartella: string | null, serie: 
   const stagione = stagioneDaCartella(cartella)
   if (serie && stagione !== null) {
     const daSerie = analizzaNomeFilm(serie)
-    const episodio = daFile.episodio ?? episodioDaNomeFile(nomeFile)
+    const mezzo = mezzoEpisodio(nomeFile)
+    const episodio = mezzo ? undefined : (daFile.episodio ?? episodioDaNomeFile(nomeFile))
     return {
       titolo: daSerie.titolo,
       ...(daSerie.anno !== undefined && { anno: daSerie.anno }),
-      stagione: daFile.stagione ?? stagione,
+      stagione: mezzo ? 0 : (daFile.stagione ?? stagione),
       ...(episodio !== undefined && { episodio }),
     }
   }

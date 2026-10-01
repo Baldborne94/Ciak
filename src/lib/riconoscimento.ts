@@ -72,6 +72,25 @@ export async function riconosciNuovi(
 ): Promise<Map<string, VoceStreaming>> {
   const esito = new Map(noti)
   let falliti = 0
+  // Quando Ciak impara a leggere meglio un nome, le righe già abbinate si
+  // allineano: «S01E13.5» salvato come S1E13 diventa uno speciale. Una
+  // scrittura solo per le righe che non tornano, e mai su una scelta a mano.
+  const daRileggere = video.flatMap((v) => {
+    const r = noti.get(v.id)
+    if (r?.media_type !== 'tv' || !r.tmdb_id || r.abbinato_a_mano) return []
+    const letto = filmDaCercare(v.name, v.cartella, v.serie ?? null)
+    if (letto.stagione === undefined) return []
+    const campi = { stagione: letto.stagione, episodio: letto.episodio ?? null }
+    return r.stagione === campi.stagione && r.episodio === campi.episodio ? [] : [{ r, campi }]
+  })
+  await mapLimit(daRileggere, 3, async ({ r, campi }) => {
+    try {
+      await salvaStreaming(userId, r.drive_file_id, campi)
+      esito.set(r.drive_file_id, { ...r, ...campi })
+    } catch {
+      falliti++
+    }
+  })
   // Un episodio prende la serie dai suoi vicini di cartella già riconosciuti,
   // senza cercare niente, anche se un tentativo l'aveva già fatto: S1E1 provato
   // prima che Ciak sapesse leggere «Shingeki no Kyojin» restava scoperto per
@@ -91,7 +110,7 @@ export async function riconosciNuovi(
     async (v) => {
       const nome = filmDaCercare(v.name, v.cartella, v.serie ?? null)
       const serie = serieNote.get(chiaveSerie(v)) as VoceStreaming
-      if (nome.stagione === undefined || nome.episodio === undefined) return
+      if (nome.stagione === undefined) return
       const campi: Partial<VoceStreaming> = {
         nome_file: v.name,
         tmdb_id: serie.tmdb_id,
@@ -99,7 +118,7 @@ export async function riconosciNuovi(
         titolo: serie.titolo,
         poster_path: serie.poster_path,
         stagione: nome.stagione,
-        episodio: nome.episodio,
+        episodio: nome.episodio ?? null,
       }
       try {
         await salvaStreaming(userId, v.id, campi)
@@ -140,7 +159,7 @@ export async function riconosciNuovi(
   // per serie.
   const alternativi = new Map<string, Promise<string[]>>()
   const conAltriTitoli = async (nome: NomeFilm, risultati: MediaItem[]): Promise<MediaItem | null> => {
-    const episodio = nome.stagione !== undefined && nome.episodio !== undefined
+    const episodio = nome.stagione !== undefined
     const candidati = risultati.filter((r) => !episodio || r.mediaType === 'tv').slice(0, 3)
     if (candidati.length === 0) return null
     const altri = new Map<string, string[]>()

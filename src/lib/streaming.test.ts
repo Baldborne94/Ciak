@@ -229,8 +229,11 @@ describe('«Guarda ora»: quale file far partire', () => {
       riga(id, { media_type: 'tv', tmdb_id: 1429, stagione, episodio, durata: 1400, ...over })
     const oad = ep('oad1', 0, 1)
     expect(fileDaGuardare([oad, ep('s1e2', 1, 2), ep('s1e1', 1, 1)], 1429, 'tv')?.drive_file_id).toBe('s1e1')
-    const aMeta = ep('oad8', 0, 8, { posizione: 700, updated_at: '2026-10-01T20:00:00Z' })
+    const aMeta = ep('oad8', 0, 8, { posizione: 700, secondi_visti: 700, updated_at: '2026-10-01T20:00:00Z' })
     expect(fileDaGuardare([oad, aMeta, ep('s1e1', 1, 1)], 1429, 'tv')?.drive_file_id).toBe('oad8')
+    // Aperto un attimo per provare, non è da riprendere: si comincia da S1E1.
+    const provato = { ...aMeta, secondi_visti: 15 }
+    expect(fileDaGuardare([oad, provato, ep('s1e1', 1, 1)], 1429, 'tv')?.drive_file_id).toBe('s1e1')
     const visto = ep('s1e1', 1, 1, { visto_il: '2026-10-01', posizione: 1400, updated_at: '2026-10-01T21:00:00Z' })
     expect(fileDaGuardare([visto, ep('s1e2', 1, 2), oad], 1429, 'tv')?.drive_file_id).toBe('s1e2')
   })

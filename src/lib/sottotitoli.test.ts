@@ -149,6 +149,15 @@ describe('filmDaCercare', () => {
     expect(analizzaNomeFilm('Bleach Special 1.mkv')).toEqual({ titolo: 'Bleach', stagione: 0, episodio: 1 })
   })
 
+  it('un mezzo episodio («S01E13.5», un riassunto) è uno speciale senza numero, non un secondo episodio 13', () => {
+    const nome = 'Shingeki no Kyojin - S01E13.5 - Since That Day.mp4'
+    expect(analizzaNomeFilm(nome)).toEqual({ titolo: 'Shingeki no Kyojin', stagione: 0 })
+    expect(filmDaCercare(nome, 'Shingeki no Kyojin [10bits x265]')).toEqual({ titolo: 'Shingeki no Kyojin', stagione: 0 })
+    expect(filmDaCercare('13.5 Since That Day.mp4', 'Season 01', 'Shingeki no Kyojin')).toEqual({ titolo: 'Shingeki no Kyojin', stagione: 0 })
+    // Un punto seguito dalla risoluzione non è un mezzo episodio.
+    expect(analizzaNomeFilm('Show.S01E13.720p.mkv')).toMatchObject({ titolo: 'Show', stagione: 1, episodio: 13 })
+  })
+
   it('un file che è solo «S03E01» prende il titolo dalla cartella della serie', () => {
     expect(filmDaCercare('S03E01.mp4', 'South Park')).toEqual({ titolo: 'South Park', stagione: 3, episodio: 1 })
   })
