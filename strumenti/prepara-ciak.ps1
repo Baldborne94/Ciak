@@ -24,7 +24,10 @@
 
 param(
   [string]$Origine = 'E:\Intrattenimento',
-  [string]$Destinazione = 'G:\Il mio Drive\Ciak'
+  [string]$Destinazione = 'G:\Il mio Drive\Ciak',
+  # 'auto' prova la scheda video (NVIDIA, Intel, AMD) e ripiega sulla CPU;
+  # si puo' forzare un encoder, per esempio -Encoder libx264.
+  [string]$Encoder = 'auto'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -63,11 +66,46 @@ if (-not (Test-Path -LiteralPath $Origine)) {
 }
 
 $Origine = (Resolve-Path -LiteralPath $Origine).Path.TrimEnd('\', '/')
+
+# Ricodificare con la CPU va a circa 3 volte il tempo reale: una serie in
+# HEVC a 10 bit sono ore. La scheda video (NVENC, Quick Sync, AMF) fa lo
+# stesso lavoro 5-10 volte piu' in fretta. Si prova con un video di prova di
+# un attimo: un encoder elencato da ffmpeg non e' detto che il PC lo abbia.
+# Gli errori di ffmpeg qui sono attesi (un encoder che manca) e non devono
+# fermare lo script: Windows PowerShell 5.1, con 'Stop', trasforma in errore
+# anche il testo che un programma scrive su stderr, se lo si redirige.
+function EncoderFunziona([string]$nome) {
+  $ErrorActionPreference = 'Continue'
+  try {
+    & ffmpeg -hide_banner -loglevel quiet -f lavfi -i 'color=black:s=256x256:d=0.2' -pix_fmt yuv420p -c:v $nome -f null - 2>&1 | Out-Null
+    return ($LASTEXITCODE -eq 0)
+  } catch {
+    return $false
+  }
+}
+if ($Encoder -eq 'auto') {
+  $Encoder = 'libx264'
+  foreach ($candidato in 'h264_nvenc', 'h264_qsv', 'h264_amf') {
+    if (EncoderFunziona $candidato) { $Encoder = $candidato; break }
+  }
+}
+
+# Gli argomenti per ricodificare il video con un encoder: qualita' simile per
+# tutti, sempre H.264 a 8 bit (yuv420p), l'unico che ogni browser legge.
+function ArgomentiVideo([string]$nome) {
+  switch ($nome) {
+    'h264_nvenc' { return @('-c:v', 'h264_nvenc', '-preset', 'p5', '-tune', 'hq', '-rc', 'vbr', '-cq', '21', '-b:v', '0', '-profile:v', 'high', '-pix_fmt', 'yuv420p') }
+    'h264_qsv' { return @('-c:v', 'h264_qsv', '-preset', 'medium', '-global_quality', '21', '-pix_fmt', 'nv12') }
+    'h264_amf' { return @('-c:v', 'h264_amf', '-quality', 'quality', '-rc', 'cqp', '-qp_i', '21', '-qp_p', '23', '-pix_fmt', 'yuv420p') }
+    default { return @('-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p') }
+  }
+}
 $Lavoro = Join-Path ([IO.Path]::GetTempPath()) 'ciak-conversione'
 New-Item -ItemType Directory -Force -Path $Lavoro | Out-Null
 
 Write-Host "Da:  $Origine"
 Write-Host "A:   $Destinazione"
+if ($Encoder -eq 'libx264') { Write-Host 'Ricodifica: con la CPU (nessuna scheda video utilizzabile trovata)' } else { Write-Host "Ricodifica: con la scheda video ($Encoder)" }
 Write-Host ''
 
 $video = Get-ChildItem -LiteralPath $Origine -Recurse -File |
@@ -100,17 +138,27 @@ foreach ($f in $video) {
     $copiaAudio = ($audio.Count -gt 0) -and -not ($audio | Where-Object { $_.codec_name -ne 'aac' })
 
     $tmp = Join-Path $Lavoro "$nome.mp4"
-    $argomenti = @('-hide_banner', '-loglevel', 'error', '-stats', '-y', '-i', $f.FullName, '-map', "0:$($v.index)", '-map', '0:a?')
+    $audioArg = if ($copiaAudio) { @('-c:a', 'copy') } else { @('-c:a', 'aac', '-b:a', '192k') }
+    $mappe = @('-map', "0:$($v.index)", '-map', '0:a?')
+    $uscita = @('-sn', '-dn', '-movflags', '+faststart', '-f', 'mp4', $tmp)
+    $base = @('-hide_banner', '-loglevel', 'error', '-stats', '-y')
     if ($copiaVideo) {
-      $argomenti += @('-c:v', 'copy')
+      $esito = Esegui 'ffmpeg' ($base + @('-i', $f.FullName) + $mappe + @('-c:v', 'copy') + $audioArg + $uscita)
     } else {
-      Write-Host "   video $($v.codec_name) $($v.pix_fmt): lo ricodifico in H.264, ci vuole un po'..." -ForegroundColor Yellow
-      $argomenti += @('-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p')
+      Write-Host "   video $($v.codec_name) $($v.pix_fmt): lo ricodifico in H.264 ($Encoder)..." -ForegroundColor Yellow
       $ricodificati++
+      # Con la scheda video anche la lettura (HEVC compreso) passa dalla GPU;
+      # se non ci riesce ffmpeg torna da solo alla CPU.
+      $lettura = if ($Encoder -eq 'libx264') { @() } else { @('-hwaccel', 'auto') }
+      $esito = Esegui 'ffmpeg' ($base + $lettura + @('-i', $f.FullName) + $mappe + (ArgomentiVideo $Encoder) + $audioArg + $uscita)
+      if ($esito -ne 0 -and $Encoder -ne 'libx264') {
+        # Qualche file la scheda video non lo prende (formati rari, risoluzioni
+        # strane): lo si rifa' con la CPU invece di lasciarlo indietro.
+        Write-Host "   la scheda video non ce l'ha fatta: riprovo con la CPU..." -ForegroundColor Yellow
+        $esito = Esegui 'ffmpeg' ($base + @('-i', $f.FullName) + $mappe + (ArgomentiVideo 'libx264') + $audioArg + $uscita)
+      }
     }
-    if ($copiaAudio) { $argomenti += @('-c:a', 'copy') } else { $argomenti += @('-c:a', 'aac', '-b:a', '192k') }
-    $argomenti += @('-sn', '-dn', '-movflags', '+faststart', '-f', 'mp4', $tmp)
-    if ((Esegui 'ffmpeg' $argomenti) -ne 0) { throw 'conversione non riuscita' }
+    if ($esito -ne 0) { throw 'conversione non riuscita' }
 
     # I sottotitoli interni: uno per lingua (il primo), con la lingua nel nome.
     $srt = @()

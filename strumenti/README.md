@@ -22,7 +22,14 @@ su Drive va solo il risultato, una volta.
 2. Doppio clic su `prepara-ciak.bat`.
 
 I video già presenti su Drive si saltano: si può rilanciare quando si vuole.
-Gli originali restano dove sono. Per cartelle diverse:
+Gli originali restano dove sono.
+
+Un video che non è già H.264 a 8 bit (HEVC, 10 bit…) va ricodificato: con la
+scheda video (NVIDIA, Intel o AMD, scelta da sola all'avvio) ci vuole una
+frazione del tempo rispetto alla CPU, che resta il ripiego. Un file che la
+scheda video non riesce a fare viene rifatto con la CPU.
+
+Per cartelle diverse, o per forzare un encoder (`-Encoder libx264` per la CPU):
 
 ```
 powershell -ExecutionPolicy Bypass -File prepara-ciak.ps1 -Origine "D:\Video" -Destinazione "G:\Il mio Drive\Ciak"
