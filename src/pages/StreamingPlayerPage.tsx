@@ -59,9 +59,11 @@ import {
   salvaPuntiSigla,
   salvaSaltaSigle,
   secondiAllaFine,
+  inSiglaEsatta,
   type PuntiSigla,
   type SaltaSigle,
 } from '../lib/sigle'
+import { sigleEpisodio, type SigleEpisodio } from '../lib/sigleOnline'
 import { formattaTempo, titoloDaMostrare } from '../lib/streaming'
 import { sigla } from '../lib/videoteca'
 import { useArchivioStreaming } from '../lib/useArchivioStreaming'
@@ -285,6 +287,20 @@ function LettoreStreaming() {
     },
     [serie, punti],
   )
+  // I tempi esatti di questo episodio, se TheIntroDB li ha: valgono più del
+  // punto imparato per la serie, perché ogni episodio ha i suoi.
+  const [esatte, setEsatte] = useState<SigleEpisodio | null>(null)
+  const voceTv = archivio.voce?.media_type === 'tv' ? archivio.voce : null
+  useEffect(() => {
+    if (!voceTv?.tmdb_id || voceTv.stagione == null || voceTv.episodio == null) return
+    let vivo = true
+    void sigleEpisodio(voceTv.tmdb_id, voceTv.stagione, voceTv.episodio).then((s) => vivo && setEsatte(s))
+    return () => {
+      vivo = false
+    }
+  }, [voceTv?.tmdb_id, voceTv?.stagione, voceTv?.episodio])
+  const siglaEsatta = esatte?.inizio ?? null
+  const codaEsatta = esatte?.finale ?? null
   const etichettaProssimo = prossimo ? sigla(prossimo) : null
   const vaiAlProssimo = useCallback(() => {
     if (!prossimo) return
@@ -383,10 +399,11 @@ function LettoreStreaming() {
     const v = videoRef.current
     if (!v || durataSigla === null) return
     const da = v.currentTime
-    v.currentTime = dopoLaSigla(da, durataSigla, Number.isFinite(v.duration) ? v.duration : null)
+    v.currentTime = siglaEsatta ? siglaEsatta.a : dopoLaSigla(da, durataSigla, Number.isFinite(v.duration) ? v.duration : null)
     setSiglaSaltata(true)
     if (automatica) setRivedi(da)
-    else imparaPunti({ inizio: Math.round(da) })
+    // Con i tempi esatti non c'è niente da imparare.
+    else if (!siglaEsatta) imparaPunti({ inizio: Math.round(da) })
   }
 
   function cambiaScelte(nuove: Partial<SaltaSigle>) {
@@ -542,15 +559,21 @@ function LettoreStreaming() {
               const v = e.currentTarget
               posizione.current = v.currentTime
               archivio.suTempo(v)
-              const inizio = mostraSaltaSigla(v.currentTime)
+              const t = v.currentTime
+              // Con i tempi esatti dell'episodio il pulsante c'è solo durante
+              // la sigla e la coda parte coi titoli; senza, i minuti di
+              // sempre e il punto imparato per la serie.
+              const inizio = siglaEsatta ? inSiglaEsatta(t, siglaEsatta) : mostraSaltaSigla(t)
               if (inizio !== allInizio) setAllInizio(inizio)
               const durataVideo = Number.isFinite(v.duration) ? v.duration : null
-              const coda = inSiglaFinale(v.currentTime, durataVideo)
+              const coda = codaEsatta ? t >= codaEsatta.da : inSiglaFinale(t, durataVideo)
               if (coda !== inCoda) setInCoda(coda)
-              if (scelte.inizio && !siglaSaltata && inizioSiglaRaggiunto(v.currentTime, punti.inizio)) saltaSigla(true)
+              const partenzaSigla = siglaEsatta ? siglaEsatta.da : punti.inizio
+              if (scelte.inizio && !siglaSaltata && inizioSiglaRaggiunto(t, partenzaSigla)) saltaSigla(true)
               // Dalla sigla finale parte il conto alla rovescia; tornando
               // indietro si ferma, invece di cambiare episodio a metà scena.
-              const nellaCoda = scelte.fine && !!prossimo && codaSiglaRaggiunta(v.currentTime, durataVideo, punti.coda)
+              const nellaCoda =
+                scelte.fine && !!prossimo && (codaEsatta ? t >= codaEsatta.da : codaSiglaRaggiunta(t, durataVideo, punti.coda))
               if (nellaCoda !== codaAutomatica) setCodaAutomatica(nellaCoda)
               if (tentativi.current > 0 && v.currentTime > ripresoDa.current + 30) tentativi.current = 0
               const scade = !scaricato && sessioneInScadenza(scadenzaDrive(), Date.now())
@@ -636,12 +659,19 @@ function LettoreStreaming() {
             </label>
           </div>
           {/* Dove stanno le sigle lo si impara da chi le salta a mano. */}
-          {scelte.inizio && punti.inizio === null && (
+          {esatte && (esatte.inizio || esatte.finale) && (
+            <p className="text-xs text-zinc-500">
+              Per questo episodio i tempi sono quelli esatti di TheIntroDB
+              {esatte.inizio && `: sigla da ${formattaTempo(esatte.inizio.da)} a ${formattaTempo(esatte.inizio.a)}`}
+              {esatte.finale && `${esatte.inizio ? ',' : ':'} titoli di coda da ${formattaTempo(esatte.finale.da)}`}.
+            </p>
+          )}
+          {scelte.inizio && punti.inizio === null && !siglaEsatta && (
             <p className="text-xs text-zinc-500">
               La prima volta premi «⏭ Salta sigla» quando parte: Ciak ricorda il punto e negli episodi dopo la salta da sola.
             </p>
           )}
-          {scelte.fine && punti.coda === null && (
+          {scelte.fine && punti.coda === null && !codaEsatta && (
             <p className="text-xs text-zinc-500">
               La prima volta premi «⏭ Prossimo episodio» quando parte la sigla finale: Ciak ricorda il punto per questa serie.
             </p>

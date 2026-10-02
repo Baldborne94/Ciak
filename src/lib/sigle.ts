@@ -130,3 +130,10 @@ export function codaSiglaRaggiunta(posizione: number, durata: number | null, cod
 export function secondiAllaFine(posizione: number, durata: number | null): number | null {
   return durata ? Math.max(0, Math.round(durata - posizione)) : null
 }
+
+// ── Con i tempi esatti dell'episodio (TheIntroDB) ───────────────────────────
+// «⏭ Salta sigla» compare solo mentre la sigla c'è davvero: un episodio
+// senza sigla non lo mostra, e il salto arriva proprio alla fine della sigla.
+export function inSiglaEsatta(posizione: number, sigla: { da: number; a: number }): boolean {
+  return posizione >= Math.max(0, sigla.da - 1) && posizione < sigla.a - 1
+}

@@ -185,6 +185,9 @@ test.beforeEach(async ({ page }) => {
   await signIn(page)
   await mockSupabase(page)
   await mockTmdb(page)
+  // TheIntroDB non conosce gli episodi di prova: vale il punto imparato per
+  // la serie. Il test delle sigle esatte lo sostituisce.
+  await page.route('**/api/sigle*', (route) => route.fulfill({ json: { inizio: null, finale: null } }))
   // Le schede dei titoli di prova, col loro titolo originale.
   await page.route('**/api/tmdb*', (route) => {
     const path = new URL(route.request().url()).searchParams.get('path') ?? ''
@@ -845,6 +848,65 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
   await page.getByRole('button', { name: 'Reimpara' }).click()
   expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBe('{"inizio":null,"coda":null}')
   await expect(page.getByText(/La prima volta premi «⏭ Salta sigla»/)).toBeVisible()
+})
+
+test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, episodio per episodio', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page)
+  const riga = (id: string, episodio: number) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: id,
+    nome_file: `Shogun.S01E0${episodio}.mkv`,
+    tmdb_id: 126308,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    stagione: 1,
+    episodio,
+    posizione: 0,
+    durata: 3600,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: false,
+  })
+  await mockSupabase(page, { user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2)] })
+  await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
+  const chieste: string[] = []
+  await page.route('**/api/sigle*', (route) => {
+    const u = new URL(route.request().url())
+    chieste.push(`${u.searchParams.get('tmdb_id')}-${u.searchParams.get('season')}-${u.searchParams.get('episode')}`)
+    return route.fulfill({ json: { inizio: { da: 200, a: 290 }, finale: { da: 3400 } } })
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
+  await expect(page.getByText(/tempi sono quelli esatti di TheIntroDB: sigla da 3:20 a 4:50, titoli di coda da 56:40/)).toBeVisible()
+  expect(chieste).toEqual(['126308-1-1'])
+
+  // Prima della sigla il pulsante non c'è: questo episodio la ha a 3:20.
+  await videoA(page, 60)
+  await expect(page.getByRole('button', { name: '⏭ Salta sigla' })).toHaveCount(0)
+  await videoA(page, 230)
+  await page.getByRole('button', { name: '⏭ Salta sigla' }).click()
+  expect(await saltoDelVideo(page)).toBe(290)
+  // I tempi esatti non si «imparano» per la serie.
+  expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBeNull()
+
+  // Con «salta sempre» si salta da sola, passandoci sopra.
+  await page.getByLabel('Salta sempre la sigla iniziale').check()
+  await page.getByLabel('Salta anche la sigla finale').check()
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Shōgun · S1E1' })).toBeVisible()
+  await expect(page.getByText(/tempi sono quelli esatti/)).toBeVisible()
+  await videoA(page, 200.25)
+  expect(await saltoDelVideo(page)).toBe(290)
+  await expect(page.getByRole('button', { name: '↩ Rivedi la sigla' })).toBeVisible()
+
+  // I titoli di coda partono a 56:40: lì il conto alla rovescia, non prima.
+  await videoA(page, 3390)
+  await expect(page.getByText(/S1E2 fra \d+ s/)).toHaveCount(0)
+  await videoA(page, 3401)
+  await expect(page.getByText(/S1E2 fra \d+ s/)).toBeVisible()
 })
 
 test('la lista riconosce i film di Drive e li mostra col titolo e la locandina', async ({ page }) => {

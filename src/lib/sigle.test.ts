@@ -5,6 +5,7 @@ import {
   dopoLaSigla,
   inSiglaFinale,
   inizioSiglaRaggiunto,
+  inSiglaEsatta,
   leggiDurataSigla,
   leggiPuntiSigla,
   leggiSaltaSigle,
@@ -114,5 +115,16 @@ describe('saltarle da sole', () => {
     expect(codaSiglaRaggiunta(1449, 1450, null)).toBe(false)
     expect(secondiAllaFine(1330.4, 1450)).toBe(120)
     expect(secondiAllaFine(10, null)).toBeNull()
+  })
+})
+
+describe('con i tempi esatti dell episodio', () => {
+  it('il pulsante c è solo mentre la sigla c è', () => {
+    const sigla = { da: 32, a: 122 }
+    expect(inSiglaEsatta(20, sigla)).toBe(false)
+    expect(inSiglaEsatta(31.5, sigla)).toBe(true)
+    expect(inSiglaEsatta(100, sigla)).toBe(true)
+    expect(inSiglaEsatta(121.5, sigla)).toBe(false)
+    expect(inSiglaEsatta(0, { da: 0, a: 90 })).toBe(true)
   })
 })
