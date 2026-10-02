@@ -15,8 +15,15 @@ export const DURATE_SIGLA = Array.from({ length: 28 }, (_, i) => 15 + i * 5)
 // Il conto alla rovescia prima dell'episodio dopo, a fine episodio.
 export const SECONDI_AL_PROSSIMO = 10
 
-export function mostraSaltaSigla(posizione: number): boolean {
-  return posizione < FINESTRA_SIGLA
+// Senza sapere dove sta la sigla, il pulsante resta nei primi minuti. Se la
+// serie ha già il suo punto, solo intorno a quello: a 3:25 di un episodio di
+// South Park, con la sigla a 0:04, «Salta sigla» non aveva più senso. Si
+// comincia un po' prima, perché la scena d'apertura cambia di qualche secondo.
+const ANTICIPO_PULSANTE = 15
+
+export function mostraSaltaSigla(posizione: number, inizio: number | null = null, durata = DURATA_SIGLA_PREDEFINITA): boolean {
+  if (inizio === null) return posizione < FINESTRA_SIGLA
+  return posizione >= Math.max(0, inizio - ANTICIPO_PULSANTE) && posizione < inizio + durata
 }
 
 // Dalla sigla finale in poi (gli stessi ultimi minuti in cui l'episodio conta

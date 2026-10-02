@@ -1,13 +1,16 @@
 import { logFailure } from './logFailure'
+import { normalizzaSigle, urlTheIntroDb, type SigleEpisodio } from './theIntroDb'
 
-// I tempi esatti di sigla e titoli di coda di un episodio, da TheIntroDB (via
-// /api/sigle). Dove ci sono valgono loro, episodio per episodio; dove mancano
-// resta il punto imparato per la serie (sigle.ts).
+// I tempi esatti di sigla e titoli di coda di un episodio, da TheIntroDB. Dove
+// ci sono valgono loro, episodio per episodio; dove mancano resta il punto
+// imparato per la serie (sigle.ts).
+//
+// Si chiedono dal browser: la protezione anti-bot di TheIntroDB respinge le
+// richieste dai server di Vercel (403 con una pagina HTML di blocco), non
+// quelle da una connessione di casa. /api/sigle resta come riserva, se il
+// browser non può (regole CORS, rete).
 
-export interface SigleEpisodio {
-  inizio: { da: number; a: number } | null
-  finale: { da: number } | null
-}
+export type { SigleEpisodio }
 
 const CHIAVE = 'ciak:sigle-online:'
 // Un episodio che TheIntroDB non conosce si richiede dopo una settimana: chi
@@ -52,6 +55,21 @@ export async function sigleEpisodio(tmdbId: number, stagione: number, episodio: 
   const copia = leggiCopia(chiave)
   if (copia) return copia
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return null
+  let motivo: unknown
+  // Senza intestazioni aggiunte: una GET «semplice» non chiede il permesso
+  // preventivo (preflight) del CORS.
+  try {
+    const res = await fetch(urlTheIntroDb({ tmdbId, stagione, episodio }))
+    // Un episodio che TheIntroDB non conosce: niente da saltare, non un errore.
+    const sigle = res.status === 404 ? { inizio: null, finale: null } : res.ok ? normalizzaSigle(await res.json()) : null
+    if (sigle) {
+      salvaCopia(chiave, sigle)
+      return sigle
+    }
+    motivo = new Error(`TheIntroDB ha risposto ${res.status} al browser`)
+  } catch (e) {
+    motivo = e
+  }
   try {
     const res = await fetch(`/api/sigle?tmdb_id=${tmdbId}&season=${stagione}&episode=${episodio}`)
     if (!res.ok) throw new Error(`/api/sigle ha risposto ${res.status}`)
@@ -60,7 +78,7 @@ export async function sigleEpisodio(tmdbId: number, stagione: number, episodio: 
     salvaCopia(chiave, dati)
     return dati
   } catch (e) {
-    if (!segnalato) logFailure('Tempi delle sigle da TheIntroDB')(e)
+    if (!segnalato) logFailure('Tempi delle sigle da TheIntroDB')(new Error(`${String(motivo)}; riserva: ${String(e)}`))
     segnalato = true
     return null
   }

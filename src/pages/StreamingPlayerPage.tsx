@@ -563,7 +563,9 @@ function LettoreStreaming() {
               // Con i tempi esatti dell'episodio il pulsante c'è solo durante
               // la sigla e la coda parte coi titoli; senza, i minuti di
               // sempre e il punto imparato per la serie.
-              const inizio = siglaEsatta ? inSiglaEsatta(t, siglaEsatta) : mostraSaltaSigla(t)
+              const inizio = siglaEsatta
+                ? inSiglaEsatta(t, siglaEsatta)
+                : mostraSaltaSigla(t, punti.inizio, durataSigla ?? undefined)
               if (inizio !== allInizio) setAllInizio(inizio)
               const durataVideo = Number.isFinite(v.duration) ? v.duration : null
               const coda = codaEsatta ? t >= codaEsatta.da : inSiglaFinale(t, durataVideo)
