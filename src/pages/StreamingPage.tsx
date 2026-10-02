@@ -13,12 +13,17 @@ import {
   ORDINI_VIDEOTECA,
   ordinaVideoteca,
   raggruppaSerie,
+  serieDaSistemare,
   sigla,
   type OrdineVideoteca,
   type RigaVideoteca,
 } from '../lib/videoteca'
 import SerieVideoteca from '../components/SerieVideoteca'
-import { riconosciNuovi } from '../lib/riconoscimento'
+import Modal from '../components/Modal'
+import SceltaTitolo from '../components/SceltaTitolo'
+import { abbinaAMano, riconosciNuovi, voceVuota } from '../lib/riconoscimento'
+import { filmDaCercare } from '../lib/sottotitoli'
+import type { MediaItem } from '../lib/types'
 import { salvaPresenti } from '../lib/videoPresenti'
 import { dimenticaVideoteca } from '../lib/useVideoteca'
 import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
@@ -63,9 +68,12 @@ export default function StreamingPage() {
   const [query, setQuery] = useState('')
   const [ordine, setOrdine] = usePersistedState<OrdineVideoteca>('ciak:videoteca-ordine', 'titolo')
   const [genere, setGenere] = useState<number | null>(null)
+  const [soloDaSistemare, setSoloDaSistemare] = useState(false)
   // Le serie aperte, per nome di cartella: la chiave della serie cambia quando
   // viene riconosciuta, e la lista aperta si richiudeva da sola.
   const [serieAperte, setSerieAperte] = useState<Set<string>>(new Set())
+  // «Scegli il titolo» dalla videoteca: per una serie intera o per un film.
+  const [scelta, setScelta] = useState<{ nome: string; ricerca: string; video: DriveVideo[] } | null>(null)
   // Anno, generi e titoli originali dei titoli riconosciuti (chiave composta
   // `${tipo}-${id}`), e i nomi italiani dei generi.
   const [infoTitoli, setInfoTitoli] = useState<{
@@ -196,6 +204,24 @@ export default function StreamingPage() {
     await carica()
   }
 
+  async function abbina(item: MediaItem) {
+    if (!user || !scelta) return
+    try {
+      const salvati = await abbinaAMano(user.id, scelta.video, item)
+      setArchivio((prima) => {
+        const dopo = new Map(prima)
+        for (const [id, campi] of salvati) dopo.set(id, { ...(prima.get(id) ?? voceVuota(id)), ...campi })
+        return dopo
+      })
+      // Le schede dei titoli e la Sala devono vedere subito il nuovo «Guarda».
+      dimenticaVideoteca()
+      setScelta(null)
+    } catch (e) {
+      setErrore((e as Error).message)
+      setScelta(null)
+    }
+  }
+
   function scollega() {
     driveDisconnetti(true)
     setConnesso(false)
@@ -234,6 +260,7 @@ export default function StreamingPage() {
         ...infoDi(voce?.tmdb_id && voce.media_type ? `${voce.media_type}-${voce.tmdb_id}` : ''),
         aggiunto: v.aggiunto ?? null,
         guardato: voce && voce.posizione > 0 ? (voce.updated_at ?? null) : null,
+        daSistemare: !voce?.tmdb_id || !voce.poster_path,
       },
     }
   })
@@ -250,6 +277,7 @@ export default function StreamingPage() {
         ...infoDi(g.tmdb),
         aggiunto: video.map((v) => v.aggiunto ?? '').sort().pop() || null,
         guardato: g.episodi.map((e) => e.guardato ?? '').sort().pop() || null,
+        daSistemare: serieDaSistemare(g),
       },
     })
   }
@@ -258,7 +286,10 @@ export default function StreamingPage() {
   const generiScheda = generiPresenti(righe, nomiGeneri)
   // Un genere che in questa scheda non c'è (cambiando scheda) vale «tutti».
   const genereValido = genere !== null && generiScheda.some((g) => g.id === genere) ? genere : null
-  const elenco = ordinaVideoteca(filtraVideoteca(righe, { query, genere: genereValido }), ordine)
+  const quantiDaSistemare = righe.filter((r) => r.daSistemare).length
+  // Sistemato l'ultimo, il filtro si spegne da solo invece di lasciare un elenco vuoto.
+  const filtroDaSistemare = soloDaSistemare && quantiDaSistemare > 0
+  const elenco = ordinaVideoteca(filtraVideoteca(righe, { query, genere: genereValido, daSistemare: filtroDaSistemare }), ordine)
 
   // Senza Client ID configurato la funzione non esiste: lo diciamo invece di
   // mostrare un pulsante che non farebbe nulla.
@@ -430,12 +461,30 @@ export default function StreamingPage() {
               ))}
             </select>
           )}
+          {quantiDaSistemare > 0 && (
+            <button
+              type="button"
+              aria-pressed={filtroDaSistemare}
+              onClick={() => setSoloDaSistemare((s) => !s)}
+              className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                filtroDaSistemare ? 'border-projector/60 bg-projector/10 text-projector' : 'border-theatre-700 text-zinc-400 hover:text-zinc-100'
+              }`}
+            >
+              ⚠ Da sistemare {quantiDaSistemare}
+            </button>
+          )}
           {elenco.length !== righe.length && (
             <span className="text-sm text-zinc-500">
               {elenco.length} di {righe.length}
             </span>
           )}
         </div>
+        {filtroDaSistemare && (
+          <p className="mb-3 text-sm text-zinc-500">
+            Titoli che Ciak non ha riconosciuto, senza copertina o con episodi che non sa dove mettere. Per un film premi ✎; per
+            una serie aprila e premi «Scegli il titolo».
+          </p>
+        )}
         {elenco.length === 0 ? (
           <EmptyState title="Nessun titolo" message="Nessun video corrisponde alla ricerca o al genere scelto." icon="🔍" />
         ) : (
@@ -465,6 +514,14 @@ export default function StreamingPage() {
                         state: { titolo: sigla(e) ? `${gruppo.titolo} · ${sigla(e)}` : e.nome, file: e.file },
                       })
                     }
+                    riconosciuta={!!gruppo.tmdb}
+                    onScegliTitolo={() =>
+                      setScelta({
+                        nome: gruppo.titolo,
+                        ricerca: gruppo.titolo,
+                        video: gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo),
+                      })
+                    }
                   />
                 </li>
               )
@@ -474,10 +531,10 @@ export default function StreamingPage() {
             const nome = riga.nome
             const avanzamento = voce?.durata ? Math.min(1, voce.posizione / voce.durata) : 0
             return (
-              <li key={v.id}>
+              <li key={v.id} className="flex items-center">
                 <button
                   onClick={() => navigate(`/streaming/${v.id}`, { state: { titolo: nome, file: v.name } })}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-theatre-800/60"
+                  className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition hover:bg-theatre-800/60"
                 >
                   {voce?.poster_path ? (
                     <img
@@ -509,12 +566,33 @@ export default function StreamingPage() {
                   </span>
                   <span className="shrink-0 text-projector">{avanzamento > 0.02 && !voce?.visto_il ? '▶ Riprendi' : '▶ Guarda'}</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setScelta({ nome, ricerca: filmDaCercare(v.name, v.cartella, v.serie ?? null).titolo, video: [v] })}
+                  // Senza il titolo nel nome: chi cerca la riga del film trova la riga.
+                  aria-label="Scegli il titolo"
+                  title={voce?.tmdb_id ? 'Non è questo? Scegli il titolo' : 'Scegli il titolo'}
+                  className="shrink-0 px-3 py-3 text-zinc-500 transition hover:text-projector"
+                >
+                  ✎
+                </button>
               </li>
             )
           })}
         </ul>
         )}
         </>
+      )}
+
+      {scelta && (
+        <Modal title={`Che titolo è «${scelta.nome}»?`} onClose={() => setScelta(null)}>
+          <p className="mb-3 text-sm text-zinc-400">
+            {scelta.video.length > 1
+              ? `Vale per tutti i ${scelta.video.length} file: ognuno tiene stagione ed episodio del suo nome.`
+              : 'Cerca il titolo giusto e sceglilo: resta scelto anche dopo «Aggiorna».'}
+          </p>
+          <SceltaTitolo ricercaIniziale={scelta.ricerca} onScegli={abbina} />
+        </Modal>
       )}
     </div>
   )

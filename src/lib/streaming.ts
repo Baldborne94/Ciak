@@ -69,7 +69,9 @@ export function scegliAbbinamento(
   let migliore: { item: MediaItem; punti: number } | null = null
   risultati.forEach((item, posizione) => {
     if (episodio && item.mediaType !== 'tv') return
-    const titoli = [item.title, item.originalTitle, ...(altriTitoli.get(`${item.mediaType}-${item.id}`) ?? [])]
+    // Anche il titolo inglese: «Memories of Murder» in italiano è «Memorie di
+    // un assassino», e i file hanno spesso il nome inglese.
+    const titoli = [item.title, item.originalTitle, item.englishTitle, ...(altriTitoli.get(`${item.mediaType}-${item.id}`) ?? [])]
       .filter((t): t is string => !!t)
       .map(normalizzaTitolo)
     let punti = 0
@@ -80,9 +82,11 @@ export function scegliAbbinamento(
     if (nome.anno !== undefined && anno !== null) {
       if (anno === nome.anno) punti += 5
       // Un anno di scarto succede (uscita in festival, date locali); di più no,
-      // se non per le serie, dove l'anno del file è spesso quello dell'episodio.
+      // se non per gli episodi, dove l'anno del file è spesso quello della messa
+      // in onda. Un file che non è un episodio, con l'anno lontano, non è una
+      // serie: «Memories of Murder (2003)» non è «Gap Dong» (2014).
       else if (Math.abs(anno - nome.anno) === 1) punti += 2
-      else if (item.mediaType === 'movie') return
+      else if (item.mediaType === 'movie' || !episodio) return
     }
     // Senza stagione ed episodio, a parità, un film batte una serie.
     if (!episodio && item.mediaType === 'movie') punti += 1

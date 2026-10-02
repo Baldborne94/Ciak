@@ -66,6 +66,21 @@ describe('scegliAbbinamento', () => {
     expect(scegliAbbinamento({ titolo: 'Shogun', stagione: 1, episodio: 3 }, [film, serie])?.id).toBe(126308)
   })
 
+  it('il titolo inglese conta: «Memories of Murder» in italiano è «Memorie di un assassino»', () => {
+    const film = media({ id: 11423, title: 'Memorie di un assassino', originalTitle: '살인의 추억', englishTitle: 'Memories of Murder', releaseDate: '2003-05-02' })
+    expect(scegliAbbinamento({ titolo: 'Memories of Murder', anno: 2003 }, [film])?.id).toBe(11423)
+  })
+
+  it('un film con l anno non diventa una serie di un altro anno', () => {
+    // «Memories of Murder (2003)» era finito sotto «Gap Dong» (2014), una
+    // serie coreana che fra gli altri nomi ha anche quello.
+    const gapDong = media({ id: 61375, mediaType: 'tv', title: 'Gap Dong', releaseDate: '2014-04-11' })
+    const altri = new Map([['tv-61375', ['Memories of Murder']]])
+    expect(scegliAbbinamento({ titolo: 'Memories of Murder', anno: 2003 }, [gapDong], altri)).toBeNull()
+    // Un episodio invece porta spesso l'anno della messa in onda: la serie va bene.
+    expect(scegliAbbinamento({ titolo: 'Gap Dong', anno: 2015, stagione: 1, episodio: 3 }, [gapDong])?.id).toBe(61375)
+  })
+
   it('senza abbastanza somiglianza non indovina: meglio chiedere', () => {
     expect(scegliAbbinamento({ titolo: 'B99' }, [media({ title: 'Brooklyn Nine-Nine', mediaType: 'tv' })])).toBeNull()
     expect(scegliAbbinamento({ titolo: '' }, [songFilm])).toBeNull()

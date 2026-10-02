@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import StarRating from './StarRating'
-import { altriTitoli, posterUrl, searchMulti } from '../lib/tmdb'
+import SceltaTitolo from './SceltaTitolo'
+import { posterUrl } from '../lib/tmdb'
 import { logFailure } from '../lib/logFailure'
 import { formattaTempo, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
 import type { NomeFilm } from '../lib/sottotitoli'
@@ -36,9 +37,6 @@ export default function PannelloArchivio({
 }) {
   const navigate = useNavigate()
   const [scegliendo, setScegliendo] = useState(false)
-  const [ricerca, setRicerca] = useState(nome.titolo)
-  const [risultati, setRisultati] = useState<MediaItem[] | null>(null)
-  const [cercando, setCercando] = useState(false)
   const [stagione, setStagione] = useState(nome.stagione ?? 1)
   const [episodio, setEpisodio] = useState(nome.episodio ?? 1)
 
@@ -50,24 +48,11 @@ export default function PannelloArchivio({
         }`
       : null
 
-  async function cerca() {
-    setCercando(true)
-    try {
-      setRisultati((await searchMulti(ricerca)).slice(0, 8))
-    } catch (e) {
-      logFailure('Ricerca del titolo per il film di Drive')(e)
-      setRisultati([])
-    } finally {
-      setCercando(false)
-    }
-  }
-
   async function scegli(item: MediaItem) {
     const scelto: NomeFilm =
       item.mediaType === 'tv' ? { titolo: nome.titolo, stagione, episodio } : { titolo: nome.titolo, anno: nome.anno }
     await onCambia(item, scelto).catch(logFailure('Abbinamento scelto a mano non salvato'))
     setScegliendo(false)
-    setRisultati(null)
   }
 
   const prossimoPulsante = prossimo && (
@@ -151,27 +136,7 @@ export default function PannelloArchivio({
       </div>
 
       {scegliendo && (
-        <div className="space-y-3 rounded-xl border border-theatre-800 bg-theatre-900/40 p-3 text-sm">
-          <form
-            className="flex flex-wrap gap-2"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void cerca()
-            }}
-          >
-            <label className="sr-only" htmlFor="cerca-titolo-drive">
-              Titolo da cercare
-            </label>
-            <input
-              id="cerca-titolo-drive"
-              value={ricerca}
-              onChange={(e) => setRicerca(e.target.value)}
-              className="min-w-0 flex-1 rounded-lg border border-theatre-700 bg-theatre-950 px-3 py-1.5 text-zinc-100"
-            />
-            <button type="submit" disabled={cercando} className="btn-primary px-3 py-1.5">
-              {cercando ? 'Cerco…' : 'Cerca'}
-            </button>
-          </form>
+        <SceltaTitolo ricercaIniziale={nome.titolo} onScegli={scegli}>
           <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
             Se è una serie:
             <label>
@@ -195,38 +160,7 @@ export default function PannelloArchivio({
               />
             </label>
           </div>
-          {risultati && risultati.length === 0 && <p className="text-zinc-400">Nessun risultato.</p>}
-          {risultati && risultati.length > 0 && (
-            <ul className="divide-y divide-theatre-800">
-              {risultati.map((r) => (
-                <li key={`${r.mediaType}-${r.id}`}>
-                  <button
-                    type="button"
-                    onClick={() => void scegli(r)}
-                    className="flex w-full items-center gap-3 py-2 text-left hover:bg-theatre-800/60"
-                  >
-                    {r.posterPath ? (
-                      <img src={posterUrl(r.posterPath, 'w185') ?? undefined} alt="" className="h-12 w-8 rounded object-cover" />
-                    ) : (
-                      <span className="h-12 w-8 rounded bg-theatre-800" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-zinc-100">{r.title}</span>
-                      {/* Anche in inglese e in originale: i file hanno spesso quei nomi. */}
-                      {altriTitoli(r).length > 0 && (
-                        <span className="block truncate text-sm text-zinc-300">{altriTitoli(r).join(' · ')}</span>
-                      )}
-                      <span className="block text-xs text-zinc-500">
-                        {r.mediaType === 'tv' ? 'Serie' : 'Film'}
-                        {r.releaseDate ? ` · ${r.releaseDate.slice(0, 4)}` : ''}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        </SceltaTitolo>
       )}
     </div>
   )

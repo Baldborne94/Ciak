@@ -8,6 +8,7 @@ import {
   perStagione,
   prossimoDaGuardare,
   raggruppaSerie,
+  serieDaSistemare,
   sigla,
   type EpisodioVideoteca,
   type RigaVideoteca,
@@ -34,6 +35,23 @@ describe('cercare nella videoteca', () => {
   it('filtra per genere, insieme alla ricerca', () => {
     expect(ids(filtraVideoteca([SONG, KELLS, ALIEN], { query: '', genere: 16 }))).toEqual(['song', 'kells'])
     expect(ids(filtraVideoteca([SONG, KELLS, ALIEN], { query: 'song', genere: 27 }))).toEqual([])
+  })
+
+  it('«Da sistemare» mostra solo le righe che hanno bisogno di una mano', () => {
+    const daFare = { ...MISTERO, daSistemare: true }
+    expect(ids(filtraVideoteca([SONG, daFare, KELLS], { query: '', genere: null, daSistemare: true }))).toEqual(['mistero'])
+    expect(ids(filtraVideoteca([SONG, daFare, KELLS], { query: '', genere: null }))).toEqual(['song', 'mistero', 'kells'])
+  })
+})
+
+describe('serieDaSistemare', () => {
+  const ep = (stagione: number | null) => ({ id: 'e', nome: 'e', file: 'e.mp4', stagione, episodio: 1, visto: false, posizione: 0, secondiVisti: 0, durata: null, guardato: null })
+  it('non riconosciuta, senza copertina o con episodi senza stagione', () => {
+    expect(serieDaSistemare({ tmdb: 'tv-1', posterPath: '/p.jpg', episodi: [ep(1), ep(0)] })).toBe(false)
+    expect(serieDaSistemare({ tmdb: '', posterPath: null, episodi: [ep(1)] })).toBe(true)
+    expect(serieDaSistemare({ tmdb: 'tv-1', posterPath: null, episodi: [ep(1)] })).toBe(true)
+    // «Gap Dong»: un film finito sotto una serie, fra gli «Altri episodi».
+    expect(serieDaSistemare({ tmdb: 'tv-1', posterPath: '/p.jpg', episodi: [ep(null)] })).toBe(true)
   })
 })
 

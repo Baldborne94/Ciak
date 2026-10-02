@@ -25,14 +25,30 @@ export interface RigaVideoteca {
   titoli: string[] // originale e inglese, per la ricerca
   aggiunto: string | null // quando è arrivato su Drive (ISO)
   guardato: string | null // l'ultima volta che lo si è guardato (ISO)
+  // Senza titolo, senza copertina o con episodi senza numero: da sistemare a
+  // mano con «Scegli il titolo».
+  daSistemare?: boolean
 }
 
 // Un genere scelto (id di TMDB) o null per tutti; la ricerca guarda titolo,
-// titolo originale e inglese, e nome del file.
-export function filtraVideoteca(righe: RigaVideoteca[], { query, genere }: { query: string; genere: number | null }): RigaVideoteca[] {
+// titolo originale e inglese, e nome del file. `daSistemare`: solo le righe
+// che hanno bisogno di una mano.
+export function filtraVideoteca(
+  righe: RigaVideoteca[],
+  { query, genere, daSistemare = false }: { query: string; genere: number | null; daSistemare?: boolean },
+): RigaVideoteca[] {
   return righe.filter(
-    (r) => (genere === null || r.generi.includes(genere)) && corrispondeRicerca(query, [r.nome, r.file, ...r.titoli]),
+    (r) =>
+      (!daSistemare || !!r.daSistemare) &&
+      (genere === null || r.generi.includes(genere)) &&
+      corrispondeRicerca(query, [r.nome, r.file, ...r.titoli]),
   )
+}
+
+// Una serie da sistemare: non riconosciuta, senza copertina, o con episodi
+// che non si sa dove mettere («Altri episodi»: né stagione né numero).
+export function serieDaSistemare(g: Pick<GruppoSerie, 'tmdb' | 'posterPath' | 'episodi'>): boolean {
+  return !g.tmdb || !g.posterPath || g.episodi.some((e) => e.stagione === null)
 }
 
 // «S1E2» prima di «S1E10»: il confronto numerico tiene gli episodi in ordine.
