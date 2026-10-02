@@ -39,6 +39,19 @@ export function urlTheIntroDb({ tmdbId, stagione, episodio }: Episodio): string 
   return `${BASE}?tmdb_id=${tmdbId}&season=${stagione}&episode=${episodio}`
 }
 
+// Ci si presenta per nome, come fanno i client ufficiali di TheIntroDB
+// («theintrodb-jellyfin-plugin/…»): col nome generico di Node la risposta era
+// 403, da robot sconosciuto. La chiave (THEINTRODB_API_KEY su Vercel, senza
+// prefisso VITE_) è facoltativa: serve se il nome da solo non bastasse.
+export function intestazioni(chiave: string | undefined): Record<string, string> {
+  const h: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': 'Ciak/1.0 (videoteca personale; +https://github.com/Baldborne94/Ciak)',
+  }
+  if (chiave?.trim()) h.Authorization = `Bearer ${chiave.trim()}`
+  return h
+}
+
 type Segmento = { start_ms?: unknown; end_ms?: unknown }
 const ms = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null)
 const segmenti = (v: unknown): Segmento[] => (Array.isArray(v) ? v.filter((s): s is Segmento => !!s && typeof s === 'object') : [])
@@ -90,7 +103,7 @@ export default async function handler(req: Req, res: Res) {
     return
   }
   try {
-    const risposta = await fetch(urlTheIntroDb(episodio), { headers: { Accept: 'application/json' } })
+    const risposta = await fetch(urlTheIntroDb(episodio), { headers: intestazioni(process.env.THEINTRODB_API_KEY) })
     // Un episodio che TheIntroDB non conosce non è un errore: non si salta niente.
     if (risposta.status === 404) {
       res.setHeader('Cache-Control', CACHE)
@@ -98,7 +111,9 @@ export default async function handler(req: Req, res: Res) {
       return
     }
     if (!risposta.ok) {
-      res.status(502).json({ error: `TheIntroDB ha risposto ${risposta.status}.` })
+      // Il perché lo dice TheIntroDB nel corpo: senza, un 403 non si capisce.
+      const perche = (await risposta.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200)
+      res.status(502).json({ error: `TheIntroDB ha risposto ${risposta.status}.${perche ? ` ${perche}` : ''}` })
       return
     }
     res.setHeader('Cache-Control', CACHE)
