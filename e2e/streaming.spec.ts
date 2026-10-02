@@ -343,6 +343,15 @@ const scadeIlPermesso = (page: Page) =>
     localStorage.setItem('ciak:drive-token', JSON.stringify({ ...t, e: Date.now() - 1000 }))
   })
 
+// Un dispositivo dove Drive non è mai stato collegato: `signIn` segna il primo
+// tentativo come già fatto, qui lo si toglie una volta sola (non a ogni pagina).
+const dispositivoNuovo = (page: Page) =>
+  page.addInitScript(() => {
+    if (localStorage.getItem('e2e:dispositivo-nuovo')) return
+    localStorage.setItem('e2e:dispositivo-nuovo', '1')
+    localStorage.removeItem('ciak:drive-provato')
+  })
+
 test('scaduto il permesso, Drive si ricollega da solo senza chiedere niente', async ({ page }) => {
   await comeAppInstallata(page)
   await mockDrive(page)
@@ -364,6 +373,32 @@ test('scaduto il permesso, Drive si ricollega da solo senza chiedere niente', as
   expect(consensi[1].searchParams.get('login_hint')).toBe('spettatore@example.com')
   await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ciak:drive-token') ?? '{}').t)).toBe('token-2')
+})
+
+test('la prima volta Drive prova a collegarsi da solo, e ci riesce se il permesso c era già', async ({ page }) => {
+  // Nessun segno sul dispositivo (come dopo l'aggiornamento): il primo
+  // tentativo si fa, una volta sola.
+  await dispositivoNuovo(page)
+  await mockDrive(page)
+  const consensi = await googleRimanda(page, (state) => `access_token=token-silenzioso&token_type=Bearer&expires_in=3599&state=${state}`)
+
+  await page.goto('/streaming')
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  expect(consensi).toHaveLength(1)
+  expect(consensi[0].searchParams.get('prompt')).toBe('none')
+  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
+})
+
+test('chi aveva Drive collegato prima dell aggiornamento resta collegato', async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('ciak:drive-ricorda')) {
+      sessionStorage.setItem('ciak:drive-token', JSON.stringify({ t: 'token-della-scheda', e: Date.now() + 3_000_000 }))
+    }
+  })
+  await mockDrive(page)
+  await page.goto('/streaming')
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ciak:drive-ricorda'))).not.toBeNull()
 })
 
 test('se Google non rinnova da solo resta il pulsante, senza errori e senza rimbalzi', async ({ page }) => {
@@ -394,16 +429,21 @@ test('se Google non rinnova da solo resta il pulsante, senza errori e senza rimb
 })
 
 test('scollegato a mano, Drive non si ricollega da solo', async ({ page }) => {
+  // Un dispositivo nuovo: la prima volta si collega da solo.
+  await dispositivoNuovo(page)
   await mockDrive(page)
   const consensi = await googleRimanda(page, (state) => `access_token=x&expires_in=3599&state=${state}`)
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  expect(consensi).toHaveLength(1)
 
+  // Scollegato a mano, anche in una sessione nuova resta scollegato.
   await page.getByRole('button', { name: /Scollega/ }).click()
+  await page.evaluate(() => sessionStorage.clear())
   await page.goto('/streaming')
   await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toBeVisible()
-  expect(consensi).toHaveLength(0)
+  await page.waitForTimeout(500)
+  expect(consensi).toHaveLength(1)
 })
 
 test('nell app installata un consenso negato lo dice', async ({ page }) => {
@@ -1414,6 +1454,56 @@ test('riapre il film dal punto in cui ci si era fermati', async ({ page }) => {
   await expect(page.getByRole('button', { name: "Ricomincia dall'inizio" })).toBeVisible()
   // Col mouse il video si ferma coi comandi del browser: niente strato sopra.
   await expect(page.getByRole('button', { name: 'Pausa o riprendi' })).toHaveCount(0)
+})
+
+test('sul tablet in orizzontale lo schermo intero del browser diventa quello di Ciak, col tocco e i pulsanti', async ({ page }) => {
+  // Girando il tablet (o col pulsante di Firefox) il browser mette a schermo
+  // intero il solo <video>: sopra non restava niente, nemmeno il tocco per la
+  // pausa. Qui il browser non concede quello della pagina senza un tocco.
+  await page.addInitScript(() => {
+    const originale = window.matchMedia.bind(window)
+    window.matchMedia = (q: string) =>
+      q === '(hover: none) and (pointer: coarse)' ? ({ ...originale(q), matches: true } as MediaQueryList) : originale(q)
+    let attuale: Element | null = null
+    Object.defineProperty(Document.prototype, 'fullscreenElement', { configurable: true, get: () => attuale })
+    const w = window as unknown as { richieste: number; schermoInteroDelVideo: () => void }
+    w.richieste = 0
+    Document.prototype.exitFullscreen = function () {
+      attuale = null
+      document.dispatchEvent(new Event('fullscreenchange'))
+      return Promise.resolve()
+    }
+    Element.prototype.requestFullscreen = function () {
+      w.richieste++
+      return Promise.reject(new TypeError('Permissions check failed'))
+    }
+    w.schermoInteroDelVideo = () => {
+      attuale = document.querySelector('video')
+      document.dispatchEvent(new Event('fullscreenchange'))
+    }
+  })
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await apriSongOfTheSea(page)
+  await expect(page.locator('video')).toBeAttached()
+
+  await page.evaluate(() => (window as unknown as { schermoInteroDelVideo: () => void }).schermoInteroDelVideo())
+
+  // Il lettore occupa tutta la finestra, coi pulsanti di Ciak e il tocco.
+  await expect(page.getByRole('button', { name: 'Esci dallo schermo intero' })).toBeVisible()
+  expect(await page.evaluate(() => document.fullscreenElement)).toBeNull()
+  const riquadro = await page.locator('video').locator('..').boundingBox()
+  // La finestra visibile, senza le barre di scorrimento.
+  const finestra = await page.evaluate(() => ({ width: document.documentElement.clientWidth, height: document.documentElement.clientHeight }))
+  expect(riquadro?.width).toBe(finestra.width)
+  expect(riquadro?.height).toBe(finestra.height)
+  // Il primo tocco riprova lo schermo intero vero (questa volta col gesto).
+  const prima = await page.evaluate(() => (window as unknown as { richieste: number }).richieste)
+  await page.getByRole('button', { name: 'Pausa o riprendi' }).click()
+  await expect.poll(() => page.evaluate(() => (window as unknown as { richieste: number }).richieste)).toBe(prima + 1)
+
+  await page.getByRole('button', { name: 'Esci dallo schermo intero' }).click()
+  await expect(page.getByRole('button', { name: 'Schermo intero', exact: true })).toBeVisible()
 })
 
 test('sul telefono un tocco sul video lo ferma e lo fa ripartire', async ({ page }) => {

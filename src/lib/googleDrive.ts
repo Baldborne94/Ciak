@@ -3,6 +3,7 @@ import { analizzaNomeFilm, filmDaCercare, stagioneDaCartella } from './sottotito
 import {
   CHIAVE_ATTESA_DRIVE,
   CHIAVE_ERRORE_DRIVE,
+  CHIAVE_PROVATO_DRIVE,
   CHIAVE_RICORDA_DRIVE,
   CHIAVE_TOKEN_DRIVE,
   PERCORSO_RITORNO_DRIVE,
@@ -108,13 +109,25 @@ function salvaToken(): void {
 }
 
 function leggiToken(): void {
+  // Prima il token stava nella scheda (sessionStorage): chi aveva collegato
+  // Drive prima dell'aggiornamento lo ritrova, e il dispositivo lo ricorda.
+  let vecchio: string | null = null
   try {
-    const raw = localStorage.getItem(CHIAVE_SESSIONE)
+    vecchio = sessionStorage.getItem(CHIAVE_SESSIONE)
+  } catch {
+    /* niente sessionStorage: niente da recuperare */
+  }
+  try {
+    const raw = localStorage.getItem(CHIAVE_SESSIONE) ?? vecchio
     if (!raw) return
     const { t, e } = JSON.parse(raw) as { t?: unknown; e?: unknown }
     if (typeof t === 'string' && typeof e === 'number' && Date.now() < e) {
       accessToken = t
       tokenExpiry = e
+      if (vecchio) {
+        salvaToken()
+        sessionStorage.removeItem(CHIAVE_SESSIONE)
+      }
     }
   } catch {
     /* token illeggibile o storage assente: si ricollega */
@@ -151,6 +164,8 @@ export function driveDisconnetti(dimentica = false): void {
   if (dimentica) {
     try {
       localStorage.removeItem(CHIAVE_RICORDA_DRIVE)
+      // Né il rinnovo né il primo tentativo da soli: si ricollega a mano.
+      localStorage.setItem(CHIAVE_PROVATO_DRIVE, '1')
     } catch {
       /* storage assente: non c'era niente da dimenticare */
     }

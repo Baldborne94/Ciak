@@ -18,6 +18,9 @@ export const CHIAVE_ERRORE_DRIVE = 'ciak:drive-errore'
 // Sul dispositivo (localStorage): Drive è già stato collegato qui, e con quale
 // account. È ciò che permette di rinnovare il permesso da soli, senza chiedere.
 export const CHIAVE_RICORDA_DRIVE = 'ciak:drive-ricorda'
+// Sul dispositivo: si è già provato a collegare Drive da soli, o lo si è
+// scollegato a mano. Il primo tentativo senza domande si fa una volta sola.
+export const CHIAVE_PROVATO_DRIVE = 'ciak:drive-provato'
 // In questa sessione: quando si è tentato il rinnovo da soli, e se è fallito.
 export const CHIAVE_RINNOVO_DRIVE = 'ciak:drive-rinnovo'
 // Lo `state` dei nostri redirect comincia così: un frammento con uno `state`
