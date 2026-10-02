@@ -23,6 +23,16 @@ describe('saltare la sigla iniziale', () => {
     expect(mostraSaltaSigla(7 * 60)).toBe(false)
   })
 
+  it('se la serie ha già il suo punto, il pulsante c è solo intorno alla sigla', () => {
+    // South Park: sigla a 0:04 per 0:30. A 3:25 compariva ancora «Salta sigla».
+    expect(mostraSaltaSigla(0, 4, 30)).toBe(true)
+    expect(mostraSaltaSigla(20, 4, 30)).toBe(true)
+    expect(mostraSaltaSigla(205, 4, 30)).toBe(false)
+    // Un po' prima del punto sì: la scena d'apertura cambia di qualche secondo.
+    expect(mostraSaltaSigla(80, 95, 90)).toBe(true)
+    expect(mostraSaltaSigla(60, 95, 90)).toBe(false)
+  })
+
   it('salta della durata della sigla, ma mai oltre la fine', () => {
     expect(dopoLaSigla(120, 90, 1450)).toBe(210)
     expect(dopoLaSigla(1400, 90, 1450)).toBe(1449)

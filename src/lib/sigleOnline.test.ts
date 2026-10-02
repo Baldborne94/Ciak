@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('./logFailure', () => ({ logFailure: () => () => {} }))
 
+const DIRETTO = 'https://api.theintrodb.org/v3/media?tmdb_id=2190&season=3&episode=6'
+const RISERVA = '/api/sigle?tmdb_id=2190&season=3&episode=6'
+
 describe('sigleEpisodio', () => {
   let memoria: Map<string, string>
   beforeEach(() => {
@@ -16,34 +19,45 @@ describe('sigleEpisodio', () => {
 
   const risposta = (corpo: unknown, status = 200) => new Response(JSON.stringify(corpo), { status })
 
-  it('chiede l’episodio al server una volta, poi lo tiene sul dispositivo', async () => {
-    const fetchFinto = vi.fn(async () => risposta({ inizio: { da: 32, a: 122 }, finale: { da: 1265 } }))
+  it('chiede a TheIntroDB dal browser: da Vercel la protezione anti-bot risponde 403', async () => {
+    const fetchFinto = vi.fn(async (url: string) =>
+      url === DIRETTO ? risposta({ intro: [{ start_ms: 4000, end_ms: 34000 }], credits: [{ start_ms: 1265000, end_ms: null }] }) : risposta({}, 500),
+    )
     vi.stubGlobal('fetch', fetchFinto)
     const { sigleEpisodio } = await import('./sigleOnline')
-    expect(await sigleEpisodio(2190, 3, 6)).toEqual({ inizio: { da: 32, a: 122 }, finale: { da: 1265 } })
-    expect(await sigleEpisodio(2190, 3, 6)).toEqual({ inizio: { da: 32, a: 122 }, finale: { da: 1265 } })
-    expect(fetchFinto).toHaveBeenCalledTimes(1)
-    expect(fetchFinto).toHaveBeenCalledWith('/api/sigle?tmdb_id=2190&season=3&episode=6')
+    expect(await sigleEpisodio(2190, 3, 6)).toEqual({ inizio: { da: 4, a: 34 }, finale: { da: 1265 } })
+    // Poi resta sul dispositivo.
+    expect(await sigleEpisodio(2190, 3, 6)).toEqual({ inizio: { da: 4, a: 34 }, finale: { da: 1265 } })
+    expect(fetchFinto.mock.calls.map((c) => c[0])).toEqual([DIRETTO])
   })
 
-  it('un episodio sconosciuto si richiede dopo una settimana, non a ogni apertura', async () => {
-    const fetchFinto = vi.fn(async () => risposta({ inizio: null, finale: null }))
+  it('un episodio che TheIntroDB non ha (404) è «niente da saltare», e si richiede dopo una settimana', async () => {
+    const fetchFinto = vi.fn(async () => risposta({ error: 'not found' }, 404))
     vi.stubGlobal('fetch', fetchFinto)
     const { sigleEpisodio } = await import('./sigleOnline')
-    await sigleEpisodio(1, 1, 1)
-    await sigleEpisodio(1, 1, 1)
+    expect(await sigleEpisodio(2190, 3, 6)).toEqual({ inizio: null, finale: null })
+    await sigleEpisodio(2190, 3, 6)
     expect(fetchFinto).toHaveBeenCalledTimes(1)
-    memoria.set('ciak:sigle-online:tv-1-1-1', JSON.stringify({ sigle: { inizio: null, finale: null }, quando: Date.now() - 8 * 24 * 3600_000 }))
-    await sigleEpisodio(1, 1, 1)
+    memoria.set('ciak:sigle-online:tv-2190-3-6', JSON.stringify({ sigle: { inizio: null, finale: null }, quando: Date.now() - 8 * 24 * 3600_000 }))
+    await sigleEpisodio(2190, 3, 6)
     expect(fetchFinto).toHaveBeenCalledTimes(2)
   })
 
-  it('se il server non risponde (o risponde altro) non si salta niente', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => risposta({ error: 'giù' }, 502)))
+  it('se il browser non può (CORS, rete), passa dal server di Ciak', async () => {
+    const fetchFinto = vi.fn(async (url: string) => {
+      if (url === DIRETTO) throw new TypeError('Failed to fetch')
+      return risposta({ inizio: { da: 4, a: 34 }, finale: null })
+    })
+    vi.stubGlobal('fetch', fetchFinto)
     const { sigleEpisodio } = await import('./sigleOnline')
-    expect(await sigleEpisodio(2190, 3, 7)).toBeNull()
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('<!doctype html>', { status: 200 })))
-    expect(await sigleEpisodio(2190, 3, 8)).toBeNull()
+    expect(await sigleEpisodio(2190, 3, 6)).toEqual({ inizio: { da: 4, a: 34 }, finale: null })
+    expect(fetchFinto.mock.calls.map((c) => c[0])).toEqual([DIRETTO, RISERVA])
+  })
+
+  it('se non risponde nessuno dei due non si salta niente, e non si salva niente', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => (url === DIRETTO ? new Response('<!doctype html>', { status: 403 }) : risposta({ error: 'giù' }, 502))))
+    const { sigleEpisodio } = await import('./sigleOnline')
+    expect(await sigleEpisodio(2190, 3, 6)).toBeNull()
     expect(memoria.size).toBe(0)
   })
 })

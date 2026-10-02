@@ -186,7 +186,9 @@ test.beforeEach(async ({ page }) => {
   await mockSupabase(page)
   await mockTmdb(page)
   // TheIntroDB non conosce gli episodi di prova: vale il punto imparato per
-  // la serie. Il test delle sigle esatte lo sostituisce.
+  // la serie. Il browser non lo raggiunge (come con un CORS che non passa) e
+  // la riserva /api/sigle non ha niente. Il test delle sigle esatte li cambia.
+  await page.route('https://api.theintrodb.org/**', (route) => route.abort())
   await page.route('**/api/sigle*', (route) => route.fulfill({ json: { inizio: null, finale: null } }))
   // Le schede dei titoli di prova, col loro titolo originale.
   await page.route('**/api/tmdb*', (route) => {
@@ -830,6 +832,8 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E2' })).toBeVisible()
   await videoA(page, 60)
   expect(await saltoDelVideo(page)).toBeUndefined()
+  // Lontano dal punto imparato (1:35) il pulsante non c'è: a 1:00 è presto.
+  await expect(page.getByRole('button', { name: '⏭ Salta sigla' })).toHaveCount(0)
   await videoA(page, 95.25)
   expect(await saltoDelVideo(page)).toBe(185.25)
   // …e se il punto era sbagliato si torna indietro.
@@ -870,11 +874,21 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
   })
   await mockSupabase(page, { user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2)] })
   await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
+  // Il browser chiede direttamente a TheIntroDB, nel suo formato: da Vercel la
+  // protezione anti-bot rispondeva 403.
   const chieste: string[] = []
-  await page.route('**/api/sigle*', (route) => {
+  let riserva = 0
+  await page.route('https://api.theintrodb.org/**', (route) => {
     const u = new URL(route.request().url())
     chieste.push(`${u.searchParams.get('tmdb_id')}-${u.searchParams.get('season')}-${u.searchParams.get('episode')}`)
-    return route.fulfill({ json: { inizio: { da: 200, a: 290 }, finale: { da: 3400 } } })
+    return route.fulfill({
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      json: { tmdb_id: 126308, type: 'tv', intro: [{ start_ms: 200_000, end_ms: 290_000 }], credits: [{ start_ms: 3_400_000, end_ms: null }] },
+    })
+  })
+  await page.route('**/api/sigle*', (route) => {
+    riserva++
+    return route.fulfill({ json: { inizio: null, finale: null } })
   })
 
   await page.goto('/streaming')
@@ -882,6 +896,7 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
   await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
   await expect(page.getByText(/tempi sono quelli esatti di TheIntroDB: sigla da 3:20 a 4:50, titoli di coda da 56:40/)).toBeVisible()
   expect(chieste).toEqual(['126308-1-1'])
+  expect(riserva).toBe(0)
 
   // Prima della sigla il pulsante non c'è: questo episodio la ha a 3:20.
   await videoA(page, 60)
