@@ -3,7 +3,8 @@ import { logFailure } from './logFailure'
 import { fetchAlternativeTitles, fetchOriginalTitle, isReadableTitle, searchMulti } from './tmdb'
 import { filmDaCercare } from './sottotitoli'
 import { chiaveSerie } from './videoteca'
-import { abbinamentoDa, salvaStreaming, scegliAbbinamento, type VoceStreaming } from './streaming'
+import { abbinamentoDa, contaComeVisto, salvaStreaming, scegliAbbinamento, type VoceStreaming } from './streaming'
+import { markEpisode } from './episodes'
 import type { DriveVideo } from './googleDrive'
 import type { MediaItem } from './types'
 import type { NomeFilm } from './sottotitoli'
@@ -224,6 +225,28 @@ export async function riconosciNuovi(
         esito.set(r.drive_file_id, { ...r, titolo })
       }
       segnaControllato(r.drive_file_id)
+    } catch {
+      falliti++
+    }
+  })
+  // Gli episodi visti fino in fondo prima di essere riconosciuti: a fine
+  // episodio il lettore non sapeva cosa spuntare, e la videoteca proponeva
+  // «Riprendi» su un episodio finito. Si spunta ora, come avrebbe fatto lui.
+  const daSpuntare = [...esito.values()].filter(
+    (r) =>
+      r.media_type === 'tv' &&
+      r.tmdb_id &&
+      r.stagione != null &&
+      r.episodio != null &&
+      !r.visto_il &&
+      contaComeVisto(r.posizione, r.durata, r.secondi_visti ?? 0),
+  )
+  await mapLimit(daSpuntare, 3, async (r) => {
+    try {
+      await markEpisode(userId, r.tmdb_id as number, r.stagione as number, r.episodio as number)
+      const visto_il = new Date().toISOString()
+      await salvaStreaming(userId, r.drive_file_id, { visto_il })
+      esito.set(r.drive_file_id, { ...r, visto_il })
     } catch {
       falliti++
     }

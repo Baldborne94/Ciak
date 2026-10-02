@@ -130,6 +130,17 @@ describe('le serie, per stagioni', () => {
     expect(prossimoDaGuardare([s1e2, visto])?.id).toBe('s1e2')
   })
 
+  it('un episodio arrivato alla fine non si «riprende»: si va al successivo', () => {
+    // «Riprendi S3E6» su un episodio finito lo faceva ripartire da capo.
+    const finito = ep({ id: 's3e6', stagione: 3, episodio: 6, posizione: 1320, secondiVisti: 1300, durata: 1328, guardato: '2026-10-01T20:00:00Z' })
+    const s3e7 = ep({ id: 's3e7', stagione: 3, episodio: 7 })
+    expect(episodioIniziato(finito)).toBe(false)
+    expect(prossimoDaGuardare([finito, s3e7])?.id).toBe('s3e7')
+    // E quello dopo, appena cominciato, si riprende.
+    const cominciato = { ...s3e7, posizione: 300, secondiVisti: 300, guardato: '2026-10-02T08:00:00Z' }
+    expect(prossimoDaGuardare([finito, cominciato])?.id).toBe('s3e7')
+  })
+
   it('tutto visto: niente da continuare', () => {
     expect(prossimoDaGuardare([{ ...s1e2, visto: true }])).toBeNull()
   })
@@ -201,6 +212,19 @@ describe('raggruppaSerie', () => {
     expect(serie[0].episodi.map((e) => [e.id, e.stagione, e.episodio])).toEqual([
       ['s1e13', 1, 13],
       ['mezzo', 0, null],
+    ])
+  })
+
+  it('un episodio guardato fino in fondo conta come visto anche se non è stato spuntato', () => {
+    // Finito quando ancora non si sapeva di che serie fosse: il lettore non
+    // l'aveva segnato.
+    const { serie } = raggruppaSerie([
+      { id: 'a', name: 'South Park S03E06.mp4', cartella: 'Season 03', serie: 'South Park', voce: { ...sp, stagione: 3, episodio: 6, posizione: 1320, secondi_visti: 1300, durata: 1328 } },
+      { id: 'b', name: 'South Park S03E07.mp4', cartella: 'Season 03', serie: 'South Park', voce: { ...sp, stagione: 3, episodio: 7, posizione: 30, secondi_visti: 30 } },
+    ])
+    expect(serie[0].episodi.map((e) => [e.id, e.visto])).toEqual([
+      ['a', true],
+      ['b', false],
     ])
   })
 

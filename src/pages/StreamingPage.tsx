@@ -20,6 +20,7 @@ import {
 import SerieVideoteca from '../components/SerieVideoteca'
 import { riconosciNuovi } from '../lib/riconoscimento'
 import { salvaPresenti } from '../lib/videoPresenti'
+import { dimenticaVideoteca } from '../lib/useVideoteca'
 import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
 import { ascoltaFilmOffline, elencaFilmOffline, offlineDisponibile, spazio, taglia, type FilmOffline } from '../lib/filmOffline'
 import {
@@ -129,6 +130,7 @@ export default function StreamingPage() {
           const noti = new Map((await elencaStreaming(user.id)).map((v) => [v.drive_file_id, v]))
           setArchivio(noti)
           setArchivio(await riconosciNuovi(user.id, visibili, noti))
+          dimenticaVideoteca()
         } catch (e) {
           logFailure('Titoli dei film di Drive')(e)
         }

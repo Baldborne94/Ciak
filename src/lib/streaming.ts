@@ -2,6 +2,7 @@ import { supabase } from './supabase'
 import type { MediaItem, TmdbType } from './types'
 import type { NomeFilm } from './sottotitoli'
 import { ordinaEpisodi, prossimoDaGuardare, sigla, type EpisodioVideoteca } from './videoteca'
+import { arrivatoAllaFine, contaComeVisto } from './fineVisione'
 
 // Il legame fra un file su Drive e l'archivio: quale titolo è, dove ci si è
 // fermati, quando lo si è finito. È ciò che permette al lettore di segnare un
@@ -96,22 +97,8 @@ export function scegliAbbinamento(
 }
 
 // ── Quando un film conta come «visto» ───────────────────────────────────────
-
-// Oltre il 90%, o negli ultimi tre minuti: i titoli di coda non si guardano.
-export const SOGLIA_FINE = 0.9
-const CODA_SECONDI = 180
-// Almeno metà film guardata davvero: saltare alla fine per provare il lettore
-// non deve riempire il diario.
-export const QUOTA_GUARDATA = 0.5
-
-export function arrivatoAllaFine(posizione: number, durata: number | null): boolean {
-  if (!durata || durata <= 0) return false
-  return posizione >= durata * SOGLIA_FINE || durata - posizione <= CODA_SECONDI
-}
-
-export function contaComeVisto(posizione: number, durata: number | null, secondiVisti: number): boolean {
-  return arrivatoAllaFine(posizione, durata) && !!durata && secondiVisti >= durata * QUOTA_GUARDATA
-}
+// Le regole stanno in fineVisione.ts; qui restano esportate per chi le usava.
+export { SOGLIA_FINE, QUOTA_GUARDATA, arrivatoAllaFine, contaComeVisto } from './fineVisione'
 
 // Dopo cinque minuti un film «da vedere» passa «in corso»: compare in «Riprendi
 // a guardare», che è il posto giusto per un film lasciato a metà.
@@ -285,7 +272,7 @@ export function fileDaGuardare(
     file: r.nome_file ?? '',
     stagione: r.stagione,
     episodio: r.episodio,
-    visto: !!r.visto_il,
+    visto: !!r.visto_il || contaComeVisto(r.posizione, r.durata, r.secondi_visti ?? 0),
     posizione: r.posizione,
     secondiVisti: r.secondi_visti ?? 0,
     durata: r.durata,

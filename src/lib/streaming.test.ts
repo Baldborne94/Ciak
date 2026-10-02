@@ -243,6 +243,9 @@ describe('«Guarda ora»: quale file far partire', () => {
     // Aperto un attimo per provare, non è da riprendere: si comincia da S1E1.
     const provato = { ...aMeta, secondi_visti: 15 }
     expect(fileDaGuardare([oad, provato, ep('s1e1', 1, 1)], 1429, 'tv')?.drive_file_id).toBe('s1e1')
+    // Guardato fino in fondo ma mai spuntato: si va al successivo, non da capo.
+    const finito = ep('s1e1', 1, 1, { posizione: 1390, secondi_visti: 1350, updated_at: '2026-10-01T21:00:00Z' })
+    expect(fileDaGuardare([finito, ep('s1e2', 1, 2)], 1429, 'tv')?.drive_file_id).toBe('s1e2')
     const visto = ep('s1e1', 1, 1, { visto_il: '2026-10-01', posizione: 1400, updated_at: '2026-10-01T21:00:00Z' })
     expect(fileDaGuardare([visto, ep('s1e2', 1, 2), oad], 1429, 'tv')?.drive_file_id).toBe('s1e2')
   })
