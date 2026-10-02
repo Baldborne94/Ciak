@@ -40,7 +40,7 @@ const FILE: Record<string, unknown> = {
 // Le scritture (salvataggio e cestino dei sottotitoli) finiscono in `scritture`.
 async function mockDrive(
   page: Page,
-  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false } = {},
+  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   // L'account del permesso, per rinnovarlo da soli senza chiedere quale.
@@ -92,6 +92,8 @@ async function mockDrive(
           'cartella-snk': [{ id: 'cartella-snk-oad', name: 'OADs', parents: ['cartella-snk'] }],
         }),
         'cartella-film': [{ id: 'cartella-song', name: 'Song of the Sea (2014) [1080p]', parents: ['cartella-film'] }],
+        // FILM/Song of the Sea (2014) [1080p]/Featurettes/Making of Song of the Sea.mp4
+        ...(conExtra && { 'cartella-song': [{ id: 'cartella-song-extra', name: 'Featurettes', parents: ['cartella-song'] }] }),
         ...(conSerie && {
           'cartella-serie': [{ id: 'cartella-southpark', name: 'South Park', parents: ['cartella-serie'] }],
           'cartella-southpark': [{ id: 'cartella-sp-s03', name: 'Season 03', parents: ['cartella-southpark'] }],
@@ -140,6 +142,9 @@ async function mockDrive(
                 parents: ['cartella-sp-s03'],
               },
             ]
+          : []),
+        ...(conExtra
+          ? [{ id: 'video-song-extra1', name: 'Making of Song of the Sea.mp4', size: '400000000', mimeType: 'video/mp4', parents: ['cartella-song-extra'] }]
           : []),
         ...(conRaccolta
           ? [{ id: 'video-sp-r-0306', name: 'South Park S03E06.mp4', size: '170000000', mimeType: 'video/mp4', parents: ['cartella-sp-r-s03'] }]
@@ -276,6 +281,18 @@ test('«Streaming» elenca i film della cartella Ciak e li apre nel player', asy
   await page.getByRole('link', { name: /Torna ai film/ }).click()
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
+})
+
+test('gli extra dei film (le featurette) non compaiono come titoli, ma si contano', async ({ page }) => {
+  // «Paprika (2006)/Featurettes/Restoring Paprika.mp4» compariva come un film, «Featurettes».
+  await mockDrive(page, { conExtra: true })
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await expect(page.getByText('1 extra (featurette, trailer, interviste…) non è in elenco', { exact: false })).toBeVisible()
+  await expect(page.getByText('Featurettes')).toHaveCount(0)
+  await expect(page.getByText(/Making of Song of the Sea/)).toHaveCount(0)
 })
 
 test('ricaricando la pagina il collegamento a Drive resta', async ({ page }) => {

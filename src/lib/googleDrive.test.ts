@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { idDriveValido, nomeCategoria, queryInCartelle, schedeCategorie, soloRiproducibili, titoloVideo } from './googleDrive'
+import { idDriveValido, senzaExtra, nomeCategoria, queryInCartelle, schedeCategorie, soloRiproducibili, titoloVideo } from './googleDrive'
 
 describe('titoloVideo', () => {
   it('usa il nome della sottocartella, che di solito è il film', () => {
@@ -66,6 +66,23 @@ describe('idDriveValido', () => {
     expect(idDriveValido('abc?x=1')).toBe(false)
     expect(idDriveValido('corto')).toBe(false)
     expect(idDriveValido('')).toBe(false)
+  })
+})
+
+describe('senzaExtra', () => {
+  const v = (name: string, cartella: string | null) => ({ id: name, name, size: null, mimeType: 'video/mp4', cartella })
+  it('gli extra dei film (featurette, trailer, interviste) non sono titoli da guardare', () => {
+    // «Paprika (2006)/Featurettes/Restoring Paprika.mp4» compariva come un film, «Featurettes».
+    const { visibili, extra } = senzaExtra([
+      v('Restoring Paprika.mp4', 'Featurettes'),
+      v('Trailer.mp4', 'Trailers'),
+      v('Making of.mp4', 'Behind the Scenes'),
+      v('Paprika (2006).mp4', 'Paprika (2006)'),
+      v('OADE01.mp4', 'OADs'),
+      v('NCOP.mp4', 'Extras'),
+    ])
+    expect(visibili.map((x) => x.name)).toEqual(['Paprika (2006).mp4', 'OADE01.mp4', 'NCOP.mp4'])
+    expect(extra).toBe(3)
   })
 })
 

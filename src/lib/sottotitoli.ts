@@ -80,7 +80,8 @@ const GRUPPO = /^\s*\[[^\]]*\]\s*/
 // («titolo - 26 - nome dell'episodio», «titolo - 05 (1080p)», «- 01v2»). Al più
 // tre cifre, e almeno due (gli anime scrivono «05»): «Blade Runner - 2049» e
 // «Rocky - 2» non sono episodi.
-const EPISODIO_ANIME = /\s-\s(\d{2,3})(?:v\d)?(?=\s+-\s|\s*[[(]|\s*$)/
+// Con la parola davanti («- Episode 05 -», «- Ep 7 -») basta anche una cifra.
+const EPISODIO_ANIME = /\s-\s(?:(?:episode|episodio|ep)\.?\s*(\d{1,3})|(\d{2,3}))(?:v\d)?(?=\s+-\s|\s*[[(]|\s*$)/i
 // Gli episodi contenuti in una cartella: «(01-26)», «[01-26]». (Qui i
 // trattini sono già spazi.)
 const INTERVALLO = /[([]\d{1,3} \d{1,3}[)\]]/
@@ -104,7 +105,7 @@ function leggiNome(nome: string): NomeFilm & { anime?: true } {
     const anime = EPISODIO_ANIME.exec(senzaGruppo)
     if (anime) {
       const { titolo, anno } = analizzaNomeFilm(senzaGruppo.slice(0, anime.index))
-      return { titolo, ...(anno !== undefined && { anno }), stagione: 1, episodio: Number(anime[1]), anime: true }
+      return { titolo, ...(anno !== undefined && { anno }), stagione: 1, episodio: Number(anime[1] ?? anime[2]), anime: true }
     }
   }
   const s = senzaGruppo

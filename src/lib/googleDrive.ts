@@ -317,6 +317,18 @@ export function soloRiproducibili(video: DriveVideo[]): { visibili: DriveVideo[]
   return { visibili, nascosti: video.length - visibili.length }
 }
 
+// Gli extra dei film: featurette, trailer, interviste, dietro le quinte, scene
+// tagliate. Non sono titoli da guardare, e nella videoteca comparivano come
+// film a sé («Featurettes», dalla cartella di Paprika). Si contano, come gli
+// MKV. Gli «Extras» e gli speciali delle serie restano: sono la stagione 0.
+const CARTELLA_EXTRA =
+  /^\s*(?:featurettes?|trailers?|interviews?|interviste|behind[ ._-]?the[ ._-]?scenes|dietro le quinte|deleted[ ._-]?scenes|scene tagliate|making[ ._-]?of|samples?)\s*$/i
+
+export function senzaExtra<T extends Pick<DriveVideo, 'cartella'>>(video: T[]): { visibili: T[]; extra: number } {
+  const visibili = video.filter((v) => !v.cartella || !CARTELLA_EXTRA.test(v.cartella))
+  return { visibili, extra: video.length - visibili.length }
+}
+
 // Le schede della videoteca, dalle cartelle di primo livello: nell'ordine in
 // cui le si pensa (film, serie, anime, cartoni) e poi le altre in ordine
 // alfabetico; «Altro» per i video messi direttamente in Ciak.

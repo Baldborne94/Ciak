@@ -37,6 +37,7 @@ import {
   erroreRitornoDrive,
   elencaVideo,
   schedeCategorie,
+  senzaExtra,
   soloRiproducibili,
   titoloVideo,
   type DriveVideo,
@@ -59,6 +60,7 @@ export default function StreamingPage() {
   const [connesso, setConnesso] = useState(driveConnesso())
   const [video, setVideo] = useState<DriveVideo[]>([])
   const [nascosti, setNascosti] = useState(0)
+  const [extra, setExtra] = useState(0)
   // La scheda scelta (una cartella di primo livello), ricordata fra un'apertura
   // e l'altra. '*' = tutto.
   const [scheda, setScheda] = usePersistedState<string>('ciak:videoteca-scheda', '*')
@@ -127,9 +129,11 @@ export default function StreamingPage() {
       // Drive non deve più portare al lettore.
       salvaPresenti(esito.video.map((v) => v.id))
       setCartellaTrovata(esito.cartellaTrovata)
-      const { visibili, nascosti: altri } = soloRiproducibili(esito.video)
+      const { visibili: mp4, nascosti: altri } = soloRiproducibili(esito.video)
+      const { visibili, extra: daParte } = senzaExtra(mp4)
       setVideo(visibili)
       setNascosti(altri)
+      setExtra(daParte)
       setCaricato(true)
       // Locandine e titoli: prima ciò che è già collegato, poi si riconoscono
       // i file nuovi. Best effort: senza, la lista resta quella dei file.
@@ -428,6 +432,12 @@ export default function StreamingPage() {
           <p className="mb-3 text-sm text-zinc-500">
             {nascosti === 1 ? '1 video in un altro formato (MKV, AVI…) è nascosto' : `${nascosti} video in altri formati (MKV, AVI…) sono nascosti`}
             : Ciak riproduce gli MP4. Convertili con <code>converti-mkv.bat</code> e premi «Aggiorna».
+          </p>
+        )}
+        {extra > 0 && (
+          <p className="mb-3 text-sm text-zinc-500">
+            {extra === 1 ? '1 extra (featurette, trailer, interviste…) non è in elenco' : `${extra} extra (featurette, trailer, interviste…) non sono in elenco`}
+            : stanno nelle cartelle degli extra dei film, e non sono titoli da guardare.
           </p>
         )}
         <div className="mb-3 flex flex-wrap items-center gap-2">
