@@ -19,6 +19,7 @@ import {
 } from '../lib/videoteca'
 import SerieVideoteca from '../components/SerieVideoteca'
 import { riconosciNuovi } from '../lib/riconoscimento'
+import { salvaPresenti } from '../lib/videoPresenti'
 import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
 import { ascoltaFilmOffline, elencaFilmOffline, offlineDisponibile, spazio, taglia, type FilmOffline } from '../lib/filmOffline'
 import {
@@ -113,6 +114,9 @@ export default function StreamingPage() {
     setCaricando(true)
     try {
       const esito = await elencaVideo()
+      // Per i pulsanti «Guarda» del resto dell'app: un file cancellato da
+      // Drive non deve più portare al lettore.
+      salvaPresenti(esito.video.map((v) => v.id))
       setCartellaTrovata(esito.cartellaTrovata)
       const { visibili, nascosti: altri } = soloRiproducibili(esito.video)
       setVideo(visibili)

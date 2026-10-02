@@ -47,11 +47,20 @@ import { logFailure } from '../lib/logFailure'
 import { filmDaCercare, nomeLingua } from '../lib/sottotitoli'
 import {
   DURATE_SIGLA,
+  codaSiglaRaggiunta,
   dopoLaSigla,
   inSiglaFinale,
+  inizioSiglaRaggiunto,
   leggiDurataSigla,
+  leggiPuntiSigla,
+  leggiSaltaSigle,
   mostraSaltaSigla,
   salvaDurataSigla,
+  salvaPuntiSigla,
+  salvaSaltaSigle,
+  secondiAllaFine,
+  type PuntiSigla,
+  type SaltaSigle,
 } from '../lib/sigle'
 import { formattaTempo, titoloDaMostrare } from '../lib/streaming'
 import { sigla } from '../lib/videoteca'
@@ -144,6 +153,17 @@ function LettoreStreaming() {
   const [inCoda, setInCoda] = useState(false)
   const [finito, setFinito] = useState(false)
   const [siglaSaltata, setSiglaSaltata] = useState(false)
+  // Le caselle «salta sempre»: valgono per tutte le serie.
+  const [scelte, setScelte] = useState<SaltaSigle>(leggiSaltaSigle)
+  // Saltata da sola: da dove, per poterci tornare se il punto era sbagliato.
+  const [rivedi, setRivedi] = useState<number | null>(null)
+  useEffect(() => {
+    if (rivedi === null) return
+    const via = setTimeout(() => setRivedi(null), 8000)
+    return () => clearTimeout(via)
+  }, [rivedi])
+  // Il conto alla rovescia partito dalla sigla finale, senza aspettare la fine.
+  const [codaAutomatica, setCodaAutomatica] = useState(false)
   const posizione = useRef(0)
   const audioControllato = useRef(false)
   // Chi ha scelto a mano il lettore di Drive ci resta, anche se quello di Ciak
@@ -252,6 +272,19 @@ function LettoreStreaming() {
   const serie = archivio.voce?.media_type === 'tv' && archivio.voce.tmdb_id ? `tv-${archivio.voce.tmdb_id}` : null
   const [durataSigla, setDurataSigla] = useState<number | null>(null)
   useEffect(() => setDurataSigla(serie ? leggiDurataSigla(serie) : null), [serie])
+  const [punti, setPunti] = useState<PuntiSigla>({ inizio: null, coda: null })
+  useEffect(() => setPunti(serie ? leggiPuntiSigla(serie) : { inizio: null, coda: null }), [serie])
+  // Si salva subito, non dentro l'aggiornamento dello stato: passando
+  // all'episodio dopo la pagina sparisce prima che quello venga eseguito.
+  const imparaPunti = useCallback(
+    (nuovi: Partial<PuntiSigla>) => {
+      if (!serie) return
+      const aggiornati = { ...punti, ...nuovi }
+      salvaPuntiSigla(serie, aggiornati)
+      setPunti(aggiornati)
+    },
+    [serie, punti],
+  )
   const etichettaProssimo = prossimo ? sigla(prossimo) : null
   const vaiAlProssimo = useCallback(() => {
     if (!prossimo) return
@@ -259,6 +292,16 @@ function LettoreStreaming() {
       state: { titolo: titoloDaMostrare(prossimo) ?? undefined, file: prossimo.nome_file ?? undefined },
     })
   }, [navigate, prossimo])
+  // Premuto a mano durante la sigla finale: quanto mancava alla fine è dove
+  // comincia la sigla finale di questa serie, per saltarla da sola.
+  const prossimoDallaSigla = useCallback(() => {
+    const v = videoRef.current
+    if (v && !finito && !codaAutomatica) {
+      const coda = secondiAllaFine(v.currentTime, Number.isFinite(v.duration) ? v.duration : null)
+      if (coda !== null) imparaPunti({ coda })
+    }
+    vaiAlProssimo()
+  }, [finito, codaAutomatica, imparaPunti, vaiAlProssimo])
   useEffect(() => {
     const v = videoRef.current
     if (archivioCaricato && v && v.readyState >= 1) applicaRipresa(v)
@@ -334,11 +377,22 @@ function LettoreStreaming() {
     else document.documentElement.requestFullscreen().catch(logFailure('Schermo intero del lettore'))
   }
 
-  function saltaSigla() {
+  // A mano insegna anche dove comincia la sigla in questa serie; da sola
+  // (`automatica`) lascia per qualche secondo «↩ Rivedi la sigla».
+  function saltaSigla(automatica = false) {
     const v = videoRef.current
     if (!v || durataSigla === null) return
-    v.currentTime = dopoLaSigla(v.currentTime, durataSigla, Number.isFinite(v.duration) ? v.duration : null)
+    const da = v.currentTime
+    v.currentTime = dopoLaSigla(da, durataSigla, Number.isFinite(v.duration) ? v.duration : null)
     setSiglaSaltata(true)
+    if (automatica) setRivedi(da)
+    else imparaPunti({ inizio: Math.round(da) })
+  }
+
+  function cambiaScelte(nuove: Partial<SaltaSigle>) {
+    const aggiornate = { ...scelte, ...nuove }
+    salvaSaltaSigle(aggiornate)
+    setScelte(aggiornate)
   }
 
   function suErrore(v: HTMLVideoElement) {
@@ -490,8 +544,14 @@ function LettoreStreaming() {
               archivio.suTempo(v)
               const inizio = mostraSaltaSigla(v.currentTime)
               if (inizio !== allInizio) setAllInizio(inizio)
-              const coda = inSiglaFinale(v.currentTime, Number.isFinite(v.duration) ? v.duration : null)
+              const durataVideo = Number.isFinite(v.duration) ? v.duration : null
+              const coda = inSiglaFinale(v.currentTime, durataVideo)
               if (coda !== inCoda) setInCoda(coda)
+              if (scelte.inizio && !siglaSaltata && inizioSiglaRaggiunto(v.currentTime, punti.inizio)) saltaSigla(true)
+              // Dalla sigla finale parte il conto alla rovescia; tornando
+              // indietro si ferma, invece di cambiare episodio a metà scena.
+              const nellaCoda = scelte.fine && !!prossimo && codaSiglaRaggiunta(v.currentTime, durataVideo, punti.coda)
+              if (nellaCoda !== codaAutomatica) setCodaAutomatica(nellaCoda)
               if (tentativi.current > 0 && v.currentTime > ripresoDa.current + 30) tentativi.current = 0
               const scade = !scaricato && sessioneInScadenza(scadenzaDrive(), Date.now())
               if (scade !== inScadenza) setInScadenza(scade)
@@ -522,52 +582,91 @@ function LettoreStreaming() {
           />
         )}
         {lettore === 'ciak' && (
-          <>
+          // In alto a destra: in basso ci sono i comandi del browser, e quelli
+          // di Firefox (play grande, salti di 10 secondi, velocità) sono alti
+          // il doppio di quelli di Chrome e coprivano «Salta sigla».
+          <div className="absolute right-2 top-2 flex flex-col items-end gap-2">
             <button
               type="button"
               onClick={alternaSchermoIntero}
               aria-label={schermoIntero ? 'Esci dallo schermo intero' : 'Schermo intero'}
               title={schermoIntero ? 'Esci dallo schermo intero' : 'Schermo intero'}
-              className="absolute right-2 top-2 rounded-lg bg-black/50 px-2 py-1 text-lg text-zinc-200 opacity-70 transition hover:opacity-100"
+              className="rounded-lg bg-black/50 px-2 py-1 text-lg text-zinc-200 opacity-70 transition hover:opacity-100"
             >
               ⛶
             </button>
-            {/* Sopra la barra dei comandi del video, in basso a destra. */}
-            <div className="absolute bottom-14 right-3 flex flex-col items-end gap-2">
-              {durataSigla !== null && allInizio && !siglaSaltata && !finito && (
-                <button type="button" onClick={saltaSigla} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">
-                  ⏭ Salta sigla
-                </button>
-              )}
-              {etichettaProssimo && (inCoda || finito) && (
-                <ProssimoEpisodio etichetta={etichettaProssimo} finito={finito} onVai={vaiAlProssimo} />
-              )}
-            </div>
-          </>
+            {durataSigla !== null && allInizio && !siglaSaltata && !finito && (
+              <button type="button" onClick={() => saltaSigla()} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">
+                ⏭ Salta sigla
+              </button>
+            )}
+            {rivedi !== null && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (videoRef.current) videoRef.current.currentTime = rivedi
+                  setRivedi(null)
+                }}
+                className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel"
+              >
+                ↩ Rivedi la sigla
+              </button>
+            )}
+            {etichettaProssimo && (inCoda || finito || codaAutomatica) && (
+              <ProssimoEpisodio
+                etichetta={etichettaProssimo}
+                finito={finito || codaAutomatica}
+                onVai={prossimoDallaSigla}
+              />
+            )}
+          </div>
         )}
       </div>
 
       {lettore === 'ciak' && serie && durataSigla !== null && (
-        <label className="flex flex-wrap items-center gap-2 text-sm text-zinc-400">
-          ⏭ «Salta sigla» va avanti di
-          <select
-            value={durataSigla}
-            onChange={(e) => {
-              const secondi = Number(e.target.value)
-              setDurataSigla(secondi)
-              salvaDurataSigla(serie, secondi)
-            }}
-            aria-label="Durata della sigla"
-            className="rounded-lg border border-theatre-800 bg-theatre-900 px-2 py-1 text-zinc-200"
-          >
-            {DURATE_SIGLA.map((d) => (
-              <option key={d} value={d}>
-                {formattaTempo(d)}
-              </option>
-            ))}
-          </select>
-          in tutti gli episodi di questa serie.
-        </label>
+        <div className="space-y-2 text-sm text-zinc-400">
+          <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={scelte.inizio} onChange={(e) => cambiaScelte({ inizio: e.target.checked })} />
+              Salta sempre la sigla iniziale
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={scelte.fine} onChange={(e) => cambiaScelte({ fine: e.target.checked })} />
+              Salta anche la sigla finale
+            </label>
+          </div>
+          {/* Dove stanno le sigle lo si impara da chi le salta a mano. */}
+          {scelte.inizio && punti.inizio === null && (
+            <p className="text-xs text-zinc-500">
+              La prima volta premi «⏭ Salta sigla» quando parte: Ciak ricorda il punto e negli episodi dopo la salta da sola.
+            </p>
+          )}
+          {scelte.fine && punti.coda === null && (
+            <p className="text-xs text-zinc-500">
+              La prima volta premi «⏭ Prossimo episodio» quando parte la sigla finale: Ciak ricorda il punto per questa serie.
+            </p>
+          )}
+          <label className="flex flex-wrap items-center gap-2">
+            ⏭ «Salta sigla» va avanti di
+            <select
+              value={durataSigla}
+              onChange={(e) => {
+                const secondi = Number(e.target.value)
+                setDurataSigla(secondi)
+                salvaDurataSigla(serie, secondi)
+              }}
+              aria-label="Durata della sigla"
+              className="rounded-lg border border-theatre-800 bg-theatre-900 px-2 py-1 text-zinc-200"
+            >
+              {DURATE_SIGLA.map((d) => (
+                <option key={d} value={d}>
+                  {formattaTempo(d)}
+                </option>
+              ))}
+            </select>
+            in tutti gli episodi di questa serie.
+          </label>
+        </div>
       )}
 
       {problema && lettore === 'ciak' && (

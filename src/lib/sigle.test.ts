@@ -1,11 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DURATA_SIGLA_PREDEFINITA,
+  codaSiglaRaggiunta,
   dopoLaSigla,
   inSiglaFinale,
+  inizioSiglaRaggiunto,
   leggiDurataSigla,
+  leggiPuntiSigla,
+  leggiSaltaSigle,
   mostraSaltaSigla,
   salvaDurataSigla,
+  salvaPuntiSigla,
+  salvaSaltaSigle,
+  secondiAllaFine,
 } from './sigle'
 
 describe('saltare la sigla iniziale', () => {
@@ -62,5 +69,50 @@ describe('la durata della sigla, per serie', () => {
       },
     })
     expect(leggiDurataSigla('tv-1429')).toBe(DURATA_SIGLA_PREDEFINITA)
+  })
+})
+
+describe('saltarle da sole', () => {
+  let memoria: Map<string, string>
+  beforeEach(() => {
+    memoria = new Map()
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => memoria.get(k) ?? null,
+      setItem: (k: string, v: string) => void memoria.set(k, v),
+    })
+  })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('le caselle partono vuote e restano come le si lascia', () => {
+    expect(leggiSaltaSigle()).toEqual({ inizio: false, fine: false })
+    salvaSaltaSigle({ inizio: true, fine: false })
+    expect(leggiSaltaSigle()).toEqual({ inizio: true, fine: false })
+    memoria.set('ciak:salta-sigle', 'rotto{')
+    expect(leggiSaltaSigle()).toEqual({ inizio: false, fine: false })
+  })
+
+  it('i punti imparati sono per serie, e uno strano vale come non saputo', () => {
+    expect(leggiPuntiSigla('tv-1429')).toEqual({ inizio: null, coda: null })
+    salvaPuntiSigla('tv-1429', { inizio: 95, coda: 120 })
+    expect(leggiPuntiSigla('tv-1429')).toEqual({ inizio: 95, coda: 120 })
+    expect(leggiPuntiSigla('tv-2190')).toEqual({ inizio: null, coda: null })
+    memoria.set('ciak:punti-sigla:tv-1', JSON.stringify({ inizio: 'x', coda: -3 }))
+    expect(leggiPuntiSigla('tv-1')).toEqual({ inizio: null, coda: null })
+  })
+
+  it('la sigla iniziale scatta solo passandoci sopra, non riprendendo più avanti', () => {
+    expect(inizioSiglaRaggiunto(94, 95)).toBe(false)
+    expect(inizioSiglaRaggiunto(95.3, 95)).toBe(true)
+    expect(inizioSiglaRaggiunto(400, 95)).toBe(false)
+    expect(inizioSiglaRaggiunto(95.3, null)).toBe(false)
+  })
+
+  it('la sigla finale si misura dalla fine', () => {
+    expect(codaSiglaRaggiunta(1300, 1450, 120)).toBe(false)
+    expect(codaSiglaRaggiunta(1331, 1450, 120)).toBe(true)
+    expect(codaSiglaRaggiunta(1331, null, 120)).toBe(false)
+    expect(codaSiglaRaggiunta(1449, 1450, null)).toBe(false)
+    expect(secondiAllaFine(1330.4, 1450)).toBe(120)
+    expect(secondiAllaFine(10, null)).toBeNull()
   })
 })
