@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  altriTitoli,
   fallbackReadableTitle,
   isReadableTitle,
   displayTitle,
@@ -27,6 +28,22 @@ describe('isReadableTitle', () => {
     expect(isReadableTitle('進撃の巨人')).toBe(false) // giapponese
     expect(isReadableTitle('오징어 게임')).toBe(false) // coreano
     expect(isReadableTitle('Брат')).toBe(false) // russo
+  })
+})
+
+describe('altriTitoli', () => {
+  it('mostra il titolo inglese e l originale accanto a quello italiano', () => {
+    expect(altriTitoli({ title: 'Topolino', originalTitle: 'Mickey Mouse', englishTitle: 'Mickey Mouse' })).toEqual(['Mickey Mouse'])
+    expect(altriTitoli({ title: 'La città incantata', originalTitle: 'Sen to Chihiro no Kamikakushi', englishTitle: 'Spirited Away' })).toEqual([
+      'Spirited Away',
+      'Sen to Chihiro no Kamikakushi',
+    ])
+  })
+
+  it('niente doppioni, niente ideogrammi', () => {
+    expect(altriTitoli({ title: 'Archer', originalTitle: 'Archer', englishTitle: 'archer' })).toEqual([])
+    expect(altriTitoli({ title: "L'attacco dei giganti", originalTitle: '進撃の巨人', englishTitle: 'Attack on Titan' })).toEqual(['Attack on Titan'])
+    expect(altriTitoli({ title: 'Shōgun', originalTitle: null })).toEqual([])
   })
 })
 
@@ -173,7 +190,7 @@ describe('la facciata di tmdb', () => {
     // facciata durante uno spostamento, questo test lo dice invece di lasciare
     // che se ne accorga una pagina a runtime.
     const attesi = [
-      'backdropUrl', 'discoverByCompany', 'discoverByGenre', 'discoverByGenres',
+      'altriTitoli', 'backdropUrl', 'discoverByCompany', 'discoverByGenre', 'discoverByGenres',
       'discoverMigliori',
       'displayTitle', 'fallbackReadableTitle', 'fetchAlternativeTitles', 'fetchGenreIds', 'fetchOriginalTitle', 'fetchReadableTitle',
       'fetchTitleFacts',

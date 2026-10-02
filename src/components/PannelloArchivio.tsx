@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import StarRating from './StarRating'
-import { posterUrl, searchMulti } from '../lib/tmdb'
+import { altriTitoli, posterUrl, searchMulti } from '../lib/tmdb'
 import { logFailure } from '../lib/logFailure'
 import { formattaTempo, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
 import type { NomeFilm } from '../lib/sottotitoli'
@@ -212,6 +212,10 @@ export default function PannelloArchivio({
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-zinc-100">{r.title}</span>
+                      {/* Anche in inglese e in originale: i file hanno spesso quei nomi. */}
+                      {altriTitoli(r).length > 0 && (
+                        <span className="block truncate text-sm text-zinc-300">{altriTitoli(r).join(' · ')}</span>
+                      )}
                       <span className="block text-xs text-zinc-500">
                         {r.mediaType === 'tv' ? 'Serie' : 'Film'}
                         {r.releaseDate ? ` · ${r.releaseDate.slice(0, 4)}` : ''}

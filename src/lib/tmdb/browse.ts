@@ -49,6 +49,13 @@ export async function searchMulti(query: string): Promise<MediaItem[]> {
       merged.set(key, { item: normalise(raw), pop: existing.pop })
     }
   }
+  // Il titolo inglese accanto a quello italiano: chi ha i file coi nomi
+  // inglesi («A Mickey Mouse Cartoon») non riconosce «Topolino».
+  for (const raw of enData.results) {
+    const voce = merged.get(`${raw.media_type}-${raw.id}`)
+    const inglese = raw.title ?? raw.name
+    if (voce && isReadableTitle(inglese)) voce.item.englishTitle = inglese
+  }
 
   return [...merged.values()]
     .sort((a, b) => b.pop - a.pop)
