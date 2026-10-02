@@ -44,7 +44,8 @@ function segnaControllato(fileId: string): void {
 // serie, per esempio), i file rimasti senza titolo meritano un nuovo tentativo:
 // uno solo per versione e per dispositivo.
 // v3: i file provati prima che si leggessero i titoli alternativi.
-const VERSIONE_RICONOSCIMENTO = 3
+// v4: gli episodi nelle raccolte («South Park Season 1 to 26 Mp4 1080p»).
+const VERSIONE_RICONOSCIMENTO = 4
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {

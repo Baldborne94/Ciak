@@ -1,5 +1,5 @@
 import type { DiagnosticaVideo } from './lettore'
-import { filmDaCercare, stagioneDaCartella } from './sottotitoli'
+import { analizzaNomeFilm, filmDaCercare, stagioneDaCartella } from './sottotitoli'
 import {
   CHIAVE_ATTESA_DRIVE,
   CHIAVE_ERRORE_DRIVE,
@@ -307,7 +307,12 @@ export function schedeCategorie(video: Pick<DriveVideo, 'categoria'>[]): { carte
 export function titoloVideo(v: Pick<DriveVideo, 'name' | 'cartella' | 'serie'>): string {
   const nome = filmDaCercare(v.name, v.cartella, v.serie ?? null)
   const episodio = nome.stagione !== undefined && nome.episodio !== undefined ? `S${nome.stagione}E${nome.episodio}` : null
-  if (v.serie && stagioneDaCartella(v.cartella)) return `${v.serie} · ${episodio ?? v.cartella}`
+  if (v.serie && stagioneDaCartella(v.cartella)) {
+    // Il nome della serie ripulito: «South Park Season 1 to 26 Mp4 1080p» è
+    // una raccolta, la serie è «South Park». L'anno resta: distingue i remake.
+    const serie = analizzaNomeFilm(v.serie)
+    return `${serie.anno !== undefined ? `${serie.titolo} (${serie.anno})` : serie.titolo} · ${episodio ?? v.cartella}`
+  }
   if (v.cartella) return episodio ? `${v.cartella} · ${episodio}` : v.cartella
   return v.name.replace(/\.[a-z0-9]{2,4}$/i, '')
 }

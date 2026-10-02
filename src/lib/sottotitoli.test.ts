@@ -64,6 +64,16 @@ describe('sottotitoliPerVideo', () => {
 })
 
 describe('analizzaNomeFilm', () => {
+  it('le raccolte di stagioni non fanno parte del titolo', () => {
+    expect(analizzaNomeFilm('South Park Season 1 to 26 Mp4 1080p').titolo).toBe('South Park')
+    expect(analizzaNomeFilm('The Office Seasons 1-9').titolo).toBe('The Office')
+    expect(analizzaNomeFilm('Friends The Complete Series').titolo).toBe('Friends')
+    expect(analizzaNomeFilm('Breaking Bad S01-S05 1080p').titolo).toBe('Breaking Bad')
+    expect(analizzaNomeFilm('Lupin III Stagioni 1-6').titolo).toBe('Lupin III')
+    // Un titolo che contiene «Season» da solo non si tocca.
+    expect(analizzaNomeFilm('Hunting Season (2016)').titolo).toBe('Hunting Season')
+  })
+
   it('toglie qualità, sorgente e codec e tiene l’anno', () => {
     expect(analizzaNomeFilm('Song.of.the.Sea.2014.1080p.BluRay.x264.YIFY.mp4')).toEqual({
       titolo: 'Song of the Sea',
@@ -129,6 +139,29 @@ describe('filmDaCercare', () => {
     })
     // Se il file dice già SxxEyy, vince il file.
     expect(filmDaCercare('South.Park.S03E05.mp4', 'Season 03', 'South Park')).toMatchObject({ stagione: 3, episodio: 5 })
+  })
+
+  it('una raccolta («South Park Season 1 to 26 Mp4 1080p») non è il nome della serie: vince quello del file', () => {
+    // Tutto South Park restava senza titolo, e senza titolo niente episodio
+    // dopo, niente «Salta sigla»: si cercava «South Park Season 1 to 26 Mp4».
+    expect(filmDaCercare('South Park S03E06.mp4', 'Season 03', 'South Park Season 1 to 26 Mp4 1080p')).toEqual({
+      titolo: 'South Park',
+      stagione: 3,
+      episodio: 6,
+    })
+    // Il file senza titolo prende quello della cartella, ripulito.
+    expect(filmDaCercare('06 Spontaneous Combustion.mp4', 'Season 03', 'South Park Season 1 to 26 Mp4 1080p')).toEqual({
+      titolo: 'South Park',
+      stagione: 3,
+      episodio: 6,
+    })
+    // L'anno della cartella resta, se il file non lo dice.
+    expect(filmDaCercare('Shogun.S01E02.mkv', 'Season 01', 'Shōgun (2024)')).toEqual({
+      titolo: 'Shogun',
+      anno: 2024,
+      stagione: 1,
+      episodio: 2,
+    })
   })
 
   it('un OAD in una cartella di speciali è la stagione 0 della serie', () => {

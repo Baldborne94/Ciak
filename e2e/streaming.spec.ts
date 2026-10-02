@@ -34,7 +34,10 @@ const FILE: Record<string, unknown> = {
 //   Ciak/FILM/The.Secret.of.Kells.2009.mkv (nascosto: Ciak riproduce gli MP4)
 //   (e, se richiesto, …/Song.of.the.Sea.it.srt)
 // Le scritture (salvataggio e cestino dei sottotitoli) finiscono in `scritture`.
-async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false } = {}) {
+async function mockDrive(
+  page: Page,
+  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false } = {},
+) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   await page.route(/^https:\/\/www\.googleapis\.com\/(upload\/)?drive\/v3\/files/, (route) => {
     const req = route.request()
@@ -85,6 +88,13 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
           'cartella-serie': [{ id: 'cartella-southpark', name: 'South Park', parents: ['cartella-serie'] }],
           'cartella-southpark': [{ id: 'cartella-sp-s03', name: 'Season 03', parents: ['cartella-southpark'] }],
         }),
+        // SERIE TV/South Park/South Park Season 1 to 26 Mp4 1080p/Season 03: la
+        // raccolta scaricata così com'è, un livello in più.
+        ...(conRaccolta && {
+          'cartella-serie': [{ id: 'cartella-southpark', name: 'South Park', parents: ['cartella-serie'] }],
+          'cartella-southpark': [{ id: 'cartella-sp-raccolta', name: 'South Park Season 1 to 26 Mp4 1080p', parents: ['cartella-southpark'] }],
+          'cartella-sp-raccolta': [{ id: 'cartella-sp-r-s03', name: 'Season 03', parents: ['cartella-sp-raccolta'] }],
+        }),
       }
       files = Object.entries(sotto).flatMap(([id, figli]) => (q.includes(`'${id}' in parents`) ? figli : []))
     } else if (q.includes("mimeType contains 'video/'")) {
@@ -122,6 +132,9 @@ async function mockDrive(page: Page, { conCartellaCiak = true, sottotitoliNellaC
                 parents: ['cartella-sp-s03'],
               },
             ]
+          : []),
+        ...(conRaccolta
+          ? [{ id: 'video-sp-r-0306', name: 'South Park S03E06.mp4', size: '170000000', mimeType: 'video/mp4', parents: ['cartella-sp-r-s03'] }]
           : []),
         {
           id: 'video-kells-0001',
@@ -1000,6 +1013,32 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
     episodio: 2,
   })
   expect(cercati.filter((q) => q === 'South Park')).toHaveLength(0)
+})
+
+test('una serie dentro una raccolta («South Park Season 1 to 26 Mp4 1080p») si chiama South Park e viene riconosciuta', async ({ page }) => {
+  // Si cercava «South Park Season 1 to 26 Mp4»: niente titolo, quindi niente
+  // episodio dopo, niente «Salta sigla», niente spunta a fine episodio.
+  const db = await mockSupabase(page, {
+    user_streaming: [
+      { user_id: E2E_USER.id, drive_file_id: 'video-sp-r-0306', nome_file: 'South Park S03E06.mp4', abbinato_a_mano: false, posizione: 0, secondi_visti: 0 },
+    ],
+  })
+  // Già provato senza esito con la lettura vecchia dei nomi: si riprova.
+  await page.addInitScript(() => localStorage.setItem('ciak:riconoscimento-v3:video-sp-r-0306', '1'))
+  await mockDrive(page, { conRaccolta: true })
+  const sp = { id: 2190, media_type: 'tv', name: 'South Park', original_name: 'South Park', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] }
+  await cercaTmdb(page, [SONG, sp], movieDetail(2190, 'South Park', { name: 'South Park', original_name: 'South Park' }))
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByRole('button', { name: /^South Park/ })).toBeVisible()
+  await expect(page.getByText(/Season 1 to 26/)).toHaveCount(0)
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-r-0306')).toMatchObject({
+    tmdb_id: 2190,
+    media_type: 'tv',
+    stagione: 3,
+    episodio: 6,
+  })
 })
 
 test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli altri nomi del titolo', async ({ page }) => {

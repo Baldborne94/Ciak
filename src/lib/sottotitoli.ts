@@ -66,6 +66,13 @@ export interface NomeFilm {
 const ETICHETTE =
   /\b(2160p|1080p|720p|576p|480p|4k|uhd|bluray|blu ray|brrip|bdrip|remux|web dl|webdl|webrip|hdtv|dvdrip|hdrip|x264|x265|h264|h265|h 264|h 265|hevc|avc|hdr|hdr10|10bits?|8bits?|hi10p|ddp5 1|dd5 1|aac|ac3|proper|repack|extended|yify|yts|ita|eng)\b/i
 
+// Le raccolte di stagioni nei nomi delle cartelle: «Season 1 to 26», «Seasons
+// 1-9», «Stagioni 1-6», «The Complete Series», «S01-S05». Non sono il titolo:
+// «South Park Season 1 to 26 Mp4 1080p» si cercava così, e non si trovava.
+// (Qui i trattini sono già spazi.) Servono due numeri: «Hunting Season» resta.
+const RACCOLTA =
+  /\b(?:seasons? \d{1,2} (?:to |a )?\d{1,2}|stagion[ei] \d{1,2} (?:a |al )?\d{1,2}|(?:the )?complete series|serie completa|s\d{1,2} s\d{1,2})\b/i
+
 // Il film (o l'episodio) da cercare online, dal nome del file o della cartella:
 // «Song.of.the.Sea.2014.1080p.BluRay.x264.YIFY.mp4» → Song of the Sea, 2014;
 // «Shogun.S01E01.Anjin.1080p.mkv» → Shogun, stagione 1, episodio 1.
@@ -101,6 +108,8 @@ export function analizzaNomeFilm(nome: string): NomeFilm {
 
   const etichetta = ETICHETTE.exec(s)
   if (etichetta && etichetta.index > 0) fine = Math.min(fine, etichetta.index)
+  const raccolta = RACCOLTA.exec(s)
+  if (raccolta && raccolta.index > 0) fine = Math.min(fine, raccolta.index)
 
   // L'anno è l'ULTIMO prima delle etichette, e mai la prima parola: «Blade
   // Runner 2049 (2017)» è del 2017, «2001 Odissea nello spazio 1968» del 1968.
@@ -139,6 +148,11 @@ function mezzoEpisodio(nomeFile: string): boolean {
   return /\bS\d{1,2} ?E\d{1,3}[.,]\d\b/i.test(s) || /^\s*(?:e|ep|episode|episodio)?\s*[-.]?\s*\d{1,3}[.,]\d\b/i.test(s)
 }
 
+// Un «titolo» che è solo il segno dell'episodio: «S03E01.mp4», «OVA 3.mkv».
+function soloEpisodio(titolo: string): boolean {
+  return /^(?:S\d{1,2} ?E\d{1,3}|\d{1,2}x\d{2,3}|(?:OAD|OVA|ONA|Special|Speciale)\s*E?\s*\d{1,3})\b/i.test(titolo)
+}
+
 // L'episodio di un file dentro una cartella di stagione, quando il nome non
 // dice «S03E01»: «01 Rainforest Shmainforest», «E05», «Episodio 12».
 function episodioDaNomeFile(nomeFile: string): number | undefined {
@@ -160,9 +174,13 @@ export function filmDaCercare(nomeFile: string, cartella: string | null, serie: 
     const daSerie = analizzaNomeFilm(serie)
     const mezzo = mezzoEpisodio(nomeFile)
     const episodio = mezzo ? undefined : (daFile.episodio ?? episodioDaNomeFile(nomeFile))
+    // «South Park S03E06.mp4» dice da sé di che serie è, ed è più affidabile
+    // della cartella sopra, che può essere una raccolta col nome della release.
+    const dalFile = daFile.stagione !== undefined && !soloEpisodio(daFile.titolo)
+    const anno = dalFile ? (daFile.anno ?? daSerie.anno) : daSerie.anno
     return {
-      titolo: daSerie.titolo,
-      ...(daSerie.anno !== undefined && { anno: daSerie.anno }),
+      titolo: dalFile ? daFile.titolo : daSerie.titolo,
+      ...(anno !== undefined && { anno }),
       stagione: mezzo ? 0 : (daFile.stagione ?? stagione),
       ...(episodio !== undefined && { episodio }),
     }
@@ -170,8 +188,7 @@ export function filmDaCercare(nomeFile: string, cartella: string | null, serie: 
   if (!cartella || daFile.anno !== undefined) return daFile
   if (daFile.stagione !== undefined) {
     // «S03E01.mp4» nella cartella della serie: il titolo è quello della cartella.
-    const senzaTitolo = /^S\d{1,2} ?E\d{1,3}$/i.test(daFile.titolo) || /^\d{1,2}x\d{2,3}$/.test(daFile.titolo)
-    return senzaTitolo ? { ...daFile, titolo: analizzaNomeFilm(cartella).titolo } : daFile
+    return soloEpisodio(daFile.titolo) ? { ...daFile, titolo: analizzaNomeFilm(cartella).titolo } : daFile
   }
   const daCartella = analizzaNomeFilm(cartella)
   return daCartella.anno !== undefined ? daCartella : daFile
