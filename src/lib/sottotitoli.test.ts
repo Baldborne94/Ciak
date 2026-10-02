@@ -212,6 +212,16 @@ describe('i nomi degli anime', () => {
     expect(analizzaNomeFilm('Cowboy Bebop - 01v2.mkv')).toEqual({ titolo: 'Cowboy Bebop', stagione: 1, episodio: 1 })
   })
 
+  it('anche con la parola «Episode» davanti al numero', () => {
+    // Takopi's Original Sin: l'episodio 1 e il 5 restavano fuori dalla serie.
+    expect(analizzaNomeFilm("Takopi's Original Sin - Episode 05 - To You in 2022 1080p BDRip x265 FLAC 2.0 Kira [SEV].mp4")).toEqual({
+      titolo: "Takopi's Original Sin",
+      stagione: 1,
+      episodio: 5,
+    })
+    expect(analizzaNomeFilm('Frieren - Ep 7 - Something.mkv')).toEqual({ titolo: 'Frieren', stagione: 1, episodio: 7 })
+  })
+
   it('la cartella col gruppo e l intervallo di episodi ha il titolo pulito', () => {
     expect(analizzaNomeFilm('[a-S] Samurai Champloo (01-26) (1080p)').titolo).toBe('Samurai Champloo')
     expect(analizzaNomeFilm('Trigun [01-26] [BD]').titolo).toBe('Trigun')

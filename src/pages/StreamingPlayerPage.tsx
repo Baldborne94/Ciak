@@ -401,12 +401,43 @@ function LettoreStreaming() {
     ).catch(logFailure('Sottotitoli nella scheda del film offline'))
   }, [fileId, locale, usaSalvati, sub.tracce])
 
+  // Quale sottotitolo si vede (-1: nessuno), e quello scelto da Ciak: il menu
+  // del browser sta attaccato alla barra in basso, e sul tablet toccando
+  // «Inglese» si chiudeva invece di sceglierlo.
+  const [sottotitolo, setSottotitolo] = useState(-1)
+  const sceltaSottotitoli = useRef<number | null>(null)
+  useEffect(() => {
+    const elenco = videoRef.current?.textTracks
+    if (!elenco) return
+    const leggi = () => {
+      let attivo = -1
+      for (let i = 0; i < elenco.length; i++) if (elenco[i].mode === 'showing') attivo = i
+      setSottotitolo(attivo)
+    }
+    leggi()
+    // Anche quando si cambia dal menu del browser.
+    elenco.addEventListener('change', leggi)
+    return () => elenco.removeEventListener('change', leggi)
+  }, [tracce, chiaveVideo, lettore])
+  const scegliSottotitoli = useCallback((indice: number) => {
+    sceltaSottotitoli.current = indice
+    const elenco = videoRef.current?.textTracks
+    if (!elenco) return
+    for (let i = 0; i < elenco.length; i++) elenco[i].mode = i === indice ? 'showing' : 'disabled'
+    setSottotitolo(indice)
+  }, [])
+
   // Le tracce aggiunte a video già avviato non si accendono da sole: la prima
   // (l'italiano, se c'è) si accende a mano, le altre restano disponibili dal
   // pulsante CC. Se l'utente ne ha già scelta una, non la si tocca.
   useEffect(() => {
     const elenco = videoRef.current?.textTracks
     if (!elenco || tracce.length === 0) return
+    // Scelta da Ciak (anche «nessuno»): resta, anche quando arrivano altre tracce.
+    if (sceltaSottotitoli.current !== null && sceltaSottotitoli.current < elenco.length) {
+      for (let i = 0; i < elenco.length; i++) elenco[i].mode = i === sceltaSottotitoli.current ? 'showing' : 'disabled'
+      return
+    }
     let mostrata = false
     for (let i = 0; i < elenco.length; i++) if (elenco[i].mode === 'showing') mostrata = true
     if (mostrata) return
@@ -517,6 +548,15 @@ function LettoreStreaming() {
   }
 
   const siglaSaltabile = durataSigla !== null && allInizio && !siglaSaltata && !finito
+  // Il pulsante CC passa al sottotitolo dopo, e dall'ultimo a nessuno.
+  const prossimoSottotitolo = sottotitolo + 1 >= tracce.length ? -1 : sottotitolo + 1
+  const nomiSottotitoli = tracce.map((t, i) => {
+    const nome = nomeLingua(t.lingua)
+    // Due tracce nella stessa lingua: si distinguono col numero.
+    return tracce.filter((x) => nomeLingua(x.lingua) === nome).length > 1 ? `${nome} ${i + 1}` : nome
+  })
+  const siglaSottotitolo =
+    sottotitolo < 0 ? 'off' : (tracce[sottotitolo]?.lingua?.toUpperCase().slice(0, 2) ?? String(sottotitolo + 1))
 
   // La tastiera sul computer. Il gestore resta lo stesso; le azioni cambiano
   // a ogni disegno (la sigla saltabile, il prossimo episodio), e si leggono qui.
@@ -531,6 +571,7 @@ function LettoreStreaming() {
       if (inCoda) prossimoDallaSigla()
       else vaiAlProssimo()
     } else if (azione === 'audio' && videoRef.current) videoRef.current.muted = !videoRef.current.muted
+    else if (azione === 'sottotitoli' && tracce.length > 0) scegliSottotitoli(prossimoSottotitolo)
   }
 
   // A mano insegna anche dove comincia la sigla in questa serie; da sola
@@ -774,6 +815,17 @@ function LettoreStreaming() {
             >
               ⛶
             </button>
+            {tracce.length > 0 && (
+              <button
+                type="button"
+                onClick={() => scegliSottotitoli(prossimoSottotitolo)}
+                aria-label={`Sottotitoli: ${sottotitolo < 0 ? 'nessuno' : nomiSottotitoli[sottotitolo]}. Cambia`}
+                title="Cambia i sottotitoli"
+                className="rounded-lg bg-black/50 px-2 py-1 text-sm font-semibold text-zinc-200 opacity-70 transition hover:opacity-100"
+              >
+                CC {siglaSottotitolo}
+              </button>
+            )}
             {siglaSaltabile && (
               <button type="button" onClick={() => saltaSigla()} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">
                 ⏭ Salta sigla
@@ -804,7 +856,7 @@ function LettoreStreaming() {
 
       {lettore === 'ciak' && !touch && (
         <p className="text-xs text-zinc-500">
-          Dalla tastiera: spazio pausa · ← → 10 secondi · F schermo intero · M audio
+          Dalla tastiera: spazio pausa · ← → 10 secondi · F schermo intero · M audio{tracce.length > 0 && ' · C sottotitoli'}
           {serie && ' · S salta la sigla · N episodio dopo'}
         </p>
       )}
@@ -983,6 +1035,23 @@ function LettoreStreaming() {
         {lettore === 'ciak' && (
           <>
             <p className="text-zinc-300">💬 {testoSottotitoli}</p>
+            {tracce.length > 0 && (
+              <label className="flex items-center gap-2 text-zinc-400">
+                Mostra
+                <select
+                  value={sottotitolo}
+                  onChange={(e) => scegliSottotitoli(Number(e.target.value))}
+                  className="rounded-lg border border-theatre-700 bg-theatre-950 px-2 py-1 text-zinc-100"
+                >
+                  <option value={-1}>Nessun sottotitolo</option>
+                  {nomiSottotitoli.map((nome, i) => (
+                    <option key={tracce[i].url} value={i}>
+                      {nome}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             {!usaSalvati &&
               sub.stato === 'pronti' &&
               sub.tracce

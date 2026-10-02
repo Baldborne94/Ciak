@@ -66,6 +66,24 @@ describe('SerieVideoteca', () => {
     expect(onApri).toHaveBeenLastCalledWith(expect.objectContaining({ id: 's12e1' }))
   })
 
+  it('aperta si può scegliere il titolo di tutta la serie', async () => {
+    const onScegliTitolo = vi.fn()
+    const { rerender } = render(
+      <SerieVideoteca titolo="A Mickey Mouse Cartoon" poster={null} anno={null} episodi={EPISODI} scaricati={new Set()} onApri={vi.fn()} onScegliTitolo={onScegliTitolo} />,
+    )
+    // Chiusa resta una riga pulita.
+    expect(screen.queryByRole('button', { name: /Scegli il titolo/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /A Mickey Mouse Cartoon/, expanded: false }))
+    await userEvent.click(screen.getByRole('button', { name: '✎ Scegli il titolo della serie' }))
+    expect(onScegliTitolo).toHaveBeenCalledTimes(1)
+
+    // Riconosciuta, la domanda è se è quella giusta.
+    rerender(
+      <SerieVideoteca titolo="Topolino" poster={null} anno={null} episodi={EPISODI} scaricati={new Set()} onApri={vi.fn()} onScegliTitolo={onScegliTitolo} riconosciuta />,
+    )
+    expect(screen.getByRole('button', { name: '✎ Non è questa serie? Scegli il titolo' })).toBeInTheDocument()
+  })
+
   it('gli speciali (stagione 0) stanno in fondo, sotto «Speciali»', async () => {
     monta([ep(0, 1, { nome: 'OADE01' }), ep(1, 1)])
     await userEvent.click(screen.getByRole('button', { name: /South Park/, expanded: false }))

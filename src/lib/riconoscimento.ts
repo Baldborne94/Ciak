@@ -48,7 +48,9 @@ function segnaControllato(fileId: string): void {
 // v4: gli episodi nelle raccolte («South Park Season 1 to 26 Mp4 1080p»).
 // v5: gli anime coi nomi «[Gruppo] titolo - 05», e gli speciali in cartelle
 // scritte male («Speicals»).
-const VERSIONE_RICONOSCIMENTO = 5
+// v6: i film finiti sotto una serie di un altro anno («Memories of Murder
+// (2003)» abbinato a «Gap Dong», 2014).
+const VERSIONE_RICONOSCIMENTO = 6
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {
@@ -141,7 +143,15 @@ export async function riconosciNuovi(
     const r = noti.get(v.id)
     return !!r && !r.tmdb_id && !r.abbinato_a_mano && !giaRiprovato(v.id)
   }
-  const daFare = video.filter((v) => !ereditati.has(v.id) && (!noti.has(v.id) || senzaTitolo(v)))
+  // Un file che non è un episodio ma è abbinato a una serie: con le regole di
+  // prima un film poteva finire sotto una serie omonima di un altro anno. Si
+  // riprova una volta per versione; una scelta a mano non si tocca.
+  const filmSottoSerie = (v: DriveVideo) => {
+    const r = noti.get(v.id)
+    if (r?.media_type !== 'tv' || !r.tmdb_id || r.abbinato_a_mano || giaRiprovato(v.id)) return false
+    return filmDaCercare(v.name, v.cartella, v.serie ?? null).stagione === undefined
+  }
+  const daFare = video.filter((v) => !ereditati.has(v.id) && (!noti.has(v.id) || senzaTitolo(v) || filmSottoSerie(v)))
   // Gli episodi di una serie cercano tutti la stessa cosa («South Park»): una
   // ricerca e un titolo originale per serie, non uno per file. Con 264
   // episodi erano 264 ricerche identiche, e il riconoscimento non finiva mai.
@@ -190,7 +200,11 @@ export async function riconosciNuovi(
   }
   await mapLimit(daFare, 3, async (v) => {
     const nome = filmDaCercare(v.name, v.cartella, v.serie ?? null)
-    let campi: Partial<VoceStreaming> = { nome_file: v.name }
+    // Un abbinamento di prima si toglie, se la nuova ricerca non ne trova uno.
+    const azzera: Partial<VoceStreaming> = noti.get(v.id)?.tmdb_id
+      ? { tmdb_id: null, media_type: null, titolo: null, poster_path: null, stagione: null, episodio: null }
+      : {}
+    let campi: Partial<VoceStreaming> = { nome_file: v.name, ...azzera }
     try {
       const risultati = await cerca(nome.titolo)
       const scelto = scegliAbbinamento(nome, risultati) ?? (await conAltriTitoli(nome, risultati))
@@ -255,6 +269,36 @@ export async function riconosciNuovi(
   })
   // Una volta col totale, non a ogni file.
   if (falliti > 0) logFailure('Riconoscimento dei film di Drive')(new Error(`${falliti} file su ${daFare.length} non riconosciuti per errore`))
+  return esito
+}
+
+// Il titolo scelto a mano dalla videoteca, per tutti i file di una serie (o
+// per un film): ogni episodio tiene stagione ed episodio letti dal suo nome.
+// A mano vuol dire per sempre: il riconoscimento non ci torna sopra.
+export async function abbinaAMano(
+  userId: string,
+  video: Pick<DriveVideo, 'id' | 'name' | 'cartella' | 'serie'>[],
+  item: MediaItem,
+): Promise<Map<string, Partial<VoceStreaming>>> {
+  const titolo = await titoloDaSalvare(item)
+  const esito = new Map<string, Partial<VoceStreaming>>()
+  let falliti = 0
+  await mapLimit(video, 3, async (v) => {
+    const nome = filmDaCercare(v.name, v.cartella, v.serie ?? null)
+    const campi = { nome_file: v.name, ...abbinamentoDa(item, nome), titolo, abbinato_a_mano: true }
+    try {
+      await salvaStreaming(userId, v.id, campi)
+      esito.set(v.id, campi)
+      segnaControllato(v.id)
+    } catch {
+      falliti++
+    }
+  })
+  if (falliti > 0) {
+    const errore = new Error(`${falliti} file su ${video.length} non salvati`)
+    logFailure('Titolo scelto dalla videoteca')(errore)
+    if (esito.size === 0) throw errore
+  }
   return esito
 }
 

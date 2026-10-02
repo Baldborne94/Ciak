@@ -22,6 +22,10 @@ interface Props {
   // la si guarda cambia identità, e con lo stato qui dentro si richiudeva.
   aperta?: boolean
   onAperta?: (aperta: boolean) => void
+  // «Scegli il titolo» per tutta la serie: quando Ciak non l'ha riconosciuta,
+  // o ha sbagliato.
+  riconosciuta?: boolean
+  onScegliTitolo?: () => void
 }
 
 // La stagione 0 sono gli speciali (OAD, OVA), come su TMDB.
@@ -34,7 +38,18 @@ function avanzamento(e: EpisodioVideoteca): number {
   return e.durata ? Math.min(1, e.posizione / e.durata) : 0
 }
 
-export default function SerieVideoteca({ titolo, poster, anno, episodi, scaricati, onApri, aperta: apertaFuori, onAperta }: Props) {
+export default function SerieVideoteca({
+  titolo,
+  poster,
+  anno,
+  episodi,
+  scaricati,
+  onApri,
+  aperta: apertaFuori,
+  onAperta,
+  riconosciuta = false,
+  onScegliTitolo,
+}: Props) {
   const [apertaQui, setApertaQui] = useState(false)
   const aperta = apertaFuori ?? apertaQui
   const setAperta = (cambia: (a: boolean) => boolean) => {
@@ -139,6 +154,11 @@ export default function SerieVideoteca({ titolo, poster, anno, episodi, scaricat
               </section>
             )
           })}
+          {onScegliTitolo && (
+            <button type="button" onClick={onScegliTitolo} className="mt-3 text-xs text-zinc-400 transition hover:text-projector">
+              ✎ {riconosciuta ? 'Non è questa serie? Scegli il titolo' : 'Scegli il titolo della serie'}
+            </button>
+          )}
         </div>
       )}
     </>

@@ -5,7 +5,7 @@ import { posterUrl } from './tmdb'
 
 // ── Tastiera ─────────────────────────────────────────────────────────────────
 
-export type AzioneTasto = 'pausa' | 'indietro' | 'avanti' | 'schermo' | 'sigla' | 'prossimo' | 'audio'
+export type AzioneTasto = 'pausa' | 'indietro' | 'avanti' | 'schermo' | 'sigla' | 'prossimo' | 'audio' | 'sottotitoli'
 
 // Gli stessi tasti di YouTube, dove ha senso: chi li conosce li ritrova.
 const TASTI: Record<string, AzioneTasto> = {
@@ -19,6 +19,7 @@ const TASTI: Record<string, AzioneTasto> = {
   s: 'sigla',
   n: 'prossimo',
   m: 'audio',
+  c: 'sottotitoli',
 }
 
 export const SALTO_TASTIERA = 10

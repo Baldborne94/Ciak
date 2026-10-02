@@ -22,6 +22,7 @@ describe('azioneTasto', () => {
     expect(azioneTasto(tasto('s'), pagina)).toBe('sigla')
     expect(azioneTasto(tasto('n'), pagina)).toBe('prossimo')
     expect(azioneTasto(tasto('m'), pagina)).toBe('audio')
+    expect(azioneTasto(tasto('c'), pagina)).toBe('sottotitoli')
   })
 
   it('anche con le maiuscole (il blocco maiuscole acceso)', () => {

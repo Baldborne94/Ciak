@@ -40,7 +40,7 @@ const FILE: Record<string, unknown> = {
 // Le scritture (salvataggio e cestino dei sottotitoli) finiscono in `scritture`.
 async function mockDrive(
   page: Page,
-  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false } = {},
+  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   // L'account del permesso, per rinnovarlo da soli senza chiedere quale.
@@ -92,6 +92,8 @@ async function mockDrive(
           'cartella-snk': [{ id: 'cartella-snk-oad', name: 'OADs', parents: ['cartella-snk'] }],
         }),
         'cartella-film': [{ id: 'cartella-song', name: 'Song of the Sea (2014) [1080p]', parents: ['cartella-film'] }],
+        // FILM/Song of the Sea (2014) [1080p]/Featurettes/Making of Song of the Sea.mp4
+        ...(conExtra && { 'cartella-song': [{ id: 'cartella-song-extra', name: 'Featurettes', parents: ['cartella-song'] }] }),
         ...(conSerie && {
           'cartella-serie': [{ id: 'cartella-southpark', name: 'South Park', parents: ['cartella-serie'] }],
           'cartella-southpark': [{ id: 'cartella-sp-s03', name: 'Season 03', parents: ['cartella-southpark'] }],
@@ -140,6 +142,9 @@ async function mockDrive(
                 parents: ['cartella-sp-s03'],
               },
             ]
+          : []),
+        ...(conExtra
+          ? [{ id: 'video-song-extra1', name: 'Making of Song of the Sea.mp4', size: '400000000', mimeType: 'video/mp4', parents: ['cartella-song-extra'] }]
           : []),
         ...(conRaccolta
           ? [{ id: 'video-sp-r-0306', name: 'South Park S03E06.mp4', size: '170000000', mimeType: 'video/mp4', parents: ['cartella-sp-r-s03'] }]
@@ -276,6 +281,18 @@ test('«Streaming» elenca i film della cartella Ciak e li apre nel player', asy
   await page.getByRole('link', { name: /Torna ai film/ }).click()
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
+})
+
+test('gli extra dei film (le featurette) non compaiono come titoli, ma si contano', async ({ page }) => {
+  // «Paprika (2006)/Featurettes/Restoring Paprika.mp4» compariva come un film, «Featurettes».
+  await mockDrive(page, { conExtra: true })
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await expect(page.getByText('1 extra (featurette, trailer, interviste…) non è in elenco', { exact: false })).toBeVisible()
+  await expect(page.getByText('Featurettes')).toHaveCount(0)
+  await expect(page.getByText(/Making of Song of the Sea/)).toHaveCount(0)
 })
 
 test('ricaricando la pagina il collegamento a Drive resta', async ({ page }) => {
@@ -496,6 +513,34 @@ test('un indirizzo di film non valido non finisce nel lettore', async ({ page })
   await page.goto('/streaming/bad')
   await expect(page.getByText('Film non trovato')).toBeVisible()
   await expect(page.locator('iframe')).toHaveCount(0)
+})
+
+test('i sottotitoli si cambiano dal pulsante CC sul video, dalla tendina e col tasto C', async ({ page }) => {
+  // Il menu del browser sta attaccato alla barra in basso: sul tablet,
+  // toccando «Inglese», si chiudeva invece di sceglierlo.
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
+  await apriSongOfTheSea(page)
+  const modo = () => page.evaluate(() => document.querySelector('video')?.textTracks[0]?.mode)
+
+  const cc = page.getByRole('button', { name: /^Sottotitoli: / })
+  await expect(cc).toHaveAccessibleName('Sottotitoli: Italiano. Cambia')
+  await expect(cc).toHaveText('CC IT')
+  expect(await modo()).toBe('showing')
+
+  await cc.click()
+  await expect(cc).toHaveText('CC off')
+  expect(await modo()).toBe('disabled')
+  await expect(page.getByRole('combobox', { name: 'Mostra' })).toHaveValue('-1')
+
+  await page.getByRole('combobox', { name: 'Mostra' }).selectOption({ label: 'Italiano' })
+  await expect(cc).toHaveText('CC IT')
+  expect(await modo()).toBe('showing')
+
+  await page.locator('body').click({ position: { x: 5, y: 5 } })
+  await page.keyboard.press('c')
+  await expect(cc).toHaveText('CC off')
 })
 
 test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', async ({ page }) => {
@@ -778,7 +823,9 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
     durata: 3600,
     secondi_visti: 0,
     visto_il: null,
-    abbinato_a_mano: false,
+    // Il file di Song of the Sea fa da S1E1: scelto a mano, se no il
+    // riconoscimento lo riporterebbe giustamente al suo film.
+    abbinato_a_mano: true,
   })
   await mockSupabase(page, { user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2)] })
   await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
@@ -917,7 +964,9 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
     durata: 3600,
     secondi_visti: 0,
     visto_il: null,
-    abbinato_a_mano: false,
+    // Il file di Song of the Sea fa da S1E1: scelto a mano, se no il
+    // riconoscimento lo riporterebbe giustamente al suo film.
+    abbinato_a_mano: true,
   })
   await mockSupabase(page, {
     user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2), riga('video-shogun-03', 3)],
@@ -988,7 +1037,9 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
     durata: 3600,
     secondi_visti: 0,
     visto_il: null,
-    abbinato_a_mano: false,
+    // Il file di Song of the Sea fa da S1E1: scelto a mano, se no il
+    // riconoscimento lo riporterebbe giustamente al suo film.
+    abbinato_a_mano: true,
   })
   await mockSupabase(page, { user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2)] })
   await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
@@ -1293,6 +1344,82 @@ test('un episodio visto fino in fondo prima di essere riconosciuto si spunta, e 
     dispatchEvent(new PopStateEvent('popstate'))
   })
   await expect(page.getByRole('link', { name: /▶ Guarda S3E6/ })).toHaveAttribute('href', '/streaming/video-sp-r-0306')
+})
+
+test('dalla videoteca si sceglie il titolo di una serie intera, e di un film', async ({ page }) => {
+  // TMDB la chiama in un altro modo: Ciak da solo non la riconosce.
+  const db = await mockSupabase(page)
+  await mockDrive(page, { conSerie: true })
+  const sp = { id: 2190, media_type: 'tv', name: 'Parco del Sud', original_name: 'Parco del Sud', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] }
+  await cercaTmdb(page, [SONG, sp], movieDetail(2190, 'Parco del Sud', { name: 'Parco del Sud', original_name: 'Parco del Sud' }))
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  // «Da sistemare»: solo ciò che Ciak non ha riconosciuto. Song of the Sea sì.
+  await expect(page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' })).toBeVisible()
+  await page.getByRole('button', { name: /⚠ Da sistemare/ }).click()
+  await expect(page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' })).toHaveCount(0)
+  await page.getByRole('button', { name: /^South Park/, expanded: false }).click()
+  await page.getByRole('button', { name: '✎ Scegli il titolo della serie' }).click()
+
+  const finestra = page.getByRole('dialog')
+  await expect(finestra.getByText(/Vale per tutti i 2 file/)).toBeVisible()
+  await finestra.getByRole('button', { name: 'Cerca', exact: true }).click()
+  await finestra.getByRole('button', { name: /Parco del Sud/ }).click()
+
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect
+    .poll(() => db.tables.user_streaming?.filter((r) => r.tmdb_id === 2190).map((r) => [r.drive_file_id, r.stagione, r.episodio, r.abbinato_a_mano]))
+    .toEqual(
+      expect.arrayContaining([
+        ['video-sp-000301', 3, 1, true],
+        ['video-sp-000302', 3, 2, true],
+      ]),
+    )
+  // Sistemata, esce da «Da sistemare»; tutto il resto c'è ancora.
+  await expect(page.getByRole('button', { name: /^Parco del Sud/ })).toHaveCount(0)
+  await page.getByRole('button', { name: /⚠ Da sistemare/ }).click()
+  await expect(page.getByRole('button', { name: /^Parco del Sud/ })).toBeVisible()
+
+  // Un film: il ✎ accanto alla riga.
+  await page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Cerca', exact: true }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /La canzone del mare/ }).click()
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001')?.abbinato_a_mano).toBe(true)
+})
+
+test('un film finito sotto una serie di un altro anno torna il suo film', async ({ page }) => {
+  // «Memories of Murder (2003)» compariva come «Gap Dong» (2014), una serie
+  // con un episodio senza numero.
+  const db = await mockSupabase(page, {
+    user_streaming: [
+      {
+        user_id: E2E_USER.id,
+        drive_file_id: 'video-song-0001',
+        nome_file: 'Song.of.the.Sea.2014.1080p.mp4',
+        tmdb_id: 61375,
+        media_type: 'tv',
+        titolo: 'Gap Dong',
+        poster_path: '/gd.jpg',
+        stagione: null,
+        episodio: null,
+        abbinato_a_mano: false,
+        posizione: 0,
+        durata: null,
+        secondi_visti: 0,
+        visto_il: null,
+      },
+    ],
+  })
+  await mockDrive(page)
+  await cercaTmdb(page, [SONG])
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect
+    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001'))
+    .toMatchObject({ tmdb_id: 110416, media_type: 'movie', stagione: null, episodio: null })
+  await expect(page.getByText('Gap Dong')).toHaveCount(0)
 })
 
 test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli altri nomi del titolo', async ({ page }) => {
@@ -1766,7 +1893,9 @@ test('a fine episodio lo spunta, mette la serie in corso e propone il prossimo',
     durata: 3600,
     secondi_visti: 0,
     visto_il: null,
-    abbinato_a_mano: false,
+    // Il file di Song of the Sea fa da S1E1: scelto a mano, se no il
+    // riconoscimento lo riporterebbe giustamente al suo film.
+    abbinato_a_mano: true,
     ...extra,
   })
   const db = await mockSupabase(page, {
