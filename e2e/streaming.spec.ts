@@ -890,6 +890,12 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
     riserva++
     return route.fulfill({ json: { inizio: null, finale: null } })
   })
+  // La serie ha già i suoi tempi imparati: con quelli esatti non servono.
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('ciak:punti-sigla:tv-126308')) {
+      localStorage.setItem('ciak:punti-sigla:tv-126308', JSON.stringify({ inizio: 4, coda: 120 }))
+    }
+  })
 
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
@@ -897,6 +903,10 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
   await expect(page.getByText(/tempi sono quelli esatti di TheIntroDB: sigla da 3:20 a 4:50, titoli di coda da 56:40/)).toBeVisible()
   expect(chieste).toEqual(['126308-1-1'])
   expect(riserva).toBe(0)
+  // Con i tempi esatti restano solo quelli: i tempi della serie e la durata
+  // della sigla, che qui non si usano, non compaiono.
+  await expect(page.getByText(/In questa serie/)).toHaveCount(0)
+  await expect(page.getByLabel('Durata della sigla')).toHaveCount(0)
 
   // Prima della sigla il pulsante non c'è: questo episodio la ha a 3:20.
   await videoA(page, 60)
@@ -904,8 +914,8 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
   await videoA(page, 230)
   await page.getByRole('button', { name: '⏭ Salta sigla' }).click()
   expect(await saltoDelVideo(page)).toBe(290)
-  // I tempi esatti non si «imparano» per la serie.
-  expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBeNull()
+  // I tempi esatti non si «imparano» per la serie: restano quelli di prima.
+  expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBe('{"inizio":4,"coda":120}')
 
   // Con «salta sempre» si salta da sola, passandoci sopra.
   await page.getByLabel('Salta sempre la sigla iniziale').check()
