@@ -1,6 +1,7 @@
 import { corrispondeRicerca, normalizzaRicerca } from './ricercaLista'
 import { analizzaNomeFilm, filmDaCercare, stagioneDaCartella } from './sottotitoli'
 import type { VoceStreaming } from './streaming'
+import { arrivatoAllaFine, contaComeVisto } from './fineVisione'
 
 // Cercare, filtrare e ordinare la videoteca: con centinaia di file l'ordine
 // alfabetico dei nomi da solo non basta più per ritrovare qualcosa.
@@ -111,8 +112,16 @@ export function ordinaEpisodi(episodi: EpisodioVideoteca[]): EpisodioVideoteca[]
 // serie proponeva quello invece del primo episodio.
 export const SECONDI_PER_INIZIATO = 60
 
+// Visto: spuntato, o guardato fino in fondo con la stessa regola del lettore.
+// Un episodio finito prima di essere riconosciuto non era stato spuntato, e
+// la serie proponeva di «riprenderlo» invece di passare al successivo.
+export function episodioConcluso(e: EpisodioVideoteca): boolean {
+  return e.visto || contaComeVisto(e.posizione, e.durata, e.secondiVisti)
+}
+
 export function episodioIniziato(e: EpisodioVideoteca): boolean {
-  if (e.visto || e.secondiVisti < SECONDI_PER_INIZIATO) return false
+  // Arrivato alla fine non si «riprende»: ripartirebbe da capo.
+  if (episodioConcluso(e) || e.secondiVisti < SECONDI_PER_INIZIATO || arrivatoAllaFine(e.posizione, e.durata)) return false
   return e.durata ? e.posizione / e.durata > 0.02 : e.posizione > 30
 }
 
@@ -126,12 +135,12 @@ export function prossimoDaGuardare(episodi: EpisodioVideoteca[]): EpisodioVideot
   const ordinati = ordinaEpisodi(episodi)
   const iniziato = ordinati.filter(episodioIniziato).sort(piuRecente)[0]
   if (iniziato) return iniziato
-  const ultimoVisto = ordinati.filter((e) => e.visto).sort(piuRecente)[0]
+  const ultimoVisto = ordinati.filter(episodioConcluso).sort(piuRecente)[0]
   if (ultimoVisto) {
-    const dopo = ordinati.slice(ordinati.indexOf(ultimoVisto) + 1).find((e) => !e.visto)
+    const dopo = ordinati.slice(ordinati.indexOf(ultimoVisto) + 1).find((e) => !episodioConcluso(e))
     if (dopo) return dopo
   }
-  return ordinati.find((e) => !e.visto) ?? null
+  return ordinati.find((e) => !episodioConcluso(e)) ?? null
 }
 
 export function perStagione(episodi: EpisodioVideoteca[]): { stagione: number | null; episodi: EpisodioVideoteca[] }[] {
@@ -250,7 +259,7 @@ export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]
       file: v.name,
       stagione: mezzo ? 0 : (voce?.stagione ?? letto.stagione ?? null),
       episodio: mezzo ? null : (voce?.episodio ?? letto.episodio ?? null),
-      visto: !!voce?.visto_il,
+      visto: !!voce?.visto_il || (!!voce && contaComeVisto(voce.posizione, voce.durata, voce.secondi_visti ?? 0)),
       posizione: voce?.posizione ?? 0,
       secondiVisti: voce?.secondi_visti ?? 0,
       durata: voce?.durata ?? null,

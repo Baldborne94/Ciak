@@ -646,6 +646,22 @@ function LettoreStreaming() {
               La prima volta premi «⏭ Prossimo episodio» quando parte la sigla finale: Ciak ricorda il punto per questa serie.
             </p>
           )}
+          {/* I tempi sono di questa serie: ognuna ha i suoi, e si vedono. */}
+          {(punti.inizio !== null || punti.coda !== null) && (
+            <p className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+              In questa serie
+              {punti.inizio !== null && ` la sigla iniziale parte a ${formattaTempo(punti.inizio)}`}
+              {punti.inizio !== null && punti.coda !== null && ','}
+              {punti.coda !== null && ` la finale negli ultimi ${formattaTempo(punti.coda)}`}.
+              <button
+                type="button"
+                onClick={() => imparaPunti({ inizio: null, coda: null })}
+                className="text-projector underline-offset-2 hover:underline"
+              >
+                Reimpara
+              </button>
+            </p>
+          )}
           <label className="flex flex-wrap items-center gap-2">
             ⏭ «Salta sigla» va avanti di
             <select

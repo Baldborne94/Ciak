@@ -820,6 +820,8 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
   await page.getByRole('button', { name: '⏭ Prossimo episodio: S1E2' }).click()
   await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
   expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBe('{"inizio":95,"coda":120}')
+  // I tempi sono di questa serie, e si vedono: ognuna ha i suoi.
+  await expect(page.getByText(/In questa serie la sigla iniziale parte a 1:35, la finale negli ultimi 2:00/)).toBeVisible()
 
   // Episodio 2: la sigla iniziale si salta da sola, passandoci sopra…
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E2' })).toBeVisible()
@@ -838,6 +840,11 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
   await videoA(page, 3485)
   await expect(page.getByRole('region', { name: 'Prossimo episodio' }).getByText(/S1E3 fra \d+ s/)).toBeVisible()
   await expect(page).toHaveURL(/\/streaming\/video-shogun-03$/, { timeout: 15_000 })
+
+  // Punti sbagliati? Si dimenticano e si reimparano saltando di nuovo a mano.
+  await page.getByRole('button', { name: 'Reimpara' }).click()
+  expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBe('{"inizio":null,"coda":null}')
+  await expect(page.getByText(/La prima volta premi «⏭ Salta sigla»/)).toBeVisible()
 })
 
 test('la lista riconosce i film di Drive e li mostra col titolo e la locandina', async ({ page }) => {
@@ -1039,6 +1046,48 @@ test('una serie dentro una raccolta («South Park Season 1 to 26 Mp4 1080p») si
     stagione: 3,
     episodio: 6,
   })
+})
+
+test('un episodio visto fino in fondo prima di essere riconosciuto si spunta, e la scheda della serie lo sa subito', async ({ page }) => {
+  // S3E6 guardato tutto quando ancora non si sapeva che fosse South Park:
+  // niente spunta, e la videoteca diceva «Riprendi S3E6» (che ripartiva da capo).
+  const db = await mockSupabase(page, {
+    user_streaming: [
+      {
+        user_id: E2E_USER.id,
+        drive_file_id: 'video-sp-r-0306',
+        nome_file: 'South Park S03E06.mp4',
+        abbinato_a_mano: false,
+        posizione: 1320,
+        durata: 1328,
+        secondi_visti: 1300,
+        visto_il: null,
+      },
+    ],
+  })
+  await page.addInitScript(() => localStorage.setItem('ciak:riconoscimento-v3:video-sp-r-0306', '1'))
+  await mockDrive(page, { conRaccolta: true })
+  const sp = { id: 2190, media_type: 'tv', name: 'South Park', original_name: 'South Park', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] }
+  await cercaTmdb(page, [SONG, sp], movieDetail(2190, 'South Park', { name: 'South Park', original_name: 'South Park' }))
+
+  // Prima la scheda: il file non è ancora di nessuno, niente pulsante.
+  await page.goto('/title/tv/2190')
+  await expect(page.getByRole('heading', { name: 'South Park', level: 1 })).toBeVisible()
+  await expect(page.getByRole('link', { name: /▶ (Guarda|Riprendi)/ })).toHaveCount(0)
+
+  // La videoteca lo riconosce e, visto che era arrivato alla fine, lo spunta.
+  await page.getByRole('link', { name: /Streaming/ }).first().click()
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect.poll(() => db.tables.user_episodes?.[0]).toMatchObject({ tv_id: 2190, season_number: 3, episode_number: 6 })
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-r-0306')?.visto_il).toBeTruthy()
+  await expect(page.getByText(/tutti visti/)).toBeVisible()
+
+  // Tornando alla scheda senza ricaricare, il pulsante c'è già.
+  await page.evaluate(() => {
+    history.pushState({}, '', '/title/tv/2190')
+    dispatchEvent(new PopStateEvent('popstate'))
+  })
+  await expect(page.getByRole('link', { name: /▶ Guarda S3E6/ })).toHaveAttribute('href', '/streaming/video-sp-r-0306')
 })
 
 test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli altri nomi del titolo', async ({ page }) => {

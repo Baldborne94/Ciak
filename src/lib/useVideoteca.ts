@@ -24,6 +24,12 @@ function leggi(userId: string): Promise<VoceStreaming[]> {
   return righe
 }
 
+// Dopo il riconoscimento i file hanno un titolo nuovo: la copia di prima
+// lascerebbe la scheda della serie senza «Guarda» fino a un minuto.
+export function dimenticaVideoteca(): void {
+  copia = null
+}
+
 export function useVideoteca(): VoceStreaming[] {
   const { user } = useAuth()
   const [righe, setRighe] = useState<VoceStreaming[]>([])
