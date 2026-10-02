@@ -3,6 +3,7 @@ import { analizzaNomeFilm, filmDaCercare, stagioneDaCartella } from './sottotito
 import {
   CHIAVE_ATTESA_DRIVE,
   CHIAVE_ERRORE_DRIVE,
+  CHIAVE_RICORDA_DRIVE,
   CHIAVE_TOKEN_DRIVE,
   PERCORSO_RITORNO_DRIVE,
   PREFISSO_STATO_DRIVE,
@@ -18,8 +19,9 @@ import {
 // (`drive.file`): è ciò che serve a salvare accanto al film un sottotitolo
 // scaricato, senza poter toccare nient'altro.
 // Il token scade dopo ~1h e senza backend non c'è refresh: lo teniamo in
-// sessionStorage (solo questa scheda, sparisce alla chiusura) così un
-// ricaricamento della pagina non costringe a ricollegarsi ogni volta.
+// localStorage, così riaprire l'app entro l'ora non costringe a ricollegarsi;
+// scaduto, lo si rinnova da soli con un redirect senza domande (vedi
+// `driveAutomatico`).
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
 const SCOPE = [
@@ -90,14 +92,15 @@ declare global {
 let accessToken: string | null = null
 let tokenExpiry = 0
 
-// sessionStorage può mancare (test su Node) o lanciare (modalità privata
+// localStorage può mancare (test su Node) o lanciare (modalità privata
 // restrittive): in quel caso si resta col token solo in memoria.
 function salvaToken(): void {
   try {
     if (accessToken) {
-      sessionStorage.setItem(CHIAVE_SESSIONE, JSON.stringify({ t: accessToken, e: tokenExpiry }))
+      localStorage.setItem(CHIAVE_SESSIONE, JSON.stringify({ t: accessToken, e: tokenExpiry }))
+      if (!localStorage.getItem(CHIAVE_RICORDA_DRIVE)) localStorage.setItem(CHIAVE_RICORDA_DRIVE, '{}')
     } else {
-      sessionStorage.removeItem(CHIAVE_SESSIONE)
+      localStorage.removeItem(CHIAVE_SESSIONE)
     }
   } catch {
     /* nessuna persistenza: pazienza */
@@ -106,7 +109,7 @@ function salvaToken(): void {
 
 function leggiToken(): void {
   try {
-    const raw = sessionStorage.getItem(CHIAVE_SESSIONE)
+    const raw = localStorage.getItem(CHIAVE_SESSIONE)
     if (!raw) return
     const { t, e } = JSON.parse(raw) as { t?: unknown; e?: unknown }
     if (typeof t === 'string' && typeof e === 'number' && Date.now() < e) {
@@ -139,10 +142,19 @@ export function scadenzaDrive(): number {
   return driveConnesso() ? tokenExpiry : 0
 }
 
-export function driveDisconnetti(): void {
+// `dimentica`: scollegato a mano, quindi niente più rinnovi da soli. Un token
+// scaduto o revocato (un 401) invece si dimentica e basta: il rinnovo ci riprova.
+export function driveDisconnetti(dimentica = false): void {
   accessToken = null
   tokenExpiry = 0
   salvaToken()
+  if (dimentica) {
+    try {
+      localStorage.removeItem(CHIAVE_RICORDA_DRIVE)
+    } catch {
+      /* storage assente: non c'era niente da dimenticare */
+    }
+  }
 }
 
 // Carica lo script GIS una sola volta (idempotente: se c'è già, non lo riaggiunge).
@@ -177,8 +189,15 @@ export function inAppInstallata(): boolean {
 }
 
 // L'indirizzo del consenso Google per il flusso a redirect: lo stesso permesso
-// del popup, che torna in `redirectUri` col token nel frammento.
-export function urlConsensoDrive(clientId: string, redirectUri: string, stato: string): string {
+// del popup, che torna in `redirectUri` col token nel frammento. `silenzioso`:
+// senza nessuna schermata (`prompt=none`), per rinnovare un permesso già dato;
+// l'account evita che, con più account Google sul telefono, Google chieda quale.
+export function urlConsensoDrive(
+  clientId: string,
+  redirectUri: string,
+  stato: string,
+  silenzioso?: { account: string | null },
+): string {
   const u = new URL('https://accounts.google.com/o/oauth2/v2/auth')
   u.searchParams.set('client_id', clientId)
   u.searchParams.set('redirect_uri', redirectUri)
@@ -186,6 +205,10 @@ export function urlConsensoDrive(clientId: string, redirectUri: string, stato: s
   u.searchParams.set('scope', SCOPE)
   u.searchParams.set('include_granted_scopes', 'true')
   u.searchParams.set('state', stato)
+  if (silenzioso) {
+    u.searchParams.set('prompt', 'none')
+    if (silenzioso.account) u.searchParams.set('login_hint', silenzioso.account)
+  }
   return u.toString()
 }
 
@@ -200,18 +223,22 @@ export function erroreRitornoDrive(): string | null {
   }
 }
 
-function consensoConRedirect(clientId: string): Promise<never> {
+export function consensoConRedirect(clientId: string, silenzioso?: { account: string | null }): Promise<never> {
   const casuali = crypto.getRandomValues(new Uint8Array(16))
   const stato = PREFISSO_STATO_DRIVE + Array.from(casuali, (b) => b.toString(16).padStart(2, '0')).join('')
   const ritorno = window.location.pathname + window.location.search
-  sessionStorage.setItem(CHIAVE_ATTESA_DRIVE, JSON.stringify({ stato, ritorno }))
-  window.location.assign(urlConsensoDrive(clientId, window.location.origin + PERCORSO_RITORNO_DRIVE, stato))
+  sessionStorage.setItem(CHIAVE_ATTESA_DRIVE, JSON.stringify({ stato, ritorno, silenzioso: !!silenzioso }))
+  window.location.assign(urlConsensoDrive(clientId, window.location.origin + PERCORSO_RITORNO_DRIVE, stato, silenzioso))
   // La pagina se ne va: chi aspetta resta in attesa fino al ritorno.
   return new Promise<never>(() => {})
 }
 
 // Apre il consenso Google e mette da parte il token. Da chiamare su gesto utente
 // (un click): il popup di Google richiede un'interazione.
+export function clientIdDrive(): string | null {
+  return CLIENT_ID ?? null
+}
+
 export async function collegaDrive(): Promise<void> {
   if (!CLIENT_ID) throw new Error('Google Drive non è configurato.')
   if (inAppInstallata()) return consensoConRedirect(CLIENT_ID)
@@ -339,6 +366,13 @@ async function richiestaDrive(url: string, init: RequestInit = {}): Promise<Resp
   }
   if (!res.ok) throw new Error(`Google Drive ha risposto ${res.status}.`)
   return res
+}
+
+// L'account Google del permesso: serve a rinnovarlo da soli senza che Google
+// chieda quale account usare.
+export async function accountDrive(): Promise<string | null> {
+  const res = await richiestaDrive('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)')
+  return ((await res.json()) as { user?: { emailAddress?: string } }).user?.emailAddress ?? null
 }
 
 // Una query a Drive, seguendo le pagine.

@@ -197,7 +197,7 @@ export default function StreamingPage() {
   }
 
   function scollega() {
-    driveDisconnetti()
+    driveDisconnetti(true)
     setConnesso(false)
     setVideo([])
     setCaricato(false)
