@@ -34,10 +34,6 @@ const CHIAVE_SESSIONE = CHIAVE_TOKEN_DRIVE
 // La cartella, nella radice di «Il mio Drive», da cui si prendono i film.
 export const CARTELLA_CIAK = 'Ciak'
 const MIME_CARTELLA = 'application/vnd.google-apps.folder'
-// Tetti di sicurezza per la visita delle sottocartelle.
-const PROFONDITA_MAX = 4
-const CARTELLE_MAX = 200
-
 // La funzione esiste solo se è stato configurato un Client ID: senza, la voce di
 // menu e la pagina restano nascoste, così il resto dell'app non cambia.
 export function driveConfigurato(): boolean {
@@ -66,9 +62,6 @@ export interface DriveVideo {
 export interface ElencoVideo {
   cartellaTrovata: boolean
   video: DriveVideo[]
-  // Falso se il tetto di cartelle o di profondità ha lasciato fuori qualcosa:
-  // allora un file che manca dall'elenco non è per forza sparito da Drive.
-  completo: boolean
 }
 
 // GIS espone `window.google.accounts.oauth2`. Tipizzato al minimo che serve.
@@ -364,13 +357,17 @@ async function cercaFile(q: string, campi: string): Promise<FileGrezzo[]> {
 
 // I video dentro la cartella «Ciak» (radice di Il mio Drive) e nelle sue
 // sottocartelle. Drive non ha una ricerca ricorsiva: si visitano le cartelle a
-// livelli, con un tetto di profondità e di numero per restare leggeri.
+// livelli, fino in fondo. C'erano un tetto di 4 livelli e di 200 cartelle, ma
+// con una cartella per stagione la videoteca lo superava presto, e i video
+// oltre sparivano dall'elenco senza dirlo. Le richieste restano poche (venti
+// cartelle per richiesta), e Drive non ha cicli: una cartella non può stare
+// dentro sé stessa, e ognuna si visita una volta sola.
 export async function elencaVideo(): Promise<ElencoVideo> {
   const radici = await cercaFile(
     `name = '${CARTELLA_CIAK}' and mimeType = '${MIME_CARTELLA}' and 'root' in parents and trashed = false`,
     'id, name',
   )
-  if (radici.length === 0) return { cartellaTrovata: false, video: [], completo: true }
+  if (radici.length === 0) return { cartellaTrovata: false, video: [] }
 
   const idRadici = new Set(radici.map((r) => r.id))
   const nomiCartelle = new Map<string, string>()
@@ -381,8 +378,7 @@ export async function elencaVideo(): Promise<ElencoVideo> {
   const cartelleCategoria = new Set<string>()
   const tutte: string[] = [...idRadici]
   let livello = [...idRadici]
-  let completo = true
-  for (let profondita = 0; profondita < PROFONDITA_MAX && livello.length > 0; profondita++) {
+  for (let profondita = 0; livello.length > 0; profondita++) {
     const figli: FileGrezzo[] = []
     for (const q of queryInCartelle(livello, `mimeType = '${MIME_CARTELLA}'`)) {
       figli.push(...(await cercaFile(q, 'id, name, parents')))
@@ -390,10 +386,6 @@ export async function elencaVideo(): Promise<ElencoVideo> {
     livello = []
     for (const f of figli) {
       if (nomiCartelle.has(f.id) || idRadici.has(f.id)) continue
-      if (tutte.length >= CARTELLE_MAX) {
-        completo = false
-        continue
-      }
       nomiCartelle.set(f.id, f.name)
       const genitore = f.parents?.[0]
       if (genitore) genitoreDi.set(f.id, genitore)
@@ -404,9 +396,6 @@ export async function elencaVideo(): Promise<ElencoVideo> {
       livello.push(f.id)
     }
   }
-
-  // Cartelle all'ultimo livello visitato: le loro sottocartelle non si sono viste.
-  if (livello.length > 0) completo = false
 
   const grezzi: FileGrezzo[] = []
   for (const q of queryInCartelle(tutte, "mimeType contains 'video/'")) {
@@ -433,7 +422,7 @@ export async function elencaVideo(): Promise<ElencoVideo> {
     }
   })
   video.sort((a, b) => titoloVideo(a).localeCompare(titoloVideo(b), 'it', { numeric: true }))
-  return { cartellaTrovata: true, video, completo }
+  return { cartellaTrovata: true, video }
 }
 
 // Gli id dei file Drive sono fatti solo di lettere, cifre, «-» e «_»: tutto il
