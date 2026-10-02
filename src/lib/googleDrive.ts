@@ -66,6 +66,9 @@ export interface DriveVideo {
 export interface ElencoVideo {
   cartellaTrovata: boolean
   video: DriveVideo[]
+  // Falso se il tetto di cartelle o di profondità ha lasciato fuori qualcosa:
+  // allora un file che manca dall'elenco non è per forza sparito da Drive.
+  completo: boolean
 }
 
 // GIS espone `window.google.accounts.oauth2`. Tipizzato al minimo che serve.
@@ -367,7 +370,7 @@ export async function elencaVideo(): Promise<ElencoVideo> {
     `name = '${CARTELLA_CIAK}' and mimeType = '${MIME_CARTELLA}' and 'root' in parents and trashed = false`,
     'id, name',
   )
-  if (radici.length === 0) return { cartellaTrovata: false, video: [] }
+  if (radici.length === 0) return { cartellaTrovata: false, video: [], completo: true }
 
   const idRadici = new Set(radici.map((r) => r.id))
   const nomiCartelle = new Map<string, string>()
@@ -378,6 +381,7 @@ export async function elencaVideo(): Promise<ElencoVideo> {
   const cartelleCategoria = new Set<string>()
   const tutte: string[] = [...idRadici]
   let livello = [...idRadici]
+  let completo = true
   for (let profondita = 0; profondita < PROFONDITA_MAX && livello.length > 0; profondita++) {
     const figli: FileGrezzo[] = []
     for (const q of queryInCartelle(livello, `mimeType = '${MIME_CARTELLA}'`)) {
@@ -385,7 +389,11 @@ export async function elencaVideo(): Promise<ElencoVideo> {
     }
     livello = []
     for (const f of figli) {
-      if (nomiCartelle.has(f.id) || idRadici.has(f.id) || tutte.length >= CARTELLE_MAX) continue
+      if (nomiCartelle.has(f.id) || idRadici.has(f.id)) continue
+      if (tutte.length >= CARTELLE_MAX) {
+        completo = false
+        continue
+      }
       nomiCartelle.set(f.id, f.name)
       const genitore = f.parents?.[0]
       if (genitore) genitoreDi.set(f.id, genitore)
@@ -396,6 +404,9 @@ export async function elencaVideo(): Promise<ElencoVideo> {
       livello.push(f.id)
     }
   }
+
+  // Cartelle all'ultimo livello visitato: le loro sottocartelle non si sono viste.
+  if (livello.length > 0) completo = false
 
   const grezzi: FileGrezzo[] = []
   for (const q of queryInCartelle(tutte, "mimeType contains 'video/'")) {
@@ -422,7 +433,7 @@ export async function elencaVideo(): Promise<ElencoVideo> {
     }
   })
   video.sort((a, b) => titoloVideo(a).localeCompare(titoloVideo(b), 'it', { numeric: true }))
-  return { cartellaTrovata: true, video }
+  return { cartellaTrovata: true, video, completo }
 }
 
 // Gli id dei file Drive sono fatti solo di lettere, cifre, «-» e «_»: tutto il

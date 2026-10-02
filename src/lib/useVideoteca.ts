@@ -3,6 +3,8 @@ import { useAuth } from './auth'
 import { logFailure } from './logFailure'
 import { driveConfigurato } from './googleDrive'
 import { elencaStreaming, type VoceStreaming } from './streaming'
+import { elencaFilmOffline } from './filmOffline'
+import { leggiPresenti, soloPresenti } from './videoPresenti'
 
 // I film della videoteca (i file di Drive già collegati ai titoli), letti una
 // volta e condivisi: una lista «Da vedere» con cento card non deve fare cento
@@ -28,7 +30,12 @@ export function useVideoteca(): VoceStreaming[] {
   useEffect(() => {
     if (!user || !driveConfigurato()) return
     let vivo = true
-    void leggi(user.id).then((r) => vivo && setRighe(r))
+    // Solo i file ancora su Drive (secondo l'ultimo elenco della videoteca) o
+    // scaricati qui: un pulsante verso un file cancellato porta a un errore.
+    void Promise.all([leggi(user.id), elencaFilmOffline()]).then(([r, offline]) => {
+      const scaricati = new Set(offline.filter((f) => f.stato === 'completo').map((f) => f.id))
+      if (vivo) setRighe(soloPresenti(r, leggiPresenti(), scaricati))
+    })
     return () => {
       vivo = false
     }

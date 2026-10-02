@@ -699,6 +699,56 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
   await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull()
 })
 
+test('un video tolto da Drive non porta più al lettore: niente «Guarda» nelle liste e nelle schede', async ({ page }) => {
+  // The Secret of Kells restava con «Riprendi da 7:40» anche dopo averlo
+  // cancellato da Drive: il pulsante portava a un file che non c'era più.
+  const riga = (id: string, tmdb: number, titolo: string) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: id,
+    nome_file: `${titolo}.mp4`,
+    tmdb_id: tmdb,
+    media_type: 'movie',
+    titolo,
+    posizione: 0,
+    durata: 4800,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: false,
+  })
+  const daVedere = (id: string, tmdb: number, title: string) => ({
+    id,
+    user_id: E2E_USER.id,
+    tmdb_id: tmdb,
+    media_type: 'movie',
+    title,
+    poster_path: '/p.jpg',
+    status: 'to_watch',
+    is_favorite: false,
+    personal_rating: null,
+    genre_ids: [],
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  })
+  await mockSupabase(page, {
+    user_titles: [daVedere('t1', 110416, 'Song of the Sea'), daVedere('t2', 26963, 'The Secret of Kells')],
+    // Song of the Sea è ancora su Drive; il file di Kells no.
+    user_streaming: [riga('video-song-0001', 110416, 'Song of the Sea'), riga('video-kells-gone1', 26963, 'The Secret of Kells')],
+  })
+  await mockDrive(page)
+  await cercaTmdb(page, [SONG])
+
+  // La videoteca legge Drive e ricorda quali file ci sono.
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+
+  await page.goto('/lists/watchlist')
+  await expect(page.getByText('The Secret of Kells')).toBeVisible()
+  const pulsanti = page.getByRole('link', { name: /▶ (Guarda|Riprendi)/ })
+  await expect(pulsanti).toHaveCount(1)
+  await expect(pulsanti).toHaveAttribute('href', '/streaming/video-song-0001')
+})
+
 // Il video a un certo punto, ricordando dove lo si fa saltare (in `salto`).
 async function videoA(page: Page, secondi: number, durata = 3600) {
   await page.evaluate(
