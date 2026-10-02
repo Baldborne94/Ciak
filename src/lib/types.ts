@@ -26,6 +26,9 @@ export interface MediaItem {
   voteAverage: number
   genreIds: number[]
   originalLanguage: string | null
+  // Il titolo inglese, quando la ricerca l'ha visto (chiede in italiano e in
+  // inglese): «Topolino» è «Mickey Mouse», e chi cerca in inglese lo riconosce.
+  englishTitle?: string | null
 }
 
 // Extended detail used on the Detail page.

@@ -1586,6 +1586,8 @@ test('«Non è questo?» fa scegliere il titolo a mano, e resta scelto', async (
   await expect(page.getByRole('link', { name: 'Song of the Sea' })).toBeVisible()
   await page.getByRole('button', { name: 'Non è questo?' }).click()
   await page.getByRole('button', { name: 'Cerca', exact: true }).click()
+  // Accanto al titolo italiano c'è quello originale: i file hanno quel nome.
+  await expect(page.getByRole('button', { name: /La canzone del mare.*Song of the Sea/ })).toBeVisible()
   await page.getByRole('button', { name: /Song of the Sea \(corto\)/ }).click()
 
   await expect(page.getByRole('link', { name: 'Song of the Sea (corto)' })).toHaveAttribute('href', '/title/movie/42')

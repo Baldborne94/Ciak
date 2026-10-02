@@ -14,6 +14,19 @@ const LATIN_LANGS = new Set([
 // eslint-disable-next-line no-misleading-character-class
 const NON_LATIN_SCRIPTS = new RegExp('[\\u0400-\\u05FF\\u0600-\\u06FF\\u0900-\\u097F\\u0E00-\\u0E7F\\u3000-\\u30FF\\u3400-\\u9FFF\\uAC00-\\uD7AF]')
 
+// Gli altri nomi di un titolo da mostrare accanto a quello italiano:
+// l'inglese e l'originale, se leggibili e diversi. «Topolino» → «Mickey Mouse».
+export function altriTitoli(item: { title: string; originalTitle: string | null; englishTitle?: string | null }): string[] {
+  const visti = new Set([item.title.trim().toLowerCase()])
+  const altri: string[] = []
+  for (const t of [item.englishTitle, item.originalTitle]) {
+    if (!t || !isReadableTitle(t) || visti.has(t.trim().toLowerCase())) continue
+    visti.add(t.trim().toLowerCase())
+    altri.push(t)
+  }
+  return altri
+}
+
 export function isReadableTitle(s: string | null | undefined): boolean {
   if (!s) return false
   // Reject Cyrillic/Hebrew, Arabic, Devanagari, Thai, CJK punct + kana, CJK, Hangul.
