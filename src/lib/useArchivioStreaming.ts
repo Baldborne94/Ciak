@@ -9,7 +9,7 @@ import { getUserTitle, upsertUserTitle } from './userTitles'
 import {
   abbinamentoDa,
   contaComeVisto,
-  elencaStreaming,
+  episodiDellaSerie,
   leggiPosizioneLocale,
   posizionePiuRecente,
   prossimoEpisodio,
@@ -17,6 +17,7 @@ import {
   salvaStreaming,
   scriviPosizioneLocale,
   SECONDI_PER_IN_CORSO,
+  voceStreaming,
   type VoceStreaming,
 } from './streaming'
 import type { NomeFilm } from './sottotitoli'
@@ -80,13 +81,18 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
       setRipresoDa(null)
     }
     const locale = leggiPosizioneLocale(fileId)
-    const carica = navigator.onLine ? elencaStreaming(user.id) : Promise.resolve([] as VoceStreaming[])
+    // Solo la riga di questo file: da lì si riprende, e subito. Gli altri
+    // episodi della serie (per il prossimo) arrivano dopo, senza fretta.
+    const carica = navigator.onLine ? voceStreaming(user.id, fileId) : Promise.resolve(null)
     carica
-      .then((righe) => {
+      .then((mia) => {
         if (!vivo) return
-        const mia = righe.find((r) => r.drive_file_id === fileId) ?? null
-        setTutte(righe)
         setVoce(mia)
+        if (mia?.media_type === 'tv' && mia.tmdb_id) {
+          episodiDellaSerie(user.id, mia.tmdb_id)
+            .then((righe) => vivo && setTutte(righe))
+            .catch(logFailure('Episodi della serie nel lettore'))
+        }
         if (!nuovo) return
         s.lettoPer = fileId
         s.secondiBase = mia?.secondi_visti ?? 0
@@ -247,6 +253,10 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
       const campi = { ...abbinamentoDa(item, nome), titolo: await titoloDaSalvare(item), abbinato_a_mano: true }
       await salvaStreaming(user.id, fileId, campi)
       setVoce((prima) => ({ ...(prima ?? ({ drive_file_id: fileId } as VoceStreaming)), ...campi }) as VoceStreaming)
+      // Una serie scelta ora: i suoi episodi, per proporre il prossimo.
+      if (campi.media_type === 'tv' && campi.tmdb_id) {
+        episodiDellaSerie(user.id, campi.tmdb_id).then(setTutte).catch(logFailure('Episodi della serie nel lettore'))
+      }
     },
     [user, fileId],
   )

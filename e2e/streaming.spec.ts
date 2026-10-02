@@ -20,6 +20,10 @@ const FILE: Record<string, unknown> = {
     parents: ['cartella-song'],
     createdTime: '2026-09-01T10:00:00Z',
   },
+  // Due episodi già riconosciuti (vedi `apriShogun`): un file vero di Drive ha
+  // sempre un nome, e il lettore lo usa finché l'archivio non risponde.
+  'video-shogun-01': { id: 'video-shogun-01', name: 'Shogun.S01E01.mp4', size: '1000000000', mimeType: 'video/mp4', parents: ['cartella-serie'] },
+  'video-shogun-02': { id: 'video-shogun-02', name: 'Shogun.S01E02.mp4', size: '1000000000', mimeType: 'video/mp4', parents: ['cartella-serie'] },
   'cartella-song': {
     id: 'cartella-song',
     name: 'Song of the Sea (2014) [1080p]',
@@ -1535,6 +1539,155 @@ test('sul telefono un tocco sul video lo ferma e lo fa ripartire', async ({ page
   await expect.poll(comandi).toEqual(['pausa', 'play'])
   await strato.click()
   await expect.poll(comandi).toEqual(['pausa', 'play', 'pausa'])
+})
+
+test('il lettore legge solo la riga del file e gli episodi della sua serie, non tutta la videoteca', async ({ page }) => {
+  // Centinaia di righe a ogni episodio: sul telefono arrivavano dopo che il
+  // film era già partito, e intanto il lettore non sapeva da dove riprendere.
+  await conLettoreCiak(page)
+  await mockDrive(page)
+  const riga = (id: string, episodio: number) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: id,
+    nome_file: `Shogun.S01E0${episodio}.mkv`,
+    tmdb_id: 126308,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    stagione: 1,
+    episodio,
+    posizione: 0,
+    durata: 3600,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: false,
+  })
+  await mockSupabase(page, {
+    user_streaming: [riga('video-shogun-01', 1), riga('video-shogun-02', 2), { ...riga('video-altro-0001', 1), tmdb_id: 999, titolo: 'Altro' }],
+  })
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+
+  const letture: string[] = []
+  page.on('request', (r) => {
+    if (r.method() === 'GET' && r.url().includes('/rest/v1/user_streaming')) letture.push(decodeURIComponent(r.url()))
+  })
+  await page.goto('/streaming/video-shogun-01')
+  // Il prossimo episodio c'è: gli episodi della serie sono arrivati.
+  await expect(page.getByRole('button', { name: /Prossimo episodio: S1E2/ })).toBeVisible()
+  expect(letture.length).toBeGreaterThan(0)
+  for (const url of letture) expect(url).toMatch(/drive_file_id=eq\.video-shogun-01|tmdb_id=eq\.126308/)
+})
+
+// Due episodi di Shōgun, già riconosciuti, e Drive già collegato.
+async function apriShogun(page: Page, initScript?: () => void) {
+  if (initScript) await page.addInitScript(initScript)
+  // Titoli già verificati: altrimenti la videoteca li ricontrolla in sottofondo
+  // e il finto TMDB li rinomina a test in corso.
+  await page.addInitScript(() => {
+    for (const id of ['video-shogun-01', 'video-shogun-02']) localStorage.setItem(`ciak:titolo-originale-v1:${id}`, '1')
+  })
+  await conLettoreCiak(page)
+  await mockDrive(page)
+  const riga = (id: string, episodio: number) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: id,
+    nome_file: `Shogun.S01E0${episodio}.mkv`,
+    tmdb_id: 126308,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    poster_path: '/shogun.jpg',
+    stagione: 1,
+    episodio,
+    posizione: 0,
+    durata: 3600,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: false,
+  })
+  await mockSupabase(page, { user_streaming: [riga('video-shogun-01', 1), riga('video-shogun-02', 2)] })
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await page.goto('/streaming/video-shogun-01')
+  await expect(page.getByRole('button', { name: /Prossimo episodio: S1E2/ })).toBeVisible()
+}
+
+test('dalla tastiera: pausa, salti, schermo intero, sigla ed episodio dopo', async ({ page }) => {
+  await apriShogun(page, () => {
+    const w = window as unknown as { comandi: string[] }
+    w.comandi = []
+    HTMLMediaElement.prototype.play = function () {
+      w.comandi.push('play')
+      return Promise.resolve()
+    }
+    HTMLMediaElement.prototype.pause = function () {
+      w.comandi.push('pausa')
+    }
+    Element.prototype.requestFullscreen = function () {
+      w.comandi.push('schermo intero')
+      return Promise.resolve()
+    }
+  })
+  const comandi = () => page.evaluate(() => (window as unknown as { comandi: string[] }).comandi)
+  await expect(page.getByText(/Dalla tastiera: spazio pausa/)).toBeVisible()
+
+  // Il video è fermo (non carica): spazio lo fa partire.
+  await page.keyboard.press(' ')
+  await expect.poll(comandi).toEqual(['play'])
+  await page.keyboard.press('f')
+  await expect.poll(comandi).toEqual(['play', 'schermo intero'])
+
+  // All'inizio dell'episodio S salta la sigla, le frecce di 10 secondi.
+  await videoA(page, 30)
+  await page.keyboard.press('ArrowRight')
+  expect(await saltoDelVideo(page)).toBe(40)
+  await page.keyboard.press('ArrowLeft')
+  expect(await saltoDelVideo(page)).toBe(20)
+  await page.keyboard.press('s')
+  expect(await saltoDelVideo(page)).toBeGreaterThan(30)
+
+  // Mentre si scrive i tasti restano al campo.
+  await page.getByRole('button', { name: 'Non è questo?' }).click()
+  await page.getByRole('textbox').first().fill('')
+  await page.getByRole('textbox').first().pressSequentially('fn ')
+  await expect(page.getByRole('textbox').first()).toHaveValue('fn ')
+  expect(await comandi()).toEqual(['play', 'schermo intero'])
+  await expect(page).toHaveURL(/video-shogun-01$/)
+
+  // N: l'episodio dopo.
+  await page.locator('body').click({ position: { x: 5, y: 5 } })
+  await page.keyboard.press('n')
+  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
+})
+
+test('sulla schermata di blocco del telefono: titolo, locandina, pausa ed episodio dopo', async ({ page }) => {
+  await apriShogun(page, () => {
+    const w = window as unknown as { azioni: Record<string, ((d?: unknown) => void) | null>; comandi: string[] }
+    w.azioni = {}
+    w.comandi = []
+    navigator.mediaSession.setActionHandler = (azione, gestore) => {
+      w.azioni[azione] = gestore as ((d?: unknown) => void) | null
+    }
+    HTMLMediaElement.prototype.pause = function () {
+      w.comandi.push('pausa')
+    }
+  })
+  await expect
+    .poll(() => page.evaluate(() => navigator.mediaSession.metadata?.title))
+    .toBe('Shōgun · S1E1')
+  expect(await page.evaluate(() => navigator.mediaSession.metadata?.artwork.map((a) => a.src))).toEqual([
+    'https://image.tmdb.org/t/p/w185/shogun.jpg',
+    'https://image.tmdb.org/t/p/w500/shogun.jpg',
+  ])
+
+  await page.evaluate(() => (window as unknown as { azioni: Record<string, () => void> }).azioni.pause())
+  await expect.poll(() => page.evaluate(() => (window as unknown as { comandi: string[] }).comandi)).toEqual(['pausa'])
+
+  await expect.poll(() => page.evaluate(() => typeof (window as unknown as { azioni: Record<string, unknown> }).azioni.nexttrack)).toBe('function')
+  await page.evaluate(() => (window as unknown as { azioni: Record<string, () => void> }).azioni.nexttrack())
+  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
+  await expect.poll(() => page.evaluate(() => navigator.mediaSession.metadata?.title)).toBe('Shōgun · S1E2')
 })
 
 test('con l archivio lento riprende lo stesso, senza cancellare il punto salvato', async ({ page }) => {

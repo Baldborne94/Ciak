@@ -4,6 +4,7 @@ import { ErrorState } from '../components/States'
 import PannelloArchivio from '../components/PannelloArchivio'
 import ProssimoEpisodio from '../components/ProssimoEpisodio'
 import ToccoVideo from '../components/ToccoVideo'
+import { azioneTasto, metadatiSessione, SALTO_TASTIERA, type AzioneTasto } from '../lib/comandiLettore'
 import {
   anteprimaUrl,
   apriSuDriveUrl,
@@ -372,6 +373,24 @@ function LettoreStreaming() {
     if (archivioCaricato && v && v.readyState >= 1) applicaRipresa(v)
   }, [archivioCaricato, applicaRipresa, chiaveVideo])
 
+  // Pausa, ripresa e salti: dal tocco, dalla tastiera, dalla schermata di blocco.
+  const alternaRiproduzione = useCallback((): boolean => {
+    const v = videoRef.current
+    if (!v) return true
+    if (v.paused || v.ended) {
+      v.play().catch(logFailure('Ripresa del film'))
+      return false
+    }
+    v.pause()
+    return true
+  }, [])
+  const salta = useCallback((secondi: number) => {
+    const v = videoRef.current
+    if (!v) return
+    const fine = Number.isFinite(v.duration) ? v.duration : Infinity
+    v.currentTime = Math.min(fine, Math.max(0, v.currentTime + secondi))
+  }, [])
+
   // I sottotitoli trovati dopo il download, o cambiati, raggiungono la scheda
   // del film sul dispositivo: offline si vedono quelli.
   useEffect(() => {
@@ -400,6 +419,58 @@ function LettoreStreaming() {
     (archivio.voce ? titoloDaMostrare(archivio.voce) : null) ??
     (sub.info ? titoloVideo({ name: sub.info.name, cartella: sub.cartella, serie: sub.serie }) : 'Film')
   const nomeFile = stato?.file ?? locale?.file ?? sub.info?.name
+
+  // La tastiera sul computer: un gestore solo, che chiama le azioni di questo
+  // disegno (vedi `suTasto.current`, più sotto).
+  const suTasto = useRef<(azione: AzioneTasto) => void>(() => {})
+  useEffect(() => {
+    if (lettore !== 'ciak') return
+    const premuto = (e: KeyboardEvent) => {
+      const azione = azioneTasto(e, e.target instanceof HTMLElement ? e.target : null)
+      if (!azione) return
+      // Prima del browser: lo spazio non scorre la pagina e non preme di nuovo
+      // l'ultimo pulsante, e il video in primo piano non salta due volte.
+      e.preventDefault()
+      e.stopPropagation()
+      suTasto.current(azione)
+    }
+    window.addEventListener('keydown', premuto, true)
+    return () => window.removeEventListener('keydown', premuto, true)
+  }, [lettore])
+
+  // La schermata di blocco e le notifiche del telefono: titolo, locandina,
+  // pausa, salti e l'episodio dopo, anche a schermo spento o da un'altra app.
+  const posterSessione = archivio.voce?.poster_path ?? null
+  useEffect(() => {
+    const sessione = typeof navigator !== 'undefined' && 'mediaSession' in navigator ? navigator.mediaSession : null
+    if (!sessione || lettore !== 'ciak') return
+    if (typeof MediaMetadata !== 'undefined') sessione.metadata = new MediaMetadata(metadatiSessione(titolo, posterSessione))
+    const azioni: [MediaSessionAction, MediaSessionActionHandler | null][] = [
+      ['play', () => videoRef.current?.play().catch(logFailure('Ripresa dalla schermata di blocco'))],
+      ['pause', () => videoRef.current?.pause()],
+      ['seekbackward', (d) => salta(-(d.seekOffset ?? SALTO_TASTIERA))],
+      ['seekforward', (d) => salta(d.seekOffset ?? SALTO_TASTIERA)],
+      [
+        'seekto',
+        (d) => {
+          if (videoRef.current && d.seekTime != null) videoRef.current.currentTime = d.seekTime
+        },
+      ],
+      ['nexttrack', prossimo ? vaiAlProssimo : null],
+    ]
+    const imposta = (azione: MediaSessionAction, gestore: MediaSessionActionHandler | null) => {
+      try {
+        sessione.setActionHandler(azione, gestore)
+      } catch {
+        // Un'azione che questo browser non conosce: le altre funzionano lo stesso.
+      }
+    }
+    for (const [azione, gestore] of azioni) imposta(azione, gestore)
+    return () => {
+      sessione.metadata = null
+      for (const [azione] of azioni) imposta(azione, null)
+    }
+  }, [lettore, titolo, posterSessione, prossimo, vaiAlProssimo, salta])
 
   const indietro = (
     <Link to="/streaming" className="text-sm text-zinc-400 transition hover:text-projector">
@@ -443,6 +514,23 @@ function LettoreStreaming() {
       setATuttaFinestra(false)
       if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
     } else document.documentElement.requestFullscreen().catch(logFailure('Schermo intero del lettore'))
+  }
+
+  const siglaSaltabile = durataSigla !== null && allInizio && !siglaSaltata && !finito
+
+  // La tastiera sul computer. Il gestore resta lo stesso; le azioni cambiano
+  // a ogni disegno (la sigla saltabile, il prossimo episodio), e si leggono qui.
+  suTasto.current = (azione) => {
+    if (azione === 'pausa') alternaRiproduzione()
+    else if (azione === 'indietro') salta(-SALTO_TASTIERA)
+    else if (azione === 'avanti') salta(SALTO_TASTIERA)
+    else if (azione === 'schermo') alternaSchermoIntero()
+    else if (azione === 'sigla' && siglaSaltabile) saltaSigla()
+    else if (azione === 'prossimo' && prossimo) {
+      // Come il pulsante: durante la sigla finale insegna dove comincia.
+      if (inCoda) prossimoDallaSigla()
+      else vaiAlProssimo()
+    } else if (azione === 'audio' && videoRef.current) videoRef.current.muted = !videoRef.current.muted
   }
 
   // A mano insegna anche dove comincia la sigla in questa serie; da sola
@@ -663,25 +751,13 @@ function LettoreStreaming() {
         {lettore === 'ciak' && touch && (
           <ToccoVideo
             onAlterna={() => {
-              const v = videoRef.current
               // A tutta finestra senza schermo intero vero: questo tocco lo concede.
               if (aTuttaFinestra && !document.fullscreenElement) {
                 document.documentElement.requestFullscreen().catch(logFailure('Schermo intero del lettore'))
               }
-              if (!v) return true
-              if (v.paused || v.ended) {
-                v.play().catch(logFailure('Ripresa del film col tocco'))
-                return false
-              }
-              v.pause()
-              return true
+              return alternaRiproduzione()
             }}
-            onSalta={(secondi) => {
-              const v = videoRef.current
-              if (!v) return
-              const fine = Number.isFinite(v.duration) ? v.duration : Infinity
-              v.currentTime = Math.min(fine, Math.max(0, v.currentTime + secondi))
-            }}
+            onSalta={salta}
           />
         )}
         {lettore === 'ciak' && (
@@ -698,7 +774,7 @@ function LettoreStreaming() {
             >
               ⛶
             </button>
-            {durataSigla !== null && allInizio && !siglaSaltata && !finito && (
+            {siglaSaltabile && (
               <button type="button" onClick={() => saltaSigla()} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">
                 ⏭ Salta sigla
               </button>
@@ -725,6 +801,13 @@ function LettoreStreaming() {
           </div>
         )}
       </div>
+
+      {lettore === 'ciak' && !touch && (
+        <p className="text-xs text-zinc-500">
+          Dalla tastiera: spazio pausa · ← → 10 secondi · F schermo intero · M audio
+          {serie && ' · S salta la sigla · N episodio dopo'}
+        </p>
+      )}
 
       {lettore === 'ciak' && serie && durataSigla !== null && (
         <div className="space-y-2 text-sm text-zinc-400">
