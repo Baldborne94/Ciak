@@ -33,6 +33,9 @@ export type Visto =
 
 // Ogni quanto si salva la posizione mentre il film va.
 const OGNI_MS = 15_000
+// Fin qui il film si considera «appena partito»: se l'archivio risponde tardi
+// si salta ancora al punto salvato. Oltre, è chi guarda ad averlo spostato.
+const APPENA_PARTITO = 60
 
 function oggi(): string {
   return new Date().toISOString().slice(0, 10)
@@ -60,16 +63,22 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
     ripresaFatta: false,
     durata: null as number | null,
     posizione: 0,
+    // Il file di cui si sono già letti i dati: il rinnovo della sessione
+    // (ogni ora) rilegge l'archivio, ma non deve azzerare la visione in corso.
+    lettoPer: null as string | null,
   })
 
   useEffect(() => {
     if (!attivo || !user) return
     let vivo = true
     const s = stato.current
-    Object.assign(s, { ultimoTempo: -1, secondiOra: 0, inCorsoFatto: false, marcato: false, ripresaFatta: false })
-    setVisto(null)
-    setVotoSalvato(null)
-    setRipresoDa(null)
+    const nuovo = s.lettoPer !== fileId
+    if (nuovo) {
+      Object.assign(s, { ultimoTempo: -1, secondiOra: 0, inCorsoFatto: false, marcato: false, ripresaFatta: false })
+      setVisto(null)
+      setVotoSalvato(null)
+      setRipresoDa(null)
+    }
     const locale = leggiPosizioneLocale(fileId)
     const carica = navigator.onLine ? elencaStreaming(user.id) : Promise.resolve([] as VoceStreaming[])
     carica
@@ -78,6 +87,8 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
         const mia = righe.find((r) => r.drive_file_id === fileId) ?? null
         setTutte(righe)
         setVoce(mia)
+        if (!nuovo) return
+        s.lettoPer = fileId
         s.secondiBase = mia?.secondi_visti ?? 0
         s.durata = mia?.durata ?? null
         setPuntoRipresa(puntoDiRipresa(posizionePiuRecente(mia, locale), mia?.durata ?? null))
@@ -85,7 +96,9 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
       .catch((e) => {
         logFailure('Lettura del film in streaming')(e)
         // Senza server resta la copia del dispositivo.
-        if (vivo) setPuntoRipresa(puntoDiRipresa(locale?.posizione ?? 0, null))
+        if (!vivo || !nuovo) return
+        s.lettoPer = fileId
+        setPuntoRipresa(puntoDiRipresa(locale?.posizione ?? 0, null))
       })
       .finally(() => vivo && setCaricata(true))
     return () => {
@@ -105,6 +118,9 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
 
   const salvaPosizione = useCallback(() => {
     const s = stato.current
+    // Prima di sapere da dove riprendere, la posizione è quella dei primi
+    // istanti: salvarla cancellerebbe il punto buono, che non si è ancora letto.
+    if (!s.ripresaFatta) return
     s.ultimoSalvataggio = Date.now()
     salva({ posizione: s.posizione, durata: s.durata, secondi_visti: Math.round(s.secondiBase + s.secondiOra) })
   }, [salva])
@@ -197,7 +213,7 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
       const s = stato.current
       if (s.ripresaFatta || !caricata) return
       s.ripresaFatta = true
-      if (puntoRipresa > 0 && v.currentTime < 5) {
+      if (puntoRipresa > 0 && v.currentTime < Math.min(puntoRipresa, APPENA_PARTITO)) {
         v.currentTime = puntoRipresa
         setRipresoDa(puntoRipresa)
       }

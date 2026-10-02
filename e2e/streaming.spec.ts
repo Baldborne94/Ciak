@@ -1340,6 +1340,44 @@ test('riapre il film dal punto in cui ci si era fermati', async ({ page }) => {
   await expect(page.getByRole('button', { name: "Ricomincia dall'inizio" })).toBeVisible()
 })
 
+test('con l archivio lento riprende lo stesso, senza cancellare il punto salvato', async ({ page }) => {
+  // Sul telefono l'archivio rispondeva dopo che il film era già partito: il
+  // primo istante (0:00) si salvava subito sopra il punto buono, e dopo cinque
+  // secondi di visione la ripresa non si applicava più. Si ricominciava da capo.
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  const db = await mockSupabase(page, {
+    user_streaming: [
+      { id: 's1', user_id: E2E_USER.id, drive_file_id: 'video-song-0001', tmdb_id: 110416, media_type: 'movie', titolo: 'La canzone del mare', posizione: 1345, durata: 5640, secondi_visti: 1300, visto_il: null, abbinato_a_mano: false, updated_at: new Date(Date.now() - 3_600_000).toISOString() },
+    ],
+  })
+  await page.route('**/rest/v1/user_streaming*', async (route) => {
+    if (route.request().method() === 'GET') await new Promise((r) => setTimeout(r, 1500))
+    return route.fallback()
+  })
+
+  await apriSongOfTheSea(page)
+  await expect(page.locator('video')).toBeAttached()
+  // Il film parte prima che l'archivio risponda, e scorre per qualche secondo.
+  await page.evaluate(() => {
+    const v = document.querySelector('video') as HTMLVideoElement & { salto?: number }
+    let t = 0.2
+    Object.defineProperty(v, 'readyState', { configurable: true, get: () => 4 })
+    Object.defineProperty(v, 'duration', { configurable: true, get: () => 5640 })
+    Object.defineProperty(v, 'paused', { configurable: true, get: () => false })
+    Object.defineProperty(v, 'currentTime', { configurable: true, get: () => t, set: (n: number) => (v.salto = t = n) })
+    v.dispatchEvent(new Event('loadedmetadata'))
+    v.dispatchEvent(new Event('timeupdate'))
+    t = 8
+    v.dispatchEvent(new Event('timeupdate'))
+  })
+
+  await expect(page.getByText(/Ripreso da 22:20/)).toBeVisible()
+  expect(await saltoDelVideo(page)).toBe(1340)
+  const posizioni = db.writes.flatMap((w) => (w.table === 'user_streaming' ? w.body.map((r) => r.posizione) : []))
+  expect(posizioni.filter((p) => typeof p === 'number' && p < 1000)).toEqual([])
+})
+
 test('«Non è questo?» fa scegliere il titolo a mano, e resta scelto', async ({ page }) => {
   await conLettoreCiak(page)
   await mockDrive(page, { sottotitoliNellaCartella: true })
