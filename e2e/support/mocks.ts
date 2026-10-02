@@ -419,6 +419,10 @@ export async function signIn(page: Page): Promise<void> {
         user,
       }
       localStorage.setItem('sb-e2e-fake-auth-token', JSON.stringify(session))
+      // Il primo collegamento a Drive senza domande è già stato tentato su
+      // questo «dispositivo»: altrimenti ogni test partirebbe verso Google.
+      // Il test che lo prova toglie il segno.
+      localStorage.setItem('ciak:drive-provato', '1')
     },
     { user: E2E_USER },
   )

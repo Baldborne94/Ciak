@@ -2,15 +2,21 @@ import { describe, it, expect } from 'vitest'
 import { deveRinnovare, PAUSA_RINNOVO_MS } from './driveAutomatico'
 
 const ORA = 10_000_000
-const base = { ricordato: true, connesso: false, online: true, inRiproduzione: false, ultimo: null, ora: ORA }
+const base = { ricordato: true, provato: true, connesso: false, online: true, inRiproduzione: false, ultimo: null, ora: ORA }
 
 describe('deveRinnovare', () => {
   it('rinnova da solo un permesso scaduto su un dispositivo già collegato', () => {
     expect(deveRinnovare(base)).toBe(true)
   })
 
-  it('non tocca chi non ha mai collegato Drive qui, o l ha scollegato a mano', () => {
-    expect(deveRinnovare({ ...base, ricordato: false })).toBe(false)
+  it('la prima volta su un dispositivo prova una volta sola, senza domande', () => {
+    expect(deveRinnovare({ ...base, ricordato: false, provato: false })).toBe(true)
+    expect(deveRinnovare({ ...base, ricordato: false, provato: true })).toBe(false)
+  })
+
+  it('non tocca chi l ha scollegato a mano', () => {
+    // «Scollega» dimentica il dispositivo e segna il tentativo come fatto.
+    expect(deveRinnovare({ ...base, ricordato: false, provato: true })).toBe(false)
   })
 
   it('non serve col permesso ancora valido, e senza rete non si può', () => {

@@ -1,12 +1,16 @@
 import { accountDrive, clientIdDrive, consensoConRedirect, driveConnesso } from './googleDrive'
 import { logFailure } from './logFailure'
-import { CHIAVE_RICORDA_DRIVE, CHIAVE_RINNOVO_DRIVE } from './ritornoDrive'
+import { CHIAVE_PROVATO_DRIVE, CHIAVE_RICORDA_DRIVE, CHIAVE_RINNOVO_DRIVE } from './ritornoDrive'
 
 // Drive collegato da solo. Il permesso di Google dura un'ora e, senza un
 // server che tenga un refresh token, l'unico modo di rinnovarlo è tornare da
 // Google. Ma se il permesso c'è già, Google risponde subito e senza schermate
 // (`prompt=none`): un attimo di pagina bianca invece di «Collega Google Drive»
 // a ogni apertura dell'app.
+//
+// Anche la prima volta su un dispositivo (o dopo l'aggiornamento che ha
+// introdotto tutto questo) si prova una volta senza domande: se il permesso
+// era già stato dato, Google lo ridà; se no, resta il pulsante.
 
 export type Rinnovo = { quando: number; fallito?: boolean }
 
@@ -16,13 +20,16 @@ export const PAUSA_RINNOVO_MS = 10 * 60_000
 
 export function deveRinnovare(s: {
   ricordato: boolean
+  // Il primo tentativo su questo dispositivo è già stato fatto (o Drive è
+  // stato scollegato a mano).
+  provato: boolean
   connesso: boolean
   online: boolean
   inRiproduzione: boolean
   ultimo: Rinnovo | null
   ora: number
 }): boolean {
-  if (!s.ricordato || s.connesso || !s.online) return false
+  if ((!s.ricordato && s.provato) || s.connesso || !s.online) return false
   // Si lascia la pagina: mai a film in corso.
   if (s.inRiproduzione) return false
   // Una volta fallito (account cambiato, permesso tolto) si resta al pulsante.
@@ -51,6 +58,7 @@ export function rinnovaDriveDaSolo(): boolean {
     !clientId ||
     !deveRinnovare({
       ricordato: !!ricorda,
+      provato: leggi<unknown>(() => localStorage, CHIAVE_PROVATO_DRIVE) !== null,
       connesso: driveConnesso(),
       online: navigator.onLine !== false,
       inRiproduzione: videoInRiproduzione(),
@@ -61,6 +69,7 @@ export function rinnovaDriveDaSolo(): boolean {
     return false
   try {
     sessionStorage.setItem(CHIAVE_RINNOVO_DRIVE, JSON.stringify({ quando: Date.now() }))
+    if (!ricorda) localStorage.setItem(CHIAVE_PROVATO_DRIVE, '1')
   } catch {
     // Senza sessionStorage non si saprebbe di averci già provato: meglio non
     // rischiare un giro infinito fra Ciak e Google.

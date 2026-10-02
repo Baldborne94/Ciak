@@ -145,11 +145,51 @@ function LettoreStreaming() {
   // tornava ogni volta alla finestra. E sopra il video restano visibili i
   // pulsanti per saltare le sigle.
   const [schermoIntero, setSchermoIntero] = useState(() => document.fullscreenElement === document.documentElement)
+  // Lo schermo intero del browser sul solo <video> (il suo pulsante, che
+  // Firefox mostra comunque, o Chrome che ci va da solo girando il tablet):
+  // lì sopra il video non resta niente, né il tocco per la pausa né «Salta
+  // sigla». Si passa a quello di Ciak; se il browser non lo concede senza un
+  // tocco, il lettore occupa comunque tutta la finestra (`aTuttaFinestra`) e
+  // il primo tocco sul video chiede lo schermo intero vero.
+  const [aTuttaFinestra, setATuttaFinestra] = useState(false)
+  const daRotazione = useRef(false)
   useEffect(() => {
-    const cambia = () => setSchermoIntero(document.fullscreenElement === document.documentElement)
+    const cambia = () => {
+      const v = videoRef.current
+      if (v && document.fullscreenElement === v) {
+        daRotazione.current = true
+        setATuttaFinestra(true)
+        document
+          .exitFullscreen()
+          .then(() => document.documentElement.requestFullscreen())
+          .catch(() => {
+            /* niente schermo intero vero senza un tocco: resta a tutta finestra */
+          })
+        return
+      }
+      const nostro = document.fullscreenElement === document.documentElement
+      setSchermoIntero(nostro)
+      // Ottenuto quello vero, la finestra intera non serve più: uscendo col
+      // gesto «indietro» si torna al lettore normale.
+      if (nostro) setATuttaFinestra(false)
+    }
     document.addEventListener('fullscreenchange', cambia)
     return () => document.removeEventListener('fullscreenchange', cambia)
   }, [])
+  // Rimettendo il tablet in verticale si esce, come avrebbe fatto il browser.
+  useEffect(() => {
+    const orientamento = typeof screen !== 'undefined' ? screen.orientation : undefined
+    if (!orientamento) return
+    const gira = () => {
+      if (!daRotazione.current || !orientamento.type.startsWith('portrait')) return
+      daRotazione.current = false
+      setATuttaFinestra(false)
+      if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
+    }
+    orientamento.addEventListener('change', gira)
+    return () => orientamento.removeEventListener('change', gira)
+  }, [])
+  const cinema = schermoIntero || aTuttaFinestra
   // Dove si è nell'episodio: all'inizio (si può saltare la sigla), nella sigla
   // finale, finito. Si aggiornano solo quando cambiano, non a ogni timeupdate.
   const [allInizio, setAllInizio] = useState(true)
@@ -398,8 +438,11 @@ function LettoreStreaming() {
   }
 
   function alternaSchermoIntero() {
-    if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
-    else document.documentElement.requestFullscreen().catch(logFailure('Schermo intero del lettore'))
+    daRotazione.current = false
+    if (aTuttaFinestra || document.fullscreenElement) {
+      setATuttaFinestra(false)
+      if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
+    } else document.documentElement.requestFullscreen().catch(logFailure('Schermo intero del lettore'))
   }
 
   // A mano insegna anche dove comincia la sigla in questa serie; da sola
@@ -520,8 +563,10 @@ function LettoreStreaming() {
 
       <div
         className={
-          lettore === 'ciak' && schermoIntero
-            ? 'fixed inset-0 z-[100] bg-black'
+          lettore === 'ciak' && cinema
+            ? // Senza !mt-0 il margine fra i blocchi della pagina (space-y-4) lo
+              // spostava in basso di 16 px, e i comandi finivano fuori schermo.
+              'fixed inset-0 z-[100] !mt-0 bg-black'
             : 'relative aspect-video w-full overflow-hidden rounded-xl bg-black shadow-reel'
         }
       >
@@ -619,6 +664,10 @@ function LettoreStreaming() {
           <ToccoVideo
             onAlterna={() => {
               const v = videoRef.current
+              // A tutta finestra senza schermo intero vero: questo tocco lo concede.
+              if (aTuttaFinestra && !document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(logFailure('Schermo intero del lettore'))
+              }
               if (!v) return true
               if (v.paused || v.ended) {
                 v.play().catch(logFailure('Ripresa del film col tocco'))
@@ -643,8 +692,8 @@ function LettoreStreaming() {
             <button
               type="button"
               onClick={alternaSchermoIntero}
-              aria-label={schermoIntero ? 'Esci dallo schermo intero' : 'Schermo intero'}
-              title={schermoIntero ? 'Esci dallo schermo intero' : 'Schermo intero'}
+              aria-label={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
+              title={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
               className="rounded-lg bg-black/50 px-2 py-1 text-lg text-zinc-200 opacity-70 transition hover:opacity-100"
             >
               ⛶
