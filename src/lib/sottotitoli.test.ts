@@ -196,6 +196,64 @@ describe('filmDaCercare', () => {
   })
 })
 
+describe('i nomi degli anime', () => {
+  it('«[Gruppo] titolo - 26 - nome dell episodio»: il numero è l episodio', () => {
+    // Samurai Champloo: 26 file, ognuno una riga a sé col nome della cartella.
+    expect(analizzaNomeFilm('[a-s]_samurai_champloo_-_26_-_evanescent_encounter_part_3__rs2_[1080p_bd-rip][BFA66184].mp4')).toEqual({
+      titolo: 'samurai champloo',
+      stagione: 1,
+      episodio: 26,
+    })
+    expect(analizzaNomeFilm('[SubsPlease] Sousou no Frieren - 05 (1080p) [A1B2C3D4].mkv')).toEqual({
+      titolo: 'Sousou no Frieren',
+      stagione: 1,
+      episodio: 5,
+    })
+    expect(analizzaNomeFilm('Cowboy Bebop - 01v2.mkv')).toEqual({ titolo: 'Cowboy Bebop', stagione: 1, episodio: 1 })
+  })
+
+  it('la cartella col gruppo e l intervallo di episodi ha il titolo pulito', () => {
+    expect(analizzaNomeFilm('[a-S] Samurai Champloo (01-26) (1080p)').titolo).toBe('Samurai Champloo')
+    expect(analizzaNomeFilm('Trigun [01-26] [BD]').titolo).toBe('Trigun')
+  })
+
+  it('in una cartella di stagione vale la stagione della cartella', () => {
+    expect(filmDaCercare('South Park - 01 - Rainforest Shmainforest.mp4', 'Season 03', 'South Park')).toEqual({
+      titolo: 'South Park',
+      stagione: 3,
+      episodio: 1,
+    })
+  })
+
+  it('non scambia per episodi i numeri dei titoli o gli anni', () => {
+    // Gli anime scrivono sempre due cifre: «Rocky - 2» è un film.
+    expect(analizzaNomeFilm('Rocky - 2.mp4').episodio).toBeUndefined()
+    expect(analizzaNomeFilm('Blade Runner - 2049 (2017).mp4')).toMatchObject({ anno: 2017 })
+    expect(analizzaNomeFilm('Blade Runner - 2049 (2017).mp4').episodio).toBeUndefined()
+    expect(analizzaNomeFilm('Ocean s 11 (2001).mp4').episodio).toBeUndefined()
+  })
+})
+
+describe('gli speciali senza numero', () => {
+  it('un file in una cartella di speciali senza numero è uno speciale della serie', () => {
+    expect(filmDaCercare('A Mickey Mouse Cartoon - Surprise! EXCLUSIVE CLIP.mp4', 'Speicals', 'A Mickey Mouse Cartoon')).toEqual({
+      titolo: 'A Mickey Mouse Cartoon',
+      stagione: 0,
+    })
+  })
+
+  it('l episodio 0 («S04E00») è uno speciale, non un episodio che su TMDB non esiste', () => {
+    expect(analizzaNomeFilm('A Mickey Mouse Cartoon - S04E00 - Mickey Mouse Clubhouse.mp4')).toEqual({
+      titolo: 'A Mickey Mouse Cartoon',
+      stagione: 0,
+    })
+    expect(filmDaCercare('A Mickey Mouse Cartoon - S04E00 - Mickey Mouse Clubhouse.mp4', 'Speicals', 'A Mickey Mouse Cartoon')).toEqual({
+      titolo: 'A Mickey Mouse Cartoon',
+      stagione: 0,
+    })
+  })
+})
+
 describe('stagioneDaCartella', () => {
   it('riconosce i modi comuni di chiamare una stagione', () => {
     expect(stagioneDaCartella('Season 03')).toBe(3)
@@ -213,6 +271,15 @@ describe('stagioneDaCartella', () => {
     expect(stagioneDaCartella('Specials')).toBe(0)
     expect(stagioneDaCartella('Extras')).toBe(0)
     expect(stagioneDaCartella('Speciali')).toBe(0)
+  })
+
+  it('anche con le lettere scambiate per sbaglio («Speicals»)', () => {
+    // A Mickey Mouse Cartoon/Speicals/… diventava una serie a sé, «Speicals».
+    expect(stagioneDaCartella('Speicals')).toBe(0)
+    expect(stagioneDaCartella('Spceial')).toBe(0)
+    expect(stagioneDaCartella('Specail')).toBe(0)
+    // Ma non ogni parola con quelle lettere in giro.
+    expect(stagioneDaCartella('Special Forces')).toBeNull()
   })
 
   it('non scambia per stagioni le cartelle dei film o delle categorie', () => {

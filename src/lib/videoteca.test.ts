@@ -172,6 +172,37 @@ describe('raggruppaSerie', () => {
     ])
   })
 
+  it('gli episodi di un anime con i nomi alla giapponese sono una serie sola', () => {
+    // Prima: 26 righe «[a-S] Samurai Champloo (01-26) (1080p)», una per file.
+    const cartella = '[a-S] Samurai Champloo (01-26) (1080p)'
+    const { serie, sciolti } = raggruppaSerie([
+      { id: 'a', name: '[a-s]_samurai_champloo_-_26_-_evanescent_encounter_part_3__rs2_[1080p_bd-rip][BFA66184].mp4', cartella, serie: null },
+      { id: 'b', name: '[a-s]_samurai_champloo_-_01_-_tempestuous_temperaments__rs2_[1080p_bd-rip][7E6C2D0A].mp4', cartella, serie: null },
+    ])
+    expect(sciolti).toEqual([])
+    expect(serie).toHaveLength(1)
+    expect(serie[0].titolo).toBe('Samurai Champloo')
+    expect(serie[0].episodi.map((e) => [e.id, e.stagione, e.episodio])).toEqual([
+      ['a', 1, 26],
+      ['b', 1, 1],
+    ])
+  })
+
+  it('una cartella di speciali scritta male resta dentro la sua serie', () => {
+    // A Mickey Mouse Cartoon/Speicals/… compariva come due righe «Speicals».
+    const { serie, sciolti } = raggruppaSerie([
+      { id: 'a', name: 'A Mickey Mouse Cartoon - S01E01 - No Service.mp4', cartella: 'Season 01', serie: 'A Mickey Mouse Cartoon' },
+      { id: 'b', name: 'A Mickey Mouse Cartoon - Surprise! EXCLUSIVE CLIP.mp4', cartella: 'Speicals', serie: 'A Mickey Mouse Cartoon' },
+    ])
+    expect(sciolti).toEqual([])
+    expect(serie).toHaveLength(1)
+    expect(serie[0].titolo).toBe('A Mickey Mouse Cartoon')
+    expect(serie[0].episodi.map((e) => [e.id, e.stagione])).toEqual([
+      ['a', 1],
+      ['b', 0],
+    ])
+  })
+
   it('la cartella della serie resta la stessa prima e dopo il riconoscimento', () => {
     const file = { id: 'b', name: '01 Rainforest Shmainforest.mp4', cartella: 'Season 03', serie: 'South Park' }
     const prima = raggruppaSerie([file, { ...file, id: 'c', name: '02 Volcano.mp4' }]).serie[0]

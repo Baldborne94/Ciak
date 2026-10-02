@@ -73,12 +73,41 @@ const ETICHETTE =
 const RACCOLTA =
   /\b(?:seasons? \d{1,2} (?:to |a )?\d{1,2}|stagion[ei] \d{1,2} (?:a |al )?\d{1,2}|(?:the )?complete series|serie completa|s\d{1,2} s\d{1,2})\b/i
 
+// Il gruppo che ha preparato il file, in testa al nome degli anime:
+// «[SubsPlease] Frieren - 05», «[a-S] Samurai Champloo (01-26)».
+const GRUPPO = /^\s*\[[^\]]*\]\s*/
+// Il numero dell'episodio fra due trattini, come lo scrivono gli anime
+// («titolo - 26 - nome dell'episodio», «titolo - 05 (1080p)», «- 01v2»). Al più
+// tre cifre, e almeno due (gli anime scrivono «05»): «Blade Runner - 2049» e
+// «Rocky - 2» non sono episodi.
+const EPISODIO_ANIME = /\s-\s(\d{2,3})(?:v\d)?(?=\s+-\s|\s*[[(]|\s*$)/
+// Gli episodi contenuti in una cartella: «(01-26)», «[01-26]». (Qui i
+// trattini sono già spazi.)
+const INTERVALLO = /[([]\d{1,3} \d{1,3}[)\]]/
+
 // Il film (o l'episodio) da cercare online, dal nome del file o della cartella:
 // «Song.of.the.Sea.2014.1080p.BluRay.x264.YIFY.mp4» → Song of the Sea, 2014;
 // «Shogun.S01E01.Anjin.1080p.mkv» → Shogun, stagione 1, episodio 1.
 export function analizzaNomeFilm(nome: string): NomeFilm {
-  const s = nome
-    .replace(ESTENSIONE_VIDEO, '')
+  const letto = leggiNome(nome)
+  delete letto.anime
+  return letto
+}
+
+// Come `analizzaNomeFilm`, e in più se la stagione è solo quella supposta
+// per gli anime (che il nome non dice).
+function leggiNome(nome: string): NomeFilm & { anime?: true } {
+  const senzaGruppo = nome.replace(ESTENSIONE_VIDEO, '').replace(/_/g, ' ').replace(GRUPPO, '')
+  if (!/\bS\d{1,2} ?E\d{1,3}\b/i.test(senzaGruppo)) {
+    // Gli anime contano gli episodi di fila, senza stagione: su TMDB la
+    // maggior parte sta nella stagione 1. Il titolo è ciò che viene prima.
+    const anime = EPISODIO_ANIME.exec(senzaGruppo)
+    if (anime) {
+      const { titolo, anno } = analizzaNomeFilm(senzaGruppo.slice(0, anime.index))
+      return { titolo, ...(anno !== undefined && { anno }), stagione: 1, episodio: Number(anime[1]), anime: true }
+    }
+  }
+  const s = senzaGruppo
     .replace(/[._]+/g, ' ')
     .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
@@ -90,10 +119,11 @@ export function analizzaNomeFilm(nome: string): NomeFilm {
   // Gli speciali degli anime: «OADE01», «OVA 3», «Special 1». Su TMDB sono la
   // stagione 0, ed è lì che si spuntano.
   const speciale = ep ? null : /\b(?:OAD|OVA|ONA|Special|Speciale)\s*E?\s*(\d{1,3})\b/i.exec(s)
-  if (ep && mezzoEpisodio(nome)) {
+  if (ep && (mezzoEpisodio(nome) || Number(ep[2]) === 0)) {
     // «S01E13.5» è un riassunto fra due episodi: su TMDB sta fra gli speciali,
     // con un numero che dal nome non si ricava. Leggerlo come E13 ne faceva
-    // un secondo episodio 13.
+    // un secondo episodio 13. Lo stesso per l'episodio 0 («S04E00»), che su
+    // TMDB non esiste: è uno speciale.
     risultato.stagione = 0
     fine = Math.min(fine, ep.index)
   } else if (ep) {
@@ -110,6 +140,8 @@ export function analizzaNomeFilm(nome: string): NomeFilm {
   if (etichetta && etichetta.index > 0) fine = Math.min(fine, etichetta.index)
   const raccolta = RACCOLTA.exec(s)
   if (raccolta && raccolta.index > 0) fine = Math.min(fine, raccolta.index)
+  const intervallo = INTERVALLO.exec(s)
+  if (intervallo && intervallo.index > 0) fine = Math.min(fine, intervallo.index)
 
   // L'anno è l'ULTIMO prima delle etichette, e mai la prima parola: «Blade
   // Runner 2049 (2017)» è del 2017, «2001 Odissea nello spazio 1968» del 1968.
@@ -137,7 +169,17 @@ export function stagioneDaCartella(nome: string | null | undefined): number | nu
   if (!nome) return null
   const m = /^\s*(?:season|stagione|series|serie|s)\s*[._-]?\s*(\d{1,2})(?!\d)/i.exec(nome)
   if (m) return Number(m[1])
-  return /^\s*(?:OADs?|OVAs?|ONAs?|Specials?|Speciali|Extras?)\s*$/i.test(nome) ? 0 : null
+  if (/^\s*(?:OADs?|OVAs?|ONAs?|Specials?|Speciali|Extras?)\s*$/i.test(nome)) return 0
+  return specialeScrittoMale(nome) ? 0 : null
+}
+
+// «Speicals», «Specail»: le lettere giuste in un ordine sbagliato. Basta una
+// parola sola, che cominci per «s»: «Special Forces» resta un titolo.
+function specialeScrittoMale(nome: string): boolean {
+  const parola = nome.trim().toLowerCase()
+  if (!/^s[a-z]+$/.test(parola)) return false
+  const lettere = (p: string) => [...p].sort().join('')
+  return ['special', 'specials', 'speciali'].some((giusta) => lettere(giusta) === lettere(parola))
 }
 
 // «S01E13.5» o, in una cartella di stagione, «13.5 Since That Day». Si guarda
@@ -168,11 +210,13 @@ function episodioDaNomeFile(nomeFile: string): number | undefined {
 // `serie` è la cartella sopra una cartella di stagione: «South Park/Season 03/
 // 01 Rainforest Shmainforest.mp4» è South Park, stagione 3, episodio 1.
 export function filmDaCercare(nomeFile: string, cartella: string | null, serie: string | null = null): NomeFilm {
-  const daFile = analizzaNomeFilm(nomeFile)
+  const { anime, ...daFile } = leggiNome(nomeFile)
   const stagione = stagioneDaCartella(cartella)
   if (serie && stagione !== null) {
     const daSerie = analizzaNomeFilm(serie)
-    const mezzo = mezzoEpisodio(nomeFile)
+    // Senza numero: un mezzo episodio, o uno speciale che il file chiama
+    // episodio 0 («S04E00»).
+    const mezzo = mezzoEpisodio(nomeFile) || (daFile.stagione === 0 && daFile.episodio === undefined)
     const episodio = mezzo ? undefined : (daFile.episodio ?? episodioDaNomeFile(nomeFile))
     // «South Park S03E06.mp4» dice da sé di che serie è, ed è più affidabile
     // della cartella sopra, che può essere una raccolta col nome della release.
@@ -181,7 +225,9 @@ export function filmDaCercare(nomeFile: string, cartella: string | null, serie: 
     return {
       titolo: dalFile ? daFile.titolo : daSerie.titolo,
       ...(anno !== undefined && { anno }),
-      stagione: mezzo ? 0 : (daFile.stagione ?? stagione),
+      // La stagione 1 supposta per un anime («titolo - 05») non vale quella
+      // della cartella.
+      stagione: mezzo ? 0 : anime ? stagione : (daFile.stagione ?? stagione),
       ...(episodio !== undefined && { episodio }),
     }
   }

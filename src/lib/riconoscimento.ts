@@ -46,7 +46,9 @@ function segnaControllato(fileId: string): void {
 // uno solo per versione e per dispositivo.
 // v3: i file provati prima che si leggessero i titoli alternativi.
 // v4: gli episodi nelle raccolte («South Park Season 1 to 26 Mp4 1080p»).
-const VERSIONE_RICONOSCIMENTO = 4
+// v5: gli anime coi nomi «[Gruppo] titolo - 05», e gli speciali in cartelle
+// scritte male («Speicals»).
+const VERSIONE_RICONOSCIMENTO = 5
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {
