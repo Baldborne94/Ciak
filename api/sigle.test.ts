@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { leggiEpisodio, normalizzaSigle, urlTheIntroDb } from './sigle'
+import { intestazioni, leggiEpisodio, normalizzaSigle, urlTheIntroDb } from './sigle'
 
 describe('leggiEpisodio', () => {
   it('vuole tre numeri: serie, stagione, episodio', () => {
@@ -43,5 +43,19 @@ describe('normalizzaSigle', () => {
     expect(normalizzaSigle({})).toEqual({ inizio: null, finale: null })
     expect(normalizzaSigle(null)).toEqual({ inizio: null, finale: null })
     expect(normalizzaSigle({ intro: 'rotto', credits: [{ start_ms: 'x' }] })).toEqual({ inizio: null, finale: null })
+  })
+})
+
+describe('intestazioni', () => {
+  it('Ciak si presenta per nome: col nome generico di Node TheIntroDB rispondeva 403', () => {
+    const h = intestazioni(undefined)
+    expect(h['User-Agent']).toMatch(/^Ciak\//)
+    expect(h.Accept).toBe('application/json')
+    expect(h.Authorization).toBeUndefined()
+  })
+
+  it('con una chiave sul server la manda come Bearer, e una vuota non conta', () => {
+    expect(intestazioni(' abc123 ').Authorization).toBe('Bearer abc123')
+    expect(intestazioni('   ').Authorization).toBeUndefined()
   })
 })
