@@ -21,6 +21,13 @@ describe('titoloVideo', () => {
     expect(titoloVideo({ name: 'Extra.mp4', cartella: 'Season 03', serie: 'South Park' })).toBe('South Park · Season 03')
   })
 
+  it('il nome di una raccolta si ripulisce: «South Park», non «South Park Season 1 to 26 Mp4 1080p»', () => {
+    expect(titoloVideo({ name: 'South Park S03E06.mp4', cartella: 'Season 03', serie: 'South Park Season 1 to 26 Mp4 1080p' })).toBe(
+      'South Park · S3E6',
+    )
+    expect(titoloVideo({ name: 'Episodio 2.mkv', cartella: 'Stagione 1', serie: 'Lupin III (1977)' })).toBe('Lupin III (1977) · S1E2')
+  })
+
   it('gli episodi nella cartella della serie non hanno tutti lo stesso nome', () => {
     expect(titoloVideo({ name: 'Shogun.S01E02.mkv', cartella: 'Shogun (2024)' })).toBe('Shogun (2024) · S1E2')
   })
