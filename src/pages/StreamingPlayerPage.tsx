@@ -301,6 +301,9 @@ function LettoreStreaming() {
   }, [voceTv?.tmdb_id, voceTv?.stagione, voceTv?.episodio])
   const siglaEsatta = esatte?.inizio ?? null
   const codaEsatta = esatte?.finale ?? null
+  // I tempi imparati per la serie valgono solo dove mancano quelli esatti.
+  const inizioDellaSerie = siglaEsatta ? null : punti.inizio
+  const codaDellaSerie = codaEsatta ? null : punti.coda
   const etichettaProssimo = prossimo ? sigla(prossimo) : null
   const vaiAlProssimo = useCallback(() => {
     if (!prossimo) return
@@ -678,13 +681,15 @@ function LettoreStreaming() {
               La prima volta premi «⏭ Prossimo episodio» quando parte la sigla finale: Ciak ricorda il punto per questa serie.
             </p>
           )}
-          {/* I tempi sono di questa serie: ognuna ha i suoi, e si vedono. */}
-          {(punti.inizio !== null || punti.coda !== null) && (
+          {/* I tempi sono di questa serie: ognuna ha i suoi, e si vedono. Solo
+              quelli che servono: dove ci sono i tempi esatti dell'episodio,
+              quelli della serie non si usano e non si mostrano. */}
+          {(inizioDellaSerie !== null || codaDellaSerie !== null) && (
             <p className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
               In questa serie
-              {punti.inizio !== null && ` la sigla iniziale parte a ${formattaTempo(punti.inizio)}`}
-              {punti.inizio !== null && punti.coda !== null && ','}
-              {punti.coda !== null && ` la finale negli ultimi ${formattaTempo(punti.coda)}`}.
+              {inizioDellaSerie !== null && ` la sigla iniziale parte a ${formattaTempo(inizioDellaSerie)}`}
+              {inizioDellaSerie !== null && codaDellaSerie !== null && ','}
+              {codaDellaSerie !== null && ` la finale negli ultimi ${formattaTempo(codaDellaSerie)}`}.
               <button
                 type="button"
                 onClick={() => imparaPunti({ inizio: null, coda: null })}
@@ -694,26 +699,28 @@ function LettoreStreaming() {
               </button>
             </p>
           )}
-          <label className="flex flex-wrap items-center gap-2">
-            ⏭ «Salta sigla» va avanti di
-            <select
-              value={durataSigla}
-              onChange={(e) => {
-                const secondi = Number(e.target.value)
-                setDurataSigla(secondi)
-                salvaDurataSigla(serie, secondi)
-              }}
-              aria-label="Durata della sigla"
-              className="rounded-lg border border-theatre-800 bg-theatre-900 px-2 py-1 text-zinc-200"
-            >
-              {DURATE_SIGLA.map((d) => (
-                <option key={d} value={d}>
-                  {formattaTempo(d)}
-                </option>
-              ))}
-            </select>
-            in tutti gli episodi di questa serie.
-          </label>
+          {!siglaEsatta && (
+            <label className="flex flex-wrap items-center gap-2">
+              ⏭ «Salta sigla» va avanti di
+              <select
+                value={durataSigla}
+                onChange={(e) => {
+                  const secondi = Number(e.target.value)
+                  setDurataSigla(secondi)
+                  salvaDurataSigla(serie, secondi)
+                }}
+                aria-label="Durata della sigla"
+                className="rounded-lg border border-theatre-800 bg-theatre-900 px-2 py-1 text-zinc-200"
+              >
+                {DURATE_SIGLA.map((d) => (
+                  <option key={d} value={d}>
+                    {formattaTempo(d)}
+                  </option>
+                ))}
+              </select>
+              in tutti gli episodi di questa serie.
+            </label>
+          )}
         </div>
       )}
 
