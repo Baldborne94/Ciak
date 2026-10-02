@@ -9,6 +9,7 @@ import ErrorBoundary from './ErrorBoundary'
 import SchemaBanner from './SchemaBanner'
 import OfflineBanner from './OfflineBanner'
 import NuovaVersioneBanner from './NuovaVersioneBanner'
+import DriveSempreCollegato from './DriveSempreCollegato'
 import { Loader } from './States'
 
 export default function Layout() {
@@ -18,6 +19,7 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen flex-col">
       <ScrollManager />
+      <DriveSempreCollegato />
       <Navbar />
       <NuovaVersioneBanner />
       <OfflineBanner />

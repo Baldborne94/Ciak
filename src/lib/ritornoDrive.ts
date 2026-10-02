@@ -15,6 +15,11 @@
 export const CHIAVE_TOKEN_DRIVE = 'ciak:drive-token'
 export const CHIAVE_ATTESA_DRIVE = 'ciak:drive-attesa'
 export const CHIAVE_ERRORE_DRIVE = 'ciak:drive-errore'
+// Sul dispositivo (localStorage): Drive è già stato collegato qui, e con quale
+// account. È ciò che permette di rinnovare il permesso da soli, senza chiedere.
+export const CHIAVE_RICORDA_DRIVE = 'ciak:drive-ricorda'
+// In questa sessione: quando si è tentato il rinnovo da soli, e se è fallito.
+export const CHIAVE_RINNOVO_DRIVE = 'ciak:drive-rinnovo'
 // Lo `state` dei nostri redirect comincia così: un frammento con uno `state`
 // diverso non è nostro e si lascia stare.
 export const PREFISSO_STATO_DRIVE = 'ciak-drive-'
@@ -50,7 +55,7 @@ function percorsoSicuro(p: unknown): string {
 
 export function completaRitornoDrive(): void {
   if (typeof window === 'undefined' || !window.location.hash.includes('state=')) return
-  let attesa: { stato?: string; ritorno?: string } | null = null
+  let attesa: { stato?: string; ritorno?: string; silenzioso?: boolean } | null = null
   try {
     attesa = JSON.parse(sessionStorage.getItem(CHIAVE_ATTESA_DRIVE) ?? 'null')
   } catch {
@@ -61,7 +66,15 @@ export function completaRitornoDrive(): void {
   try {
     sessionStorage.removeItem(CHIAVE_ATTESA_DRIVE)
     if ('token' in risposta) {
-      sessionStorage.setItem(CHIAVE_TOKEN_DRIVE, JSON.stringify({ t: risposta.token, e: risposta.scadenza }))
+      // Sul dispositivo, non nella scheda: riaprendo l'app entro l'ora il
+      // permesso c'è ancora.
+      localStorage.setItem(CHIAVE_TOKEN_DRIVE, JSON.stringify({ t: risposta.token, e: risposta.scadenza }))
+      if (!localStorage.getItem(CHIAVE_RICORDA_DRIVE)) localStorage.setItem(CHIAVE_RICORDA_DRIVE, '{}')
+    } else if (attesa?.silenzioso) {
+      // Il rinnovo da soli non è riuscito (account cambiato, permesso tolto):
+      // niente errore a schermo, e niente altri tentativi in questa sessione.
+      // Resta il pulsante per collegarsi a mano.
+      sessionStorage.setItem(CHIAVE_RINNOVO_DRIVE, JSON.stringify({ quando: Date.now(), fallito: true }))
     } else {
       sessionStorage.setItem(CHIAVE_ERRORE_DRIVE, risposta.errore)
     }

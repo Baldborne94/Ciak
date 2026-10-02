@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ErrorState } from '../components/States'
 import PannelloArchivio from '../components/PannelloArchivio'
 import ProssimoEpisodio from '../components/ProssimoEpisodio'
+import ToccoVideo from '../components/ToccoVideo'
 import {
   anteprimaUrl,
   apriSuDriveUrl,
@@ -167,6 +168,11 @@ function LettoreStreaming() {
   // Il conto alla rovescia partito dalla sigla finale, senza aspettare la fine.
   const [codaAutomatica, setCodaAutomatica] = useState(false)
   const posizione = useRef(0)
+  // Telefono o tablet: lì un tocco sul video lo ferma e lo fa ripartire.
+  const touch = useMemo(
+    () => typeof window.matchMedia === 'function' && window.matchMedia('(hover: none) and (pointer: coarse)').matches,
+    [],
+  )
   const audioControllato = useRef(false)
   // Chi ha scelto a mano il lettore di Drive ci resta, anche se quello di Ciak
   // diventa pronto dopo.
@@ -607,6 +613,26 @@ function LettoreStreaming() {
             allow="autoplay; fullscreen"
             allowFullScreen
             className="h-full w-full border-0"
+          />
+        )}
+        {lettore === 'ciak' && touch && (
+          <ToccoVideo
+            onAlterna={() => {
+              const v = videoRef.current
+              if (!v) return true
+              if (v.paused || v.ended) {
+                v.play().catch(logFailure('Ripresa del film col tocco'))
+                return false
+              }
+              v.pause()
+              return true
+            }}
+            onSalta={(secondi) => {
+              const v = videoRef.current
+              if (!v) return
+              const fine = Number.isFinite(v.duration) ? v.duration : Infinity
+              v.currentTime = Math.min(fine, Math.max(0, v.currentTime + secondi))
+            }}
           />
         )}
         {lettore === 'ciak' && (

@@ -31,11 +31,12 @@ const idVideo = async () => {
 describe('elencaVideo visita tutte le cartelle', () => {
   beforeEach(() => {
     vi.resetModules()
-    const sessione = new Map([['ciak:drive-token', JSON.stringify({ t: 'token', e: Date.now() + 3_600_000 })]])
-    vi.stubGlobal('sessionStorage', {
-      getItem: (k: string) => sessione.get(k) ?? null,
-      setItem: (k: string, v: string) => void sessione.set(k, v),
-      removeItem: (k: string) => void sessione.delete(k),
+    // Il permesso di Drive sta sul dispositivo, non nella scheda.
+    const dispositivo = new Map([['ciak:drive-token', JSON.stringify({ t: 'token', e: Date.now() + 3_600_000 })]])
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => dispositivo.get(k) ?? null,
+      setItem: (k: string, v: string) => void dispositivo.set(k, v),
+      removeItem: (k: string) => void dispositivo.delete(k),
     })
   })
   afterEach(() => vi.unstubAllGlobals())

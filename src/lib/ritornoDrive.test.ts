@@ -50,4 +50,15 @@ describe('urlConsensoDrive', () => {
       'https://www.googleapis.com/auth/drive.file',
     ])
   })
+
+  it('il rinnovo da solo non mostra schermate, e dice a Google quale account', () => {
+    const u = new URL(urlConsensoDrive('id-client', 'https://ciak.example/streaming', STATO, { account: 'io@example.com' }))
+    expect(u.searchParams.get('prompt')).toBe('none')
+    expect(u.searchParams.get('login_hint')).toBe('io@example.com')
+    const senzaAccount = new URL(urlConsensoDrive('id-client', 'https://ciak.example/streaming', STATO, { account: null }))
+    expect(senzaAccount.searchParams.get('prompt')).toBe('none')
+    expect(senzaAccount.searchParams.has('login_hint')).toBe(false)
+    // Il collegamento a mano resta quello di sempre.
+    expect(new URL(urlConsensoDrive('id-client', 'https://ciak.example/streaming', STATO)).searchParams.has('prompt')).toBe(false)
+  })
 })

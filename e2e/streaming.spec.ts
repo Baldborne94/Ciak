@@ -39,6 +39,10 @@ async function mockDrive(
   { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
+  // L'account del permesso, per rinnovarlo da soli senza chiedere quale.
+  await page.route('https://www.googleapis.com/drive/v3/about**', (route) =>
+    route.fulfill({ json: { user: { emailAddress: 'spettatore@example.com' } } }),
+  )
   await page.route(/^https:\/\/www\.googleapis\.com\/(upload\/)?drive\/v3\/files/, (route) => {
     const req = route.request()
     const url = new URL(req.url())
@@ -332,6 +336,76 @@ test('nell app installata il collegamento a Drive passa da un redirect e torna a
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
 })
 
+// Il permesso di Google dura un'ora: scaduto, lo si fa scadere qui a mano.
+const scadeIlPermesso = (page: Page) =>
+  page.evaluate(() => {
+    const t = JSON.parse(localStorage.getItem('ciak:drive-token') ?? '{}')
+    localStorage.setItem('ciak:drive-token', JSON.stringify({ ...t, e: Date.now() - 1000 }))
+  })
+
+test('scaduto il permesso, Drive si ricollega da solo senza chiedere niente', async ({ page }) => {
+  await comeAppInstallata(page)
+  await mockDrive(page)
+  let rinnovi = 0
+  const consensi = await googleRimanda(page, (state) => `access_token=token-${++rinnovi}&token_type=Bearer&expires_in=3599&state=${state}`)
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  // Ciak si annota l'account, per dirlo a Google la volta dopo.
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('ciak:drive-ricorda'))).toContain('spettatore@example.com')
+
+  // Un'ora dopo, riaprendo l'app: nessun pulsante da premere.
+  await scadeIlPermesso(page)
+  await page.goto('/streaming/video-song-0001')
+  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
+  await expect.poll(() => consensi.length).toBe(2)
+  expect(consensi[1].searchParams.get('prompt')).toBe('none')
+  expect(consensi[1].searchParams.get('login_hint')).toBe('spettatore@example.com')
+  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ciak:drive-token') ?? '{}').t)).toBe('token-2')
+})
+
+test('se Google non rinnova da solo resta il pulsante, senza errori e senza rimbalzi', async ({ page }) => {
+  await comeAppInstallata(page)
+  await mockDrive(page)
+  let primo = true
+  const consensi = await googleRimanda(page, (state) => {
+    if (primo) {
+      primo = false
+      return `access_token=token-1&token_type=Bearer&expires_in=3599&state=${state}`
+    }
+    return `error=interaction_required&state=${state}`
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+
+  await scadeIlPermesso(page)
+  await page.goto('/streaming')
+  await expect.poll(() => consensi.length).toBe(2)
+  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toBeVisible()
+  await expect(page.getByText(/interaction_required/)).toHaveCount(0)
+  // Cambiando pagina non ci si riprova.
+  await page.getByRole('link', { name: '🎬 Streaming' }).first().click()
+  await page.waitForTimeout(500)
+  expect(consensi).toHaveLength(2)
+})
+
+test('scollegato a mano, Drive non si ricollega da solo', async ({ page }) => {
+  await mockDrive(page)
+  const consensi = await googleRimanda(page, (state) => `access_token=x&expires_in=3599&state=${state}`)
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: /Scollega/ }).click()
+  await page.goto('/streaming')
+  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toBeVisible()
+  expect(consensi).toHaveLength(0)
+})
+
 test('nell app installata un consenso negato lo dice', async ({ page }) => {
   await comeAppInstallata(page)
   await mockDrive(page)
@@ -584,7 +658,7 @@ test('un film si scarica sul dispositivo e da lì si guarda anche senza rete', a
 
   // Senza rete: niente Drive, ma il film scaricato si apre col lettore di Ciak
   // e i sottotitoli salvati, anche senza il collegamento a Google.
-  await page.evaluate(() => sessionStorage.removeItem('ciak:drive-token'))
+  await page.evaluate(() => localStorage.removeItem('ciak:drive-token'))
   await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false }))
   await page.route('https://www.googleapis.com/**', (route) => route.abort())
   await page.goto('/streaming')
@@ -1338,6 +1412,39 @@ test('riapre il film dal punto in cui ci si era fermati', async ({ page }) => {
 
   await expect(page.getByText(/Ripreso da 22:20/)).toBeVisible()
   await expect(page.getByRole('button', { name: "Ricomincia dall'inizio" })).toBeVisible()
+  // Col mouse il video si ferma coi comandi del browser: niente strato sopra.
+  await expect(page.getByRole('button', { name: 'Pausa o riprendi' })).toHaveCount(0)
+})
+
+test('sul telefono un tocco sul video lo ferma e lo fa ripartire', async ({ page }) => {
+  await page.addInitScript(() => {
+    const originale = window.matchMedia.bind(window)
+    window.matchMedia = (q: string) =>
+      q === '(hover: none) and (pointer: coarse)' ? ({ ...originale(q), matches: true } as MediaQueryList) : originale(q)
+    const w = window as unknown as { comandi: string[] }
+    w.comandi = []
+    HTMLMediaElement.prototype.play = function () {
+      w.comandi.push('play')
+      Object.defineProperty(this, 'paused', { configurable: true, get: () => false })
+      return Promise.resolve()
+    }
+    HTMLMediaElement.prototype.pause = function () {
+      w.comandi.push('pausa')
+      Object.defineProperty(this, 'paused', { configurable: true, get: () => true })
+    }
+  })
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await apriSongOfTheSea(page)
+  await expect(page.locator('video')).toBeAttached()
+  const comandi = () => page.evaluate(() => (window as unknown as { comandi: string[] }).comandi.filter(Boolean))
+
+  const strato = page.getByRole('button', { name: 'Pausa o riprendi' })
+  await page.evaluate(() => document.querySelector('video')?.pause())
+  await strato.click()
+  await expect.poll(comandi).toEqual(['pausa', 'play'])
+  await strato.click()
+  await expect.poll(comandi).toEqual(['pausa', 'play', 'pausa'])
 })
 
 test('con l archivio lento riprende lo stesso, senza cancellare il punto salvato', async ({ page }) => {
