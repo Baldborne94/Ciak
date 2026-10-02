@@ -174,6 +174,20 @@ export async function voceStreaming(userId: string, fileId: string): Promise<Voc
   return (data as VoceStreaming | null) ?? null
 }
 
+// Gli episodi della stessa serie, per sapere qual è il prossimo: il lettore
+// non ha bisogno dell'intera videoteca (centinaia di righe a ogni episodio,
+// che sul telefono arrivavano dopo che il film era già partito).
+export async function episodiDellaSerie(userId: string, tmdbId: number): Promise<VoceStreaming[]> {
+  const { data, error } = await client()
+    .from(TABELLA)
+    .select('*')
+    .eq('user_id', userId)
+    .eq('media_type', 'tv')
+    .eq('tmdb_id', tmdbId)
+  if (error) throw new Error(error.message)
+  return (data ?? []) as VoceStreaming[]
+}
+
 // Aggiorna solo i campi passati: l'upsert di PostgREST tocca le colonne che
 // riceve, così salvare la posizione non cancella l'abbinamento, e viceversa.
 export async function salvaStreaming(
