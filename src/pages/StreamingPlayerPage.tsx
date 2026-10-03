@@ -4,6 +4,9 @@ import { ErrorState } from '../components/States'
 import PannelloArchivio from '../components/PannelloArchivio'
 import MenuSottotitoli from '../components/MenuSottotitoli'
 import SottotitoliVideo from '../components/SottotitoliVideo'
+import SigleSerie from '../components/SigleSerie'
+import { indiceSottotitolo, leggiLinguaSottotitoli, linguaTraccia, salvaLinguaSottotitoli } from '../lib/sceltaSottotitoli'
+import { useComandiVisibili } from '../lib/useComandiVisibili'
 import ProssimoEpisodio from '../components/ProssimoEpisodio'
 import ToccoVideo from '../components/ToccoVideo'
 import { azioneTasto, metadatiSessione, SALTO_TASTIERA, type AzioneTasto } from '../lib/comandiLettore'
@@ -50,16 +53,16 @@ import { registraErrore } from '../lib/errorLog'
 import { logFailure } from '../lib/logFailure'
 import { filmDaCercare, nomeLingua } from '../lib/sottotitoli'
 import {
-  DURATE_SIGLA,
+  PUNTI_VUOTI,
+  arrivoSalto,
   codaSiglaRaggiunta,
-  dopoLaSigla,
+  durataDaPunti,
   inSiglaFinale,
   inizioSiglaRaggiunto,
   leggiDurataSigla,
   leggiPuntiSigla,
   leggiSaltaSigle,
   mostraSaltaSigla,
-  salvaDurataSigla,
   salvaPuntiSigla,
   salvaSaltaSigle,
   secondiAllaFine,
@@ -321,10 +324,14 @@ function LettoreStreaming() {
   const archivio = useArchivioStreaming(fileId, valido)
   const { caricata: archivioCaricato, applicaRipresa, prossimo } = archivio
   const serie = archivio.voce?.media_type === 'tv' && archivio.voce.tmdb_id ? `tv-${archivio.voce.tmdb_id}` : null
-  const [durataSigla, setDurataSigla] = useState<number | null>(null)
-  useEffect(() => setDurataSigla(serie ? leggiDurataSigla(serie) : null), [serie])
-  const [punti, setPunti] = useState<PuntiSigla>({ inizio: null, coda: null })
-  useEffect(() => setPunti(serie ? leggiPuntiSigla(serie) : { inizio: null, coda: null }), [serie])
+  const [durataBase, setDurataBase] = useState<number | null>(null)
+  useEffect(() => setDurataBase(serie ? leggiDurataSigla(serie) : null), [serie])
+  const [punti, setPunti] = useState<PuntiSigla>(PUNTI_VUOTI)
+  useEffect(() => setPunti(serie ? leggiPuntiSigla(serie) : PUNTI_VUOTI), [serie])
+  // Quanto dura la sigla iniziale: dai tempi della serie, se ci sono, se no
+  // quella di base. null fuori dalle serie: lì non si salta niente.
+  const durataSigla = durataBase === null ? null : durataDaPunti(punti, durataBase)
+  const [durataVideo, setDurataVideo] = useState<number | null>(null)
   // Si salva subito, non dentro l'aggiornamento dello stato: passando
   // all'episodio dopo la pagina sparisce prima che quello venga eseguito.
   const imparaPunti = useCallback(
@@ -350,9 +357,6 @@ function LettoreStreaming() {
   }, [voceTv?.tmdb_id, voceTv?.stagione, voceTv?.episodio])
   const siglaEsatta = esatte?.inizio ?? null
   const codaEsatta = esatte?.finale ?? null
-  // I tempi imparati per la serie valgono solo dove mancano quelli esatti.
-  const inizioDellaSerie = siglaEsatta ? null : punti.inizio
-  const codaDellaSerie = codaEsatta ? null : punti.coda
   const etichettaProssimo = prossimo ? sigla(prossimo) : null
   const vaiAlProssimo = useCallback(() => {
     if (!prossimo) return
@@ -361,15 +365,16 @@ function LettoreStreaming() {
     })
   }, [navigate, prossimo])
   // Premuto a mano durante la sigla finale: quanto mancava alla fine è dove
-  // comincia la sigla finale di questa serie, per saltarla da sola.
+  // comincia la sigla finale di questa serie, per saltarla da sola. Un punto
+  // già impostato (a mano o così) non si tocca: si cambia dalle «Sigle».
   const prossimoDallaSigla = useCallback(() => {
     const v = videoRef.current
-    if (v && !finito && !codaAutomatica) {
+    if (v && !finito && !codaAutomatica && punti.coda === null) {
       const coda = secondiAllaFine(v.currentTime, Number.isFinite(v.duration) ? v.duration : null)
       if (coda !== null) imparaPunti({ coda })
     }
     vaiAlProssimo()
-  }, [finito, codaAutomatica, imparaPunti, vaiAlProssimo])
+  }, [finito, codaAutomatica, punti.coda, imparaPunti, vaiAlProssimo])
   useEffect(() => {
     const v = videoRef.current
     if (archivioCaricato && v && v.readyState >= 1) applicaRipresa(v)
@@ -403,13 +408,25 @@ function LettoreStreaming() {
     ).catch(logFailure('Sottotitoli nella scheda del film offline'))
   }, [fileId, locale, usaSalvati, sub.tracce])
 
-  // Quale sottotitolo si vede (-1: nessuno). Finché non si sceglie si mostra
-  // il primo (l'italiano, se c'è); la scelta, «nessuno» compreso, resta anche
-  // quando arrivano altre tracce e da un episodio all'altro.
-  const [sceltaSottotitoli, setSceltaSottotitoli] = useState<number | null>(null)
-  const sottotitolo =
-    tracce.length === 0 ? -1 : sceltaSottotitoli === null || sceltaSottotitoli >= tracce.length ? 0 : sceltaSottotitoli
-  const scegliSottotitoli = useCallback((indice: number) => setSceltaSottotitoli(indice), [])
+  // Quale sottotitolo si vede (-1: nessuno): spenti finché non se ne sceglie
+  // uno dal CC, poi la stessa lingua anche negli episodi e nei film dopo (vedi
+  // lib/sceltaSottotitoli).
+  const [linguaSottotitoli, setLinguaSottotitoli] = useState(leggiLinguaSottotitoli)
+  const [sottotitoloToccato, setSottotitoloToccato] = useState<number | null>(null)
+  const sottotitolo = indiceSottotitolo(tracce, linguaSottotitoli, sottotitoloToccato)
+  const scegliSottotitoli = useCallback(
+    (indice: number) => {
+      const lingua = indice < 0 || !tracce[indice] ? null : linguaTraccia(tracce[indice])
+      setLinguaSottotitoli(lingua)
+      setSottotitoloToccato(indice < 0 ? null : indice)
+      salvaLinguaSottotitoli(lingua)
+    },
+    [tracce],
+  )
+  // ⛶ e CC sopra il video ci sono solo insieme alla barra dei comandi.
+  const riquadroVideo = useRef<HTMLDivElement>(null)
+  const [menuSottotitoliAperto, setMenuSottotitoliAperto] = useState(false)
+  const comandiVisibili = useComandiVisibili(riquadroVideo, videoRef, chiaveVideo, menuSottotitoliAperto)
 
   const titolo =
     stato?.titolo ??
@@ -547,11 +564,12 @@ function LettoreStreaming() {
     const v = videoRef.current
     if (!v || durataSigla === null) return
     const da = v.currentTime
-    v.currentTime = siglaEsatta ? siglaEsatta.a : dopoLaSigla(da, durataSigla, Number.isFinite(v.duration) ? v.duration : null)
+    v.currentTime = siglaEsatta ? siglaEsatta.a : arrivoSalto(da, punti, durataSigla, Number.isFinite(v.duration) ? v.duration : null)
     setSiglaSaltata(true)
     if (automatica) setRivedi(da)
-    // Con i tempi esatti non c'è niente da imparare.
-    else if (!siglaEsatta) imparaPunti({ inizio: Math.round(da) })
+    // Con i tempi esatti non c'è niente da imparare, e un inizio già noto
+    // (magari scritto a mano) non lo sposta un salto premuto in ritardo.
+    else if (!siglaEsatta && punti.inizio === null) imparaPunti({ inizio: Math.round(da) })
   }
 
   function cambiaScelte(nuove: Partial<SaltaSigle>) {
@@ -658,6 +676,7 @@ function LettoreStreaming() {
       </div>
 
       <div
+        ref={riquadroVideo}
         className={
           lettore === 'ciak' && cinema
             ? // Senza !mt-0 il margine fra i blocchi della pagina (space-y-4) lo
@@ -686,6 +705,7 @@ function LettoreStreaming() {
             onError={(e) => suErrore(e.currentTarget)}
             onLoadedMetadata={(e) => {
               vigilanzaAvvio.current.fine()
+              setDurataVideo(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : null)
               // Dopo un'interruzione o un ricollegamento si riparte da dove si era.
               const v = e.currentTarget
               if (daRiprendere.current > 0) {
@@ -721,6 +741,7 @@ function LettoreStreaming() {
                 : mostraSaltaSigla(t, punti.inizio, durataSigla ?? undefined)
               if (inizio !== allInizio) setAllInizio(inizio)
               const durataVideo = Number.isFinite(v.duration) ? v.duration : null
+              setDurataVideo(durataVideo)
               const coda = codaEsatta ? t >= codaEsatta.da : inSiglaFinale(t, durataVideo)
               if (coda !== inCoda) setInCoda(coda)
               const partenzaSigla = siglaEsatta ? siglaEsatta.da : punti.inizio
@@ -771,24 +792,34 @@ function LettoreStreaming() {
           // In alto a destra: in basso ci sono i comandi del browser, e quelli
           // di Firefox (play grande, salti di 10 secondi, velocità) sono alti
           // il doppio di quelli di Chrome e coprivano «Salta sigla».
+          // ⛶ e CC compaiono e spariscono con la barra dei comandi (vedi
+          // useComandiVisibili); «Salta sigla» e l'episodio dopo restano.
           <div className="absolute right-2 top-2 flex flex-col items-end gap-2">
-            <button
-              type="button"
-              onClick={alternaSchermoIntero}
-              aria-label={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
-              title={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
-              className="rounded-lg bg-black/50 px-2 py-1 text-lg text-zinc-200 opacity-70 transition hover:opacity-100"
+            <div
+              data-testid="comandi-video"
+              className={`flex flex-col items-end gap-2 transition-opacity duration-300 ${
+                comandiVisibili ? 'opacity-100' : 'pointer-events-none opacity-0'
+              }`}
             >
-              ⛶
-            </button>
-            {tracce.length > 0 && (
-              <MenuSottotitoli
-                nomi={nomiSottotitoli}
-                scelto={sottotitolo}
-                sigla={siglaSottotitolo}
-                onScegli={scegliSottotitoli}
-              />
-            )}
+              <button
+                type="button"
+                onClick={alternaSchermoIntero}
+                aria-label={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
+                title={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
+                className="rounded-lg bg-black/50 px-2 py-1 text-lg text-zinc-200 opacity-70 transition hover:opacity-100"
+              >
+                ⛶
+              </button>
+              {tracce.length > 0 && (
+                <MenuSottotitoli
+                  nomi={nomiSottotitoli}
+                  scelto={sottotitolo}
+                  sigla={siglaSottotitolo}
+                  onScegli={scegliSottotitoli}
+                  onAperto={setMenuSottotitoliAperto}
+                />
+              )}
+            </div>
             {siglaSaltabile && (
               <button type="button" onClick={() => saltaSigla()} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">
                 ⏭ Salta sigla
@@ -825,76 +856,21 @@ function LettoreStreaming() {
       )}
 
       {lettore === 'ciak' && serie && durataSigla !== null && (
-        <div className="space-y-2 text-sm text-zinc-400">
-          <div className="flex flex-wrap gap-x-6 gap-y-2">
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={scelte.inizio} onChange={(e) => cambiaScelte({ inizio: e.target.checked })} />
-              Salta sempre la sigla iniziale
-            </label>
-            <label className="flex items-center gap-2">
-              <input type="checkbox" checked={scelte.fine} onChange={(e) => cambiaScelte({ fine: e.target.checked })} />
-              Salta anche la sigla finale
-            </label>
-          </div>
-          {/* Dove stanno le sigle lo si impara da chi le salta a mano. */}
-          {esatte && (esatte.inizio || esatte.finale) && (
-            <p className="text-xs text-zinc-500">
-              Per questo episodio i tempi sono quelli esatti di TheIntroDB
-              {esatte.inizio && `: sigla da ${formattaTempo(esatte.inizio.da)} a ${formattaTempo(esatte.inizio.a)}`}
-              {esatte.finale && `${esatte.inizio ? ',' : ':'} titoli di coda da ${formattaTempo(esatte.finale.da)}`}.
-            </p>
-          )}
-          {scelte.inizio && punti.inizio === null && !siglaEsatta && (
-            <p className="text-xs text-zinc-500">
-              La prima volta premi «⏭ Salta sigla» quando parte: Ciak ricorda il punto e negli episodi dopo la salta da sola.
-            </p>
-          )}
-          {scelte.fine && punti.coda === null && !codaEsatta && (
-            <p className="text-xs text-zinc-500">
-              La prima volta premi «⏭ Prossimo episodio» quando parte la sigla finale: Ciak ricorda il punto per questa serie.
-            </p>
-          )}
-          {/* I tempi sono di questa serie: ognuna ha i suoi, e si vedono. Solo
-              quelli che servono: dove ci sono i tempi esatti dell'episodio,
-              quelli della serie non si usano e non si mostrano. */}
-          {(inizioDellaSerie !== null || codaDellaSerie !== null) && (
-            <p className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-              In questa serie
-              {inizioDellaSerie !== null && ` la sigla iniziale parte a ${formattaTempo(inizioDellaSerie)}`}
-              {inizioDellaSerie !== null && codaDellaSerie !== null && ','}
-              {codaDellaSerie !== null && ` la finale negli ultimi ${formattaTempo(codaDellaSerie)}`}.
-              <button
-                type="button"
-                onClick={() => imparaPunti({ inizio: null, coda: null })}
-                className="text-projector underline-offset-2 hover:underline"
-              >
-                Reimpara
-              </button>
-            </p>
-          )}
-          {!siglaEsatta && (
-            <label className="flex flex-wrap items-center gap-2">
-              ⏭ «Salta sigla» va avanti di
-              <select
-                value={durataSigla}
-                onChange={(e) => {
-                  const secondi = Number(e.target.value)
-                  setDurataSigla(secondi)
-                  salvaDurataSigla(serie, secondi)
-                }}
-                aria-label="Durata della sigla"
-                className="rounded-lg border border-theatre-800 bg-theatre-900 px-2 py-1 text-zinc-200"
-              >
-                {DURATE_SIGLA.map((d) => (
-                  <option key={d} value={d}>
-                    {formattaTempo(d)}
-                  </option>
-                ))}
-              </select>
-              in tutti gli episodi di questa serie.
-            </label>
-          )}
-        </div>
+        <SigleSerie
+          punti={punti}
+          onCambia={imparaPunti}
+          adesso={() => videoRef.current?.currentTime ?? null}
+          durataVideo={durataVideo}
+          scelte={scelte}
+          onScelte={cambiaScelte}
+          esatte={
+            esatte && (esatte.inizio || esatte.finale)
+              ? `Per questo episodio valgono i tempi esatti di TheIntroDB${
+                  esatte.inizio ? `: sigla da ${formattaTempo(esatte.inizio.da)} a ${formattaTempo(esatte.inizio.a)}` : ''
+                }${esatte.finale ? `${esatte.inizio ? ',' : ':'} titoli di coda da ${formattaTempo(esatte.finale.da)}` : ''}. Quelli qui sotto servono per gli episodi che TheIntroDB non conosce.`
+              : null
+          }
+        />
       )}
 
       {problema && lettore === 'ciak' && (
