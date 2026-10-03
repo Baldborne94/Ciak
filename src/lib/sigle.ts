@@ -163,11 +163,22 @@ export function arrivoSalto(posizione: number, punti: PuntiSigla, durata: number
   return dopoLaSigla(posizione, durata, durataVideo)
 }
 
-// Un tempo scritto a mano: «1:35», «0:01:35», «95». null se non si capisce.
-export function leggiTempo(testo: string): number | null {
-  const t = testo.trim().replace(/[.,]/g, ':')
-  if (!/^\d+(:\d{1,2}){0,2}$/.test(t)) return null
-  const parti = t.split(':').map(Number)
-  if (parti.slice(1).some((n) => n >= 60)) return null
-  return parti.reduce((tot, n) => tot * 60 + n, 0)
+// Dove finisce la sigla lo si impara da chi corregge il salto: «Salta sigla»
+// va avanti della durata di base (o di quella già imparata), e se subito dopo
+// si trascina la barra al punto giusto, quello è la fine della sigla di
+// questa serie. Un salto all'indietro fino a dove si era (↩ Rivedi la sigla)
+// e un ritorno all'inizio dell'episodio non insegnano niente.
+export interface Salto {
+  da: number
+  a: number
+  quando: number // Date.now()
+}
+
+export const FINESTRA_CORREZIONE_MS = 20_000
+
+export function fineDaCorrezione(salto: Salto | null, posizione: number, ora: number): number | null {
+  if (!salto || ora - salto.quando > FINESTRA_CORREZIONE_MS) return null
+  if (posizione < salto.da + 5 || posizione > salto.a + 120) return null
+  if (Math.abs(posizione - salto.a) < 1) return null
+  return Math.round(posizione)
 }
