@@ -24,7 +24,27 @@ solo il risultato, una volta.
 2. Doppio clic su `prepara-ciak.bat`.
 
 I video già presenti su Drive si saltano: si può rilanciare quando si vuole.
-Gli originali restano dove sono.
+
+**Gli originali si cancellano definitivamente** (niente Cestino) appena la
+copia su Drive è controllata: deve durare quanto l'originale. Con loro se ne
+vanno i `.srt` che su Drive ci sono già e le sottocartelle rimaste vuote
+(`Season 01`, la serie); quelle di primo livello (`FILM`, `SERIE TV`…) restano.
+Al primo lancio vale anche per i video caricati nei giri precedenti. Non si
+cancella:
+
+- un originale la cui copia su Drive è più corta o illeggibile (di prima dei
+  controlli sulla durata): lo script lo dice alla fine; cancella la copia su
+  Drive e rilancia per rifarla;
+- un file aperto da un altro programma, per esempio qBittorrent che lo sta
+  ancora condividendo: si riprova al lancio successivo;
+- un file scritto negli ultimi minuti.
+
+Per tenere gli originali:
+`powershell -ExecutionPolicy Bypass -File prepara-ciak.ps1 -TieniOriginali`.
+
+Il file finisce in `G:\Il mio Drive`, cioè nella copia locale di Google Drive
+per desktop, che lo carica da sé: lascia Drive aperto finché l'icona non dice
+che è tutto sincronizzato, prima di spegnere il PC.
 
 Un video che non è già H.264 a 8 bit (HEVC, 10 bit…) va ricodificato: con la
 scheda video (NVIDIA, Intel o AMD, scelta da sola all'avvio) ci vuole una
