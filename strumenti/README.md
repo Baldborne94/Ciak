@@ -29,6 +29,12 @@ scheda video (NVIDIA, Intel o AMD, scelta da sola all'avvio) ci vuole una
 frazione del tempo rispetto alla CPU, che resta il ripiego. Un file che la
 scheda video non riesce a fare viene rifatto con la CPU.
 
+Prima di convertire, lo script prova a leggere i primi secondi di ogni video:
+un file danneggiato (download interrotto, contenitore rifatto male) viene
+segnalato come errore e saltato, invece di riempire la finestra di messaggi
+`Invalid NAL unit size` e finire su Drive come MP4 vuoto. Se VLC lo apre, di
+solito basta rifarne il contenitore: `ffmpeg -i "file" -map 0 -c copy riparato.mkv`.
+
 Per cartelle diverse, o per forzare un encoder (`-Encoder libx264` per la CPU):
 
 ```

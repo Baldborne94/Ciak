@@ -100,6 +100,22 @@ function ArgomentiVideo([string]$nome) {
     default { return @('-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p') }
   }
 }
+# Un video rotto (download interrotto, contenitore rifatto male) ffmpeg non lo
+# rifiuta: scarta un pacchetto dopo l'altro riempiendo lo schermo di errori e
+# alla fine esce con 0, lasciando su Drive un MP4 vuoto che poi si salterebbe
+# per sempre. Decodificare i primi secondi lo scopre prima di cominciare.
+# Qualche errore isolato all'inizio e' normale (i .ts partono a meta' di un
+# fotogramma): se ne tollerano pochi. Come sopra, gli errori qui sono attesi.
+function VideoLeggibile([string]$file, [int]$indice) {
+  $ErrorActionPreference = 'Continue'
+  try {
+    $righe = @(& ffmpeg -hide_banner -loglevel error -t 10 -i $file -map "0:$indice" -f null - 2>&1 | ForEach-Object { "$_" })
+    return ($LASTEXITCODE -eq 0) -and ($righe.Count -le 20)
+  } catch {
+    return $false
+  }
+}
+
 $Lavoro = Join-Path ([IO.Path]::GetTempPath()) 'ciak-conversione'
 New-Item -ItemType Directory -Force -Path $Lavoro | Out-Null
 
@@ -131,6 +147,9 @@ foreach ($f in $video) {
     # Il video vero: non la copertina che alcuni MKV portano come "video".
     $v = $flussi | Where-Object { $_.codec_type -eq 'video' -and -not ($_.disposition -and $_.disposition.attached_pic -eq 1) } | Select-Object -First 1
     if (-not $v) { throw 'nessuna traccia video' }
+    if (-not (VideoLeggibile $f.FullName $v.index)) {
+      throw "il video e' danneggiato e ffmpeg non riesce a leggerlo. Prova ad aprirlo con VLC: se non si vede va riscaricato, se si vede rifallo con  ffmpeg -i ""$($f.Name)"" -map 0 -c copy riparato.mkv"
+    }
     $audio = @($flussi | Where-Object { $_.codec_type -eq 'audio' })
     $sub = @($flussi | Where-Object { $_.codec_type -eq 'subtitle' -and $SottotitoliTesto -contains $_.codec_name })
 
