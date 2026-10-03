@@ -1,19 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 
-// I sottotitoli scelti sopra il video, da un menu di Ciak. Quello del browser
-// è minuscolo, sta attaccato alla barra in basso e sul telefono finiva sotto i
-// pulsanti ⛶ e CC: toccare «Inglese» era una lotteria. Qui ogni voce è alta
-// quanto un dito, e il menu si apre sotto il pulsante che lo chiama.
+// I sottotitoli scelti da un menu di Ciak, nella barra del lettore. Quello del
+// browser era minuscolo e sul telefono finiva sotto altri pulsanti: toccare
+// «Inglese» era una lotteria. Qui ogni voce è alta quanto un dito, il menu si
+// apre sopra il pulsante, e c'è anche la dimensione delle battute.
+import { DIMENSIONI_SOTTOTITOLI } from '../lib/sceltaSottotitoli'
 
 interface Props {
   nomi: string[] // «Italiano», «Inglese», nell'ordine delle tracce
   scelto: number // -1: nessuno
   sigla: string // «IT», «off»
   onScegli: (indice: number) => void
-  onAperto?: (aperto: boolean) => void // finché è aperto, il pulsante non sparisce
+  onAperto?: (aperto: boolean) => void // finché è aperto, la barra non sparisce
+  dimensione?: number // indice in DIMENSIONI_SOTTOTITOLI
+  onDimensione?: (indice: number) => void
 }
 
-export default function MenuSottotitoli({ nomi, scelto, sigla, onScegli, onAperto }: Props) {
+export default function MenuSottotitoli({ nomi, scelto, sigla, onScegli, onAperto, dimensione, onDimensione }: Props) {
   const [aperto, setAperto] = useState(false)
   useEffect(() => onAperto?.(aperto), [aperto, onAperto])
   const contenitore = useRef<HTMLDivElement>(null)
@@ -52,7 +55,7 @@ export default function MenuSottotitoli({ nomi, scelto, sigla, onScegli, onApert
         aria-expanded={aperto}
         aria-label={`Sottotitoli: ${scelto < 0 ? 'nessuno' : nomi[scelto]}. Cambia`}
         title="Cambia i sottotitoli"
-        className="min-h-10 rounded-lg bg-black/50 px-3 py-1.5 text-sm font-semibold text-zinc-200 opacity-70 transition hover:opacity-100"
+        className="min-h-10 rounded-lg px-3 py-1.5 text-sm font-semibold text-zinc-100 transition hover:bg-white/10"
       >
         CC {sigla}
       </button>
@@ -60,7 +63,7 @@ export default function MenuSottotitoli({ nomi, scelto, sigla, onScegli, onApert
         <div
           role="group"
           aria-label="Sottotitoli"
-          className="absolute right-0 top-full z-10 mt-2 flex min-w-40 flex-col overflow-hidden rounded-xl border border-theatre-700 bg-theatre-950/95 py-1 shadow-reel"
+          className="absolute bottom-full right-0 z-20 mb-2 flex min-w-48 flex-col overflow-hidden rounded-xl border border-theatre-700 bg-theatre-950/95 py-1 shadow-reel"
         >
           {voci.map(({ indice, nome }) => (
             <button
@@ -81,6 +84,30 @@ export default function MenuSottotitoli({ nomi, scelto, sigla, onScegli, onApert
               {nome}
             </button>
           ))}
+          {/* La dimensione non chiude il menu: si vede subito l'effetto. */}
+          {onDimensione && (
+            <div role="group" aria-label="Dimensione dei sottotitoli" className="border-t border-theatre-800 px-3 py-2">
+              <p className="mb-1.5 text-xs text-zinc-400">Dimensione</p>
+              <div className="flex gap-1">
+                {DIMENSIONI_SOTTOTITOLI.map((d, i) => (
+                  <button
+                    key={d.nome}
+                    type="button"
+                    aria-pressed={i === dimensione}
+                    aria-label={d.nome}
+                    title={d.nome}
+                    onClick={() => onDimensione(i)}
+                    className={`min-h-10 flex-1 rounded-lg transition hover:bg-white/10 ${
+                      i === dimensione ? 'bg-white/15 text-projector-light' : 'text-zinc-200'
+                    }`}
+                    style={{ fontSize: `${12 + i * 3}px` }}
+                  >
+                    A
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

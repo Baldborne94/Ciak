@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useElementoVideo } from './useElementoVideo'
 
-// I pulsanti di Ciak sopra il video (⛶ e CC) si comportano come la barra dei
-// comandi del browser: ci sono a video fermo e quando si tocca il video o si
-// muove il mouse, e spariscono dopo qualche secondo di visione. Fissi in alto
-// a destra coprivano l'immagine per tutto il film.
+// La barra dei comandi di Ciak (vedi BarraLettore) si comporta come quella
+// dei lettori di streaming: ci sono a video fermo e quando si tocca il video o si
+// muove il mouse, e sparisce dopo qualche secondo di visione. Fissa copriva
+// l'immagine per tutto il film.
 
 export const MS_COMANDI = 3000
 
@@ -15,17 +16,7 @@ export function useComandiVisibili(
   const [mosso, setMosso] = useState(true)
   const [inPausa, setInPausa] = useState(true)
   const timer = useRef<ReturnType<typeof setTimeout>>()
-  // Il <video> può arrivare dopo la pagina (prima c'è l'anteprima di Drive) e
-  // cambiare a ogni episodio: lo si ricontrolla a ogni disegno. Agganciato una
-  // volta sola all'apertura, quando ancora non c'era, non si sapeva mai che il
-  // film andava, e ⛶ e CC restavano fissi come a video fermo.
-  const [video, setVideo] = useState<HTMLVideoElement | null>(null)
-  // Senza dipendenze apposta: un ref che cambia non ridisegna niente. Non è
-  // un giro infinito, perché si aggiorna solo quando l'elemento è cambiato.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (videoRef.current !== video) setVideo(videoRef.current)
-  })
+  const video = useElementoVideo(videoRef)
 
   useEffect(() => {
     const c = contenitore.current

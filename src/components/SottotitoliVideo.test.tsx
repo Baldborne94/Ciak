@@ -7,20 +7,25 @@ const VTT = 'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nCongratulazioni a Mark e R
 
 // Un <video> vero di jsdom: non riproduce, ma il tempo si può spostare a mano
 // e gli eventi arrivano come nel browser.
-function monta(vtt: string | null) {
+function monta(vtt: string | null, { altezza = 0, scala = 1 } = {}) {
   const videoRef = createRef<HTMLVideoElement>()
-  const utils = render(
-    <div>
+  const contenitore = createRef<HTMLDivElement>()
+  const Riquadro = ({ v, s }: { v: string | null; s: number }) => (
+    <div ref={contenitore}>
       <video ref={videoRef} />
-      <SottotitoliVideo videoRef={videoRef} vtt={vtt} chiaveVideo="a" />
-    </div>,
+      <SottotitoliVideo videoRef={videoRef} contenitore={contenitore} vtt={v} chiaveVideo="a" scala={s} />
+    </div>
   )
+  // jsdom non misura niente: l'altezza del riquadro si finge.
+  if (altezza) Object.defineProperty(HTMLDivElement.prototype, 'clientHeight', { configurable: true, get: () => altezza })
+  const utils = render(<Riquadro v={vtt} s={scala} />)
+  const cambia = (v: string | null) => utils.rerender(<Riquadro v={v} s={scala} />)
   const vaiA = (t: number) =>
     act(() => {
       videoRef.current!.currentTime = t
       fireEvent.timeUpdate(videoRef.current!)
     })
-  return { ...utils, videoRef, vaiA }
+  return { ...utils, videoRef, vaiA, cambia }
 }
 
 describe('SottotitoliVideo', () => {
@@ -51,14 +56,27 @@ describe('SottotitoliVideo', () => {
   })
 
   it('cambiando lingua cambia il testo, senza aspettare la battuta dopo', () => {
-    const { rerender, videoRef, vaiA } = monta(VTT)
+    const { cambia, vaiA } = monta(VTT)
     vaiA(2)
-    rerender(
-      <div>
-        <video ref={videoRef} />
-        <SottotitoliVideo videoRef={videoRef} vtt={'WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nCongratulations\n'} chiaveVideo="a" />
-      </div>,
-    )
+    cambia('WEBVTT\n\n00:00:01.000 --> 00:00:03.000\nCongratulations\n')
     expect(screen.getByTestId('sottotitoli')).toHaveTextContent('Congratulations')
+  })
+
+  it('la misura segue l altezza del video, e la scala scelta', () => {
+    const { vaiA } = monta(VTT, { altezza: 1000 })
+    vaiA(2)
+    expect(screen.getByTestId('sottotitoli')).toHaveAttribute('data-dimensione', '45')
+    Object.defineProperty(HTMLDivElement.prototype, 'clientHeight', { configurable: true, get: () => 0 })
+  })
+
+  it('con «Molto grandi» la misura cresce della metà, e sotto un minimo non scende', () => {
+    const { vaiA } = monta(VTT, { altezza: 1000, scala: 1.5 })
+    vaiA(2)
+    expect(screen.getByTestId('sottotitoli')).toHaveAttribute('data-dimensione', '68')
+    Object.defineProperty(HTMLDivElement.prototype, 'clientHeight', { configurable: true, get: () => 100 })
+    const piccolo = monta(VTT, { altezza: 100, scala: 0.8 })
+    piccolo.vaiA(2)
+    expect(screen.getAllByTestId('sottotitoli').at(-1)).toHaveAttribute('data-dimensione', '13')
+    Object.defineProperty(HTMLDivElement.prototype, 'clientHeight', { configurable: true, get: () => 0 })
   })
 })

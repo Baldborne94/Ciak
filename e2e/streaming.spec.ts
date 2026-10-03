@@ -526,6 +526,10 @@ test('i sottotitoli partono spenti e si scelgono dal menu CC, dalla tendina e co
   await apriSongOfTheSea(page)
   await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
   expect(await page.evaluate(() => document.querySelector('video')?.textTracks.length)).toBe(0)
+  // I comandi sono quelli di Ciak, non del browser: il CC sta nella barra.
+  await expect(page.locator('video')).not.toHaveAttribute('controls')
+  const barra = page.getByTestId('barra-lettore')
+  await expect(barra.getByRole('slider', { name: 'Avanzamento' })).toBeVisible()
 
   // Il video si guarda pulito: le battute compaiono solo se le si sceglie.
   const cc = page.getByRole('button', { name: /^Sottotitoli: / })
@@ -540,9 +544,18 @@ test('i sottotitoli partono spenti e si scelgono dal menu CC, dalla tendina e co
   await expect(cc).toHaveText('CC IT')
   await expect(page.getByRole('combobox', { name: 'Mostra' })).toHaveValue('0')
 
-  // La scelta resta: riaprendo il film l'italiano c'è già.
+  // La dimensione delle battute si sceglie dallo stesso menu, e resta.
+  await cc.click()
+  await page.getByRole('group', { name: 'Dimensione dei sottotitoli' }).getByRole('button', { name: 'Molto grandi' }).click()
+  expect(await page.evaluate(() => localStorage.getItem('ciak:sottotitoli-dimensione'))).toBe('3')
+  await page.locator('body').click({ position: { x: 5, y: 5 } })
+
+  // La scelta resta: riaprendo il film l'italiano c'è già, molto grande.
   await page.reload()
   await expect(cc).toHaveText('CC IT')
+  await cc.click()
+  await expect(page.getByRole('button', { name: 'Molto grandi' })).toHaveAttribute('aria-pressed', 'true')
+  await page.locator('body').click({ position: { x: 5, y: 5 } })
 
   await page.getByRole('combobox', { name: 'Mostra' }).selectOption({ label: 'Nessun sottotitolo' })
   await expect(cc).toHaveText('CC off')
@@ -845,7 +858,8 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
   await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E1' })).toBeVisible()
 
-  // Schermo intero di Ciak: è la pagina, così passa indenne all'episodio dopo.
+  // Schermo intero di Ciak, dal ⛶ della sua barra: è la pagina, così passa
+  // indenne all'episodio dopo.
   await page.getByRole('button', { name: 'Schermo intero' }).click()
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === document.documentElement)).toBe(true)
 
@@ -880,7 +894,7 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
   await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull()
 
   // Uscendo dal lettore si esce anche dallo schermo intero.
-  await page.getByRole('button', { name: 'Schermo intero' }).click()
+  await page.keyboard.press('f')
   await expect.poll(() => page.evaluate(() => document.fullscreenElement === document.documentElement)).toBe(true)
   await page.goBack()
   await page.goBack()
@@ -1641,10 +1655,13 @@ test('riapre il film dal punto in cui ci si era fermati', async ({ page }) => {
   // I metadati del video arrivano: si riparte qualche secondo prima.
   await page.evaluate(() => document.querySelector('video')?.dispatchEvent(new Event('loadedmetadata')))
 
-  await expect(page.getByText(/Ripreso da 22:20/)).toBeVisible()
+  // Sopra il video, per qualche secondo (a schermo intero il pannello sotto
+  // non si vede), e nel pannello.
+  await expect(page.getByRole('status').filter({ hasText: 'Ripreso da 22:20' })).toBeVisible()
+  await expect(page.getByText(/Ripreso da 22:20 · Ricomincia/)).toBeVisible()
   await expect(page.getByRole('button', { name: "Ricomincia dall'inizio" })).toBeVisible()
-  // Col mouse il video si ferma coi comandi del browser: niente strato sopra.
-  await expect(page.getByRole('button', { name: 'Pausa o riprendi' })).toHaveCount(0)
+  // Anche col mouse il clic sul video ferma e riprende: i comandi sono di Ciak.
+  await expect(page.getByRole('button', { name: 'Pausa o riprendi' })).toBeVisible()
 })
 
 test('sul tablet in orizzontale lo schermo intero del browser diventa quello di Ciak, col tocco e i pulsanti', async ({ page }) => {
@@ -1681,7 +1698,6 @@ test('sul tablet in orizzontale lo schermo intero del browser diventa quello di 
   await page.evaluate(() => (window as unknown as { schermoInteroDelVideo: () => void }).schermoInteroDelVideo())
 
   // Il lettore occupa tutta la finestra, coi pulsanti di Ciak e il tocco.
-  await expect(page.getByRole('button', { name: 'Esci dallo schermo intero' })).toBeVisible()
   expect(await page.evaluate(() => document.fullscreenElement)).toBeNull()
   const riquadro = await page.locator('video').locator('..').boundingBox()
   // La finestra visibile, senza le barre di scorrimento.
@@ -1909,7 +1925,7 @@ test('con l archivio lento riprende lo stesso, senza cancellare il punto salvato
     v.dispatchEvent(new Event('timeupdate'))
   })
 
-  await expect(page.getByText(/Ripreso da 22:20/)).toBeVisible()
+  await expect(page.getByText(/Ripreso da 22:20 · Ricomincia/)).toBeVisible()
   expect(await saltoDelVideo(page)).toBe(1340)
   const posizioni = db.writes.flatMap((w) => (w.table === 'user_streaming' ? w.body.map((r) => r.posizione) : []))
   expect(posizioni.filter((p) => typeof p === 'number' && p < 1000)).toEqual([])

@@ -44,3 +44,35 @@ export function indiceSottotitolo(tracce: TracciaConLingua[], lingua: string | n
   if (preferito !== null && tracce[preferito] && linguaTraccia(tracce[preferito]) === lingua) return preferito
   return tracce.findIndex((t) => linguaTraccia(t) === lingua)
 }
+
+// ── Quanto sono grandi ──────────────────────────────────────────────────────
+// La misura di base segue l'altezza del video (vedi SottotitoliVideo): più
+// piccoli nel riquadro della pagina, più grandi a schermo intero. Questa è la
+// correzione scelta da chi guarda, una per tutti i video.
+
+export const DIMENSIONI_SOTTOTITOLI = [
+  { nome: 'Piccoli', scala: 0.8 },
+  { nome: 'Medi', scala: 1 },
+  { nome: 'Grandi', scala: 1.25 },
+  { nome: 'Molto grandi', scala: 1.5 },
+] as const
+
+const CHIAVE_DIMENSIONE = 'ciak:sottotitoli-dimensione'
+const DIMENSIONE_BASE = 1
+
+export function leggiDimensioneSottotitoli(): number {
+  try {
+    const i = Number(localStorage.getItem(CHIAVE_DIMENSIONE) ?? DIMENSIONE_BASE)
+    return Number.isInteger(i) && i >= 0 && i < DIMENSIONI_SOTTOTITOLI.length ? i : DIMENSIONE_BASE
+  } catch {
+    return DIMENSIONE_BASE
+  }
+}
+
+export function salvaDimensioneSottotitoli(indice: number): void {
+  try {
+    localStorage.setItem(CHIAVE_DIMENSIONE, String(indice))
+  } catch {
+    /* storage negato: alla prossima apertura tornano medi */
+  }
+}
