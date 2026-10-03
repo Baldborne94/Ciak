@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ErrorState } from '../components/States'
 import PannelloArchivio from '../components/PannelloArchivio'
+import MenuSottotitoli from '../components/MenuSottotitoli'
 import ProssimoEpisodio from '../components/ProssimoEpisodio'
 import ToccoVideo from '../components/ToccoVideo'
 import { azioneTasto, metadatiSessione, SALTO_TASTIERA, type AzioneTasto } from '../lib/comandiLettore'
@@ -709,10 +710,12 @@ function LettoreStreaming() {
             // quello di Ciak (⛶ in alto a destra). Firefox il pulsante lo mostra
             // comunque.
             controlsList="nofullscreen"
+            // Il CC del browser apre un menu minuscolo sotto i nostri pulsanti:
+            // i sottotitoli si scelgono da quello di Ciak (vedi index.css).
             autoPlay
             playsInline
             aria-label={titolo}
-            className="h-full w-full"
+            className="lettore-ciak h-full w-full"
             onError={(e) => suErrore(e.currentTarget)}
             onLoadedMetadata={(e) => {
               vigilanzaAvvio.current.fine()
@@ -816,15 +819,12 @@ function LettoreStreaming() {
               ⛶
             </button>
             {tracce.length > 0 && (
-              <button
-                type="button"
-                onClick={() => scegliSottotitoli(prossimoSottotitolo)}
-                aria-label={`Sottotitoli: ${sottotitolo < 0 ? 'nessuno' : nomiSottotitoli[sottotitolo]}. Cambia`}
-                title="Cambia i sottotitoli"
-                className="rounded-lg bg-black/50 px-2 py-1 text-sm font-semibold text-zinc-200 opacity-70 transition hover:opacity-100"
-              >
-                CC {siglaSottotitolo}
-              </button>
+              <MenuSottotitoli
+                nomi={nomiSottotitoli}
+                scelto={sottotitolo}
+                sigla={siglaSottotitolo}
+                onScegli={scegliSottotitoli}
+              />
             )}
             {siglaSaltabile && (
               <button type="button" onClick={() => saltaSigla()} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">

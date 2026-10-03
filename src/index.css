@@ -147,3 +147,10 @@
     @apply w-full rounded-lg border border-theatre-700 bg-theatre-900 px-4 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-projector/50 focus:outline-none focus:ring-2 focus:ring-projector/30;
   }
 }
+
+/* Il CC del browser (Chrome, anche su Android) apre un menu minuscolo
+   attaccato alla barra in basso, che sul telefono finiva sotto i pulsanti di
+   Ciak: i sottotitoli si scelgono dal menu «CC» in alto a destra. */
+video.lettore-ciak::-webkit-media-controls-toggle-closed-captions-button {
+  display: none;
+}
