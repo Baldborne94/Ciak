@@ -42,6 +42,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
+$Versione = '2026-10-03b'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 $SottotitoliTesto = @('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text')
 
@@ -133,14 +135,18 @@ function VideoLeggibile([string]$file, [int]$indice) {
 }
 
 # La durata in secondi di un file, 0 se non si sa (alcuni AVI e TS non la
-# dichiarano). L'uscita si legge tutta prima di prenderne la prima riga: un
-# Select-Object attaccato a ffprobe lo chiude a meta' e $LASTEXITCODE resta
-# quello del programma di prima, e la durata risultava 0 a caso.
+# dichiarano). Si legge come per l'originale, in JSON e tutta d'un fiato,
+# senza contare su $LASTEXITCODE: in Windows PowerShell un ffprobe chiuso a
+# meta' dalla pipeline lo lascia sbagliato, e ogni video creato risultava
+# lungo 0:00:00 e veniva scartato.
 function Durata([string]$file) {
-  $righe = @(& ffprobe -v error -show_entries format=duration -of csv=p=0 -- $file)
-  if ($LASTEXITCODE -ne 0 -or $righe.Count -eq 0) { return 0 }
-  $d = $righe[0]
-  try { return [double]$d } catch { return 0 }
+  $ErrorActionPreference = 'Continue'
+  try {
+    $info = (& ffprobe -v error -show_entries format=duration -of json -- $file | Out-String) | ConvertFrom-Json
+    $d = 0.0
+    if ($info -and $info.format -and [double]::TryParse("$($info.format.duration)", [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$d)) { return $d }
+  } catch { }
+  return 0
 }
 
 function Tempo([double]$secondi) { return [TimeSpan]::FromSeconds([math]::Round($secondi)).ToString('h\:mm\:ss') }
@@ -222,6 +228,7 @@ function CancellaOriginale($f, [string]$nome, [string]$cartellaDest, [string]$re
 $Lavoro = Join-Path ([IO.Path]::GetTempPath()) 'ciak-conversione'
 New-Item -ItemType Directory -Force -Path $Lavoro | Out-Null
 
+Write-Host "prepara-ciak, versione $Versione"
 Write-Host "Da:  $Origine"
 Write-Host "A:   $Destinazione"
 if ($TieniOriginali) { Write-Host 'Originali: restano dove sono' } else { Write-Host "Originali: cancellati quando la copia su Drive e' intera" }
@@ -313,6 +320,9 @@ foreach ($f in $video) {
     # ferma dove finiscono i dati ed esce con 0: un film di un'ora diventava
     # un MP4 di sei minuti, che poi si sarebbe saltato per sempre.
     $durataFatta = Durata $tmp
+    if ($durataOrigine -gt 60 -and $durataFatta -le 0) {
+      throw "ffprobe non riesce a leggere la durata del video creato ($tmp): il controllo non si puo' fare"
+    }
     if ($durataOrigine -gt 60 -and $durataFatta -lt $durataOrigine * 0.95) {
       throw "il video creato dura $(Tempo $durataFatta) ma l'originale $(Tempo $durataOrigine): l'originale e' incompleto (ancora in download?) o danneggiato"
     }
