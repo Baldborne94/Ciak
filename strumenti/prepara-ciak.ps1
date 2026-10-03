@@ -6,10 +6,14 @@
 #   - video H.264 a 8 bit, l'unico che ogni browser e ogni tablet legge: se lo
 #     e' gia' si copia (pochi secondi), altrimenti si ricodifica (lento);
 #   - tutte le tracce audio in AAC: Dolby (AC3/E-AC3) e DTS il browser non li
-#     sente, e il video partirebbe muto;
+#     sente, e il video partirebbe muto; quelle gia' in AAC si copiano;
 #   - i sottotitoli dentro il file (SRT, ASS) estratti in .srt accanto al video,
-#     con la lingua nel nome (Film.it.srt, Film.en.srt), dove Ciak li trova;
+#     solo italiano e inglese, con la lingua nel nome (Film.it.srt,
+#     Film.en.srt), dove Ciak li trova;
 #   - i .srt gia' accanto al video originale, copiati.
+# Un video che non si legge, o che esce molto piu' corto dell'originale (ancora
+# in download, danneggiato), non va su Drive: finisce nell'elenco degli errori
+# che lo script stampa alla fine e salva in prepara-ciak-errori.txt.
 # La conversione si fa sul disco del PC e solo il risultato va su Drive: un
 # file letto e riscritto direttamente su Drive va scaricato e ricaricato
 # intero, ed e' quello che rendeva tutto lentissimo.
@@ -27,12 +31,19 @@ param(
   [string]$Destinazione = 'G:\Il mio Drive\Ciak',
   # 'auto' prova la scheda video (NVIDIA, Intel, AMD) e ripiega sulla CPU;
   # si puo' forzare un encoder, per esempio -Encoder libx264.
-  [string]$Encoder = 'auto'
+  [string]$Encoder = 'auto',
+  # Un file scritto da meno minuti di cosi' e' probabilmente ancora in download.
+  [int]$MinutiDiCalma = 5
 )
 
 $ErrorActionPreference = 'Stop'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 $SottotitoliTesto = @('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text')
+
+# Le lingue dei sottotitoli che servono: il lettore di Ciak offre solo italiano
+# e inglese, il resto finirebbe in un'unica traccia "altra lingua" (il cinese,
+# per ordine alfabetico, prima di tutti) e ingombrerebbe Drive.
+$LingueVolute = @('it', 'en')
 
 function Lingua([string]$codice) {
   if (-not $codice) { return $null }
@@ -116,6 +127,51 @@ function VideoLeggibile([string]$file, [int]$indice) {
   }
 }
 
+# La durata in secondi di un file, 0 se non si sa (alcuni AVI e TS non la
+# dichiarano).
+function Durata([string]$file) {
+  $d = & ffprobe -v error -show_entries format=duration -of csv=p=0 -- $file | Select-Object -First 1
+  if ($LASTEXITCODE -ne 0 -or -not $d) { return 0 }
+  try { return [double]$d } catch { return 0 }
+}
+
+function Tempo([double]$secondi) { return [TimeSpan]::FromSeconds([math]::Round($secondi)).ToString('h\:mm\:ss') }
+
+# Per ogni lingua voluta la traccia migliore: non le "forced" (solo i cartelli
+# e i dialoghi stranieri) e, potendo, non quelle per non udenti. Una traccia
+# senza lingua si tiene solo se mancano tutte le altre: a volte e' l'unica.
+function SottotitoliScelti($tracce) {
+  $ordinate = @($tracce | Sort-Object { if ($_.disposition -and $_.disposition.forced -eq 1) { 2 } elseif ($_.disposition -and $_.disposition.hearing_impaired -eq 1) { 1 } else { 0 } }, { [int]$_.index })
+  $scelti = [ordered]@{}
+  foreach ($s in $ordinate) {
+    $l = Lingua $s.tags.language
+    if ($l -and ($LingueVolute -contains $l) -and -not $scelti.Contains($l)) { $scelti[$l] = $s }
+  }
+  if ($scelti.Count -eq 0) {
+    $senza = $ordinate | Where-Object { -not (Lingua $_.tags.language) } | Select-Object -First 1
+    if ($senza) { $scelti[''] = $senza }
+  }
+  return $scelti
+}
+
+# L'audio traccia per traccia: l'AAC si copia (nessuna perdita, nessun
+# tempo), il resto si ricodifica con un bitrate che cresce coi canali, perche'
+# 192k bastano a uno stereo ma impoveriscono un 5.1.
+function ArgomentiAudio($tracce) {
+  $arg = @()
+  for ($i = 0; $i -lt $tracce.Count; $i++) {
+    $a = $tracce[$i]
+    if ($a.codec_name -eq 'aac') {
+      $arg += @("-c:a:$i", 'copy')
+    } else {
+      $canali = if ($a.channels) { [int]$a.channels } else { 2 }
+      $kbit = [math]::Min(384, [math]::Max(192, 64 * $canali))
+      $arg += @("-c:a:$i", 'aac', "-b:a:$i", "$($kbit)k")
+    }
+  }
+  return $arg
+}
+
 $Lavoro = Join-Path ([IO.Path]::GetTempPath()) 'ciak-conversione'
 New-Item -ItemType Directory -Force -Path $Lavoro | Out-Null
 
@@ -128,7 +184,9 @@ $video = Get-ChildItem -LiteralPath $Origine -Recurse -File |
   Where-Object { $EstensioniVideo -contains $_.Extension.ToLower() } |
   Sort-Object FullName
 
-$fatti = 0; $saltati = 0; $errori = 0; $ricodificati = 0
+$fatti = 0; $saltati = 0; $errori = 0; $ricodificati = 0; $inDownload = 0
+$elencoErrori = @()
+$calma = (Get-Date).AddMinutes(-$MinutiDiCalma)
 $n = 0
 foreach ($f in $video) {
   $n++
@@ -137,12 +195,20 @@ foreach ($f in $video) {
   $nome = [IO.Path]::GetFileNameWithoutExtension($f.Name)
   $dest = Join-Path $cartellaDest "$nome.mp4"
   if (Test-Path -LiteralPath $dest) { $saltati++; continue }
+  if ($f.LastWriteTime -gt $calma) {
+    Write-Host "[$n/$($video.Count)] $relativo\$($f.Name): scritto da pochi minuti, forse e' ancora in download. Lo salto per ora." -ForegroundColor DarkYellow
+    $inDownload++
+    continue
+  }
 
   Write-Host "[$n/$($video.Count)] $relativo\$($f.Name)"
   try {
-    $json = & ffprobe -v error -show_entries 'stream=index,codec_type,codec_name,pix_fmt:stream_disposition=attached_pic:stream_tags=language' -of json -- $f.FullName | Out-String
+    $json = & ffprobe -v error -show_entries 'format=duration:stream=index,codec_type,codec_name,pix_fmt,channels:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags=language' -of json -- $f.FullName | Out-String
     if ($LASTEXITCODE -ne 0) { throw 'ffprobe non riesce a leggere il file' }
-    $flussi = @(($json | ConvertFrom-Json).streams)
+    $info = $json | ConvertFrom-Json
+    $flussi = @($info.streams)
+    $durataOrigine = 0
+    if ($info.format -and $info.format.duration) { try { $durataOrigine = [double]$info.format.duration } catch { } }
 
     # Il video vero: non la copertina che alcuni MKV portano come "video".
     $v = $flussi | Where-Object { $_.codec_type -eq 'video' -and -not ($_.disposition -and $_.disposition.attached_pic -eq 1) } | Select-Object -First 1
@@ -153,11 +219,11 @@ foreach ($f in $video) {
     $audio = @($flussi | Where-Object { $_.codec_type -eq 'audio' })
     $sub = @($flussi | Where-Object { $_.codec_type -eq 'subtitle' -and $SottotitoliTesto -contains $_.codec_name })
 
-    $copiaVideo = ($v.codec_name -eq 'h264') -and ($v.pix_fmt -eq 'yuv420p')
-    $copiaAudio = ($audio.Count -gt 0) -and -not ($audio | Where-Object { $_.codec_name -ne 'aac' })
+    # yuvj420p e' lo stesso 8 bit 4:2:0 con la gamma piena: il browser lo legge.
+    $copiaVideo = ($v.codec_name -eq 'h264') -and (@('yuv420p', 'yuvj420p') -contains $v.pix_fmt)
 
     $tmp = Join-Path $Lavoro "$nome.mp4"
-    $audioArg = if ($copiaAudio) { @('-c:a', 'copy') } else { @('-c:a', 'aac', '-b:a', '192k') }
+    $audioArg = @(ArgomentiAudio $audio)
     $mappe = @('-map', "0:$($v.index)", '-map', '0:a?')
     $uscita = @('-sn', '-dn', '-movflags', '+faststart', '-f', 'mp4', $tmp)
     $base = @('-hide_banner', '-loglevel', 'error', '-stats', '-y')
@@ -179,17 +245,33 @@ foreach ($f in $video) {
     }
     if ($esito -ne 0) { throw 'conversione non riuscita' }
 
-    # I sottotitoli interni: uno per lingua (il primo), con la lingua nel nome.
+    # ffmpeg davanti a un file troncato (download a meta', pezzi mancanti) si
+    # ferma dove finiscono i dati ed esce con 0: un film di un'ora diventava
+    # un MP4 di sei minuti, che poi si sarebbe saltato per sempre.
+    $durataFatta = Durata $tmp
+    if ($durataOrigine -gt 60 -and $durataFatta -lt $durataOrigine * 0.95) {
+      throw "il video creato dura $(Tempo $durataFatta) ma l'originale $(Tempo $durataOrigine): l'originale e' incompleto (ancora in download?) o danneggiato"
+    }
+
+    # I sottotitoli interni, tutti in una sola lettura del file: estrarli uno
+    # alla volta voleva dire rileggere l'intero video per ogni traccia.
     $srt = @()
-    $usate = @{}
-    foreach ($s in $sub) {
-      $l = Lingua $s.tags.language
-      $chiave = if ($l) { $l } else { "traccia$($s.index)" }
-      if ($usate.ContainsKey($chiave)) { continue }
-      $usate[$chiave] = $true
-      $file = Join-Path $Lavoro "$nome.$chiave.srt"
-      if ((Esegui 'ffmpeg' @('-hide_banner', '-loglevel', 'error', '-y', '-i', $f.FullName, '-map', "0:$($s.index)", '-c:s', 'srt', $file)) -eq 0) {
-        $srt += $file
+    $scelti = SottotitoliScelti $sub
+    if ($scelti.Count -gt 0) {
+      $uscite = @()
+      $percorsi = @{}
+      foreach ($l in $scelti.Keys) {
+        $percorsi[$l] = if ($l) { Join-Path $Lavoro "$nome.$l.srt" } else { Join-Path $Lavoro "$nome.srt" }
+        $uscite += @('-map', "0:$($scelti[$l].index)", '-c:s', 'srt', $percorsi[$l])
+      }
+      $esitoSub = Esegui 'ffmpeg' (@('-hide_banner', '-loglevel', 'error', '-y', '-i', $f.FullName) + $uscite)
+      foreach ($l in $scelti.Keys) {
+        # Se la lettura unica fallisce, una traccia rotta non deve portarsi via
+        # le altre: quelle mancanti si riprovano da sole.
+        if ($esitoSub -ne 0 -or -not (Test-Path -LiteralPath $percorsi[$l])) {
+          $null = Esegui 'ffmpeg' @('-hide_banner', '-loglevel', 'error', '-y', '-i', $f.FullName, '-map', "0:$($scelti[$l].index)", '-c:s', 'srt', $percorsi[$l])
+        }
+        if (Test-Path -LiteralPath $percorsi[$l]) { $srt += $percorsi[$l] }
       }
     }
 
@@ -211,11 +293,29 @@ foreach ($f in $video) {
     Write-Host "   fatto" -ForegroundColor Green
   } catch {
     $errori++
+    $elencoErrori += "$relativo\$($f.Name)`r`n   $($_.Exception.Message)"
     Write-Host "   ERRORE: $($_.Exception.Message). Il file su Drive non e' stato creato." -ForegroundColor Red
     Get-ChildItem -LiteralPath $Lavoro -File -Filter "$nome.*" -ErrorAction SilentlyContinue | Remove-Item -ErrorAction SilentlyContinue
   }
 }
 
 Write-Host ''
-Write-Host "Finito: $fatti pronti per Ciak ($ricodificati ricodificati), $saltati gia' presenti, $errori errori."
+# Con centinaia di video gli errori scorrono via: alla fine si ripetono tutti
+# insieme e restano in un file accanto allo script, da guardare con calma.
+$fileErrori = Join-Path $PSScriptRoot 'prepara-ciak-errori.txt'
+if ($elencoErrori.Count -gt 0) {
+  Write-Host "Video con errori ($($elencoErrori.Count)):" -ForegroundColor Red
+  $elencoErrori | ForEach-Object { Write-Host "  $_" }
+  Write-Host ''
+  try {
+    Set-Content -LiteralPath $fileErrori -Value (@("Video non preparati per Ciak - $(Get-Date -Format 'dd/MM/yyyy HH:mm')", '') + $elencoErrori)
+    Write-Host "L'elenco e' anche in $fileErrori"
+  } catch {
+    Write-Host "Non riesco a salvare l'elenco in $fileErrori" -ForegroundColor DarkYellow
+  }
+} elseif (Test-Path -LiteralPath $fileErrori) {
+  Remove-Item -LiteralPath $fileErrori -ErrorAction SilentlyContinue
+}
+$inDownloadTesto = if ($inDownload) { ", $inDownload forse ancora in download (rilancia piu' tardi)" } else { '' }
+Write-Host "Finito: $fatti pronti per Ciak ($ricodificati ricodificati), $saltati gia' presenti, $errori errori$inDownloadTesto."
 if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
