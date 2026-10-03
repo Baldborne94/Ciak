@@ -20,8 +20,11 @@
 #
 # Le sottocartelle si ricopiano uguali (FILM, SERIE TV\South Park\Season 01...):
 # sono le schede e le serie di Ciak. I video gia' presenti su Drive si saltano,
-# quindi si puo' rilanciare quando si vuole: fa solo quelli nuovi. Gli
-# originali restano dove sono.
+# quindi si puo' rilanciare quando si vuole: fa solo quelli nuovi.
+#
+# Gli originali, una volta che la copia su Drive e' intera (dura quanto
+# l'originale), si cancellano definitivamente insieme ai loro .srt, cosi' il
+# disco non si riempie. -TieniOriginali li lascia dove sono.
 #
 # Il file e' scritto senza lettere accentate apposta: Windows PowerShell legge
 # gli script senza BOM come ANSI, e una "e'" accentata diventerebbe illeggibile.
@@ -33,7 +36,9 @@ param(
   # si puo' forzare un encoder, per esempio -Encoder libx264.
   [string]$Encoder = 'auto',
   # Un file scritto da meno minuti di cosi' e' probabilmente ancora in download.
-  [int]$MinutiDiCalma = 5
+  [int]$MinutiDiCalma = 5,
+  # Lascia gli originali dove sono invece di cancellarli.
+  [switch]$TieniOriginali
 )
 
 $ErrorActionPreference = 'Stop'
@@ -128,10 +133,13 @@ function VideoLeggibile([string]$file, [int]$indice) {
 }
 
 # La durata in secondi di un file, 0 se non si sa (alcuni AVI e TS non la
-# dichiarano).
+# dichiarano). L'uscita si legge tutta prima di prenderne la prima riga: un
+# Select-Object attaccato a ffprobe lo chiude a meta' e $LASTEXITCODE resta
+# quello del programma di prima, e la durata risultava 0 a caso.
 function Durata([string]$file) {
-  $d = & ffprobe -v error -show_entries format=duration -of csv=p=0 -- $file | Select-Object -First 1
-  if ($LASTEXITCODE -ne 0 -or -not $d) { return 0 }
+  $righe = @(& ffprobe -v error -show_entries format=duration -of csv=p=0 -- $file)
+  if ($LASTEXITCODE -ne 0 -or $righe.Count -eq 0) { return 0 }
+  $d = $righe[0]
   try { return [double]$d } catch { return 0 }
 }
 
@@ -172,11 +180,51 @@ function ArgomentiAudio($tracce) {
   return $arg
 }
 
+# Un file che un altro programma tiene aperto (qBittorrent che lo sta ancora
+# condividendo, un lettore video) non si cancella: si salta e lo si dice alla
+# fine, invece di lasciare un errore a meta'. Provare ad aprirlo in esclusiva
+# lo scopre prima di toccare qualunque cosa.
+function InUso([string]$file) {
+  try {
+    $flusso = [IO.File]::Open($file, 'Open', 'Read', 'None')
+    $flusso.Close()
+    return $false
+  } catch {
+    return $true
+  }
+}
+
+$cancellati = 0
+$nonCancellati = @()
+$cartelleToccate = @{}
+
+# L'originale e i suoi .srt (Film.srt, Film.it.srt), per sempre: si arriva qui
+# solo con la copia su Drive gia' controllata. Un .srt che su Drive non c'e'
+# resta dov'e'.
+function CancellaOriginale($f, [string]$nome, [string]$cartellaDest, [string]$relativo) {
+  if (InUso $f.FullName) {
+    $script:nonCancellati += "$relativo\$($f.Name): aperto da un altro programma (qBittorrent lo sta ancora condividendo?)"
+    return
+  }
+  $srt = @(Get-ChildItem -LiteralPath $f.DirectoryName -File -Filter '*.srt' |
+      Where-Object { $_.Name.StartsWith("$nome.", [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath (Join-Path $cartellaDest $_.Name)) })
+  try {
+    Remove-Item -LiteralPath $f.FullName -Force
+    $srt | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
+  } catch {
+    $script:nonCancellati += "$relativo\$($f.Name): $($_.Exception.Message)"
+    return
+  }
+  $script:cancellati++
+  $script:cartelleToccate[$f.DirectoryName] = $true
+}
+
 $Lavoro = Join-Path ([IO.Path]::GetTempPath()) 'ciak-conversione'
 New-Item -ItemType Directory -Force -Path $Lavoro | Out-Null
 
 Write-Host "Da:  $Origine"
 Write-Host "A:   $Destinazione"
+if ($TieniOriginali) { Write-Host 'Originali: restano dove sono' } else { Write-Host "Originali: cancellati quando la copia su Drive e' intera" }
 if ($Encoder -eq 'libx264') { Write-Host 'Ricodifica: con la CPU (nessuna scheda video utilizzabile trovata)' } else { Write-Host "Ricodifica: con la scheda video ($Encoder)" }
 Write-Host ''
 
@@ -194,8 +242,24 @@ foreach ($f in $video) {
   $cartellaDest = if ($relativo) { Join-Path $Destinazione $relativo } else { $Destinazione }
   $nome = [IO.Path]::GetFileNameWithoutExtension($f.Name)
   $dest = Join-Path $cartellaDest "$nome.mp4"
-  if (Test-Path -LiteralPath $dest) { $saltati++; continue }
-  if ($f.LastWriteTime -gt $calma) {
+  $recente = $f.LastWriteTime -gt $calma
+  if (Test-Path -LiteralPath $dest) {
+    $saltati++
+    # Gia' su Drive da un giro precedente: l'originale si cancella solo se la
+    # copia dura quanto lui. Una copia corta o illeggibile (di prima dei
+    # controlli sulla durata) e' proprio il motivo per tenerlo.
+    if (-not $TieniOriginali -and -not $recente) {
+      $durataDrive = Durata $dest
+      $durataOrig = Durata $f.FullName
+      if ($durataDrive -gt 0 -and ($durataOrig -le 0 -or $durataDrive -ge $durataOrig * 0.95)) {
+        CancellaOriginale $f $nome $cartellaDest $relativo
+      } else {
+        $nonCancellati += "$relativo\$($f.Name): la copia su Drive dura $(Tempo $durataDrive), l'originale $(Tempo $durataOrig). Lo tengo: cancella la copia su Drive e rilancia per rifarla"
+      }
+    }
+    continue
+  }
+  if ($recente) {
     Write-Host "[$n/$($video.Count)] $relativo\$($f.Name): scritto da pochi minuti, forse e' ancora in download. Lo salto per ora." -ForegroundColor DarkYellow
     $inDownload++
     continue
@@ -291,6 +355,7 @@ foreach ($f in $video) {
 
     $fatti++
     Write-Host "   fatto" -ForegroundColor Green
+    if (-not $TieniOriginali) { CancellaOriginale $f $nome $cartellaDest $relativo }
   } catch {
     $errori++
     $elencoErrori += "$relativo\$($f.Name)`r`n   $($_.Exception.Message)"
@@ -316,6 +381,25 @@ if ($elencoErrori.Count -gt 0) {
 } elseif (Test-Path -LiteralPath $fileErrori) {
   Remove-Item -LiteralPath $fileErrori -ErrorAction SilentlyContinue
 }
+# Le cartelle rimaste vuote (Season 01, poi la serie) se ne vanno anche loro;
+# quelle di primo livello (FILM, SERIE TV...) restano: e' li' che si mettono i
+# video nuovi.
+foreach ($cartella in $cartelleToccate.Keys) {
+  $c = $cartella
+  while ($c.Length -gt $Origine.Length -and $c.Substring($Origine.Length).Trim('\', '/').IndexOfAny([char[]]'\/') -ge 0) {
+    if (@(Get-ChildItem -LiteralPath $c -Force -ErrorAction SilentlyContinue).Count -gt 0) { break }
+    Remove-Item -LiteralPath $c -ErrorAction SilentlyContinue
+    $c = Split-Path $c -Parent
+  }
+}
+
+if ($nonCancellati.Count -gt 0) {
+  Write-Host "Originali non cancellati ($($nonCancellati.Count)):" -ForegroundColor DarkYellow
+  $nonCancellati | ForEach-Object { Write-Host "  $_" }
+  Write-Host ''
+}
+
 $inDownloadTesto = if ($inDownload) { ", $inDownload forse ancora in download (rilancia piu' tardi)" } else { '' }
-Write-Host "Finito: $fatti pronti per Ciak ($ricodificati ricodificati), $saltati gia' presenti, $errori errori$inDownloadTesto."
+$cancellatiTesto = if ($cancellati) { ", $cancellati originali cancellati" } else { '' }
+Write-Host "Finito: $fatti pronti per Ciak ($ricodificati ricodificati), $saltati gia' presenti, $errori errori$inDownloadTesto$cancellatiTesto."
 if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
