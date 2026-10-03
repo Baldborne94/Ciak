@@ -518,17 +518,18 @@ test('un indirizzo di film non valido non finisce nel lettore', async ({ page })
 test('i sottotitoli si cambiano dal menu CC sul video, dalla tendina e col tasto C', async ({ page }) => {
   // Il menu del browser sta attaccato alla barra in basso: sul tablet,
   // toccando «Inglese», si chiudeva invece di sceglierlo, e sul telefono
-  // finiva sotto i pulsanti di Ciak.
+  // finiva sotto i pulsanti di Ciak. Il <video> resta senza tracce, così quel
+  // menu non c'è proprio: le battute le disegna Ciak (SottotitoliVideo).
   await conLettoreCiak(page)
   await mockDrive(page, { sottotitoliNellaCartella: true })
   await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
   await apriSongOfTheSea(page)
-  const modo = () => page.evaluate(() => document.querySelector('video')?.textTracks[0]?.mode)
+  await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
+  expect(await page.evaluate(() => document.querySelector('video')?.textTracks.length)).toBe(0)
 
   const cc = page.getByRole('button', { name: /^Sottotitoli: / })
   await expect(cc).toHaveAccessibleName('Sottotitoli: Italiano. Cambia')
   await expect(cc).toHaveText('CC IT')
-  expect(await modo()).toBe('showing')
 
   await cc.click()
   const menu = page.getByRole('group', { name: 'Sottotitoli' })
@@ -536,12 +537,10 @@ test('i sottotitoli si cambiano dal menu CC sul video, dalla tendina e col tasto
   await menu.getByRole('button', { name: 'Nessuno' }).click()
   await expect(menu).toBeHidden()
   await expect(cc).toHaveText('CC off')
-  expect(await modo()).toBe('disabled')
   await expect(page.getByRole('combobox', { name: 'Mostra' })).toHaveValue('-1')
 
   await page.getByRole('combobox', { name: 'Mostra' }).selectOption({ label: 'Italiano' })
   await expect(cc).toHaveText('CC IT')
-  expect(await modo()).toBe('showing')
 
   await page.locator('body').click({ position: { x: 5, y: 5 } })
   await page.keyboard.press('c')
@@ -563,7 +562,8 @@ test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', as
   await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
   await expect(page.locator('iframe')).toHaveCount(0)
   await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
-  await expect(page.locator('video track[kind="subtitles"]').first()).toHaveAttribute('label', 'Italiano')
+  await expect(page.getByRole('combobox', { name: 'Mostra' })).toHaveValue('0')
+  await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
   // L'italiano c'era già; per l'inglese, che manca, si è cercato online (senza esito).
   await expect.poll(() => ricercheOnline).toBe(1)
   await expect(page.getByText(/Nessun sottotitolo in inglese/)).toBeVisible()
@@ -619,7 +619,7 @@ test('senza sottotitoli nella cartella li cerca online, in italiano e in inglese
   // Due tracce, italiano e inglese, da una ricerca sola.
   await expect(page.getByText(/Italiano · da OpenSubtitles, salvato nella cartella/)).toBeVisible()
   await expect(page.getByText(/Inglese · da OpenSubtitles, salvato nella cartella/)).toBeVisible()
-  await expect(page.locator('video track[kind="subtitles"]')).toHaveCount(2)
+  await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano', 'Inglese'])
   // Il film si cerca per titolo e anno, e con l'hash del file per trovare
   // sottotitoli già sincronizzati (qui i pezzi sono zeri: resta la dimensione).
   expect(richieste.filter((r) => r.azione === 'cerca')).toHaveLength(1)
@@ -759,7 +759,7 @@ test('un film si scarica sul dispositivo e da lì si guarda anche senza rete', a
   await expect(page.getByText('Sei offline')).toBeVisible()
   await page.getByRole('button', { name: /Song of the Sea/ }).click()
   await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
-  await expect(page.locator('video track[kind="subtitles"]')).toHaveAttribute('label', 'Italiano')
+  await expect(page.getByRole('button', { name: /^Sottotitoli: / })).toHaveText('CC IT')
   await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Elimina dal dispositivo' }).click()
