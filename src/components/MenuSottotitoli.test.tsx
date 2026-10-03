@@ -47,3 +47,15 @@ describe('MenuSottotitoli', () => {
     expect(onScegli).not.toHaveBeenCalled()
   })
 })
+
+describe('MenuSottotitoli, aperto o chiuso', () => {
+  it('dice quando è aperto, così il pulsante non sparisce sotto le dita', () => {
+    const onAperto = vi.fn()
+    render(<MenuSottotitoli nomi={nomi} scelto={-1} sigla="off" onScegli={() => {}} onAperto={onAperto} />)
+    expect(onAperto).toHaveBeenLastCalledWith(false)
+    fireEvent.click(screen.getByRole('button', { name: /^Sottotitoli/ }))
+    expect(onAperto).toHaveBeenLastCalledWith(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Italiano' }))
+    expect(onAperto).toHaveBeenLastCalledWith(false)
+  })
+})

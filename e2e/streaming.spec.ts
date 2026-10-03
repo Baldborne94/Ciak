@@ -515,7 +515,7 @@ test('un indirizzo di film non valido non finisce nel lettore', async ({ page })
   await expect(page.locator('iframe')).toHaveCount(0)
 })
 
-test('i sottotitoli si cambiano dal menu CC sul video, dalla tendina e col tasto C', async ({ page }) => {
+test('i sottotitoli partono spenti e si scelgono dal menu CC, dalla tendina e col tasto C', async ({ page }) => {
   // Il menu del browser sta attaccato alla barra in basso: sul tablet,
   // toccando «Inglese», si chiudeva invece di sceglierlo, e sul telefono
   // finiva sotto i pulsanti di Ciak. Il <video> resta senza tracce, così quel
@@ -527,24 +527,29 @@ test('i sottotitoli si cambiano dal menu CC sul video, dalla tendina e col tasto
   await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
   expect(await page.evaluate(() => document.querySelector('video')?.textTracks.length)).toBe(0)
 
+  // Il video si guarda pulito: le battute compaiono solo se le si sceglie.
   const cc = page.getByRole('button', { name: /^Sottotitoli: / })
-  await expect(cc).toHaveAccessibleName('Sottotitoli: Italiano. Cambia')
-  await expect(cc).toHaveText('CC IT')
+  await expect(cc).toHaveAccessibleName('Sottotitoli: nessuno. Cambia')
+  await expect(cc).toHaveText('CC off')
 
   await cc.click()
   const menu = page.getByRole('group', { name: 'Sottotitoli' })
-  await expect(menu.getByRole('button', { name: 'Italiano' })).toHaveAttribute('aria-pressed', 'true')
-  await menu.getByRole('button', { name: 'Nessuno' }).click()
+  await expect(menu.getByRole('button', { name: 'Nessuno' })).toHaveAttribute('aria-pressed', 'true')
+  await menu.getByRole('button', { name: 'Italiano' }).click()
   await expect(menu).toBeHidden()
-  await expect(cc).toHaveText('CC off')
-  await expect(page.getByRole('combobox', { name: 'Mostra' })).toHaveValue('-1')
-
-  await page.getByRole('combobox', { name: 'Mostra' }).selectOption({ label: 'Italiano' })
   await expect(cc).toHaveText('CC IT')
+  await expect(page.getByRole('combobox', { name: 'Mostra' })).toHaveValue('0')
+
+  // La scelta resta: riaprendo il film l'italiano c'è già.
+  await page.reload()
+  await expect(cc).toHaveText('CC IT')
+
+  await page.getByRole('combobox', { name: 'Mostra' }).selectOption({ label: 'Nessun sottotitolo' })
+  await expect(cc).toHaveText('CC off')
 
   await page.locator('body').click({ position: { x: 5, y: 5 } })
   await page.keyboard.press('c')
-  await expect(cc).toHaveText('CC off')
+  await expect(cc).toHaveText('CC IT')
 })
 
 test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', async ({ page }) => {
@@ -562,7 +567,7 @@ test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', as
   await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
   await expect(page.locator('iframe')).toHaveCount(0)
   await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
-  await expect(page.getByRole('combobox', { name: 'Mostra' })).toHaveValue('0')
+  await expect(page.getByRole('combobox', { name: 'Mostra' })).toHaveValue('-1')
   await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
   // L'italiano c'era già; per l'inglese, che manca, si è cercato online (senza esito).
   await expect.poll(() => ricercheOnline).toBe(1)
@@ -759,7 +764,7 @@ test('un film si scarica sul dispositivo e da lì si guarda anche senza rete', a
   await expect(page.getByText('Sei offline')).toBeVisible()
   await page.getByRole('button', { name: /Song of the Sea/ }).click()
   await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
-  await expect(page.getByRole('button', { name: /^Sottotitoli: / })).toHaveText('CC IT')
+  await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
   await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
 
   await page.getByRole('button', { name: 'Elimina dal dispositivo' }).click()

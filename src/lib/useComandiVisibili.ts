@@ -1,0 +1,67 @@
+import { useEffect, useRef, useState, type RefObject } from 'react'
+
+// I pulsanti di Ciak sopra il video (⛶ e CC) si comportano come la barra dei
+// comandi del browser: ci sono a video fermo e quando si tocca il video o si
+// muove il mouse, e spariscono dopo qualche secondo di visione. Fissi in alto
+// a destra coprivano l'immagine per tutto il film.
+
+export const MS_COMANDI = 3000
+
+export function useComandiVisibili(
+  contenitore: RefObject<HTMLElement>,
+  videoRef: RefObject<HTMLVideoElement>,
+  chiaveVideo: string | number,
+  trattieni = false, // un menu aperto non sparisce sotto le dita
+): boolean {
+  const [mosso, setMosso] = useState(true)
+  const [inPausa, setInPausa] = useState(true)
+  const timer = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => {
+    const c = contenitore.current
+    if (!c) return
+    const mostra = () => {
+      setMosso(true)
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => setMosso(false), MS_COMANDI)
+    }
+    // Il mouse che esce dal video li nasconde subito, come fa il browser; un
+    // dito che si alza invece no: è appena arrivato.
+    const esce = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse') return
+      clearTimeout(timer.current)
+      setMosso(false)
+    }
+    mostra()
+    // In cattura: il tocco sul video lo prende ToccoVideo, che non lo lascia
+    // salire come click, ma passa prima di qui.
+    c.addEventListener('pointerdown', mostra, true)
+    c.addEventListener('pointermove', mostra, true)
+    c.addEventListener('keydown', mostra, true)
+    c.addEventListener('pointerleave', esce)
+    return () => {
+      clearTimeout(timer.current)
+      c.removeEventListener('pointerdown', mostra, true)
+      c.removeEventListener('pointermove', mostra, true)
+      c.removeEventListener('keydown', mostra, true)
+      c.removeEventListener('pointerleave', esce)
+    }
+  }, [contenitore])
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v) return
+    const aggiorna = () => setInPausa(v.paused)
+    aggiorna()
+    v.addEventListener('play', aggiorna)
+    v.addEventListener('pause', aggiorna)
+    v.addEventListener('ended', aggiorna)
+    return () => {
+      v.removeEventListener('play', aggiorna)
+      v.removeEventListener('pause', aggiorna)
+      v.removeEventListener('ended', aggiorna)
+    }
+  }, [videoRef, chiaveVideo])
+
+  return inPausa || mosso || trattieni
+}

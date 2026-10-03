@@ -10,10 +10,12 @@ interface Props {
   scelto: number // -1: nessuno
   sigla: string // «IT», «off»
   onScegli: (indice: number) => void
+  onAperto?: (aperto: boolean) => void // finché è aperto, il pulsante non sparisce
 }
 
-export default function MenuSottotitoli({ nomi, scelto, sigla, onScegli }: Props) {
+export default function MenuSottotitoli({ nomi, scelto, sigla, onScegli, onAperto }: Props) {
   const [aperto, setAperto] = useState(false)
+  useEffect(() => onAperto?.(aperto), [aperto, onAperto])
   const contenitore = useRef<HTMLDivElement>(null)
   const pulsante = useRef<HTMLButtonElement>(null)
 

@@ -4,6 +4,8 @@ import { ErrorState } from '../components/States'
 import PannelloArchivio from '../components/PannelloArchivio'
 import MenuSottotitoli from '../components/MenuSottotitoli'
 import SottotitoliVideo from '../components/SottotitoliVideo'
+import { indiceSottotitolo, leggiLinguaSottotitoli, linguaTraccia, salvaLinguaSottotitoli } from '../lib/sceltaSottotitoli'
+import { useComandiVisibili } from '../lib/useComandiVisibili'
 import ProssimoEpisodio from '../components/ProssimoEpisodio'
 import ToccoVideo from '../components/ToccoVideo'
 import { azioneTasto, metadatiSessione, SALTO_TASTIERA, type AzioneTasto } from '../lib/comandiLettore'
@@ -403,13 +405,25 @@ function LettoreStreaming() {
     ).catch(logFailure('Sottotitoli nella scheda del film offline'))
   }, [fileId, locale, usaSalvati, sub.tracce])
 
-  // Quale sottotitolo si vede (-1: nessuno). Finché non si sceglie si mostra
-  // il primo (l'italiano, se c'è); la scelta, «nessuno» compreso, resta anche
-  // quando arrivano altre tracce e da un episodio all'altro.
-  const [sceltaSottotitoli, setSceltaSottotitoli] = useState<number | null>(null)
-  const sottotitolo =
-    tracce.length === 0 ? -1 : sceltaSottotitoli === null || sceltaSottotitoli >= tracce.length ? 0 : sceltaSottotitoli
-  const scegliSottotitoli = useCallback((indice: number) => setSceltaSottotitoli(indice), [])
+  // Quale sottotitolo si vede (-1: nessuno): spenti finché non se ne sceglie
+  // uno dal CC, poi la stessa lingua anche negli episodi e nei film dopo (vedi
+  // lib/sceltaSottotitoli).
+  const [linguaSottotitoli, setLinguaSottotitoli] = useState(leggiLinguaSottotitoli)
+  const [sottotitoloToccato, setSottotitoloToccato] = useState<number | null>(null)
+  const sottotitolo = indiceSottotitolo(tracce, linguaSottotitoli, sottotitoloToccato)
+  const scegliSottotitoli = useCallback(
+    (indice: number) => {
+      const lingua = indice < 0 || !tracce[indice] ? null : linguaTraccia(tracce[indice])
+      setLinguaSottotitoli(lingua)
+      setSottotitoloToccato(indice < 0 ? null : indice)
+      salvaLinguaSottotitoli(lingua)
+    },
+    [tracce],
+  )
+  // ⛶ e CC sopra il video ci sono solo insieme alla barra dei comandi.
+  const riquadroVideo = useRef<HTMLDivElement>(null)
+  const [menuSottotitoliAperto, setMenuSottotitoliAperto] = useState(false)
+  const comandiVisibili = useComandiVisibili(riquadroVideo, videoRef, chiaveVideo, menuSottotitoliAperto)
 
   const titolo =
     stato?.titolo ??
@@ -658,6 +672,7 @@ function LettoreStreaming() {
       </div>
 
       <div
+        ref={riquadroVideo}
         className={
           lettore === 'ciak' && cinema
             ? // Senza !mt-0 il margine fra i blocchi della pagina (space-y-4) lo
@@ -771,24 +786,34 @@ function LettoreStreaming() {
           // In alto a destra: in basso ci sono i comandi del browser, e quelli
           // di Firefox (play grande, salti di 10 secondi, velocità) sono alti
           // il doppio di quelli di Chrome e coprivano «Salta sigla».
+          // ⛶ e CC compaiono e spariscono con la barra dei comandi (vedi
+          // useComandiVisibili); «Salta sigla» e l'episodio dopo restano.
           <div className="absolute right-2 top-2 flex flex-col items-end gap-2">
-            <button
-              type="button"
-              onClick={alternaSchermoIntero}
-              aria-label={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
-              title={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
-              className="rounded-lg bg-black/50 px-2 py-1 text-lg text-zinc-200 opacity-70 transition hover:opacity-100"
+            <div
+              data-testid="comandi-video"
+              className={`flex flex-col items-end gap-2 transition-opacity duration-300 ${
+                comandiVisibili ? 'opacity-100' : 'pointer-events-none opacity-0'
+              }`}
             >
-              ⛶
-            </button>
-            {tracce.length > 0 && (
-              <MenuSottotitoli
-                nomi={nomiSottotitoli}
-                scelto={sottotitolo}
-                sigla={siglaSottotitolo}
-                onScegli={scegliSottotitoli}
-              />
-            )}
+              <button
+                type="button"
+                onClick={alternaSchermoIntero}
+                aria-label={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
+                title={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
+                className="rounded-lg bg-black/50 px-2 py-1 text-lg text-zinc-200 opacity-70 transition hover:opacity-100"
+              >
+                ⛶
+              </button>
+              {tracce.length > 0 && (
+                <MenuSottotitoli
+                  nomi={nomiSottotitoli}
+                  scelto={sottotitolo}
+                  sigla={siglaSottotitolo}
+                  onScegli={scegliSottotitoli}
+                  onAperto={setMenuSottotitoliAperto}
+                />
+              )}
+            </div>
             {siglaSaltabile && (
               <button type="button" onClick={() => saltaSigla()} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">
                 ⏭ Salta sigla
