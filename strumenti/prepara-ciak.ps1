@@ -43,7 +43,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-03b'
+$Versione = '2026-10-03c'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 $SottotitoliTesto = @('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text')
 
@@ -210,6 +210,7 @@ $cartelleToccate = @{}
 function CancellaOriginale($f, [string]$nome, [string]$cartellaDest, [string]$relativo) {
   if (InUso $f.FullName) {
     $script:nonCancellati += "$relativo\$($f.Name): aperto da un altro programma (qBittorrent lo sta ancora condividendo?)"
+    Write-Host "   originale tenuto: e' aperto da un altro programma" -ForegroundColor DarkYellow
     return
   }
   $srt = @(Get-ChildItem -LiteralPath $f.DirectoryName -File -Filter '*.srt' |
@@ -219,8 +220,10 @@ function CancellaOriginale($f, [string]$nome, [string]$cartellaDest, [string]$re
     $srt | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
   } catch {
     $script:nonCancellati += "$relativo\$($f.Name): $($_.Exception.Message)"
+    Write-Host "   originale tenuto: $($_.Exception.Message)" -ForegroundColor DarkYellow
     return
   }
+  Write-Host '   originale cancellato' -ForegroundColor DarkGray
   $script:cancellati++
   $script:cartelleToccate[$f.DirectoryName] = $true
 }
@@ -235,6 +238,7 @@ if ($TieniOriginali) { Write-Host 'Originali: restano dove sono' } else { Write-
 if ($Encoder -eq 'libx264') { Write-Host 'Ricodifica: con la CPU (nessuna scheda video utilizzabile trovata)' } else { Write-Host "Ricodifica: con la scheda video ($Encoder)" }
 Write-Host ''
 
+Write-Host 'Cerco i video...'
 $video = Get-ChildItem -LiteralPath $Origine -Recurse -File |
   Where-Object { $EstensioniVideo -contains $_.Extension.ToLower() } |
   Sort-Object FullName
@@ -255,13 +259,18 @@ foreach ($f in $video) {
     # Gia' su Drive da un giro precedente: l'originale si cancella solo se la
     # copia dura quanto lui. Una copia corta o illeggibile (di prima dei
     # controlli sulla durata) e' proprio il motivo per tenerlo.
+    # Si scrive a schermo: la copia su Drive va riletta (e Drive per desktop,
+    # se e' solo online, la scarica almeno in parte), e centinaia di controlli
+    # muti sembravano uno script bloccato.
     if (-not $TieniOriginali -and -not $recente) {
+      Write-Host "[$n/$($video.Count)] $relativo\$($f.Name): gia' su Drive, controllo la copia..."
       $durataDrive = Durata $dest
       $durataOrig = Durata $f.FullName
       if ($durataDrive -gt 0 -and ($durataOrig -le 0 -or $durataDrive -ge $durataOrig * 0.95)) {
         CancellaOriginale $f $nome $cartellaDest $relativo
       } else {
         $nonCancellati += "$relativo\$($f.Name): la copia su Drive dura $(Tempo $durataDrive), l'originale $(Tempo $durataOrig). Lo tengo: cancella la copia su Drive e rilancia per rifarla"
+        Write-Host "   originale tenuto: la copia su Drive dura $(Tempo $durataDrive), l'originale $(Tempo $durataOrig)" -ForegroundColor DarkYellow
       }
     }
     continue
