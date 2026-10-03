@@ -10,12 +10,22 @@ export const MS_COMANDI = 3000
 export function useComandiVisibili(
   contenitore: RefObject<HTMLElement>,
   videoRef: RefObject<HTMLVideoElement>,
-  chiaveVideo: string | number,
   trattieni = false, // un menu aperto non sparisce sotto le dita
 ): boolean {
   const [mosso, setMosso] = useState(true)
   const [inPausa, setInPausa] = useState(true)
   const timer = useRef<ReturnType<typeof setTimeout>>()
+  // Il <video> può arrivare dopo la pagina (prima c'è l'anteprima di Drive) e
+  // cambiare a ogni episodio: lo si ricontrolla a ogni disegno. Agganciato una
+  // volta sola all'apertura, quando ancora non c'era, non si sapeva mai che il
+  // film andava, e ⛶ e CC restavano fissi come a video fermo.
+  const [video, setVideo] = useState<HTMLVideoElement | null>(null)
+  // Senza dipendenze apposta: un ref che cambia non ridisegna niente. Non è
+  // un giro infinito, perché si aggiorna solo quando l'elemento è cambiato.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (videoRef.current !== video) setVideo(videoRef.current)
+  })
 
   useEffect(() => {
     const c = contenitore.current
@@ -49,8 +59,11 @@ export function useComandiVisibili(
   }, [contenitore])
 
   useEffect(() => {
-    const v = videoRef.current
-    if (!v) return
+    const v = video
+    if (!v) {
+      setInPausa(true)
+      return
+    }
     const aggiorna = () => setInPausa(v.paused)
     aggiorna()
     v.addEventListener('play', aggiorna)
@@ -61,7 +74,7 @@ export function useComandiVisibili(
       v.removeEventListener('pause', aggiorna)
       v.removeEventListener('ended', aggiorna)
     }
-  }, [videoRef, chiaveVideo])
+  }, [video])
 
   return inPausa || mosso || trattieni
 }

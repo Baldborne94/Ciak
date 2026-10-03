@@ -9,7 +9,7 @@ afterEach(() => vi.useRealTimers())
 function Lettore({ trattieni = false }: { trattieni?: boolean }) {
   const contenitore = useRef<HTMLDivElement>(null)
   const video = useRef<HTMLVideoElement>(null)
-  const visibile = useComandiVisibili(contenitore, video, 'a', trattieni)
+  const visibile = useComandiVisibili(contenitore, video, trattieni)
   return (
     <div ref={contenitore} data-testid="contenitore">
       <video ref={video} data-testid="video" />
@@ -65,5 +65,30 @@ describe('useComandiVisibili', () => {
     avvia()
     passano(MS_COMANDI * 3)
     expect(screen.getByText('comandi visibili')).toBeInTheDocument()
+  })
+})
+
+// Il lettore di Ciak arriva dopo la pagina (prima c'è l'anteprima di Drive):
+// il <video> non c'era quando il controllo è partito, e i comandi restavano
+// fissi come a video fermo.
+function LettoreCheArriva({ conVideo }: { conVideo: boolean }) {
+  const contenitore = useRef<HTMLDivElement>(null)
+  const video = useRef<HTMLVideoElement>(null)
+  const visibile = useComandiVisibili(contenitore, video)
+  return (
+    <div ref={contenitore} data-testid="contenitore">
+      {conVideo ? <video ref={video} data-testid="video" /> : <iframe title="Drive" />}
+      <p>{visibile ? 'comandi visibili' : 'comandi nascosti'}</p>
+    </div>
+  )
+}
+
+describe('useComandiVisibili, col video che arriva dopo', () => {
+  it('segue il video anche se compare dopo la pagina', () => {
+    const { rerender } = render(<LettoreCheArriva conVideo={false} />)
+    rerender(<LettoreCheArriva conVideo />)
+    avvia()
+    passano(MS_COMANDI + 100)
+    expect(screen.getByText('comandi nascosti')).toBeInTheDocument()
   })
 })
