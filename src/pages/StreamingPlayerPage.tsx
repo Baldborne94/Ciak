@@ -4,8 +4,19 @@ import { ErrorState } from '../components/States'
 import PannelloArchivio from '../components/PannelloArchivio'
 import MenuSottotitoli from '../components/MenuSottotitoli'
 import SottotitoliVideo from '../components/SottotitoliVideo'
+import BarraLettore from '../components/BarraLettore'
+import IndicatoreCaricamento from '../components/IndicatoreCaricamento'
+import AvvisoRipresa from '../components/AvvisoRipresa'
 import SigleSerie from '../components/SigleSerie'
-import { indiceSottotitolo, leggiLinguaSottotitoli, linguaTraccia, salvaLinguaSottotitoli } from '../lib/sceltaSottotitoli'
+import {
+  DIMENSIONI_SOTTOTITOLI,
+  indiceSottotitolo,
+  leggiDimensioneSottotitoli,
+  leggiLinguaSottotitoli,
+  linguaTraccia,
+  salvaDimensioneSottotitoli,
+  salvaLinguaSottotitoli,
+} from '../lib/sceltaSottotitoli'
 import { useComandiVisibili } from '../lib/useComandiVisibili'
 import ProssimoEpisodio from '../components/ProssimoEpisodio'
 import ToccoVideo from '../components/ToccoVideo'
@@ -196,6 +207,16 @@ function LettoreStreaming() {
     return () => orientamento.removeEventListener('change', gira)
   }, [])
   const cinema = schermoIntero || aTuttaFinestra
+  // A tutto schermo la pagina sotto non deve scorrere: la sua barra di
+  // scorrimento restava visibile sul bordo destro del film.
+  useEffect(() => {
+    if (!cinema) return
+    const prima = document.documentElement.style.overflow
+    document.documentElement.style.overflow = 'hidden'
+    return () => {
+      document.documentElement.style.overflow = prima
+    }
+  }, [cinema])
   // Dove si è nell'episodio: all'inizio (si può saltare la sigla), nella sigla
   // finale, finito. Si aggiornano solo quando cambiano, non a ogni timeupdate.
   const [allInizio, setAllInizio] = useState(true)
@@ -423,7 +444,14 @@ function LettoreStreaming() {
     },
     [tracce],
   )
-  // ⛶ e CC sopra il video ci sono solo insieme alla barra dei comandi.
+  const [dimensioneSottotitoli, setDimensioneSottotitoli] = useState(leggiDimensioneSottotitoli)
+  const cambiaDimensioneSottotitoli = useCallback((i: number) => {
+    setDimensioneSottotitoli(i)
+    salvaDimensioneSottotitoli(i)
+  }, [])
+  // La barra dei comandi di Ciak c'è a video fermo, al tocco e col mouse, e
+  // sparisce dopo qualche secondo di visione; col menu dei sottotitoli aperto
+  // resta.
   const riquadroVideo = useRef<HTMLDivElement>(null)
   const [menuSottotitoliAperto, setMenuSottotitoliAperto] = useState(false)
   const comandiVisibili = useComandiVisibili(riquadroVideo, videoRef, menuSottotitoliAperto)
@@ -532,6 +560,11 @@ function LettoreStreaming() {
   }
 
   const siglaSaltabile = durataSigla !== null && allInizio && !siglaSaltata && !finito
+  // Senza sapere dove sta la sigla il pulsante vale per i primi minuti: fisso
+  // lì per tutto quel tempo dava fastidio, quindi compare solo con la barra.
+  // Con la sigla nota (dalla serie o da TheIntroDB) resta, come su Netflix.
+  const siglaNota = siglaEsatta !== null || punti.inizio !== null
+  const saltaSiglaInVista = siglaSaltabile && (siglaNota || comandiVisibili)
   // Il pulsante CC passa al sottotitolo dopo, e dall'ultimo a nessuno.
   const prossimoSottotitolo = sottotitolo + 1 >= tracce.length ? -1 : sottotitolo + 1
   const nomiSottotitoli = tracce.map((t, i) => {
@@ -690,11 +723,9 @@ function LettoreStreaming() {
             key={chiaveVideo}
             ref={videoRef}
             src={flussoVideoUrl(fileId)}
-            controls
-            // Lo schermo intero del <video> si perderebbe a ogni episodio: c'è
-            // quello di Ciak (⛶ in alto a destra). Firefox il pulsante lo mostra
-            // comunque.
-            controlsList="nofullscreen"
+            // Senza i comandi del browser: ci sono quelli di Ciak (BarraLettore),
+            // con lo schermo intero della pagina, che passa indenne
+            // all'episodio dopo, e il CC coi sottotitoli disegnati da Ciak.
             // Niente <track>: i sottotitoli li disegna Ciak (SottotitoliVideo),
             // così il browser non mostra il suo CC in basso, scomodo sul
             // telefono. Si scelgono dal menu «CC» in alto a destra.
@@ -772,11 +803,17 @@ function LettoreStreaming() {
         {lettore === 'ciak' && (
           <SottotitoliVideo
             videoRef={videoRef}
+            contenitore={riquadroVideo}
             vtt={sottotitolo < 0 ? null : (tracce[sottotitolo]?.vtt ?? null)}
             chiaveVideo={String(chiaveVideo)}
+            scala={DIMENSIONI_SOTTOTITOLI[dimensioneSottotitoli].scala}
+            sollevate={comandiVisibili}
           />
         )}
-        {lettore === 'ciak' && touch && (
+        {lettore === 'ciak' && <IndicatoreCaricamento videoRef={videoRef} />}
+        {lettore === 'ciak' && (
+          // Anche col mouse: senza i comandi del browser il clic sul video
+          // ferma e riprende, come in ogni lettore.
           <ToccoVideo
             onAlterna={() => {
               // A tutta finestra senza schermo intero vero: questo tocco lo concede.
@@ -789,38 +826,33 @@ function LettoreStreaming() {
           />
         )}
         {lettore === 'ciak' && (
-          // In alto a destra: in basso ci sono i comandi del browser, e quelli
-          // di Firefox (play grande, salti di 10 secondi, velocità) sono alti
-          // il doppio di quelli di Chrome e coprivano «Salta sigla».
-          // ⛶ e CC compaiono e spariscono con la barra dei comandi (vedi
-          // useComandiVisibili); «Salta sigla» e l'episodio dopo restano.
+          <AvvisoRipresa
+            da={archivio.ripresoDa}
+            onRicomincia={() => {
+              if (videoRef.current) videoRef.current.currentTime = 0
+            }}
+          />
+        )}
+        {lettore === 'ciak' && (
+          <BarraLettore videoRef={videoRef} visibile={comandiVisibili} cinema={cinema} onSchermoIntero={alternaSchermoIntero}>
+            {tracce.length > 0 && (
+              <MenuSottotitoli
+                nomi={nomiSottotitoli}
+                scelto={sottotitolo}
+                sigla={siglaSottotitolo}
+                onScegli={scegliSottotitoli}
+                onAperto={setMenuSottotitoliAperto}
+                dimensione={dimensioneSottotitoli}
+                onDimensione={cambiaDimensioneSottotitoli}
+              />
+            )}
+          </BarraLettore>
+        )}
+        {lettore === 'ciak' && (
+          // In alto a destra, lontano dalla barra: «Salta sigla», «Rivedi la
+          // sigla» e l'episodio dopo.
           <div className="absolute right-2 top-2 flex flex-col items-end gap-2">
-            <div
-              data-testid="comandi-video"
-              className={`flex flex-col items-end gap-2 transition-opacity duration-300 ${
-                comandiVisibili ? 'opacity-100' : 'pointer-events-none opacity-0'
-              }`}
-            >
-              <button
-                type="button"
-                onClick={alternaSchermoIntero}
-                aria-label={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
-                title={cinema ? 'Esci dallo schermo intero' : 'Schermo intero'}
-                className="rounded-lg bg-black/50 px-2 py-1 text-lg text-zinc-200 opacity-70 transition hover:opacity-100"
-              >
-                ⛶
-              </button>
-              {tracce.length > 0 && (
-                <MenuSottotitoli
-                  nomi={nomiSottotitoli}
-                  scelto={sottotitolo}
-                  sigla={siglaSottotitolo}
-                  onScegli={scegliSottotitoli}
-                  onAperto={setMenuSottotitoliAperto}
-                />
-              )}
-            </div>
-            {siglaSaltabile && (
+            {saltaSiglaInVista && (
               <button type="button" onClick={() => saltaSigla()} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">
                 ⏭ Salta sigla
               </button>
@@ -1058,7 +1090,8 @@ function LettoreStreaming() {
               <p className="mb-1 font-medium text-zinc-200">📺 Il lettore di Ciak</p>
               <p>
                 Legge il file originale, alla sua qualità piena, anche appena caricato. I sottotitoli
-                (italiano e inglese) si scelgono dal pulsante CC del lettore; ⛶ per lo schermo intero.
+                (italiano e inglese) si scelgono dal pulsante CC in alto a destra; lo schermo intero è
+                il pulsante del lettore in basso a destra.
               </p>
             </div>
             <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">

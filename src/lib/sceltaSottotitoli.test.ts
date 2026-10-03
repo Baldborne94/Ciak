@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { indiceSottotitolo, leggiLinguaSottotitoli, salvaLinguaSottotitoli } from './sceltaSottotitoli'
+import {
+  DIMENSIONI_SOTTOTITOLI,
+  indiceSottotitolo,
+  leggiDimensioneSottotitoli,
+  leggiLinguaSottotitoli,
+  salvaDimensioneSottotitoli,
+  salvaLinguaSottotitoli,
+} from './sceltaSottotitoli'
 
 // Su `node` non c'è localStorage: se ne monta uno in memoria.
 beforeEach(() => {
@@ -51,5 +58,20 @@ describe('la scelta salvata', () => {
     expect(leggiLinguaSottotitoli()).toBe('en')
     salvaLinguaSottotitoli(null)
     expect(leggiLinguaSottotitoli()).toBeNull()
+  })
+})
+
+describe('la dimensione dei sottotitoli', () => {
+  it('di base sono medi, e la scelta resta', () => {
+    expect(DIMENSIONI_SOTTOTITOLI[leggiDimensioneSottotitoli()].nome).toBe('Medi')
+    salvaDimensioneSottotitoli(3)
+    expect(DIMENSIONI_SOTTOTITOLI[leggiDimensioneSottotitoli()].nome).toBe('Molto grandi')
+  })
+
+  it('un valore strano salvato torna medi', () => {
+    localStorage.setItem('ciak:sottotitoli-dimensione', '9')
+    expect(leggiDimensioneSottotitoli()).toBe(1)
+    localStorage.setItem('ciak:sottotitoli-dimensione', 'boh')
+    expect(leggiDimensioneSottotitoli()).toBe(1)
   })
 })
