@@ -4,9 +4,11 @@
 
 `prepara-ciak.ps1` prende i video da una cartella del PC e li mette nella
 cartella Ciak di Google Drive già pronti per il lettore di Ciak: MP4 con video
-H.264, audio AAC (il Dolby il browser non lo sente) e i sottotitoli interni
-estratti in `.srt` accanto al video. La conversione avviene sul disco del PC e
-su Drive va solo il risultato, una volta.
+H.264, audio AAC (il Dolby il browser non lo sente; le tracce già AAC si
+copiano) e i sottotitoli interni italiani e inglesi estratti in `.srt` accanto
+al video — le altre lingue il lettore non le offre, e le tracce «forced» (solo
+i cartelli) si scartano. La conversione avviene sul disco del PC e su Drive va
+solo il risultato, una volta.
 
 **Una volta sola**
 
@@ -29,11 +31,25 @@ scheda video (NVIDIA, Intel o AMD, scelta da sola all'avvio) ci vuole una
 frazione del tempo rispetto alla CPU, che resta il ripiego. Un file che la
 scheda video non riesce a fare viene rifatto con la CPU.
 
-Prima di convertire, lo script prova a leggere i primi secondi di ogni video:
-un file danneggiato (download interrotto, contenitore rifatto male) viene
-segnalato come errore e saltato, invece di riempire la finestra di messaggi
-`Invalid NAL unit size` e finire su Drive come MP4 vuoto. Se VLC lo apre, di
-solito basta rifarne il contenitore: `ffmpeg -i "file" -map 0 -c copy riparato.mkv`.
+I controlli, perché su Drive non finisca un video rotto (che poi lo script
+salterebbe per sempre, credendolo già fatto):
+
+- un file scritto negli ultimi 5 minuti è probabilmente ancora in download: si
+  salta e lo si prende al lancio successivo. Meglio ancora, in qBittorrent
+  attiva *Opzioni → Download → Aggiungi l'estensione .!qB ai file incompleti*:
+  così lo script non li vede proprio finché non sono finiti;
+- prima di convertire si leggono i primi secondi: un file danneggiato
+  (`Invalid NAL unit size`, `moov atom not found`) è un errore, non un MP4
+  vuoto;
+- dopo, il video creato deve durare quanto l'originale: un download a metà
+  si ferma dove finiscono i dati, e ne uscirebbe un film di pochi minuti.
+
+Alla fine lo script ripete tutti gli errori e li salva in
+`prepara-ciak-errori.txt` accanto a sé. Un `moov atom not found` o un video
+«più corto dell'originale» quasi sempre è un download non finito: lascia che
+finisca (o *Forza ricontrollo* nel client torrent) e rilancia. Se il download è
+completo e VLC lo apre, di solito basta rifarne il contenitore:
+`ffmpeg -i "file" -map 0 -c copy riparato.mkv`.
 
 Per cartelle diverse, o per forzare un encoder (`-Encoder libx264` per la CPU):
 
