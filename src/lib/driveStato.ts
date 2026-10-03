@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
-// Il collegamento a Drive che non scade, lato server (api/drive-*). Qui le
+// Il collegamento a Drive che non scade, lato server (api/drive.ts). Qui le
 // parti pure: lo `state` firmato che accompagna il giro da Google e torna,
 // l'indirizzo del consenso, l'origine della richiesta. Stanno in src/lib
 // perché le funzioni serverless di Vercel includono i moduli importati da

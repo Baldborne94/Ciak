@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { leggiRinnovo } from './drive-token'
-import { leggiScambio } from './drive-callback'
+import { azioneRichiesta, leggiRinnovo, leggiScambio } from './drive'
 
 describe('le risposte di Google', () => {
   it('un rinnovo riuscito dà il token e quanto dura', () => {
@@ -18,5 +17,16 @@ describe('le risposte di Google', () => {
     expect(leggiScambio({ access_token: 'tok', refresh_token: 'ref', expires_in: 3599 })).toEqual({ token: 'tok', refresh: 'ref', secondi: 3599 })
     expect(leggiScambio({ access_token: 'tok' })).toEqual({ token: 'tok', refresh: null, secondi: 3600 })
     expect(leggiScambio({ error: 'invalid_grant', error_description: 'Bad code' })).toEqual({ errore: 'Bad code' })
+  })
+})
+
+describe('azioneRichiesta', () => {
+  it('dal parametro, o dalla forma della risposta di Google se la riscrittura non lo passa', () => {
+    expect(azioneRichiesta({ azione: 'token' })).toBe('token')
+    expect(azioneRichiesta({ azione: 'auth' })).toBe('auth')
+    expect(azioneRichiesta({ code: 'c', state: 's' })).toBe('callback')
+    expect(azioneRichiesta({ error: 'access_denied', state: 's' })).toBe('callback')
+    expect(azioneRichiesta({ azione: 'altro' })).toBeNull()
+    expect(azioneRichiesta(undefined)).toBeNull()
   })
 })

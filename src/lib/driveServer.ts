@@ -1,6 +1,6 @@
 import { supabase } from './supabase'
 
-// Il permesso di Drive dal server di Ciak (api/drive-*), che tiene il refresh
+// Il permesso di Drive dal server di Ciak (api/drive.ts), che tiene il refresh
 // token di Google e rinnova il permesso senza che si veda niente. Quando il
 // server non c'è (non configurato, o l'anteprima dei test che a /api risponde
 // con la pagina), tutto torna al giro di prima: il token di un'ora e il
@@ -55,16 +55,16 @@ export function interpretaRinnovo(risposta: { stato: number; dati: Record<string
 }
 
 export async function rinnovaDalServer(): Promise<EsitoRinnovo> {
-  return interpretaRinnovo(await chiama('POST', '/api/drive-token'), Date.now())
+  return interpretaRinnovo(await chiama('POST', '/api/drive?azione=token'), Date.now())
 }
 
 // L'indirizzo del consenso di Google, firmato dal server; null se il server
 // non c'è. `stato` è quello che il browser ritroverà al ritorno.
 export async function urlConsensoDalServer(stato: string, ritorno: string): Promise<string | null> {
-  const r = await chiama('POST', '/api/drive-auth', { stato, ritorno })
+  const r = await chiama('POST', '/api/drive?azione=auth', { stato, ritorno })
   return r?.stato === 200 && typeof r.dati.url === 'string' && r.dati.url.startsWith('https://accounts.google.com/') ? r.dati.url : null
 }
 
 export async function dimenticaSulServer(): Promise<void> {
-  await chiama('DELETE', '/api/drive-token')
+  await chiama('DELETE', '/api/drive?azione=token')
 }

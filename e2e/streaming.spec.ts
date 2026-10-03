@@ -422,11 +422,11 @@ test('chi aveva Drive collegato prima dell aggiornamento resta collegato', async
   await expect.poll(() => page.evaluate(() => localStorage.getItem('ciak:drive-ricorda'))).not.toBeNull()
 })
 
-// Il server di Ciak (api/drive-token) tiene il refresh token di Google e
+// Il server di Ciak (api/drive.ts) tiene il refresh token di Google e
 // rinnova il permesso senza che si veda niente: qui risponde come farebbe.
 async function serverConIlPermesso(page: Page) {
   const rinnovi: string[] = []
-  await page.route('**/api/drive-token', (route) => {
+  await page.route(/\/api\/drive\?azione=token$/, (route) => {
     rinnovi.push(route.request().method())
     if (route.request().method() === 'DELETE') return route.fulfill({ json: { ok: true } })
     return route.fulfill({ json: { access_token: `token-dal-server-${rinnovi.length}`, expires_in: 3599 } })
@@ -462,9 +462,9 @@ test('col server che tiene il permesso, Drive si rinnova da solo senza passare d
 test('collegare Drive passa dal server, che da lì in poi tiene il permesso', async ({ page }) => {
   await mockDrive(page)
   // Il server c'è ma per questo utente non ha ancora il permesso.
-  await page.route('**/api/drive-token', (route) => route.fulfill({ status: 404, json: { error: 'non collegato' } }))
+  await page.route(/\/api\/drive\?azione=token$/, (route) => route.fulfill({ status: 404, json: { error: 'non collegato' } }))
   let statoCliente = ''
-  await page.route('**/api/drive-auth', (route) => {
+  await page.route(/\/api\/drive\?azione=auth$/, (route) => {
     const corpo = route.request().postDataJSON() as { stato: string; ritorno: string }
     statoCliente = corpo.stato
     const u = new URL('https://accounts.google.com/o/oauth2/v2/auth')

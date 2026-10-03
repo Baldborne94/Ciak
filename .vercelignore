@@ -1,0 +1,3 @@
+# I test di api/ non sono funzioni: Vercel conta ogni file della cartella
+# come una funzione serverless, e il piano Hobby ne concede dodici.
+api/*.test.ts

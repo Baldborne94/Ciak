@@ -41,7 +41,7 @@ describe('le chiamate al server', () => {
     risposte.push({ stato: 200, corpo: JSON.stringify({ access_token: 'tok', expires_in: 3599 }) })
     const esito = await rinnovaDalServer()
     expect(esito.stato).toBe('rinnovato')
-    expect(chiamate[0].url).toBe('/api/drive-token')
+    expect(chiamate[0].url).toBe('/api/drive?azione=token')
     expect(chiamate[0].init.method).toBe('POST')
     expect((chiamate[0].init.headers as Record<string, string>).Authorization).toBe('Bearer jwt-ciak')
   })
@@ -64,6 +64,6 @@ describe('le chiamate al server', () => {
   it('scollegare toglie il permesso anche dal server', async () => {
     risposte.push({ stato: 200, corpo: JSON.stringify({ ok: true }) })
     await dimenticaSulServer()
-    expect(chiamate[0]).toMatchObject({ url: '/api/drive-token', init: { method: 'DELETE' } })
+    expect(chiamate[0]).toMatchObject({ url: '/api/drive?azione=token', init: { method: 'DELETE' } })
   })
 })

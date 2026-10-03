@@ -96,7 +96,7 @@ export async function annotaAccountDrive(): Promise<void> {
 }
 
 // ── Dal server di Ciak ──────────────────────────────────────────────────────
-// Col refresh token in mano al server (api/drive-token) il permesso si rinnova
+// Col refresh token in mano al server (api/drive.ts) il permesso si rinnova
 // senza lasciare la pagina: anche a film in corso, e un po' prima che scada,
 // così non scade mai davvero.
 
