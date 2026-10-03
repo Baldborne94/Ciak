@@ -454,6 +454,9 @@ function LettoreStreaming() {
   // sparisce dopo qualche secondo di visione; col menu dei sottotitoli aperto
   // resta.
   const riquadroVideo = useRef<HTMLDivElement>(null)
+  // L'ultimo «Salta sigla» (vedi `saltaSigla`): sta qui, prima dei return
+  // anticipati, perché gli hook vanno chiamati sempre nello stesso ordine.
+  const ultimoSalto = useRef<Salto | null>(null)
   const [menuSottotitoliAperto, setMenuSottotitoliAperto] = useState(false)
   const comandiVisibili = useComandiVisibili(riquadroVideo, videoRef, menuSottotitoliAperto)
 
@@ -594,9 +597,8 @@ function LettoreStreaming() {
 
   // A mano insegna anche dove comincia la sigla in questa serie; da sola
   // (`automatica`) lascia per qualche secondo «↩ Rivedi la sigla». Il salto
-  // si ricorda: la barra trascinata subito dopo insegna dove finisce (vedi
-  // `fineDaCorrezione`, in onSeeked).
-  const ultimoSalto = useRef<Salto | null>(null)
+  // si ricorda in `ultimoSalto`: la barra trascinata subito dopo insegna dove
+  // finisce (vedi `fineDaCorrezione`, in onSeeked).
   function saltaSigla(automatica = false) {
     const v = videoRef.current
     if (!v || durataSigla === null) return
