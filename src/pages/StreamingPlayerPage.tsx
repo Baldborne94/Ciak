@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ErrorState } from '../components/States'
 import PannelloArchivio from '../components/PannelloArchivio'
 import MenuSottotitoli from '../components/MenuSottotitoli'
+import SottotitoliVideo from '../components/SottotitoliVideo'
 import ProssimoEpisodio from '../components/ProssimoEpisodio'
 import ToccoVideo from '../components/ToccoVideo'
 import { azioneTasto, metadatiSessione, SALTO_TASTIERA, type AzioneTasto } from '../lib/comandiLettore'
@@ -402,48 +403,13 @@ function LettoreStreaming() {
     ).catch(logFailure('Sottotitoli nella scheda del film offline'))
   }, [fileId, locale, usaSalvati, sub.tracce])
 
-  // Quale sottotitolo si vede (-1: nessuno), e quello scelto da Ciak: il menu
-  // del browser sta attaccato alla barra in basso, e sul tablet toccando
-  // «Inglese» si chiudeva invece di sceglierlo.
-  const [sottotitolo, setSottotitolo] = useState(-1)
-  const sceltaSottotitoli = useRef<number | null>(null)
-  useEffect(() => {
-    const elenco = videoRef.current?.textTracks
-    if (!elenco) return
-    const leggi = () => {
-      let attivo = -1
-      for (let i = 0; i < elenco.length; i++) if (elenco[i].mode === 'showing') attivo = i
-      setSottotitolo(attivo)
-    }
-    leggi()
-    // Anche quando si cambia dal menu del browser.
-    elenco.addEventListener('change', leggi)
-    return () => elenco.removeEventListener('change', leggi)
-  }, [tracce, chiaveVideo, lettore])
-  const scegliSottotitoli = useCallback((indice: number) => {
-    sceltaSottotitoli.current = indice
-    const elenco = videoRef.current?.textTracks
-    if (!elenco) return
-    for (let i = 0; i < elenco.length; i++) elenco[i].mode = i === indice ? 'showing' : 'disabled'
-    setSottotitolo(indice)
-  }, [])
-
-  // Le tracce aggiunte a video già avviato non si accendono da sole: la prima
-  // (l'italiano, se c'è) si accende a mano, le altre restano disponibili dal
-  // pulsante CC. Se l'utente ne ha già scelta una, non la si tocca.
-  useEffect(() => {
-    const elenco = videoRef.current?.textTracks
-    if (!elenco || tracce.length === 0) return
-    // Scelta da Ciak (anche «nessuno»): resta, anche quando arrivano altre tracce.
-    if (sceltaSottotitoli.current !== null && sceltaSottotitoli.current < elenco.length) {
-      for (let i = 0; i < elenco.length; i++) elenco[i].mode = i === sceltaSottotitoli.current ? 'showing' : 'disabled'
-      return
-    }
-    let mostrata = false
-    for (let i = 0; i < elenco.length; i++) if (elenco[i].mode === 'showing') mostrata = true
-    if (mostrata) return
-    for (let i = 0; i < elenco.length; i++) elenco[i].mode = i === 0 ? 'showing' : 'hidden'
-  }, [tracce, chiaveVideo])
+  // Quale sottotitolo si vede (-1: nessuno). Finché non si sceglie si mostra
+  // il primo (l'italiano, se c'è); la scelta, «nessuno» compreso, resta anche
+  // quando arrivano altre tracce e da un episodio all'altro.
+  const [sceltaSottotitoli, setSceltaSottotitoli] = useState<number | null>(null)
+  const sottotitolo =
+    tracce.length === 0 ? -1 : sceltaSottotitoli === null || sceltaSottotitoli >= tracce.length ? 0 : sceltaSottotitoli
+  const scegliSottotitoli = useCallback((indice: number) => setSceltaSottotitoli(indice), [])
 
   const titolo =
     stato?.titolo ??
@@ -710,12 +676,13 @@ function LettoreStreaming() {
             // quello di Ciak (⛶ in alto a destra). Firefox il pulsante lo mostra
             // comunque.
             controlsList="nofullscreen"
-            // Il CC del browser apre un menu minuscolo sotto i nostri pulsanti:
-            // i sottotitoli si scelgono da quello di Ciak (vedi index.css).
+            // Niente <track>: i sottotitoli li disegna Ciak (SottotitoliVideo),
+            // così il browser non mostra il suo CC in basso, scomodo sul
+            // telefono. Si scelgono dal menu «CC» in alto a destra.
             autoPlay
             playsInline
             aria-label={titolo}
-            className="lettore-ciak h-full w-full"
+            className="h-full w-full"
             onError={(e) => suErrore(e.currentTarget)}
             onLoadedMetadata={(e) => {
               vigilanzaAvvio.current.fine()
@@ -771,18 +738,7 @@ function LettoreStreaming() {
                 if (senzaAudio(v)) setProblema('muto')
               }
             }}
-          >
-            {tracce.map((t, i) => (
-              <track
-                key={t.url}
-                kind="subtitles"
-                src={t.url}
-                srcLang={t.lingua ?? undefined}
-                label={nomeLingua(t.lingua)}
-                default={i === 0}
-              />
-            ))}
-          </video>
+          />
         ) : (
           <iframe
             title={titolo}
@@ -790,6 +746,13 @@ function LettoreStreaming() {
             allow="autoplay; fullscreen"
             allowFullScreen
             className="h-full w-full border-0"
+          />
+        )}
+        {lettore === 'ciak' && (
+          <SottotitoliVideo
+            videoRef={videoRef}
+            vtt={sottotitolo < 0 ? null : (tracce[sottotitolo]?.vtt ?? null)}
+            chiaveVideo={String(chiaveVideo)}
           />
         )}
         {lettore === 'ciak' && touch && (
