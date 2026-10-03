@@ -66,6 +66,7 @@ import { filmDaCercare, nomeLingua } from '../lib/sottotitoli'
 import {
   PUNTI_VUOTI,
   arrivoSalto,
+  fineDaCorrezione,
   codaSiglaRaggiunta,
   durataDaPunti,
   inSiglaFinale,
@@ -79,6 +80,7 @@ import {
   secondiAllaFine,
   inSiglaEsatta,
   type PuntiSigla,
+  type Salto,
   type SaltaSigle,
 } from '../lib/sigle'
 import { sigleEpisodio, type SigleEpisodio } from '../lib/sigleOnline'
@@ -352,7 +354,6 @@ function LettoreStreaming() {
   // Quanto dura la sigla iniziale: dai tempi della serie, se ci sono, se no
   // quella di base. null fuori dalle serie: lì non si salta niente.
   const durataSigla = durataBase === null ? null : durataDaPunti(punti, durataBase)
-  const [durataVideo, setDurataVideo] = useState<number | null>(null)
   // Si salva subito, non dentro l'aggiornamento dello stato: passando
   // all'episodio dopo la pagina sparisce prima che quello venga eseguito.
   const imparaPunti = useCallback(
@@ -453,6 +454,9 @@ function LettoreStreaming() {
   // sparisce dopo qualche secondo di visione; col menu dei sottotitoli aperto
   // resta.
   const riquadroVideo = useRef<HTMLDivElement>(null)
+  // L'ultimo «Salta sigla» (vedi `saltaSigla`): sta qui, prima dei return
+  // anticipati, perché gli hook vanno chiamati sempre nello stesso ordine.
+  const ultimoSalto = useRef<Salto | null>(null)
   const [menuSottotitoliAperto, setMenuSottotitoliAperto] = useState(false)
   const comandiVisibili = useComandiVisibili(riquadroVideo, videoRef, menuSottotitoliAperto)
 
@@ -592,16 +596,20 @@ function LettoreStreaming() {
   }
 
   // A mano insegna anche dove comincia la sigla in questa serie; da sola
-  // (`automatica`) lascia per qualche secondo «↩ Rivedi la sigla».
+  // (`automatica`) lascia per qualche secondo «↩ Rivedi la sigla». Il salto
+  // si ricorda in `ultimoSalto`: la barra trascinata subito dopo insegna dove
+  // finisce (vedi `fineDaCorrezione`, in onSeeked).
   function saltaSigla(automatica = false) {
     const v = videoRef.current
     if (!v || durataSigla === null) return
     const da = v.currentTime
-    v.currentTime = siglaEsatta ? siglaEsatta.a : arrivoSalto(da, punti, durataSigla, Number.isFinite(v.duration) ? v.duration : null)
+    const a = siglaEsatta ? siglaEsatta.a : arrivoSalto(da, punti, durataSigla, Number.isFinite(v.duration) ? v.duration : null)
+    v.currentTime = a
+    if (!siglaEsatta) ultimoSalto.current = { da, a, quando: Date.now() }
     setSiglaSaltata(true)
     if (automatica) setRivedi(da)
-    // Con i tempi esatti non c'è niente da imparare, e un inizio già noto
-    // (magari scritto a mano) non lo sposta un salto premuto in ritardo.
+    // Con i tempi esatti non c'è niente da imparare, e un inizio già noto non
+    // lo sposta un salto premuto in ritardo: si parte da «Reimpara».
     else if (!siglaEsatta && punti.inizio === null) imparaPunti({ inizio: Math.round(da) })
   }
 
@@ -736,7 +744,6 @@ function LettoreStreaming() {
             onError={(e) => suErrore(e.currentTarget)}
             onLoadedMetadata={(e) => {
               vigilanzaAvvio.current.fine()
-              setDurataVideo(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : null)
               // Dopo un'interruzione o un ricollegamento si riparte da dove si era.
               const v = e.currentTarget
               if (daRiprendere.current > 0) {
@@ -757,7 +764,14 @@ function LettoreStreaming() {
               posizione.current = e.currentTarget.currentTime
               vigilanza.current.inizio()
             }}
-            onSeeked={() => vigilanza.current.fine()}
+            onSeeked={(e) => {
+              vigilanza.current.fine()
+              const fine = fineDaCorrezione(ultimoSalto.current, e.currentTarget.currentTime, Date.now())
+              if (fine !== null) {
+                ultimoSalto.current = null
+                imparaPunti({ fine })
+              }
+            }}
             onPlaying={() => vigilanza.current.fine()}
             onTimeUpdate={(e) => {
               const v = e.currentTarget
@@ -772,7 +786,6 @@ function LettoreStreaming() {
                 : mostraSaltaSigla(t, punti.inizio, durataSigla ?? undefined)
               if (inizio !== allInizio) setAllInizio(inizio)
               const durataVideo = Number.isFinite(v.duration) ? v.duration : null
-              setDurataVideo(durataVideo)
               const coda = codaEsatta ? t >= codaEsatta.da : inSiglaFinale(t, durataVideo)
               if (coda !== inCoda) setInCoda(coda)
               const partenzaSigla = siglaEsatta ? siglaEsatta.da : punti.inizio
@@ -890,16 +903,16 @@ function LettoreStreaming() {
       {lettore === 'ciak' && serie && durataSigla !== null && (
         <SigleSerie
           punti={punti}
-          onCambia={imparaPunti}
-          adesso={() => videoRef.current?.currentTime ?? null}
-          durataVideo={durataVideo}
+          onReimpara={() => imparaPunti(PUNTI_VUOTI)}
           scelte={scelte}
           onScelte={cambiaScelte}
+          conEsatteInizio={siglaEsatta !== null}
+          conEsatteFine={codaEsatta !== null}
           esatte={
             esatte && (esatte.inizio || esatte.finale)
               ? `Per questo episodio valgono i tempi esatti di TheIntroDB${
                   esatte.inizio ? `: sigla da ${formattaTempo(esatte.inizio.da)} a ${formattaTempo(esatte.inizio.a)}` : ''
-                }${esatte.finale ? `${esatte.inizio ? ',' : ':'} titoli di coda da ${formattaTempo(esatte.finale.da)}` : ''}. Quelli qui sotto servono per gli episodi che TheIntroDB non conosce.`
+                }${esatte.finale ? `${esatte.inizio ? ',' : ':'} titoli di coda da ${formattaTempo(esatte.finale.da)}` : ''}.`
               : null
           }
         />

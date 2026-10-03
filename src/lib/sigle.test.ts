@@ -11,7 +11,7 @@ import {
   leggiDurataSigla,
   leggiPuntiSigla,
   leggiSaltaSigle,
-  leggiTempo,
+  fineDaCorrezione,
   mostraSaltaSigla,
   salvaDurataSigla,
   salvaPuntiSigla,
@@ -164,13 +164,19 @@ describe('i tempi impostati a mano', () => {
     expect(arrivoSalto(200, punti, 90, 1300)).toBe(290)
   })
 
-  it('i tempi scritti a mano si capiscono in più forme', () => {
-    expect(leggiTempo('1:35')).toBe(95)
-    expect(leggiTempo(' 0:01:35 ')).toBe(95)
-    expect(leggiTempo('95')).toBe(95)
-    expect(leggiTempo('21.39')).toBe(1299)
-    expect(leggiTempo('1:75')).toBeNull()
-    expect(leggiTempo('abc')).toBeNull()
-    expect(leggiTempo('')).toBeNull()
+  it('la fine della sigla si impara da chi corregge il salto subito dopo', () => {
+    const salto = { da: 10, a: 100, quando: 1000 }
+    // Trascinata la barra a 0:55 entro pochi secondi: la sigla finisce lì.
+    expect(fineDaCorrezione(salto, 55, 6000)).toBe(55)
+    expect(fineDaCorrezione(salto, 130.4, 6000)).toBe(130)
+    // Troppo tardi: è un salto qualunque.
+    expect(fineDaCorrezione(salto, 55, 1000 + 25_000)).toBeNull()
+    // Indietro fino a dove si era (↩ Rivedi), o all'inizio dell'episodio: no.
+    expect(fineDaCorrezione(salto, 10, 6000)).toBeNull()
+    expect(fineDaCorrezione(salto, 0, 6000)).toBeNull()
+    // Rimasti dove il salto era arrivato, o molto più avanti: no.
+    expect(fineDaCorrezione(salto, 100.5, 6000)).toBeNull()
+    expect(fineDaCorrezione(salto, 400, 6000)).toBeNull()
+    expect(fineDaCorrezione(null, 55, 6000)).toBeNull()
   })
 })
