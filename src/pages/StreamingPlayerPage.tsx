@@ -426,7 +426,7 @@ function LettoreStreaming() {
   // ⛶ e CC sopra il video ci sono solo insieme alla barra dei comandi.
   const riquadroVideo = useRef<HTMLDivElement>(null)
   const [menuSottotitoliAperto, setMenuSottotitoliAperto] = useState(false)
-  const comandiVisibili = useComandiVisibili(riquadroVideo, videoRef, chiaveVideo, menuSottotitoliAperto)
+  const comandiVisibili = useComandiVisibili(riquadroVideo, videoRef, menuSottotitoliAperto)
 
   const titolo =
     stato?.titolo ??
