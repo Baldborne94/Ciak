@@ -864,10 +864,6 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
   await page.getByRole('button', { name: '⏭ Salta sigla' }).click()
   expect(await page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { salto?: number }).salto)).toBe(120)
   await expect(page.getByRole('button', { name: '⏭ Salta sigla' })).toHaveCount(0)
-  // Una serie con la sigla più corta la cambia una volta per tutte.
-  await page.getByLabel('Durata della sigla').selectOption({ label: '0:45' })
-  expect(await page.evaluate(() => localStorage.getItem('ciak:durata-sigla:tv-126308'))).toBe('45')
-
   // La sigla finale: si può già passare all'episodio dopo, ma non parte da solo.
   await portaIlVideoA(page, 3500, 3600)
   const prossimo = page.getByRole('region', { name: 'Prossimo episodio' })
@@ -958,6 +954,62 @@ async function videoA(page: Page, secondi: number, durata = 3600) {
 const saltoDelVideo = (page: Page) =>
   page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { salto?: number }).salto)
 
+test('le sigle di una serie si segnano mentre si guarda, o si scrivono, e valgono per tutti gli episodi', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page)
+  const riga = (id: string, episodio: number) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: id,
+    nome_file: `Shogun.S01E0${episodio}.mkv`,
+    tmdb_id: 126308,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    stagione: 1,
+    episodio,
+    posizione: 0,
+    durata: 3600,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: true,
+  })
+  await mockSupabase(page, { user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2)] })
+  await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
+  const sigle = page.getByRole('region', { name: 'Sigle di questa serie' })
+  await expect(sigle).toBeVisible()
+
+  // «📍 adesso» mentre la sigla comincia e mentre finisce.
+  await videoA(page, 10)
+  await sigle.getByRole('button', { name: 'La sigla iniziale comincia adesso' }).click()
+  await videoA(page, 55)
+  await sigle.getByRole('button', { name: 'La sigla iniziale finisce adesso' }).click()
+  // La sigla finale si scrive come tempo di questo episodio, e si ricorda dalla fine.
+  await sigle.getByLabel('Inizio della sigla finale').fill('58:20')
+  await sigle.getByLabel('Inizio della sigla finale').press('Enter')
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308')))
+    .toBe('{"inizio":10,"fine":55,"coda":100}')
+
+  // «Salta sigla» arriva proprio alla fine della sigla, non 90 secondi dopo.
+  await videoA(page, 12)
+  await page.getByRole('button', { name: '⏭ Salta sigla' }).click()
+  expect(await saltoDelVideo(page)).toBe(55)
+
+  // Alla sigla finale, scelto «passa subito»: il conto alla rovescia parte lì.
+  await sigle.getByLabel('Passa subito al prossimo episodio').check()
+  await videoA(page, 3501)
+  await expect(page.getByRole('region', { name: 'Prossimo episodio' }).getByText(/S1E2 fra \d+ s/)).toBeVisible()
+  await page.getByRole('button', { name: '▶ Guarda ora' }).click()
+
+  // Nell'episodio dopo i tempi ci sono già.
+  await expect(page.getByRole('heading', { name: 'Shōgun · S1E2' })).toBeVisible()
+  await expect(sigle.getByLabel('Inizio della sigla iniziale')).toHaveValue('0:10')
+  await expect(sigle.getByLabel('Fine della sigla iniziale')).toHaveValue('0:55')
+})
+
 test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole a mano', async ({ page }) => {
   await conLettoreCiak(page)
   await mockDrive(page)
@@ -989,10 +1041,10 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E1' })).toBeVisible()
 
   await page.getByLabel('Salta sempre la sigla iniziale').check()
-  await page.getByLabel('Salta anche la sigla finale').check()
+  await page.getByLabel('Passa subito al prossimo episodio').check()
   expect(await page.evaluate(() => localStorage.getItem('ciak:salta-sigle'))).toBe('{"inizio":true,"fine":true}')
   // Il punto non si sa ancora: lo si dice, invece di non saltare niente in silenzio.
-  await expect(page.getByText(/La prima volta premi «⏭ Salta sigla»/)).toBeVisible()
+  await expect(page.getByText(/Premi «📍» quando la sigla comincia/)).toBeVisible()
 
   // Episodio 1: le sigle si saltano a mano, e Ciak impara dove stanno.
   await videoA(page, 95)
@@ -1001,9 +1053,9 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
   await videoA(page, 3480)
   await page.getByRole('button', { name: '⏭ Prossimo episodio: S1E2' }).click()
   await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
-  expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBe('{"inizio":95,"coda":120}')
+  expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBe('{"inizio":95,"fine":null,"coda":120}')
   // I tempi sono di questa serie, e si vedono: ognuna ha i suoi.
-  await expect(page.getByText(/In questa serie la sigla iniziale parte a 1:35, la finale negli ultimi 2:00/)).toBeVisible()
+  await expect(page.getByLabel('Inizio della sigla iniziale')).toHaveValue('1:35')
 
   // Episodio 2: la sigla iniziale si salta da sola, passandoci sopra…
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E2' })).toBeVisible()
@@ -1026,9 +1078,9 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
   await expect(page).toHaveURL(/\/streaming\/video-shogun-03$/, { timeout: 15_000 })
 
   // Punti sbagliati? Si dimenticano e si reimparano saltando di nuovo a mano.
-  await page.getByRole('button', { name: 'Reimpara' }).click()
-  expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBe('{"inizio":null,"coda":null}')
-  await expect(page.getByText(/La prima volta premi «⏭ Salta sigla»/)).toBeVisible()
+  await page.getByRole('button', { name: 'Cancella i tempi di questa serie' }).click()
+  expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBe('{"inizio":null,"fine":null,"coda":null}')
+  await expect(page.getByText(/Premi «📍» quando la sigla comincia/)).toBeVisible()
 })
 
 test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, episodio per episodio', async ({ page }) => {
@@ -1079,13 +1131,11 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
   await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
-  await expect(page.getByText(/tempi sono quelli esatti di TheIntroDB: sigla da 3:20 a 4:50, titoli di coda da 56:40/)).toBeVisible()
+  await expect(page.getByText(/i tempi esatti di TheIntroDB: sigla da 3:20 a 4:50, titoli di coda da 56:40/)).toBeVisible()
   expect(chieste).toEqual(['126308-1-1'])
   expect(riserva).toBe(0)
-  // Con i tempi esatti restano solo quelli: i tempi della serie e la durata
-  // della sigla, che qui non si usano, non compaiono.
-  await expect(page.getByText(/In questa serie/)).toHaveCount(0)
-  await expect(page.getByLabel('Durata della sigla')).toHaveCount(0)
+  // I tempi della serie restano lì, per gli episodi che TheIntroDB non conosce.
+  await expect(page.getByLabel('Inizio della sigla iniziale')).toHaveValue('0:04')
 
   // Prima della sigla il pulsante non c'è: questo episodio la ha a 3:20.
   await videoA(page, 60)
@@ -1098,10 +1148,10 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
 
   // Con «salta sempre» si salta da sola, passandoci sopra.
   await page.getByLabel('Salta sempre la sigla iniziale').check()
-  await page.getByLabel('Salta anche la sigla finale').check()
+  await page.getByLabel('Passa subito al prossimo episodio').check()
   await page.reload()
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E1' })).toBeVisible()
-  await expect(page.getByText(/tempi sono quelli esatti/)).toBeVisible()
+  await expect(page.getByText(/i tempi esatti di TheIntroDB/)).toBeVisible()
   await videoA(page, 200.25)
   expect(await saltoDelVideo(page)).toBe(290)
   await expect(page.getByRole('button', { name: '↩ Rivedi la sigla' })).toBeVisible()

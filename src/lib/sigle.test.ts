@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DURATA_SIGLA_PREDEFINITA,
+  arrivoSalto,
   codaSiglaRaggiunta,
+  durataDaPunti,
   dopoLaSigla,
   inSiglaFinale,
   inizioSiglaRaggiunto,
@@ -9,6 +11,7 @@ import {
   leggiDurataSigla,
   leggiPuntiSigla,
   leggiSaltaSigle,
+  leggiTempo,
   mostraSaltaSigla,
   salvaDurataSigla,
   salvaPuntiSigla,
@@ -103,12 +106,15 @@ describe('saltarle da sole', () => {
   })
 
   it('i punti imparati sono per serie, e uno strano vale come non saputo', () => {
-    expect(leggiPuntiSigla('tv-1429')).toEqual({ inizio: null, coda: null })
-    salvaPuntiSigla('tv-1429', { inizio: 95, coda: 120 })
-    expect(leggiPuntiSigla('tv-1429')).toEqual({ inizio: 95, coda: 120 })
-    expect(leggiPuntiSigla('tv-2190')).toEqual({ inizio: null, coda: null })
-    memoria.set('ciak:punti-sigla:tv-1', JSON.stringify({ inizio: 'x', coda: -3 }))
-    expect(leggiPuntiSigla('tv-1')).toEqual({ inizio: null, coda: null })
+    expect(leggiPuntiSigla('tv-1429')).toEqual({ inizio: null, fine: null, coda: null })
+    salvaPuntiSigla('tv-1429', { inizio: 95, fine: 185, coda: 120 })
+    expect(leggiPuntiSigla('tv-1429')).toEqual({ inizio: 95, fine: 185, coda: 120 })
+    expect(leggiPuntiSigla('tv-2190')).toEqual({ inizio: null, fine: null, coda: null })
+    memoria.set('ciak:punti-sigla:tv-1', JSON.stringify({ inizio: 'x', fine: Infinity, coda: -3 }))
+    expect(leggiPuntiSigla('tv-1')).toEqual({ inizio: null, fine: null, coda: null })
+    // Quelli salvati prima che ci fosse la fine della sigla valgono ancora.
+    memoria.set('ciak:punti-sigla:tv-2', JSON.stringify({ inizio: 4, coda: 120 }))
+    expect(leggiPuntiSigla('tv-2')).toEqual({ inizio: 4, fine: null, coda: 120 })
   })
 
   it('la sigla iniziale scatta solo passandoci sopra, non riprendendo più avanti', () => {
@@ -136,5 +142,35 @@ describe('con i tempi esatti dell episodio', () => {
     expect(inSiglaEsatta(100, sigla)).toBe(true)
     expect(inSiglaEsatta(121.5, sigla)).toBe(false)
     expect(inSiglaEsatta(0, { da: 0, a: 90 })).toBe(true)
+  })
+})
+
+describe('i tempi impostati a mano', () => {
+  const punti = { inizio: 35, fine: 125, coda: null }
+
+  it('la durata della sigla viene dai due punti, se hanno senso', () => {
+    expect(durataDaPunti(punti, 90)).toBe(90)
+    expect(durataDaPunti({ inizio: 4, fine: 34, coda: null }, 90)).toBe(30)
+    expect(durataDaPunti({ inizio: 4, fine: null, coda: null }, 45)).toBe(45)
+    // La fine prima dell'inizio è un errore di battitura: si ignora.
+    expect(durataDaPunti({ inizio: 60, fine: 30, coda: null }, 45)).toBe(45)
+  })
+
+  it('«Salta sigla» arriva alla fine della sigla, anche premuto in ritardo', () => {
+    expect(arrivoSalto(40, punti, 90, 1300)).toBe(125)
+    expect(arrivoSalto(100, punti, 90, 1300)).toBe(125)
+    // Senza la fine, avanti della durata; oltre la fine, idem.
+    expect(arrivoSalto(40, { ...punti, fine: null }, 90, 1300)).toBe(130)
+    expect(arrivoSalto(200, punti, 90, 1300)).toBe(290)
+  })
+
+  it('i tempi scritti a mano si capiscono in più forme', () => {
+    expect(leggiTempo('1:35')).toBe(95)
+    expect(leggiTempo(' 0:01:35 ')).toBe(95)
+    expect(leggiTempo('95')).toBe(95)
+    expect(leggiTempo('21.39')).toBe(1299)
+    expect(leggiTempo('1:75')).toBeNull()
+    expect(leggiTempo('abc')).toBeNull()
+    expect(leggiTempo('')).toBeNull()
   })
 })

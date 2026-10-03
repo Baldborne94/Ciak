@@ -92,12 +92,17 @@ export function salvaSaltaSigle(scelte: SaltaSigle): void {
   }
 }
 
-// I punti imparati per una serie: dove comincia la sigla iniziale (secondi
-// dall'inizio) e la sigla finale (secondi prima della fine).
+// I punti di una serie, imparati saltando a mano o impostati da chi guarda
+// (vedi SigleSerie): dove comincia e dove finisce la sigla iniziale (secondi
+// dall'inizio) e dove comincia la sigla finale (secondi prima della fine:
+// gli episodi non durano tutti uguale, i titoli di coda sì).
 export interface PuntiSigla {
   inizio: number | null
+  fine: number | null
   coda: number | null
 }
+
+export const PUNTI_VUOTI: PuntiSigla = { inizio: null, fine: null, coda: null }
 
 const CHIAVE_PUNTI = 'ciak:punti-sigla:'
 
@@ -106,9 +111,9 @@ const numeroValido = (n: unknown): number | null => (typeof n === 'number' && Nu
 export function leggiPuntiSigla(serie: string): PuntiSigla {
   try {
     const v = JSON.parse(localStorage.getItem(CHIAVE_PUNTI + serie) ?? '{}') as Record<string, unknown>
-    return { inizio: numeroValido(v.inizio), coda: numeroValido(v.coda) }
+    return { inizio: numeroValido(v.inizio), fine: numeroValido(v.fine), coda: numeroValido(v.coda) }
   } catch {
-    return { inizio: null, coda: null }
+    return PUNTI_VUOTI
   }
 }
 
@@ -143,4 +148,26 @@ export function secondiAllaFine(posizione: number, durata: number | null): numbe
 // senza sigla non lo mostra, e il salto arriva proprio alla fine della sigla.
 export function inSiglaEsatta(posizione: number, sigla: { da: number; a: number }): boolean {
   return posizione >= Math.max(0, sigla.da - 1) && posizione < sigla.a - 1
+}
+
+// Quanto dura la sigla iniziale di una serie: dai suoi due punti, se ci sono e
+// hanno senso, se no la durata scelta (o quella di base).
+export function durataDaPunti(punti: PuntiSigla, base: number): number {
+  return punti.inizio !== null && punti.fine !== null && punti.fine > punti.inizio ? punti.fine - punti.inizio : base
+}
+
+// Dove arriva «⏭ Salta sigla»: alla fine della sigla, se la serie la conosce
+// e non la si è già passata; se no avanti della sua durata.
+export function arrivoSalto(posizione: number, punti: PuntiSigla, durata: number, durataVideo: number | null): number {
+  if (punti.fine !== null && posizione < punti.fine) return punti.fine
+  return dopoLaSigla(posizione, durata, durataVideo)
+}
+
+// Un tempo scritto a mano: «1:35», «0:01:35», «95». null se non si capisce.
+export function leggiTempo(testo: string): number | null {
+  const t = testo.trim().replace(/[.,]/g, ':')
+  if (!/^\d+(:\d{1,2}){0,2}$/.test(t)) return null
+  const parti = t.split(':').map(Number)
+  if (parti.slice(1).some((n) => n >= 60)) return null
+  return parti.reduce((tot, n) => tot * 60 + n, 0)
 }
