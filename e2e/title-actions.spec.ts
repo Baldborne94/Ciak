@@ -53,6 +53,27 @@ test('ri-cliccare lo stato attivo toglie il titolo dalla collezione', async ({ p
   expect(db.tables.user_titles).toHaveLength(0)
 })
 
+test('«Rimuovi dalla collezione» toglie il titolo, chiedendo prima se si perdono voto e preferito', async ({ page }) => {
+  const db = await mockSupabase(page)
+  await page.goto('/title/movie/550')
+
+  await page.getByRole('button', { name: /Aggiungi ai preferiti/ }).click()
+  await expect(page.getByRole('button', { name: '❤️ Preferito' })).toBeVisible()
+
+  // Ci si ripensa: resta tutto com'era.
+  page.once('dialog', (d) => d.dismiss())
+  await page.getByRole('button', { name: /Rimuovi dalla collezione/ }).click()
+  await expect(page.getByRole('button', { name: '❤️ Preferito' })).toBeVisible()
+  expect(db.tables.user_titles).toHaveLength(1)
+
+  // Confermato: il titolo esce dalla collezione e il pulsante sparisce con lui.
+  page.once('dialog', (d) => d.accept())
+  await page.getByRole('button', { name: /Rimuovi dalla collezione/ }).click()
+  await expect(page.getByText(/Nella tua collezione/)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Rimuovi dalla collezione/ })).toHaveCount(0)
+  expect(db.tables.user_titles).toHaveLength(0)
+})
+
 test('aggiungere ai preferiti implica averlo visto', async ({ page }) => {
   const db = await mockSupabase(page)
   await page.goto('/title/movie/550')

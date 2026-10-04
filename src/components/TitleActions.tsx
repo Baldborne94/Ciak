@@ -205,10 +205,22 @@ export default function TitleActions({ titleRef }: { titleRef: TitleRef }) {
       </div>
 
       {record && (
-        <p className="mt-2 text-xs text-zinc-500">
-          Nella tua collezione · stato:{' '}
-          <span className="text-zinc-300">{STATUS_LABELS[record.status]}</span>
-        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+          <p>
+            Nella tua collezione · stato:{' '}
+            <span className="text-zinc-300">{STATUS_LABELS[record.status]}</span>
+          </p>
+          {/* Lo stesso effetto di ripremere lo stato acceso, ma detto: quel
+              gesto non lo indovina nessuno. */}
+          <button
+            type="button"
+            onClick={remove}
+            disabled={saving || loading}
+            className="text-zinc-400 underline-offset-2 hover:text-curtain-light hover:underline disabled:opacity-50"
+          >
+            🗑 Rimuovi dalla collezione
+          </button>
+        </div>
       )}
       {error && <p className="mt-2 text-xs text-curtain-light">{error}</p>}
     </div>

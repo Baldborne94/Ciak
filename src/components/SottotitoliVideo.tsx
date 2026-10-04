@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type RefObject } from 'react'
-import { battuteAl, leggiVtt } from '../lib/vtt'
+import { battuteAl, leggiVtt, type Posizione, type RigheInVista } from '../lib/vtt'
 
 // Le battute disegnate da Ciak sopra il video (vedi `lib/vtt`): il <video>
 // resta senza tracce, così il browser non mostra il suo CC in basso. Mentre
@@ -14,6 +14,16 @@ import { battuteAl, leggiVtt } from '../lib/vtt'
 const QUOTA_ALTEZZA = 0.045
 const MINIMO_PX = 13
 
+const NIENTE: RigheInVista = { basso: '', centro: '', alto: '' }
+
+// Le battute in basso seguono la barra dei comandi; quelle in alto (cartelli e
+// scritte tradotte, vedi lib/vtt) e a metà restano dove sono.
+function posto(posizione: Posizione, sollevate: boolean): string {
+  if (posizione === 'alto') return 'top-[8%]'
+  if (posizione === 'centro') return 'top-1/2 -translate-y-1/2'
+  return sollevate ? 'bottom-24' : 'bottom-[6%]'
+}
+
 interface Props {
   videoRef: RefObject<HTMLVideoElement>
   contenitore: RefObject<HTMLElement> // il riquadro del lettore, per la misura
@@ -25,7 +35,7 @@ interface Props {
 
 export default function SottotitoliVideo({ videoRef, contenitore, vtt, chiaveVideo, scala = 1, sollevate = false }: Props) {
   const battute = useMemo(() => (vtt ? leggiVtt(vtt) : []), [vtt])
-  const [testo, setTesto] = useState('')
+  const [righe, setRighe] = useState<RigheInVista>(NIENTE)
   const [altezza, setAltezza] = useState(0)
 
   useEffect(() => {
@@ -42,11 +52,17 @@ export default function SottotitoliVideo({ videoRef, contenitore, vtt, chiaveVid
   useEffect(() => {
     const v = videoRef.current
     if (!v || battute.length === 0) {
-      setTesto('')
+      setRighe(NIENTE)
       return
     }
     let giro = 0
-    const aggiorna = () => setTesto(battuteAl(battute, v.currentTime))
+    // Lo stesso oggetto se non è cambiato niente: a ogni fotogramma un oggetto
+    // nuovo vorrebbe dire ridisegnare per niente sessanta volte al secondo.
+    const aggiorna = () =>
+      setRighe((prima) => {
+        const ora = battuteAl(battute, v.currentTime)
+        return ora.basso === prima.basso && ora.centro === prima.centro && ora.alto === prima.alto ? prima : ora
+      })
     const segui = () => {
       aggiorna()
       giro = requestAnimationFrame(segui)
@@ -76,26 +92,31 @@ export default function SottotitoliVideo({ videoRef, contenitore, vtt, chiaveVid
     }
   }, [videoRef, battute, chiaveVideo])
 
-  if (!testo) return null
   const dimensione = Math.max(MINIMO_PX, altezza * QUOTA_ALTEZZA * scala)
+  const posizioni: Posizione[] = ['alto', 'centro', 'basso']
   return (
-    // Trasparente ai tocchi: sotto c'è il video, che col tocco si ferma e
-    // riparte. Con la barra in vista si alza, per non finirle sotto.
-    <div
-      data-testid="sottotitoli"
-      data-dimensione={Math.round(dimensione)}
-      className={`pointer-events-none absolute inset-x-0 flex justify-center px-4 text-center transition-[bottom] duration-300 ${
-        sollevate ? 'bottom-24' : 'bottom-[6%]'
-      }`}
-    >
-      <p
-        className="max-w-[85%] whitespace-pre-line text-white"
-        style={{ fontSize: `${dimensione}px`, lineHeight: 1.35, textShadow: '0 0 4px #000, 0 0 2px #000' }}
-      >
-        <span className="rounded bg-black/70 px-2 py-0.5 [box-decoration-break:clone] [-webkit-box-decoration-break:clone]">
-          {testo}
-        </span>
-      </p>
-    </div>
+    <>
+      {posizioni.map((p) =>
+        righe[p] ? (
+          // Trasparente ai tocchi: sotto c'è il video, che col tocco si ferma e
+          // riparte. In basso, con la barra in vista, si alza per non finirle sotto.
+          <div
+            key={p}
+            data-testid={p === 'basso' ? 'sottotitoli' : `sottotitoli-${p}`}
+            data-dimensione={Math.round(dimensione)}
+            className={`pointer-events-none absolute inset-x-0 flex justify-center px-4 text-center transition-[bottom] duration-300 ${posto(p, sollevate)}`}
+          >
+            <p
+              className="max-w-[85%] whitespace-pre-line text-white"
+              style={{ fontSize: `${dimensione}px`, lineHeight: 1.35, textShadow: '0 0 4px #000, 0 0 2px #000' }}
+            >
+              <span className="rounded bg-black/70 px-2 py-0.5 [box-decoration-break:clone] [-webkit-box-decoration-break:clone]">
+                {righe[p]}
+              </span>
+            </p>
+          </div>
+        ) : null,
+      )}
+    </>
   )
 }
