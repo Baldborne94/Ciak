@@ -1,0 +1,60 @@
+import { describe, expect, it } from 'vitest'
+import { pianoCestino as piano, type PianoCestino } from './cestinoDrive'
+
+const pianoCestino = (a: Omit<Parameters<typeof piano>[0], 'radice'>): PianoCestino => piano({ ...a, radice: 'Ciak' })
+
+const video = { id: 'v1', name: 'Song.of.the.Sea.2014.1080p.mp4' }
+const srtIt = { id: 's-it', name: 'Song.of.the.Sea.it.srt', mimeType: 'application/x-subrip' }
+const srtEn = { id: 's-en', name: 'Song.of.the.Sea.en.srt', mimeType: 'application/x-subrip' }
+const me = { ...video, mimeType: 'video/mp4' }
+const cartellaFilm = { id: 'c-song', name: 'Song of the Sea (2014) [1080p]' }
+
+describe('pianoCestino', () => {
+  it('la cartella dedicata del film, rimasta vuota, va nel cestino intera', () => {
+    expect(
+      pianoCestino({ video, cartella: cartellaFilm, vicini: [me, srtIt, srtEn], sottocartelle: 0, nomeCartellaSopra: 'FILM' }),
+    ).toEqual({ file: [], cartella: 'c-song' })
+  })
+
+  it('con altro dentro la cartella si cestinano solo il video e i suoi sottotitoli', () => {
+    const altro = { id: 'v2', name: '02 Spontaneous Combustion.mp4', mimeType: 'video/mp4' }
+    const ep = { id: 'v1', name: '01 Rainforest Shmainforest.mp4' }
+    const suo = { id: 's1', name: '01 Rainforest Shmainforest.it.srt', mimeType: 'application/x-subrip' }
+    const nonSuo = { id: 's2', name: '02 Spontaneous Combustion.it.srt', mimeType: 'application/x-subrip' }
+    expect(
+      pianoCestino({
+        video: ep,
+        cartella: { id: 'c-s03', name: 'Season 03' },
+        vicini: [{ ...ep, mimeType: 'video/mp4' }, altro, suo, nonSuo],
+        sottocartelle: 0,
+        nomeCartellaSopra: 'South Park',
+      }),
+    ).toEqual({ file: ['v1', 's1'], cartella: null })
+  })
+
+  it('una sottocartella (gli extra) tiene in vita la cartella', () => {
+    expect(pianoCestino({ video, cartella: cartellaFilm, vicini: [me], sottocartelle: 1, nomeCartellaSopra: 'FILM' })).toEqual({
+      file: ['v1'],
+      cartella: null,
+    })
+  })
+
+  it('«Ciak» e le categorie subito sotto non si cestinano mai, nemmeno vuote', () => {
+    expect(pianoCestino({ video, cartella: { id: 'c-film', name: 'FILM' }, vicini: [me], sottocartelle: 0, nomeCartellaSopra: 'Ciak' })).toEqual({
+      file: ['v1'],
+      cartella: null,
+    })
+    expect(pianoCestino({ video, cartella: { id: 'c-ciak', name: 'Ciak' }, vicini: [me], sottocartelle: 0, nomeCartellaSopra: null })).toEqual({
+      file: ['v1'],
+      cartella: null,
+    })
+  })
+
+  it('senza sapere cosa c’è sopra, meglio i soli file', () => {
+    expect(pianoCestino({ video, cartella: cartellaFilm, vicini: [me, srtIt], sottocartelle: 0, nomeCartellaSopra: null })).toEqual({
+      file: ['v1', 's-it'],
+      cartella: null,
+    })
+    expect(pianoCestino({ video, cartella: null, vicini: [], sottocartelle: 0, nomeCartellaSopra: null })).toEqual({ file: ['v1'], cartella: null })
+  })
+})

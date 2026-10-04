@@ -45,10 +45,8 @@ describe('urlConsensoDrive', () => {
     expect(u.searchParams.get('redirect_uri')).toBe('https://ciak.example/streaming')
     expect(u.searchParams.get('response_type')).toBe('token')
     expect(u.searchParams.get('state')).toBe(STATO)
-    expect(u.searchParams.get('scope')?.split(' ')).toEqual([
-      'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/drive.file',
-    ])
+    // Tutto il Drive: i video da cestinare non li ha creati Ciak.
+    expect(u.searchParams.get('scope')).toBe('https://www.googleapis.com/auth/drive')
   })
 
   it('il rinnovo da solo non mostra schermate, e dice a Google quale account', () => {

@@ -20,6 +20,13 @@ const FILE: Record<string, unknown> = {
     parents: ['cartella-song'],
     createdTime: '2026-09-01T10:00:00Z',
   },
+  // Le cartelle sopra al film: il lettore ne legge il nome, e cancellando il
+  // film serve sapere se la cartella è dedicata (non è «Ciak» né una categoria).
+  'cartella-film': { id: 'cartella-film', name: 'FILM', mimeType: CARTELLA, parents: ['cartella-ciak'] },
+  // Un episodio di South Park (con `conSerie`), nella sua cartella di stagione.
+  'video-sp-000301': { id: 'video-sp-000301', name: '01 Rainforest Shmainforest.mp4', size: '173015040', mimeType: 'video/mp4', parents: ['cartella-sp-s03'] },
+  'cartella-sp-s03': { id: 'cartella-sp-s03', name: 'Season 03', mimeType: CARTELLA, parents: ['cartella-southpark'] },
+  'cartella-southpark': { id: 'cartella-southpark', name: 'South Park', mimeType: CARTELLA, parents: ['cartella-serie'] },
   // Due episodi già riconosciuti (vedi `apriShogun`): un file vero di Drive ha
   // sempre un nome, e il lettore lo usa finché l'archivio non risponde.
   'video-shogun-01': { id: 'video-shogun-01', name: 'Shogun.S01E01.mp4', size: '1000000000', mimeType: 'video/mp4', parents: ['cartella-serie'] },
@@ -37,12 +44,19 @@ const FILE: Record<string, unknown> = {
 //   Ciak/FILM/Song of the Sea (2014) [1080p]/Song.of.the.Sea.2014.1080p.mp4
 //   Ciak/FILM/The.Secret.of.Kells.2009.mkv (nascosto: Ciak riproduce gli MP4)
 //   (e, se richiesto, …/Song.of.the.Sea.it.srt)
-// Le scritture (salvataggio e cestino dei sottotitoli) finiscono in `scritture`.
+// Le scritture (salvataggio e cestino di sottotitoli e video) finiscono in
+// `scritture`, e il cestino ha memoria: un file (o una cartella, col suo
+// contenuto) cestinato non compare più negli elenchi, come su Drive.
 async function mockDrive(
   page: Page,
   { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
+  const cestinati = new Set<string>()
+  const nelCestino = (f: unknown) => {
+    const { id, parents = [] } = f as { id: string; parents?: string[] }
+    return cestinati.has(id) || parents.some((p) => cestinati.has(p))
+  }
   // L'account del permesso, per rinnovarlo da soli senza chiedere quale.
   await page.route('https://www.googleapis.com/drive/v3/about**', (route) =>
     route.fulfill({ json: { user: { emailAddress: 'spettatore@example.com' } } }),
@@ -52,6 +66,8 @@ async function mockDrive(
     const url = new URL(req.url())
     if (req.method() !== 'GET') {
       scritture.push({ metodo: req.method(), url: req.url(), corpo: req.postData() ?? '' })
+      const id = url.pathname.split('/files/')[1]
+      if (req.method() === 'PATCH' && id && (req.postData() ?? '').includes('"trashed":true')) cestinati.add(id)
       return route.fulfill({ json: { id: 'sottotitolo-salvato-01' } })
     }
 
@@ -158,7 +174,7 @@ async function mockDrive(
         },
       ]
     }
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ files }) })
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ files: files.filter((f) => !nelCestino(f)) }) })
   })
   return { scritture }
 }
@@ -752,6 +768,60 @@ test('senza sottotitoli nella cartella li cerca online, in italiano e in inglese
   const cestino = scritture.find((s) => s.metodo === 'PATCH')
   expect(cestino?.url).toContain('/files/sottotitolo-salvato-01')
   expect(JSON.parse(cestino?.corpo ?? '{}')).toEqual({ trashed: true })
+})
+
+test('cancellare un film dal lettore lo mette nel cestino di Drive, con la sua cartella, e sparisce dall’elenco', async ({ page }) => {
+  await conLettoreCiak(page)
+  const { scritture } = await mockDrive(page, { sottotitoliNellaCartella: true })
+  page.on('dialog', (d) => d.accept())
+
+  await apriSongOfTheSea(page)
+  await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
+  await page.getByRole('button', { name: 'Cancella da Drive' }).click()
+
+  // La cartella del film conteneva solo il video e il suo sottotitolo: nel
+  // cestino va lei intera, e Drive si porta dietro il contenuto.
+  await expect(page).toHaveURL(/\/streaming$/)
+  const cestino = scritture.filter((s) => s.metodo === 'PATCH')
+  expect(cestino.map((s) => s.url.split('/files/')[1])).toEqual(['cartella-song'])
+  expect(JSON.parse(cestino[0].corpo)).toEqual({ trashed: true })
+  await expect(page.getByText(/«Song of the Sea[^»]*» è nel cestino di Google Drive/)).toBeVisible()
+  await expect(page.getByRole('button', { name: /Song of the Sea/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /B99 S7E2/ })).toBeVisible()
+})
+
+test('col permesso vecchio (sola lettura) cancellare chiede di ricollegare Drive', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page)
+  // Drive risponde 403 a chi ha solo il permesso di lettura.
+  await page.route(/^https:\/\/www\.googleapis\.com\/drive\/v3\/files\//, (route) =>
+    route.request().method() === 'PATCH' ? route.fulfill({ status: 403, json: { error: { code: 403 } } }) : route.fallback(),
+  )
+  page.on('dialog', (d) => d.accept())
+
+  await apriSongOfTheSea(page)
+  await page.getByRole('button', { name: 'Cancella da Drive' }).click()
+
+  await expect(page.getByText(/serve un permesso che Ciak non ha ancora chiesto a Google/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Ricollega Google Drive' })).toBeVisible()
+  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
+})
+
+test('un episodio si cancella da solo, coi suoi sottotitoli, e la stagione resta', async ({ page }) => {
+  await conLettoreCiak(page)
+  const { scritture } = await mockDrive(page, { conSerie: true })
+  page.on('dialog', (d) => d.accept())
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.goto('/streaming/video-sp-000301')
+  await page.getByRole('button', { name: 'Cancella da Drive' }).click()
+
+  // Nella stagione c'è ancora un altro episodio: va nel cestino il file solo,
+  // non la cartella «Season 03».
+  await expect(page).toHaveURL(/\/streaming$/)
+  expect(scritture.filter((s) => s.metodo === 'PATCH').map((s) => s.url.split('/files/')[1])).toEqual(['video-sp-000301'])
+  await expect(page.getByText(/è nel cestino di Google Drive/)).toBeVisible()
 })
 
 test('se Drive rifiuta il token chiede di ricollegare, senza incolpare il formato del file', async ({ page }) => {

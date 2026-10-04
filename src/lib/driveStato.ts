@@ -12,7 +12,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 // token», che Google dà solo a un server con il client secret, il server di
 // Ciak rinnova il permesso quando vuole, senza che si veda niente.
 
-export const SCOPE_DRIVE = ['https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/drive.file'].join(' ')
+// Lo stesso scope del browser (vedi googleDrive.ts): tutto il Drive, per
+// poter cestinare i video che carica lo script.
+export const SCOPE_DRIVE = 'https://www.googleapis.com/auth/drive'
 export const PERCORSO_CALLBACK = '/api/drive-callback'
 export const ENDPOINT_TOKEN_GOOGLE = 'https://oauth2.googleapis.com/token'
 // Quanto può durare il giro da Google: più di così è una richiesta vecchia.

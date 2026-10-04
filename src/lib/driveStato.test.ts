@@ -62,7 +62,7 @@ describe('il giro da Google', () => {
     expect(u.searchParams.get('prompt')).toBe('consent')
     expect(u.searchParams.get('redirect_uri')).toBe('https://ciak.vercel.app/api/drive-callback')
     expect(u.searchParams.get('state')).toBe('S')
-    expect(u.searchParams.get('scope')).toContain('drive.readonly')
+    expect(u.searchParams.get('scope')).toBe('https://www.googleapis.com/auth/drive')
   })
 
   it('il ritorno ha la stessa forma del vecchio consenso, col token nel frammento', () => {
