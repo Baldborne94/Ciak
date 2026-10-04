@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { logFailure } from '../lib/logFailure'
+import { descriviMancanti, episodiMancanti, leggiStagioniInCache, stagioniSerie, totaleMancanti, type StagioneTmdb } from '../lib/stagioniTmdb'
 import {
   episodioIniziato,
   perStagione,
@@ -26,6 +28,9 @@ interface Props {
   // o ha sbagliato.
   riconosciuta?: boolean
   onScegliTitolo?: () => void
+  // L'id TMDB della serie: con quello si chiede quanti episodi ha davvero
+  // ogni stagione, e i mancanti su Drive si vedono in grigio al loro posto.
+  tmdbId?: number | null
 }
 
 // La stagione 0 sono gli speciali (OAD, OVA), come su TMDB.
@@ -49,9 +54,27 @@ export default function SerieVideoteca({
   onAperta,
   riconosciuta = false,
   onScegliTitolo,
+  tmdbId = null,
 }: Props) {
   const [apertaQui, setApertaQui] = useState(false)
   const aperta = apertaFuori ?? apertaQui
+  // Dalla cache subito (anche a serie chiusa, per dire quanti mancano); da
+  // TMDB la prima volta che la si apre.
+  const [stagioniTmdb, setStagioniTmdb] = useState<StagioneTmdb[] | null>(() => (tmdbId !== null ? leggiStagioniInCache(tmdbId) : null))
+  useEffect(() => {
+    if (!aperta || tmdbId === null || stagioniTmdb) return
+    let vivo = true
+    stagioniSerie(tmdbId)
+      .then((s) => vivo && setStagioniTmdb(s))
+      .catch(logFailure('Episodi delle stagioni da TMDB'))
+    return () => {
+      vivo = false
+    }
+  }, [aperta, tmdbId, stagioniTmdb])
+  const buchi = stagioniTmdb ? episodiMancanti(episodi, stagioniTmdb) : []
+  const bucoDi = new Map(buchi.map((b) => [b.stagione, b]))
+  const mancanti = totaleMancanti(buchi)
+  const stagioniAssenti = buchi.filter((b) => b.suDrive === 0)
   const setAperta = (cambia: (a: boolean) => boolean) => {
     const nuova = cambia(aperta)
     setApertaQui(nuova)
@@ -91,6 +114,7 @@ export default function SerieVideoteca({
               {episodi.length === 1 ? '1 episodio' : `${episodi.length} episodi`}
               {stagioni.length > 1 && ` in ${stagioni.length} stagioni`}
               {visti > 0 && ` · ${visti === episodi.length ? 'tutti visti' : `${visti} visti`}`}
+              {mancanti > 0 && ` · ${mancanti} non su Drive`}
             </span>
             {visti > 0 && visti < episodi.length && (
               <span className="mt-1 block h-1 overflow-hidden rounded bg-theatre-800" aria-hidden="true">
@@ -112,16 +136,36 @@ export default function SerieVideoteca({
         <div id={idElenco} className="border-t border-theatre-800 bg-theatre-950/40 px-4 pb-3">
           {stagioni.map((s) => {
             const vistiStagione = s.episodi.filter((e) => e.visto).length
+            const buco = s.stagione !== null ? bucoDi.get(s.stagione) : undefined
+            // I file e, al loro posto, i numeri che mancano: in ordine di episodio.
+            const righe: ({ tipo: 'file'; e: EpisodioVideoteca } | { tipo: 'manca'; n: number })[] = [
+              ...s.episodi.map((e) => ({ tipo: 'file' as const, e })),
+              ...(buco?.mancanti ?? []).map((n) => ({ tipo: 'manca' as const, n })),
+            ].sort((a, b) => {
+              const na = a.tipo === 'file' ? (a.e.episodio ?? Infinity) : a.n
+              const nb = b.tipo === 'file' ? (b.e.episodio ?? Infinity) : b.n
+              return na - nb
+            })
             return (
               <section key={s.stagione ?? 'altro'} className="pt-3">
                 <h3 className="mb-1 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
                   {nomeStagione(s.stagione)}
                   <span className="font-normal normal-case tracking-normal text-zinc-600">
                     {vistiStagione}/{s.episodi.length} visti
+                    {buco && buco.mancanti.length > 0 && ` · ${descriviMancanti(buco.mancanti)}`}
                   </span>
                 </h3>
                 <ul aria-label={nomeStagione(s.stagione)}>
-                  {s.episodi.map((e) => {
+                  {righe.map((riga) => {
+                    if (riga.tipo === 'manca') {
+                      return (
+                        <li key={`manca-${riga.n}`} className="flex items-center gap-3 px-2 py-1.5 text-zinc-600">
+                          <span className="w-12 shrink-0 text-xs font-medium">Ep. {riga.n}</span>
+                          <span className="min-w-0 flex-1 truncate text-sm italic">non su Drive</span>
+                        </li>
+                      )
+                    }
+                    const e = riga.e
                     const iniziato = episodioIniziato(e)
                     return (
                       <li key={e.id}>
@@ -154,6 +198,15 @@ export default function SerieVideoteca({
               </section>
             )
           })}
+          {stagioniAssenti.length > 0 && (
+            <ul aria-label="Stagioni non su Drive" className="pt-3 text-xs text-zinc-600">
+              {stagioniAssenti.map((b) => (
+                <li key={b.stagione} className="px-2 py-1">
+                  {nomeStagione(b.stagione)} · {b.totale === 1 ? '1 episodio' : `${b.totale} episodi`}, nessuno su Drive
+                </li>
+              ))}
+            </ul>
+          )}
           {onScegliTitolo && (
             <button type="button" onClick={onScegliTitolo} className="mt-3 text-xs text-zinc-400 transition hover:text-projector">
               ✎ {riconosciuta ? 'Non è questa serie? Scegli il titolo' : 'Scegli il titolo della serie'}

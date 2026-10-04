@@ -1,8 +1,23 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/drive-callback",
+      "destination": "/api/drive?azione=callback"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ],
-  "crons": [{ "path": "/api/check-releases", "schedule": "0 9 * * *" }]
+  "crons": [
+    {
+      "path": "/api/check-releases",
+      "schedule": "0 9 * * *"
+    }
+  ]
 }

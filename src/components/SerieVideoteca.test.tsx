@@ -3,6 +3,13 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import SerieVideoteca from './SerieVideoteca'
 import type { EpisodioVideoteca } from '../lib/videoteca'
+import { stagioniSerie } from '../lib/stagioniTmdb'
+
+// TMDB non si interroga nei test: le stagioni arrivano da qui.
+vi.mock('../lib/stagioniTmdb', async (originale) => ({
+  ...(await originale<typeof import('../lib/stagioniTmdb')>()),
+  stagioniSerie: vi.fn(),
+}))
 
 function ep(stagione: number, episodio: number, over: Partial<EpisodioVideoteca> = {}): EpisodioVideoteca {
   return {
@@ -107,5 +114,40 @@ describe('SerieVideoteca', () => {
     monta([ep(1, 1, { visto: true })])
     expect(screen.getByText('✓ Vista')).toBeInTheDocument()
     expect(screen.getByText(/tutti visti/)).toBeInTheDocument()
+  })
+})
+
+describe('SerieVideoteca, gli episodi che mancano su Drive', () => {
+  it('aperta, chiede a TMDB quanti sono e mostra i buchi in grigio al loro posto', async () => {
+    vi.mocked(stagioniSerie).mockResolvedValue([
+      { stagione: 1, episodi: 3 },
+      { stagione: 2, episodi: 4 },
+    ])
+    render(
+      <SerieVideoteca titolo="South Park" poster={null} anno="1997" episodi={[ep(1, 1), ep(1, 3)]} scaricati={new Set()} onApri={vi.fn()} tmdbId={2190} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /^South Park/ }))
+    expect(stagioniSerie).toHaveBeenCalledWith(2190)
+    const stagione1 = await screen.findByRole('list', { name: 'Stagione 1' })
+    const righe = within(stagione1).getAllByRole('listitem')
+    expect(righe.map((r) => r.textContent)).toEqual([
+      expect.stringContaining('Ep. 1'),
+      expect.stringMatching(/Ep\. 2.*non su Drive/),
+      expect.stringContaining('Ep. 3'),
+    ])
+    expect(screen.getByText(/manca l'ep\. 2/)).toBeInTheDocument()
+    // Una stagione intera che non c'è si dice, senza elencare i suoi episodi.
+    expect(within(screen.getByRole('list', { name: 'Stagioni non su Drive' })).getByText('Stagione 2 · 4 episodi, nessuno su Drive')).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Stagione 2' })).not.toBeInTheDocument()
+    // Anche la riga chiusa lo dice, ora che si sa.
+    expect(screen.getByText(/5 non su Drive/)).toBeInTheDocument()
+  })
+
+  it('senza id TMDB non chiede niente e non inventa buchi', async () => {
+    vi.mocked(stagioniSerie).mockClear()
+    monta()
+    await userEvent.click(screen.getByRole('button', { name: /^South Park/ }))
+    expect(stagioniSerie).not.toHaveBeenCalled()
+    expect(screen.queryByText(/non su Drive/)).not.toBeInTheDocument()
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { deveRinnovare, PAUSA_RINNOVO_MS } from './driveAutomatico'
+import { MARGINE_RINNOVO_SERVER_MS, PAUSA_SERVER_MS, deveRinnovare, deveRinnovareDalServer, PAUSA_RINNOVO_MS } from './driveAutomatico'
 
 const ORA = 10_000_000
 const base = { ricordato: true, provato: true, connesso: false, online: true, inRiproduzione: false, ultimo: null, ora: ORA }
@@ -32,5 +32,20 @@ describe('deveRinnovare', () => {
     expect(deveRinnovare({ ...base, ultimo: { quando: ORA - 1000 } })).toBe(false)
     expect(deveRinnovare({ ...base, ultimo: { quando: ORA - PAUSA_RINNOVO_MS } })).toBe(true)
     expect(deveRinnovare({ ...base, ultimo: { quando: ORA - 2 * PAUSA_RINNOVO_MS, fallito: true } })).toBe(false)
+  })
+})
+
+describe('deveRinnovareDalServer', () => {
+  const ora = 1_000_000_000
+  it('rinnova quando il permesso manca o sta per scadere, non prima', () => {
+    expect(deveRinnovareDalServer({ online: true, scadenza: 0, ora, ultimoTentativo: null })).toBe(true)
+    expect(deveRinnovareDalServer({ online: true, scadenza: ora + MARGINE_RINNOVO_SERVER_MS - 1000, ora, ultimoTentativo: null })).toBe(true)
+    expect(deveRinnovareDalServer({ online: true, scadenza: ora + 30 * 60_000, ora, ultimoTentativo: null })).toBe(false)
+  })
+
+  it('senza rete non si può, e dopo un tentativo a vuoto aspetta un po', () => {
+    expect(deveRinnovareDalServer({ online: false, scadenza: 0, ora, ultimoTentativo: null })).toBe(false)
+    expect(deveRinnovareDalServer({ online: true, scadenza: 0, ora, ultimoTentativo: ora - PAUSA_SERVER_MS / 2 })).toBe(false)
+    expect(deveRinnovareDalServer({ online: true, scadenza: 0, ora, ultimoTentativo: ora - PAUSA_SERVER_MS })).toBe(true)
   })
 })

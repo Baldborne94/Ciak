@@ -9,6 +9,7 @@ import {
   PERCORSO_RITORNO_DRIVE,
   PREFISSO_STATO_DRIVE,
 } from './ritornoDrive'
+import { dimenticaSulServer, rinnovaDalServer, urlConsensoDalServer } from './driveServer'
 
 // I tuoi film restano su Google Drive, nella cartella «Ciak»: qui li si ELENCA e
 // li si riproduce in streaming — col lettore di Google o con quello di Ciak, che
@@ -33,6 +34,9 @@ const GIS_SRC = 'https://accounts.google.com/gsi/client'
 const API = 'https://www.googleapis.com/drive/v3/files'
 const API_CARICAMENTO = 'https://www.googleapis.com/upload/drive/v3/files'
 const CHIAVE_SESSIONE = CHIAVE_TOKEN_DRIVE
+// Chi vuole sapere quando il permesso cambia (rinnovato in sottofondo, tolto)
+// ascolta questo evento su window.
+export const EVENTO_DRIVE = 'ciak:drive-token'
 
 // La cartella, nella radice di «Il mio Drive», da cui si prendono i film.
 export const CARTELLA_CIAK = 'Ciak'
@@ -96,6 +100,11 @@ let tokenExpiry = 0
 // localStorage può mancare (test su Node) o lanciare (modalità privata
 // restrittive): in quel caso si resta col token solo in memoria.
 function salvaToken(): void {
+  scriviToken()
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENTO_DRIVE))
+}
+
+function scriviToken(): void {
   try {
     if (accessToken) {
       localStorage.setItem(CHIAVE_SESSIONE, JSON.stringify({ t: accessToken, e: tokenExpiry }))
@@ -162,6 +171,8 @@ export function driveDisconnetti(dimentica = false): void {
   tokenExpiry = 0
   salvaToken()
   if (dimentica) {
+    // Anche il server smette di rinnovarlo, se no ricollegherebbe da solo.
+    void dimenticaSulServer()
     try {
       localStorage.removeItem(CHIAVE_RICORDA_DRIVE)
       // Né il rinnovo né il primo tentativo da soli: si ricollega a mano.
@@ -170,6 +181,20 @@ export function driveDisconnetti(dimentica = false): void {
       /* storage assente: non c'era niente da dimenticare */
     }
   }
+}
+
+// Un token arrivato da fuori (il server di Ciak, che lo rinnova con il
+// refresh token): si tiene come quello del consenso.
+export function impostaTokenDrive(token: string, scadenza: number): void {
+  accessToken = token
+  tokenExpiry = scadenza
+  salvaToken()
+}
+
+// Lo state di un giro verso Google: casuale, con il nostro prefisso.
+function nuovoStato(): string {
+  const casuali = crypto.getRandomValues(new Uint8Array(16))
+  return PREFISSO_STATO_DRIVE + Array.from(casuali, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 // Carica lo script GIS una sola volta (idempotente: se c'è già, non lo riaggiunge).
@@ -239,8 +264,7 @@ export function erroreRitornoDrive(): string | null {
 }
 
 export function consensoConRedirect(clientId: string, silenzioso?: { account: string | null }): Promise<never> {
-  const casuali = crypto.getRandomValues(new Uint8Array(16))
-  const stato = PREFISSO_STATO_DRIVE + Array.from(casuali, (b) => b.toString(16).padStart(2, '0')).join('')
+  const stato = nuovoStato()
   const ritorno = window.location.pathname + window.location.search
   sessionStorage.setItem(CHIAVE_ATTESA_DRIVE, JSON.stringify({ stato, ritorno, silenzioso: !!silenzioso }))
   window.location.assign(urlConsensoDrive(clientId, window.location.origin + PERCORSO_RITORNO_DRIVE, stato, silenzioso))
@@ -256,6 +280,24 @@ export function clientIdDrive(): string | null {
 
 export async function collegaDrive(): Promise<void> {
   if (!CLIENT_ID) throw new Error('Google Drive non è configurato.')
+  // Prima il server di Ciak: se tiene il permesso lo rinnova senza chiedere;
+  // se c'è ma non ce l'ha, il consenso passa da lui, e da lì in poi non
+  // scade più. Senza server, il giro di prima.
+  const dalServer = await rinnovaDalServer()
+  if (dalServer.stato === 'rinnovato') {
+    impostaTokenDrive(dalServer.token, dalServer.scadenza)
+    return
+  }
+  if (dalServer.stato === 'non-collegato') {
+    const stato = nuovoStato()
+    const ritorno = window.location.pathname + window.location.search
+    const url = await urlConsensoDalServer(stato, ritorno)
+    if (url) {
+      sessionStorage.setItem(CHIAVE_ATTESA_DRIVE, JSON.stringify({ stato, ritorno }))
+      window.location.assign(url)
+      return new Promise<never>(() => {})
+    }
+  }
   if (inAppInstallata()) return consensoConRedirect(CLIENT_ID)
   await caricaGis()
   const oauth2 = window.google?.accounts?.oauth2

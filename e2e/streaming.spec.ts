@@ -422,6 +422,83 @@ test('chi aveva Drive collegato prima dell aggiornamento resta collegato', async
   await expect.poll(() => page.evaluate(() => localStorage.getItem('ciak:drive-ricorda'))).not.toBeNull()
 })
 
+// Il server di Ciak (api/drive.ts) tiene il refresh token di Google e
+// rinnova il permesso senza che si veda niente: qui risponde come farebbe.
+async function serverConIlPermesso(page: Page) {
+  const rinnovi: string[] = []
+  await page.route(/\/api\/drive\?azione=token$/, (route) => {
+    rinnovi.push(route.request().method())
+    if (route.request().method() === 'DELETE') return route.fulfill({ json: { ok: true } })
+    return route.fulfill({ json: { access_token: `token-dal-server-${rinnovi.length}`, expires_in: 3599 } })
+  })
+  return rinnovi
+}
+
+test('col server che tiene il permesso, Drive si rinnova da solo senza passare da Google', async ({ page }) => {
+  await mockDrive(page)
+  const rinnovi = await serverConIlPermesso(page)
+  const consensi = await googleRimanda(page, (state) => `error=interaction_required&state=${state}`)
+  // Collegato in passato, col permesso scaduto da un pezzo.
+  await page.addInitScript(() => {
+    if (localStorage.getItem('e2e:scaduto')) return
+    localStorage.setItem('e2e:scaduto', '1')
+    localStorage.setItem('ciak:drive-token', JSON.stringify({ t: 'token-vecchio', e: Date.now() - 60_000 }))
+    localStorage.setItem('ciak:drive-ricorda', JSON.stringify({ account: 'spettatore@example.com' }))
+  })
+
+  await page.goto('/streaming')
+  // Nessun pulsante, nessun giro da Google: il server ha dato il token nuovo.
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
+  expect(consensi).toHaveLength(0)
+  expect(rinnovi).toContain('POST')
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ciak:drive-token') ?? '{}').t)).toBe('token-dal-server-1')
+
+  // «Scollega» toglie il permesso anche dal server, se no ricollegherebbe da solo.
+  await page.getByRole('button', { name: /Scollega/ }).click()
+  await expect.poll(() => rinnovi.filter((m) => m === 'DELETE').length).toBe(1)
+})
+
+test('collegare Drive passa dal server, che da lì in poi tiene il permesso', async ({ page }) => {
+  await mockDrive(page)
+  // Il server c'è ma per questo utente non ha ancora il permesso.
+  await page.route(/\/api\/drive\?azione=token$/, (route) => route.fulfill({ status: 404, json: { error: 'non collegato' } }))
+  let statoCliente = ''
+  await page.route(/\/api\/drive\?azione=auth$/, (route) => {
+    const corpo = route.request().postDataJSON() as { stato: string; ritorno: string }
+    statoCliente = corpo.stato
+    const u = new URL('https://accounts.google.com/o/oauth2/v2/auth')
+    u.searchParams.set('response_type', 'code')
+    u.searchParams.set('redirect_uri', new URL(route.request().url()).origin + '/api/drive-callback')
+    u.searchParams.set('state', `firmato.${corpo.stato}`)
+    return route.fulfill({ json: { url: u.toString() } })
+  })
+  // Google manda il codice ad api/drive-callback, che lo scambia e rimanda
+  // alla videoteca col primo token: qui i due passi sono uno solo, perché
+  // Playwright non intercetta la richiesta nata da un redirect finto. Il
+  // server si prova da solo (driveStato.test.ts, drive-token.test.ts).
+  const consensi: URL[] = []
+  await page.route('https://accounts.google.com/o/oauth2/v2/auth**', (route) => {
+    const url = new URL(route.request().url())
+    consensi.push(url)
+    const origine = new URL(url.searchParams.get('redirect_uri') ?? '').origin
+    return route.fulfill({
+      status: 302,
+      headers: { location: `${origine}/streaming#access_token=token-dal-server&token_type=Bearer&expires_in=3599&state=${statoCliente}` },
+    })
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  expect(consensi).toHaveLength(1)
+  expect(consensi[0].searchParams.get('response_type')).toBe('code')
+  expect(new URL(consensi[0].searchParams.get('redirect_uri') ?? '').pathname).toBe('/api/drive-callback')
+  expect(statoCliente).toMatch(/^ciak-drive-[0-9a-f]{32}$/)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ciak:drive-token') ?? '{}').t)).toBe('token-dal-server')
+  await expect(page).toHaveURL(/\/streaming$/)
+})
+
 test('se Google non rinnova da solo resta il pulsante, senza errori e senza rimbalzi', async ({ page }) => {
   await comeAppInstallata(page)
   await mockDrive(page)
@@ -1027,6 +1104,50 @@ test('dove finisce la sigla Ciak lo impara da chi corregge il salto, e vale per 
   await page.getByRole('button', { name: 'Pausa o riprendi' }).hover()
   await page.getByRole('button', { name: '⏭ Salta sigla' }).click()
   expect(await saltoDelVideo(page)).toBe(55)
+})
+
+test('nella serie gli episodi che mancano su Drive si vedono in grigio, al loro posto', async ({ page }) => {
+  // Su Drive ci sono S03E01 e S03E02 di South Park: TMDB dice che la
+  // stagione 3 ne ha 4, e che c'è una stagione 4 di cui non c'è niente.
+  await mockDrive(page, { conSerie: true })
+  const riga = (id: string, episodio: number) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: id,
+    nome_file: `0${episodio} Episodio.mp4`,
+    tmdb_id: 2190,
+    media_type: 'tv',
+    titolo: 'South Park',
+    poster_path: '/sp.jpg',
+    stagione: 3,
+    episodio,
+    posizione: 0,
+    durata: 1320,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: true,
+  })
+  await mockSupabase(page, { user_streaming: [riga('video-sp-000301', 1), riga('video-sp-000302', 2)] })
+  await cercaTmdb(page, [], movieDetail(2190, 'South Park', {
+    name: 'South Park',
+    seasons: [
+      { id: 3, season_number: 3, episode_count: 4, name: 'Stagione 3', poster_path: null, air_date: '1999-04-07' },
+      { id: 4, season_number: 4, episode_count: 2, name: 'Stagione 4', poster_path: null, air_date: '2000-04-05' },
+    ],
+  }))
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.getByRole('button', { name: /^South Park/ }).click()
+
+  const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
+  await expect(stagione3.getByRole('listitem')).toHaveCount(4)
+  await expect(stagione3.getByRole('listitem').nth(2)).toContainText('Ep. 3')
+  await expect(stagione3.getByRole('listitem').nth(2)).toContainText('non su Drive')
+  await expect(page.getByText(/mancano gli ep\. 3 e 4/)).toBeVisible()
+  await expect(page.getByText('Stagione 4 · 2 episodi, nessuno su Drive')).toBeVisible()
+  // Chiusa, la riga della serie lo dice: ne mancano 4 (due della 3, due della 4).
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  await expect(page.getByText(/4 non su Drive/)).toBeVisible()
 })
 
 test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole a mano', async ({ page }) => {

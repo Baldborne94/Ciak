@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
@@ -31,6 +31,7 @@ import { ascoltaFilmOffline, elencaFilmOffline, offlineDisponibile, spazio, tagl
 import {
   CARTELLA_CIAK,
   driveConfigurato,
+  EVENTO_DRIVE,
   driveConnesso,
   driveDisconnetti,
   collegaDrive,
@@ -121,6 +122,7 @@ export default function StreamingPage() {
   const scaricati = new Set(offline.filter((f) => f.stato === 'completo').map((f) => f.id))
 
   const carica = useCallback(async () => {
+    inCorso.current = true
     setErrore(null)
     setCaricando(true)
     try {
@@ -152,6 +154,7 @@ export default function StreamingPage() {
       // Un 401 ha già dimenticato il token: torniamo a proporre il collegamento.
       setConnesso(driveConnesso())
     } finally {
+      inCorso.current = false
       setCaricando(false)
     }
   }, [user])
@@ -192,6 +195,22 @@ export default function StreamingPage() {
   useEffect(() => {
     if (driveConfigurato() && driveConnesso() && navigator.onLine) void carica()
   }, [carica])
+  // Il permesso rinnovato in sottofondo (dal server di Ciak): la pagina se ne
+  // accorge e carica, senza un pulsante da premere. Non mentre sta già
+  // caricando (il collegamento a mano salva il token a metà del suo giro):
+  // due caricamenti insieme riconoscevano i titoli due volte.
+  const inCorso = useRef(false)
+  useEffect(() => {
+    const cambiato = () => {
+      const c = driveConnesso()
+      setConnesso(c)
+      // `caricando` è alto anche mentre «Collega» aspetta Google: il token
+      // arriva prima che `collega()` chiami il suo `carica()`.
+      if (c && !caricato && !caricando && !inCorso.current && navigator.onLine) void carica()
+    }
+    window.addEventListener(EVENTO_DRIVE, cambiato)
+    return () => window.removeEventListener(EVENTO_DRIVE, cambiato)
+  }, [carica, caricato, caricando])
 
   async function collega() {
     setErrore(null)
@@ -525,6 +544,7 @@ export default function StreamingPage() {
                       })
                     }
                     riconosciuta={!!gruppo.tmdb}
+                    tmdbId={gruppo.tmdb.startsWith('tv-') ? Number(gruppo.tmdb.slice(3)) : null}
                     onScegliTitolo={() =>
                       setScelta({
                         nome: gruppo.titolo,
