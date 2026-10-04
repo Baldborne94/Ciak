@@ -6,9 +6,11 @@
 cartella Ciak di Google Drive già pronti per il lettore di Ciak: MP4 con video
 H.264, audio AAC (il Dolby il browser non lo sente; le tracce già AAC si
 copiano) e i sottotitoli interni italiani e inglesi estratti in `.srt` accanto
-al video — le altre lingue il lettore non le offre, e le tracce «forced» (solo
-i cartelli) si scartano. La conversione avviene sul disco del PC e su Drive va
-solo il risultato, una volta.
+al video — le altre lingue il lettore non le offre. Quando per una lingua ci
+sono più tracce, vince quella con i dialoghi: le «forced» e quelle che si
+chiamano «Signs & Songs» (solo cartelli e canzoni) si scartano, e fra le altre
+si preferisce quella con più battute. La conversione avviene sul disco del PC e
+su Drive va solo il risultato, una volta.
 
 **Una volta sola**
 

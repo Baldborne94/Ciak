@@ -49,6 +49,35 @@ describe('SottotitoliVideo', () => {
     expect(screen.getByTestId('sottotitoli')).toHaveTextContent('Congratulazioni')
   })
 
+  it('un cartello tradotto sta in alto mentre in basso si parla, e la barra alza solo il basso', () => {
+    // Come arriva da un MKV con le scritte a schermo: {\an8} → line:0.
+    const vtt = 'WEBVTT\n\n00:00:01.000 --> 00:00:05.000 line:0\nTop 10 of the 104th\n\n00:00:02.000 --> 00:00:03.000\nNon ci credo!\n'
+    const videoRef = createRef<HTMLVideoElement>()
+    const contenitore = createRef<HTMLDivElement>()
+    render(
+      <div ref={contenitore}>
+        <video ref={videoRef} />
+        <SottotitoliVideo videoRef={videoRef} contenitore={contenitore} vtt={vtt} chiaveVideo="a" sollevate />
+      </div>,
+    )
+    act(() => {
+      videoRef.current!.currentTime = 2.5
+      fireEvent.timeUpdate(videoRef.current!)
+    })
+    expect(screen.getByTestId('sottotitoli-alto')).toHaveTextContent('Top 10 of the 104th')
+    expect(screen.getByTestId('sottotitoli')).toHaveTextContent('Non ci credo!')
+    expect(screen.getByTestId('sottotitoli')).not.toHaveTextContent('Top 10')
+    expect(screen.getByTestId('sottotitoli-alto').className).toContain('top-')
+    expect(screen.getByTestId('sottotitoli').className).toContain('bottom-24')
+    // Finito il dialogo, il cartello resta da solo, sempre in alto.
+    act(() => {
+      videoRef.current!.currentTime = 4
+      fireEvent.timeUpdate(videoRef.current!)
+    })
+    expect(screen.queryByTestId('sottotitoli')).not.toBeInTheDocument()
+    expect(screen.getByTestId('sottotitoli-alto')).toHaveTextContent('Top 10 of the 104th')
+  })
+
   it('senza sottotitolo scelto non mostra niente', () => {
     const { vaiA } = monta(null)
     vaiA(2)

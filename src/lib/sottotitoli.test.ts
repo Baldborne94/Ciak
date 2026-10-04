@@ -305,7 +305,20 @@ describe('srtAVtt', () => {
   it('aggiunge l’intestazione e mette il punto nei millesimi', () => {
     const srt = '\uFEFF1\r\n00:00:01,500 --> 00:00:03,000\r\nCiao\r\n\r\n2\r\n0:01:02,345 --> 0:01:04,000\r\n{\\an8}Sopra\r\n'
     expect(srtAVtt(srt)).toBe(
-      'WEBVTT\n\n1\n00:00:01.500 --> 00:00:03.000\nCiao\n\n2\n00:01:02.345 --> 00:01:04.000\nSopra\n',
+      'WEBVTT\n\n1\n00:00:01.500 --> 00:00:03.000\nCiao\n\n2\n00:01:02.345 --> 00:01:04.000 line:0\nSopra\n',
+    )
+  })
+
+  it('la posizione in stile ASS diventa quella di WebVTT: in alto, a metà, in basso', () => {
+    // Come la scrive ffmpeg estraendo un ASS: il tag dentro il <font>.
+    const srt =
+      '1\n00:14:05,000 --> 00:14:09,000\n<font size="36">{\\an8}Top 10 of the 104th</font>\n\n' +
+      '2\n00:14:10,000 --> 00:14:12,000\n{\\an5}A metà\n\n' +
+      '3\n00:14:13,000 --> 00:14:14,000\n{\\an2}{\\i1}In basso{\\i0}\n'
+    expect(srtAVtt(srt)).toBe(
+      'WEBVTT\n\n1\n00:14:05.000 --> 00:14:09.000 line:0\n<font size="36">Top 10 of the 104th</font>\n\n' +
+        '2\n00:14:10.000 --> 00:14:12.000 line:50%\nA metà\n\n' +
+        '3\n00:14:13.000 --> 00:14:14.000\nIn basso\n',
     )
   })
 

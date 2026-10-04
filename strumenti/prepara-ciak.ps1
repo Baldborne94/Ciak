@@ -43,7 +43,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-03c'
+$Versione = '2026-10-04'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 $SottotitoliTesto = @('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text')
 
@@ -151,11 +151,39 @@ function Durata([string]$file) {
 
 function Tempo([double]$secondi) { return [TimeSpan]::FromSeconds([math]::Round($secondi)).ToString('h\:mm\:ss') }
 
-# Per ogni lingua voluta la traccia migliore: non le "forced" (solo i cartelli
-# e i dialoghi stranieri) e, potendo, non quelle per non udenti. Una traccia
-# senza lingua si tiene solo se mancano tutte le altre: a volte e' l'unica.
+# Quanto e' utile una traccia, dal nome che le da' chi ha fatto il file: gli
+# anime ne hanno spesso due per lingua, "Full Subtitles" (i dialoghi, piu' i
+# cartelli) e "Signs & Songs" (solo cartelli e canzoni). Il segnale "forced"
+# c'e' poco, il nome quasi sempre. Piu' basso e' meglio.
+function PesoTraccia($traccia) {
+  $nome = "$($traccia.tags.title)"
+  if ($traccia.disposition -and $traccia.disposition.forced -eq 1) { return 3 }
+  # "Full", "Dialogue", "Completi" vincono anche su un "no songs" nello stesso nome.
+  $completa = $nome -match '(?i)\bfull\b|dialog|complet'
+  if (-not $completa -and $nome -match '(?i)\bsigns?\b|\bsongs?\b|forced|forzat|cartell|karaoke') { return 3 }
+  if ($traccia.disposition -and $traccia.disposition.hearing_impaired -eq 1) { return 1 }
+  if ($nome -match '(?i)\bsdh\b|\bcc\b|non udenti|hearing') { return 1 }
+  return 0
+}
+
+# Quante battute ha una traccia, se il file lo dice (mkvmerge scrive
+# NUMBER_OF_FRAMES, a volte con la lingua attaccata: NUMBER_OF_FRAMES-eng).
+# A parita' di nome, quella con piu' battute e' quella coi dialoghi.
+function BattuteTraccia($traccia) {
+  if (-not $traccia.tags) { return 0 }
+  foreach ($p in $traccia.tags.PSObject.Properties) {
+    $n = 0
+    if ($p.Name -match '^NUMBER_OF_FRAMES' -and [int]::TryParse("$($p.Value)", [ref]$n)) { return $n }
+  }
+  return 0
+}
+
+# Per ogni lingua voluta la traccia migliore: non le "forced" o i soli
+# cartelli (vedi PesoTraccia), potendo non quelle per non udenti, e fra le
+# altre quella con piu' battute. Una traccia senza lingua si tiene solo se
+# mancano tutte le altre: a volte e' l'unica.
 function SottotitoliScelti($tracce) {
-  $ordinate = @($tracce | Sort-Object { if ($_.disposition -and $_.disposition.forced -eq 1) { 2 } elseif ($_.disposition -and $_.disposition.hearing_impaired -eq 1) { 1 } else { 0 } }, { [int]$_.index })
+  $ordinate = @($tracce | Sort-Object { PesoTraccia $_ }, { -(BattuteTraccia $_) }, { [int]$_.index })
   $scelti = [ordered]@{}
   foreach ($s in $ordinate) {
     $l = Lingua $s.tags.language
@@ -283,7 +311,7 @@ foreach ($f in $video) {
 
   Write-Host "[$n/$($video.Count)] $relativo\$($f.Name)"
   try {
-    $json = & ffprobe -v error -show_entries 'format=duration:stream=index,codec_type,codec_name,pix_fmt,channels:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags=language' -of json -- $f.FullName | Out-String
+    $json = & ffprobe -v error -show_entries 'format=duration:stream=index,codec_type,codec_name,pix_fmt,channels:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags' -of json -- $f.FullName | Out-String
     if ($LASTEXITCODE -ne 0) { throw 'ffprobe non riesce a leggere il file' }
     $info = $json | ConvertFrom-Json
     $flussi = @($info.streams)

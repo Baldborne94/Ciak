@@ -241,9 +241,21 @@ export function filmDaCercare(nomeFile: string, cartella: string | null, serie: 
   return daCartella.anno !== undefined ? daCartella : daFile
 }
 
+// La posizione di una battuta in stile ASS, come la scrive ffmpeg estraendo i
+// sottotitoli dagli MKV: «{\an8}» è in alto al centro (il tastierino: 7 8 9 in
+// alto, 4 5 6 a metà, 1 2 3 in basso). Diventa l'impostazione «line» di
+// WebVTT: le scritte a schermo tradotte (cartelli, insegne) vanno in alto,
+// dove i fansub le mettono, e non coprono i dialoghi in basso.
+function lineaDaAss(testo: string): string | null {
+  const m = /\{\\[^}]*\ban([1-9])/.exec(testo)
+  if (!m) return null
+  const n = Number(m[1])
+  return n >= 7 ? 'line:0' : n >= 4 ? 'line:50%' : null
+}
+
 // SRT → WebVTT. Cambia poco: l'intestazione, la virgola dei millesimi che
-// diventa un punto, le ore sempre a due cifre. I tag di posizione in stile ASS
-// («{\an8}») il browser li mostrerebbe come testo: via.
+// diventa un punto, le ore sempre a due cifre. I tag in stile ASS («{\an8}»)
+// si tolgono dal testo, ma la posizione che dicono resta (vedi lineaDaAss).
 export function srtAVtt(testo: string): string {
   const pulito = testo
     .replace(/^\uFEFF/, '')
@@ -251,10 +263,19 @@ export function srtAVtt(testo: string): string {
     .trim()
   if (/^WEBVTT/.test(pulito)) return `${pulito}\n`
   const corpo = pulito
-    .replace(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})/g, (_m, h: string, m: string, sec: string, ms: string) =>
-      `${h.padStart(2, '0')}:${m}:${sec}.${ms}`,
-    )
-    .replace(/\{\\[^}]*\}/g, '')
+    .split(/\n{2,}/)
+    .map((blocco) => {
+      const righe = blocco
+        .replace(/(\d{1,2}):(\d{2}):(\d{2})[,.](\d{3})/g, (_m, h: string, m: string, sec: string, ms: string) =>
+          `${h.padStart(2, '0')}:${m}:${sec}.${ms}`,
+        )
+        .split('\n')
+      const linea = lineaDaAss(blocco)
+      const tempi = righe.findIndex((r) => r.includes('-->'))
+      if (linea && tempi >= 0) righe[tempi] = `${righe[tempi]} ${linea}`
+      return righe.join('\n').replace(/\{\\[^}]*\}/g, '')
+    })
+    .join('\n\n')
   return `WEBVTT\n\n${corpo}\n`
 }
 
