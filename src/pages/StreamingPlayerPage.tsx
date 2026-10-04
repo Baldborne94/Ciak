@@ -26,7 +26,9 @@ import {
   apriSuDriveUrl,
   ascoltaDiagnostica,
   attendiLettoreCiak,
+  cestinaVideo,
   collegaDrive,
+  driveDisconnetti,
   erroreRitornoDrive,
   driveConnesso,
   flussoVideoUrl,
@@ -140,6 +142,9 @@ function LettoreStreaming() {
   const [avanzamento, setAvanzamento] = useState<Avanzamento | null>(null)
   const [scaricando, setScaricando] = useState(false)
   const [erroreDownload, setErroreDownload] = useState<string | null>(null)
+  const [cestinando, setCestinando] = useState(false)
+  // 'permesso': Drive ha detto 403, serve ricollegare con lo scope nuovo.
+  const [erroreCestino, setErroreCestino] = useState<string | null>(null)
   const scaricato = locale?.stato === 'completo'
 
   const [connesso, setConnesso] = useState(driveConnesso)
@@ -709,6 +714,34 @@ function LettoreStreaming() {
     setLocale(null)
   }
 
+  // Cancellare il video da Ciak vuol dire cestinarlo su Drive (coi sottotitoli
+  // e, se la cartella resta vuota, con la cartella): dal cestino Google lo
+  // recupera per trenta giorni, quindi basta una conferma. Un 403 è il
+  // permesso vecchio, di sola lettura: si ricollega con quello nuovo.
+  async function cestina() {
+    if (!window.confirm(`Vuoi cancellare «${titolo}» da Google Drive?\nFinisce nel cestino di Drive, coi suoi sottotitoli: da lì si recupera per 30 giorni.`)) return
+    setErroreCestino(null)
+    setCestinando(true)
+    try {
+      await cestinaVideo(fileId)
+      if (scaricato) await eliminaFilm(fileId).catch(logFailure('Eliminazione del film offline'))
+      navigate('/streaming', { replace: true, state: { cestinato: titolo } })
+    } catch (e) {
+      const messaggio = e instanceof Error ? e.message : 'Cancellazione non riuscita.'
+      setErroreCestino(messaggio.includes('403') ? 'permesso' : messaggio)
+      logFailure('Cancellazione del video da Drive')(e)
+    } finally {
+      setCestinando(false)
+    }
+  }
+
+  // Il permesso nuovo (tutto il Drive) si ottiene solo chiedendolo da capo:
+  // scollegati, anche dal server, e si ripassa da Google.
+  async function ricollegaConPermessoNuovo() {
+    driveDisconnetti(true)
+    await ricollega()
+  }
+
   const testoSottotitoli =
     sub.stato === 'cerco' && !usaSalvati
       ? 'Cerco i sottotitoli…'
@@ -1030,6 +1063,28 @@ function LettoreStreaming() {
             </>
           )}
           {erroreDownload && <p className="w-full text-red-400">{erroreDownload}</p>}
+        </div>
+      )}
+
+      {/* Cancellare da Ciak: il file va nel cestino di Drive, non si perde. */}
+      {connesso && !scaricato && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900/40 p-3 text-sm">
+          <p className="flex-1 text-zinc-400">
+            {erroreCestino === 'permesso'
+              ? 'Per cancellare serve un permesso che Ciak non ha ancora chiesto a Google: ricollega Drive e riprova.'
+              : erroreCestino
+                ? `Cancellazione non riuscita: ${erroreCestino}`
+                : 'Non lo vuoi più? Va nel cestino di Google Drive, coi suoi sottotitoli, e sparisce da Ciak.'}
+          </p>
+          {erroreCestino === 'permesso' ? (
+            <button type="button" onClick={ricollegaConPermessoNuovo} className="btn-primary px-3 py-1.5">
+              Ricollega Google Drive
+            </button>
+          ) : (
+            <button type="button" onClick={cestina} disabled={cestinando} className="btn-ghost px-3 py-1.5">
+              {cestinando ? 'Cancello…' : '🗑 Cancella da Drive'}
+            </button>
+          )}
         </div>
       )}
 

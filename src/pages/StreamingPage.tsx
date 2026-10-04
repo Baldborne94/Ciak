@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { logFailure } from '../lib/logFailure'
@@ -55,6 +55,9 @@ function formato(mime: string): string {
 
 export default function StreamingPage() {
   const navigate = useNavigate()
+  // Tornando dal lettore dopo una cancellazione: lo si dice, perché l'elenco
+  // senza quel titolo non spiega da solo dov'è finito.
+  const cestinato = (useLocation().state as { cestinato?: string } | null)?.cestinato ?? null
   const { user } = useAuth()
   // Il legame di ogni file col suo titolo (locandina, «visto», punto di ripresa).
   const [archivio, setArchivio] = useState<Map<string, VoceStreaming>>(new Map())
@@ -353,6 +356,11 @@ export default function StreamingPage() {
       </PageHeader>
 
       {errore && <ErrorState title="Qualcosa è andato storto" message={errore} />}
+      {cestinato && (
+        <p role="status" className="mb-6 rounded-xl border border-theatre-800 bg-theatre-900/40 px-4 py-3 text-sm text-zinc-300">
+          🗑 «{cestinato}» è nel cestino di Google Drive: da lì lo recuperi per 30 giorni.
+        </p>
+      )}
 
       {offline.length > 0 && (
         <section className="mb-6">
@@ -403,7 +411,8 @@ export default function StreamingPage() {
         <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
           <p className="mb-4 text-zinc-400">
             Collega il tuo Google Drive per vedere qui i video della cartella «{CARTELLA_CIAK}» e
-            riprodurli in streaming. La connessione è in sola lettura e i file restano su Drive.
+            riprodurli in streaming. I file restano su Drive: Ciak li legge, e sposta nel cestino
+            solo quelli che gli dici di cancellare.
           </p>
           <button onClick={collega} disabled={caricando} className="btn-primary">
             {caricando ? 'Collego…' : '📁 Collega Google Drive'}

@@ -1,5 +1,6 @@
 import type { DiagnosticaVideo } from './lettore'
 import { analizzaNomeFilm, filmDaCercare, stagioneDaCartella } from './sottotitoli'
+import { pianoCestino, type PianoCestino } from './cestinoDrive'
 import {
   CHIAVE_ATTESA_DRIVE,
   CHIAVE_ERRORE_DRIVE,
@@ -16,20 +17,18 @@ import { dimenticaSulServer, rinnovaDalServer, urlConsensoDalServer } from './dr
 // legge il file originale e mostra i sottotitoli — senza scaricarli.
 //
 // Autenticazione: Google Identity Services (GIS), flusso token per una SPA — il
-// Client ID è pubblico (nessun segreto lato client). Gli scope: lettura di tutto
-// il Drive (per trovare i film) e scrittura dei SOLI file creati da Ciak
-// (`drive.file`): è ciò che serve a salvare accanto al film un sottotitolo
-// scaricato, senza poter toccare nient'altro.
+// Client ID è pubblico (nessun segreto lato client). Lo scope è `drive`, tutto
+// il Drive: prima bastavano la lettura (per trovare i film) e i soli file
+// creati da Ciak (`drive.file`, per salvare un sottotitolo accanto al film),
+// ma i video li carica lo script attraverso Drive per desktop, e per cestinare
+// quelli (vedi cestinaVideo) serve il permesso sui file degli altri.
 // Il token scade dopo ~1h e senza backend non c'è refresh: lo teniamo in
 // localStorage, così riaprire l'app entro l'ora non costringe a ricollegarsi;
 // scaduto, lo si rinnova da soli con un redirect senza domande (vedi
 // `driveAutomatico`).
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
-const SCOPE = [
-  'https://www.googleapis.com/auth/drive.readonly',
-  'https://www.googleapis.com/auth/drive.file',
-].join(' ')
+const SCOPE = 'https://www.googleapis.com/auth/drive'
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
 const API = 'https://www.googleapis.com/drive/v3/files'
 const API_CARICAMENTO = 'https://www.googleapis.com/upload/drive/v3/files'
@@ -589,7 +588,7 @@ export async function scaricaByte(id: string, intervallo?: [number, number]): Pr
   return res.arrayBuffer()
 }
 
-// Salva un file di testo in una cartella (serve lo scope `drive.file`).
+// Salva un file di testo in una cartella.
 export async function creaFileTesto(idCartella: string, nome: string, testo: string): Promise<string> {
   const confine = `ciak-${Math.random().toString(36).slice(2)}`
   const metadati = { name: nome, parents: [idCartella], mimeType: 'application/x-subrip' }
@@ -604,7 +603,7 @@ export async function creaFileTesto(idCartella: string, nome: string, testo: str
   return ((await res.json()) as { id: string }).id
 }
 
-// Sposta nel cestino un file creato da Ciak (un sottotitolo scartato).
+// Sposta nel cestino un file (un sottotitolo scartato, un video da cancellare).
 export async function cestinaFile(id: string): Promise<void> {
   if (!idDriveValido(id)) return
   await richiestaDrive(`${API}/${id}`, {
@@ -612,6 +611,30 @@ export async function cestinaFile(id: string): Promise<void> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ trashed: true }),
   })
+}
+
+// Quante sottocartelle ha una cartella: per sapere se, tolto il video, resta vuota.
+async function sottocartelleDi(idCartella: string): Promise<number> {
+  const [q] = queryInCartelle([idCartella], `mimeType = '${MIME_CARTELLA}'`)
+  return (await cercaFile(q, 'id')).length
+}
+
+// Cancella un video da Ciak: nel cestino di Drive, con i suoi sottotitoli e,
+// se la cartella dedicata resta vuota, con la cartella (vedi pianoCestino).
+// Dal cestino Google lo recupera per trenta giorni; qui non si cancella per
+// sempre niente. Risponde con quello che ha cestinato.
+export async function cestinaVideo(id: string): Promise<PianoCestino> {
+  const video = await infoFile(id)
+  const idCartella = video.parents[0]
+  const cartella = idCartella ? await infoFile(idCartella) : null
+  const [vicini, sottocartelle] = cartella ? await Promise.all([fileNellaCartella(cartella.id), sottocartelleDi(cartella.id)]) : [[], 0]
+  const idSopra = cartella?.parents[0]
+  const nomeCartellaSopra = idSopra ? (await infoFile(idSopra)).name : null
+  // L'id è quello chiesto, già controllato da infoFile: si cestina quello.
+  const piano = pianoCestino({ video: { id, name: video.name }, cartella, vicini, sottocartelle, nomeCartellaSopra, radice: CARTELLA_CIAK })
+  if (piano.cartella) await cestinaFile(piano.cartella)
+  for (const f of piano.file) await cestinaFile(f)
+  return piano
 }
 
 // ── Il lettore di Ciak ──────────────────────────────────────────────────────
