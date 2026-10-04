@@ -166,8 +166,10 @@ async function mockDrive(
 // Il lettore di Ciak passa dal service worker, che nel dev server dei test non
 // c'è: si finge che controlli la pagina e si risponde noi a /drive-video/.
 // `video: 'fermo'` lascia la richiesta in sospeso (il film «sta caricando»),
-// `'illeggibile'` risponde con un errore, come un formato che il browser non legge.
-async function conLettoreCiak(page: Page, video: 'fermo' | 'illeggibile' = 'fermo') {
+// `'illeggibile'` risponde con un errore, come un formato che il browser non legge,
+// `'rifiutato'` è Drive che respinge il token: il worker vero prima racconta
+// la risposta alla pagina (diagnostica), poi risponde vuoto con lo stesso status.
+async function conLettoreCiak(page: Page, video: 'fermo' | 'illeggibile' | 'rifiutato' = 'fermo') {
   await page.addInitScript(() => {
     // Il finto worker sa dire la sua versione, come quello vero.
     const controller = {
@@ -180,8 +182,18 @@ async function conLettoreCiak(page: Page, video: 'fermo' | 'illeggibile' = 'ferm
       configurable: true,
     })
   })
-  await page.route('**/drive-video/**', (route) => {
+  await page.route('**/drive-video/**', async (route) => {
     if (video === 'illeggibile') return route.fulfill({ status: 415, body: '' })
+    if (video === 'rifiutato') {
+      await page.evaluate(() =>
+        navigator.serviceWorker.dispatchEvent(
+          new MessageEvent('message', {
+            data: { tipo: 'ciak:diagnostica', quando: Date.now(), ms: 40, range: 'bytes=0-', status: 401, redirect: null, contentLength: null, totale: null, esito: 'errore' },
+          }),
+        ),
+      )
+      return route.fulfill({ status: 401, body: '' })
+    }
     // In sospeso: il film resta «in caricamento» per tutto il test.
   })
 }
@@ -740,6 +752,21 @@ test('senza sottotitoli nella cartella li cerca online, in italiano e in inglese
   const cestino = scritture.find((s) => s.metodo === 'PATCH')
   expect(cestino?.url).toContain('/files/sottotitolo-salvato-01')
   expect(JSON.parse(cestino?.corpo ?? '{}')).toEqual({ trashed: true })
+})
+
+test('se Drive rifiuta il token chiede di ricollegare, senza incolpare il formato del file', async ({ page }) => {
+  // Il caso vero: un MP4 fatto da prepara-ciak che sul telefono dava «Il
+  // browser non riesce a leggere questo file» perché Drive rispondeva 401.
+  await conLettoreCiak(page, 'rifiutato')
+  await mockDrive(page)
+
+  await apriSongOfTheSea(page)
+
+  const avviso = page.getByRole('alert')
+  await expect(avviso).toContainText('La sessione Google è scaduta')
+  await expect(avviso).not.toContainText('non riesce a leggere')
+  await expect(avviso.getByRole('button', { name: 'Ricollega Google Drive' })).toBeVisible()
+  await expect(page.getByText('Drive ha risposto 401')).toBeAttached()
 })
 
 test('se il browser non legge il file propone il lettore di Drive', async ({ page }) => {

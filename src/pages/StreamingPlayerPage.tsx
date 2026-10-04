@@ -102,6 +102,9 @@ const MESSAGGI: Record<Problema, string> = {
   formato: 'Il browser non riesce a leggere questo file. Il lettore di Drive lo converte da sé.',
   muto: 'Il video parte ma senza audio: probabilmente è in un formato (come il Dolby E-AC3) che il browser non legge. Il lettore di Drive lo converte da sé.',
   sessione: 'La sessione Google è scaduta: ricollega Google Drive per continuare da dove eri.',
+  negato:
+    'Drive non lascia leggere questo file (403): il permesso dato a Ciak non basta più, oppure la quota di download di oggi è finita. Ricollega Google Drive; se non cambia, riprova domani.',
+  assente: 'Drive non trova più questo file (404): forse è stato spostato o cancellato. Torna all’elenco e ricarica i video.',
   rete: 'La connessione con Drive si è interrotta più volte di fila. Riprova tra poco, o usa il lettore di Drive.',
   avvio:
     "Il browser non riesce ad aprire questo file: capita spesso con gli MKV, che Chrome legge solo in parte. Il lettore di Drive lo converte da sé (ma senza i sottotitoli di Ciak).",
@@ -256,6 +259,9 @@ function LettoreStreaming() {
   const daRiprendere = useRef(0)
   // Cosa ha risposto Drive agli ultimi pezzi di film, dal service worker.
   const [diagnostica, setDiagnostica] = useState<DiagnosticaVideo[]>([])
+  // L'ultima risposta di Drive, letta al momento dell'errore: lo stato di React
+  // potrebbe non essere ancora aggiornato quando il <video> si lamenta.
+  const ultimaRispostaDrive = useRef<DiagnosticaVideo | null>(null)
   // undefined: non ancora chiesta; null: il worker non risponde (vecchio o assente).
   const [versione, setVersione] = useState<string | null | undefined>(undefined)
   const [inScadenza, setInScadenza] = useState(false)
@@ -316,7 +322,14 @@ function LettoreStreaming() {
   )
 
   useEffect(() => (lettore === 'ciak' ? tieniSveglioIlLettore() : undefined), [lettore])
-  useEffect(() => ascoltaDiagnostica((d) => setDiagnostica((prima) => [...prima.slice(-7), d])), [])
+  useEffect(
+    () =>
+      ascoltaDiagnostica((d) => {
+        ultimaRispostaDrive.current = d
+        setDiagnostica((prima) => [...prima.slice(-7), d])
+      }),
+    [],
+  )
   useEffect(() => {
     if (lettore !== 'ciak') return
     let attivo = true
@@ -625,6 +638,7 @@ function LettoreStreaming() {
       posizione: posizione.current,
       tentativi: tentativi.current,
       connesso: driveConnesso() || scaricato,
+      drive: ultimaRispostaDrive.current?.status,
     })
     // Nel diario, con le ultime risposte di Drive: un errore del lettore che
     // resta solo a schermo non si può più indagare.
@@ -921,10 +935,14 @@ function LettoreStreaming() {
       {problema && lettore === 'ciak' && (
         <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-projector/40 bg-projector/10 p-4 text-sm text-zinc-200">
           <p className="flex-1">{MESSAGGI[problema]}</p>
-          {problema === 'sessione' ? (
+          {problema === 'sessione' || problema === 'negato' ? (
             <button type="button" onClick={ricollega} className="btn-primary px-3 py-2">
               Ricollega Google Drive
             </button>
+          ) : problema === 'assente' ? (
+            <Link to="/streaming" className="btn-primary px-3 py-2">
+              Torna all’elenco
+            </Link>
           ) : problema === 'rete' || problema === 'salto' ? (
             <>
               <button type="button" onClick={riprova} className="btn-primary px-3 py-2">

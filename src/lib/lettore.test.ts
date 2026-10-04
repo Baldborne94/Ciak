@@ -23,6 +23,20 @@ describe('decidiErrore', () => {
 
   it('un file che non parte nemmeno è un formato che il browser non legge', () => {
     expect(decidiErrore({ ...base, codice: 4, posizione: 0 })).toBe('formato')
+    // Con Drive che ha risposto bene, l'ultima parola resta al browser.
+    expect(decidiErrore({ ...base, codice: 4, posizione: 0, drive: 206 })).toBe('formato')
+  })
+
+  it('se Drive ha rifiutato il token è la sessione, non il formato, anche col token che qui sembra buono', () => {
+    // Il caso vero: un MP4 fatto da prepara-ciak, sul telefono, «Il browser
+    // non riesce a leggere questo file» a 0:00 perché Drive rispondeva 401.
+    expect(decidiErrore({ ...base, codice: 4, posizione: 0, drive: 401 })).toBe('sessione')
+    expect(decidiErrore({ ...base, drive: 401 })).toBe('sessione')
+  })
+
+  it('un file negato o sparito da Drive lo dice, senza riprovare a vuoto', () => {
+    expect(decidiErrore({ ...base, codice: 4, posizione: 0, drive: 403 })).toBe('negato')
+    expect(decidiErrore({ ...base, drive: 404 })).toBe('assente')
   })
 
   it('un errore di rete prima di partire si riprova comunque', () => {

@@ -1,7 +1,7 @@
 // Le decisioni del lettore di Ciak quando qualcosa va storto, separate dalla
 // pagina perché si possano provare senza un video vero.
 
-export type Problema = 'formato' | 'muto' | 'sessione' | 'rete' | 'salto' | 'avvio'
+export type Problema = 'formato' | 'muto' | 'sessione' | 'negato' | 'assente' | 'rete' | 'salto' | 'avvio'
 
 // I codici di MediaError: 2 è la rete, 3 la decodifica, 4 un formato che il
 // browser non sa leggere.
@@ -14,10 +14,19 @@ export interface StatoErrore {
   posizione: number // secondi già visti
   tentativi: number // riprese automatiche già fatte di fila
   connesso: boolean
+  // Lo status dell'ultima risposta di Drive, come l'ha raccontata il service
+  // worker (vedi DiagnosticaVideo); undefined se non se ne sa niente.
+  drive?: number | null
 }
 
 // Cosa fare quando il <video> dà errore:
-//  - sessione Google scaduta: ricollegarsi (nessun tentativo servirebbe);
+//  - sessione Google scaduta: ricollegarsi (nessun tentativo servirebbe).
+//    Anche quando qui il token sembra buono ma Drive l'ha rifiutato (401): il
+//    service worker risponde vuoto, il <video> dà «formato non supportato» e
+//    si finiva per incolpare un MP4 sano;
+//  - Drive che nega il file (403: permesso che non basta, o quota di download
+//    finita) o non lo trova più (404): riprovare non cambia niente, e il
+//    lettore di Drive non lo aprirebbe meglio;
 //  - errore di rete, o qualunque errore a film già partito: riprendere da dove
 //    si era. Il flusso passa dal service worker, che il browser può fermare a
 //    metà film: la richiesta a Drive si chiude e il video si blocca, ma una
@@ -25,7 +34,9 @@ export interface StatoErrore {
 //  - troppi tentativi di fila: dirlo, invece di girare a vuoto;
 //  - errore prima ancora di partire: il browser non legge il file.
 export function decidiErrore(s: StatoErrore): 'riprova' | Problema {
-  if (!s.connesso) return 'sessione'
+  if (!s.connesso || s.drive === 401) return 'sessione'
+  if (s.drive === 403) return 'negato'
+  if (s.drive === 404) return 'assente'
   const aMetaFilm = s.posizione > 0
   if (s.codice === ERRORE_RETE || aMetaFilm) return s.tentativi < TENTATIVI_MAX ? 'riprova' : 'rete'
   return 'formato'
