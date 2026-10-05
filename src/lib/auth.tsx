@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import type { Session, User } from '@supabase/supabase-js'
+import type { Session, User } from '@supabase/auth-js'
 import { isSupabaseConfigured, supabase } from './supabase'
 
 interface AuthContextValue {
