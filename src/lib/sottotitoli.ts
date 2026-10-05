@@ -91,7 +91,13 @@ const EPISODIO_ANIME_NUDO = /\s(\d{2,3})(?:v\d)?(?=\s*\[)/
 // «NCOP2», «Intro». Su TMDB non ci sono: stanno con la serie, fra gli speciali
 // senza numero. Anche qui solo col gruppo in testa: «Ed Wood» è un film.
 const SIGLA_ANIME =
-  /(?:\s-)?\s(?:(?:NC)?(?:OP|ED)\d{0,2}(?:v\d)?|intro|outro|opening|ending|creditless)(?:\s+clean)?(?=\s*[[(]|\s*$)/i
+  /(?:\s-)?\s(?:(?:NC)?(?:OP|ED)\d{0,2}(?:v\d)?|intro|outro|opening|ending|creditless|PV\d{0,2}|CM\d{0,2}|trailer|teaser|menu\d{0,2}|bonus|extra)(?:\s+clean)?(?=\s*[[(]|\s*$)/i
+// La parola prima del numero che dice che non è un episodio: gli extra
+// («Skit_01», «Omake 03», «Preview 05») stanno con la serie fra gli speciali
+// senza numero; quelli con un numero loro («Special 01», «OVA 2») li legge più
+// avanti la regola degli speciali.
+const EXTRA_ANIME = /[\s-](?:skit|omake|preview|yokoku|recap|picture drama|PV|CM|trailer|teaser|menu|bonus|extra)\s*-?\s*$/i
+const SPECIALE_ANIME = /[\s-](?:OAD|OVA|ONA|special|speciale)\s*-?\s*$/i
 // Gli episodi contenuti in una cartella: «(01-26)», «[01-26]». (Qui i
 // trattini sono già spazi.)
 const INTERVALLO = /[([]\d{1,3} \d{1,3}[)\]]/
@@ -115,8 +121,14 @@ function leggiNome(nome: string): NomeFilm & { anime?: true } {
     // Gli anime contano gli episodi di fila, senza stagione: su TMDB la
     // maggior parte sta nella stagione 1. Il titolo è ciò che viene prima.
     const anime = EPISODIO_ANIME.exec(senzaGruppo) ?? (conGruppo ? EPISODIO_ANIME_NUDO.exec(senzaGruppo) : null)
-    if (anime && anime.index > 0) {
-      const { titolo, anno } = analizzaNomeFilm(senzaGruppo.slice(0, anime.index))
+    const prima = anime ? senzaGruppo.slice(0, anime.index) : ''
+    const extra = EXTRA_ANIME.exec(prima)
+    if (anime && extra && extra.index > 0) {
+      const { titolo, anno } = analizzaNomeFilm(prima.slice(0, extra.index))
+      return { titolo, ...(anno !== undefined && { anno }), stagione: 0 }
+    }
+    if (anime && anime.index > 0 && !SPECIALE_ANIME.test(prima)) {
+      const { titolo, anno } = analizzaNomeFilm(prima)
       return { titolo, ...(anno !== undefined && { anno }), stagione: 1, episodio: Number(anime[1] ?? anime[2]), anime: true }
     }
     const siglaAnime = conGruppo ? SIGLA_ANIME.exec(senzaGruppo) : null

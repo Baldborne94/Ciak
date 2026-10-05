@@ -254,6 +254,31 @@ describe('i nomi degli anime', () => {
     )
   })
 
+  it('gli «Skit» e gli omake numerati sono speciali, non episodi', () => {
+    // Fullmetal Alchemist Brotherhood: «Skit_01» compariva come un secondo Ep. 1.
+    for (const nome of [
+      '[asaadas]Fullmetal_Alchemist_Brotherhood_Skit_01_[BD_540p][AtsA][AE207181][MP4][AAC].mp4',
+      '[Group] Frieren Omake 03 [1080p].mkv',
+      '[Group] Frieren - Preview 05 [1080p].mkv',
+      '[Group] Frieren PV 02 [1080p].mkv',
+      '[Group] Frieren - Menu 01 [1080p].mkv',
+      '[Group] Frieren - Trailer [1080p].mkv',
+      '[Group] Frieren CM1 [1080p].mkv',
+    ]) {
+      const letto = analizzaNomeFilm(nome)
+      expect(letto, nome).toMatchObject({ stagione: 0 })
+      expect(letto.episodio, nome).toBeUndefined()
+    }
+    expect(analizzaNomeFilm('[asaadas]Fullmetal_Alchemist_Brotherhood_Skit_01_[BD_540p].mp4').titolo).toBe(
+      'Fullmetal Alchemist Brotherhood',
+    )
+  })
+
+  it('«Special 01» col gruppo in testa resta lo speciale col suo numero', () => {
+    expect(analizzaNomeFilm('[Group] Frieren Special 01 [1080p].mkv')).toEqual({ titolo: 'Frieren', stagione: 0, episodio: 1 })
+    expect(analizzaNomeFilm('[Group] Frieren OVA 02 [1080p].mkv')).toEqual({ titolo: 'Frieren', stagione: 0, episodio: 2 })
+  })
+
   it('senza il gruppo in testa «Intro» o «ED» restano parole del titolo', () => {
     expect(analizzaNomeFilm('Ed Wood [1994].mkv').stagione).toBeUndefined()
     expect(analizzaNomeFilm('The Intro [1080p].mkv').stagione).toBeUndefined()
