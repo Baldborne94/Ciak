@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { logFailure } from './logFailure'
+import { dimenticaCollezione } from './memoriaCollezione'
 import type { DiaryEntry, MediaType } from './types'
 
 function client() {
@@ -210,6 +211,7 @@ async function ensureWatchedUserTitle(
     },
     { onConflict: 'user_id,tmdb_id,media_type' },
   )
+  dimenticaCollezione()
   if (error) throw new Error(error.message)
 }
 
@@ -246,6 +248,7 @@ async function syncRatingToUserTitle(
     },
     { onConflict: 'user_id,tmdb_id,media_type' },
   )
+  dimenticaCollezione()
   if (error) throw new Error(error.message)
 }
 
@@ -281,6 +284,7 @@ export async function resyncUserTitleRating(userId: string, ref: DiaryRef): Prom
     .from('user_titles')
     .update({ personal_rating: rating })
     .eq('id', (existing as { id: string }).id)
+  dimenticaCollezione()
   if (error) throw new Error(error.message)
 }
 

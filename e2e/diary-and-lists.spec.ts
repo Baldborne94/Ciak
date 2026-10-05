@@ -277,3 +277,23 @@ test('su telefono i filtri stanno chiusi finché non li apri', async ({ page }) 
   await page.getByLabel('Tipo').selectOption('movie')
   await expect(page.getByRole('button', { name: 'Filtri (1)' })).toBeVisible()
 })
+
+test('aprendo il diario la collezione si scarica una volta sola', async ({ page }) => {
+  // L'indice dei badge e il diario la leggevano entrambi per intero: con più
+  // di mille titoli erano le stesse righe scaricate due volte di fila.
+  await mockTmdb(page)
+  await mockSupabase(page, {
+    user_diary: [diaryEntry()],
+    user_titles: [{ id: 't1', user_id: E2E_USER.id, tmdb_id: 550, media_type: 'movie', title: 'Fight Club', status: 'watched' }],
+  })
+  const letture: string[] = []
+  page.on('request', (r) => {
+    const url = decodeURIComponent(r.url())
+    if (r.method() === 'GET' && url.includes('/rest/v1/user_titles') && url.includes('select=*') && url.includes('offset=0&'))
+      letture.push(url) // una lettura intera comincia sempre dalla prima pagina
+  })
+  await page.goto('/diario')
+
+  await expect(page.getByText('Fight Club').first()).toBeVisible()
+  expect(letture).toHaveLength(1)
+})
