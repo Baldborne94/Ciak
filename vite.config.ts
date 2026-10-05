@@ -71,7 +71,8 @@ export default defineConfig(({ mode }) => ({
         // Divisi, una nuova versione dell'app fa riscaricare solo l'app.
         manualChunks: {
           react: ['react', 'react-dom', 'react-router-dom'],
-          supabase: ['@supabase/supabase-js'],
+          // Solo login e tabelle: vedi src/lib/supabase.ts.
+          supabase: ['@supabase/auth-js', '@supabase/postgrest-js'],
         },
       },
     },
