@@ -4,6 +4,7 @@ import { fetchAllRows } from './paged'
 import { logFailure } from './logFailure'
 import { chiaveCollezione, leggiCopia, salvaCopia } from './offlineCache'
 import { segnalaCopia, segnalaDatiFreschi } from './offlineState'
+import { dimenticaCollezione, leggiCollezione } from './memoriaCollezione'
 import { missingTitleRows } from './diaryBackfill'
 import { fetchGenreIds, fetchReadableTitle, isReadableTitle } from './tmdb'
 import type {
@@ -94,6 +95,7 @@ export async function upsertUserTitle(
     .upsert(row, { onConflict: 'user_id,tmdb_id,media_type' })
     .select()
     .single()
+  dimenticaCollezione()
 
   if (error) throw new Error(error.message)
   return data as UserTitle
@@ -101,6 +103,7 @@ export async function upsertUserTitle(
 
 export async function deleteUserTitle(userId: string, id: string): Promise<void> {
   const { error } = await client().from(TABLE).delete().eq('user_id', userId).eq('id', id)
+  dimenticaCollezione()
   if (error) throw new Error(error.message)
 }
 
@@ -179,12 +182,18 @@ export async function listAll(userId: string): Promise<UserTitle[]> {
   }
 
   try {
-    const righe = await fetchAllRows<UserTitle>((from, to) =>
-      db.from(TABLE).select('*').eq('user_id', userId).order('id', { ascending: true }).range(from, to),
-    )
-    salvaCopia(chiave, righe)
+    // Una lettura di pochi istanti fa si riusa (vedi memoriaCollezione): le
+    // pagine che si aprono una dopo l'altra non riscaricano tutto ogni volta.
+    const righe = await leggiCollezione(userId, async () => {
+      const lette = await fetchAllRows<UserTitle>((from, to) =>
+        db.from(TABLE).select('*').eq('user_id', userId).order('id', { ascending: true }).range(from, to),
+      )
+      salvaCopia(chiave, lette)
+      return lette
+    })
     segnalaDatiFreschi()
-    return righe
+    // Una copia: chi la riceve può riordinarla senza toccare quella condivisa.
+    return [...righe]
   } catch (e) {
     const copia = leggiCopia<UserTitle>(chiave)
     if (!copia) throw e
@@ -214,6 +223,7 @@ export async function backfillTitlesFromDiary(
       mancanti.map((r) => ({ ...r, user_id: userId, is_favorite: false, notes: null, genre_ids: [] })),
       { onConflict: 'user_id,tmdb_id,media_type' },
     )
+  dimenticaCollezione()
   if (error) throw new Error(error.message)
   return mancanti.length
 }
@@ -259,6 +269,7 @@ export async function backfillReadableTitles(
   let falliti = 0
   const aggiorna = async (tabella: string, id: string, nuovo: string) => {
     const { error } = await db.from(tabella).update({ title: nuovo }).eq('user_id', userId).eq('id', id)
+    if (tabella === TABLE) dimenticaCollezione()
     if (error) falliti++
     else aggiornati++
   }
@@ -341,6 +352,7 @@ export async function backfillGenreIds(
           .update({ genre_ids: genreIds })
           .eq('user_id', userId)
           .eq('id', r.id)
+        dimenticaCollezione()
         if (error) throw new Error(error.message)
         aggiornati++
       } else {
