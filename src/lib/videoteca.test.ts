@@ -238,6 +238,19 @@ describe('raggruppaSerie', () => {
     ])
   })
 
+  it('uno Skit non diventa un secondo episodio con lo stesso numero', () => {
+    const cartella = '[asaadas] Fullmetal Alchemist Brotherhood [720p][MP4][AAC]'
+    const { serie } = raggruppaSerie([
+      { id: 'a', name: '[asaadas]Fullmetal_Alchemist_Brotherhood_01v2_[BD_720p][AtsA][76A5BD6E][MP4][AAC].mp4', cartella, serie: null },
+      { id: 'b', name: '[asaadas]Fullmetal_Alchemist_Brotherhood_Skit_01_[BD_540p][AtsA][AE207181][MP4][AAC].mp4', cartella, serie: null },
+    ])
+    expect(serie).toHaveLength(1)
+    expect(serie[0].episodi.map((e) => [e.id, e.stagione, e.episodio])).toEqual([
+      ['a', 1, 1],
+      ['b', 0, null],
+    ])
+  })
+
   it('una cartella di speciali scritta male resta dentro la sua serie', () => {
     // A Mickey Mouse Cartoon/Speicals/… compariva come due righe «Speicals».
     const { serie, sciolti } = raggruppaSerie([
