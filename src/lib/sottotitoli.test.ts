@@ -222,6 +222,29 @@ describe('i nomi degli anime', () => {
     expect(analizzaNomeFilm('Frieren - Ep 7 - Something.mkv')).toEqual({ titolo: 'Frieren', stagione: 1, episodio: 7 })
   })
 
+  it('«[Gruppo]titolo_17v2_[BD_720p]»: il numero senza trattini è l episodio', () => {
+    // Fullmetal Alchemist Brotherhood: 64 righe sciolte col nome della cartella.
+    expect(analizzaNomeFilm('[asaadas]Fullmetal_Alchemist_Brotherhood_17v2_[BD_720p][AtsA][2154EF7C][MP4][AAC].mp4')).toEqual({
+      titolo: 'Fullmetal Alchemist Brotherhood',
+      stagione: 1,
+      episodio: 17,
+    })
+    expect(analizzaNomeFilm('[asaadas]Fullmetal_Alchemist_Brotherhood_47_[BD_720p][AtsA][BA59C3B8][MP4][AAC].mp4')).toEqual({
+      titolo: 'Fullmetal Alchemist Brotherhood',
+      stagione: 1,
+      episodio: 47,
+    })
+    expect(analizzaNomeFilm('[Erai-raws] Frieren 05 [1080p].mkv')).toEqual({ titolo: 'Frieren', stagione: 1, episodio: 5 })
+  })
+
+  it('senza il gruppo in testa un numero prima delle etichette resta nel titolo', () => {
+    expect(analizzaNomeFilm('Apollo 13 [1080p].mkv').episodio).toBeUndefined()
+    expect(analizzaNomeFilm('Ocean s 11 [BD 720p].mkv').episodio).toBeUndefined()
+    // Il gruppo da solo non basta: dopo il numero ci vogliono le etichette.
+    expect(analizzaNomeFilm('[YTS] Apollo 13 (1995).mp4')).toMatchObject({ anno: 1995 })
+    expect(analizzaNomeFilm('[YTS] Apollo 13 (1995).mp4').episodio).toBeUndefined()
+  })
+
   it('la cartella col gruppo e l intervallo di episodi ha il titolo pulito', () => {
     expect(analizzaNomeFilm('[a-S] Samurai Champloo (01-26) (1080p)').titolo).toBe('Samurai Champloo')
     expect(analizzaNomeFilm('Trigun [01-26] [BD]').titolo).toBe('Trigun')

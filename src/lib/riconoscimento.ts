@@ -50,7 +50,8 @@ function segnaControllato(fileId: string): void {
 // scritte male («Speicals»).
 // v6: i film finiti sotto una serie di un altro anno («Memories of Murder
 // (2003)» abbinato a «Gap Dong», 2014).
-const VERSIONE_RICONOSCIMENTO = 6
+// v7: gli anime senza trattini («[Gruppo]Titolo_17v2_[BD_720p]…»).
+const VERSIONE_RICONOSCIMENTO = 7
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {

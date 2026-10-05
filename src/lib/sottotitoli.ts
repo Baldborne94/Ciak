@@ -82,6 +82,11 @@ const GRUPPO = /^\s*\[[^\]]*\]\s*/
 // «Rocky - 2» non sono episodi.
 // Con la parola davanti («- Episode 05 -», «- Ep 7 -») basta anche una cifra.
 const EPISODIO_ANIME = /\s-\s(?:(?:episode|episodio|ep)\.?\s*(\d{1,3})|(\d{2,3}))(?:v\d)?(?=\s+-\s|\s*[[(]|\s*$)/i
+// Senza trattini, come i nomi coi trattini bassi
+// («[asaadas]Fullmetal_Alchemist_Brotherhood_17v2_[BD_720p]…»): il numero
+// subito prima delle etichette fra quadre. Solo se il nome comincia col gruppo,
+// il segno che è un anime: «Apollo 13 [1080p]» è un film.
+const EPISODIO_ANIME_NUDO = /\s(\d{2,3})(?:v\d)?(?=\s*\[)/
 // Gli episodi contenuti in una cartella: «(01-26)», «[01-26]». (Qui i
 // trattini sono già spazi.)
 const INTERVALLO = /[([]\d{1,3} \d{1,3}[)\]]/
@@ -98,12 +103,14 @@ export function analizzaNomeFilm(nome: string): NomeFilm {
 // Come `analizzaNomeFilm`, e in più se la stagione è solo quella supposta
 // per gli anime (che il nome non dice).
 function leggiNome(nome: string): NomeFilm & { anime?: true } {
-  const senzaGruppo = nome.replace(ESTENSIONE_VIDEO, '').replace(/_/g, ' ').replace(GRUPPO, '')
+  const senzaEstensione = nome.replace(ESTENSIONE_VIDEO, '').replace(/_/g, ' ')
+  const conGruppo = GRUPPO.test(senzaEstensione)
+  const senzaGruppo = senzaEstensione.replace(GRUPPO, '')
   if (!/\bS\d{1,2} ?E\d{1,3}\b/i.test(senzaGruppo)) {
     // Gli anime contano gli episodi di fila, senza stagione: su TMDB la
     // maggior parte sta nella stagione 1. Il titolo è ciò che viene prima.
-    const anime = EPISODIO_ANIME.exec(senzaGruppo)
-    if (anime) {
+    const anime = EPISODIO_ANIME.exec(senzaGruppo) ?? (conGruppo ? EPISODIO_ANIME_NUDO.exec(senzaGruppo) : null)
+    if (anime && anime.index > 0) {
       const { titolo, anno } = analizzaNomeFilm(senzaGruppo.slice(0, anime.index))
       return { titolo, ...(anno !== undefined && { anno }), stagione: 1, episodio: Number(anime[1] ?? anime[2]), anime: true }
     }

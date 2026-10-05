@@ -206,6 +206,22 @@ describe('raggruppaSerie', () => {
     ])
   })
 
+  it('gli episodi coi trattini bassi e senza « - » sono una serie sola', () => {
+    // Prima: una riga per file, tutte «[asaadas] Fullmetal Alchemist Brotherhood [720p][MP4][AAC]».
+    const cartella = '[asaadas] Fullmetal Alchemist Brotherhood [720p][MP4][AAC]'
+    const { serie, sciolti } = raggruppaSerie([
+      { id: 'a', name: '[asaadas]Fullmetal_Alchemist_Brotherhood_17v2_[BD_720p][AtsA][2154EF7C][MP4][AAC].mp4', cartella, serie: null },
+      { id: 'b', name: '[asaadas]Fullmetal_Alchemist_Brotherhood_47_[BD_720p][AtsA][BA59C3B8][MP4][AAC].mp4', cartella, serie: null },
+    ])
+    expect(sciolti).toEqual([])
+    expect(serie).toHaveLength(1)
+    expect(serie[0].titolo).toBe('Fullmetal Alchemist Brotherhood')
+    expect(serie[0].episodi.map((e) => [e.id, e.stagione, e.episodio])).toEqual([
+      ['a', 1, 17],
+      ['b', 1, 47],
+    ])
+  })
+
   it('una cartella di speciali scritta male resta dentro la sua serie', () => {
     // A Mickey Mouse Cartoon/Speicals/… compariva come due righe «Speicals».
     const { serie, sciolti } = raggruppaSerie([
