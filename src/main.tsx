@@ -10,6 +10,11 @@ import { IdentityProvider } from './lib/identityContext.tsx'
 import { ToastProvider } from './lib/toastContext.tsx'
 import { LibraryProvider } from './lib/libraryContext.tsx'
 import { registraErrore } from './lib/errorLog'
+// Il font dei titoli, servito da Ciak invece che da Google Fonts: niente
+// foglio di stile esterno che blocca il primo disegno, e resta in cache con
+// il resto dell'app. Solo l'alfabeto latino (e il latino esteso, scaricato
+// soltanto se una pagina ne usa i caratteri), come prima.
+import '@fontsource/bebas-neue'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
