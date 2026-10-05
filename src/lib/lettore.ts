@@ -127,3 +127,24 @@ export function vigilanzaSalto(suBlocco: () => void, attesaMs = ATTESA_SALTO_MS)
     fine: ferma,
   }
 }
+
+// Il <video> che si lascia (episodio dopo, nuovo tentativo, uscita dal
+// lettore). Tolto dalla pagina e basta, il browser continua a caricarlo: la
+// richiesta a Drive resta aperta e su un tablet ruba banda e decodificatore
+// all'episodio nuovo, che stentava a partire finché non si ricaricava la
+// pagina. Senza `src` e ricaricato vuoto, il browser lo lascia andare davvero.
+// Solo se è già fuori dalla pagina: React (in sviluppo) chiude e riapre gli
+// effetti su un video che resta lì, e togliergli il file lo lasciava nero.
+export function rilasciaVideo(
+  v: Pick<HTMLVideoElement, 'isConnected' | 'pause' | 'removeAttribute' | 'load'> | null,
+  suErrore: (e: unknown) => void = () => {},
+): void {
+  if (!v || v.isConnected) return
+  try {
+    v.pause()
+    v.removeAttribute('src')
+    v.load()
+  } catch (e) {
+    suErrore(e)
+  }
+}
