@@ -13,6 +13,8 @@ import {
   leggiSaltaSigle,
   fineDaCorrezione,
   mostraSaltaSigla,
+  pulsanteSigla,
+  PUNTI_VUOTI,
   salvaDurataSigla,
   salvaPuntiSigla,
   salvaSaltaSigle,
@@ -156,6 +158,20 @@ describe('i tempi impostati a mano', () => {
     expect(durataDaPunti({ inizio: 60, fine: 30, coda: null }, 45)).toBe(45)
   })
 
+  it('premuto lontano dal punto imparato, salta della durata e non fino alla fine imparata', () => {
+    // L'attacco dei giganti: il punto viene da un episodio con una scena
+    // d'apertura di 1:35; nell'episodio 16 la sigla parte subito. A 0:13
+    // finire a 3:05 vorrebbe dire perdere un minuto e mezzo di episodio.
+    const imparati = { inizio: 95, fine: 185, coda: null }
+    expect(arrivoSalto(13, imparati, 90, 1400)).toBe(103)
+    expect(arrivoSalto(100, imparati, 90, 1400)).toBe(185)
+  })
+
+  it('con i tempi esatti arriva alla loro fine, se ci si è dentro', () => {
+    expect(arrivoSalto(30, PUNTI_VUOTI, 90, 1400, { da: 20, a: 110 })).toBe(110)
+    expect(arrivoSalto(5, PUNTI_VUOTI, 90, 1400, { da: 95, a: 185 })).toBe(95)
+  })
+
   it('«Salta sigla» arriva alla fine della sigla, anche premuto in ritardo', () => {
     expect(arrivoSalto(40, punti, 90, 1300)).toBe(125)
     expect(arrivoSalto(100, punti, 90, 1300)).toBe(125)
@@ -178,5 +194,31 @@ describe('i tempi impostati a mano', () => {
     expect(fineDaCorrezione(salto, 100.5, 6000)).toBeNull()
     expect(fineDaCorrezione(salto, 400, 6000)).toBeNull()
     expect(fineDaCorrezione(null, 55, 6000)).toBeNull()
+  })
+})
+
+describe('quando si vede «Salta sigla»', () => {
+  const imparati = { inizio: 95, fine: 185, coda: null }
+
+  it('vicino al punto della serie resta fisso, come su Netflix', () => {
+    expect(pulsanteSigla(100, { esatta: null, punti: imparati, durata: 90 })).toBe('fisso')
+  })
+
+  it('nei primi minuti c è sempre, almeno toccando lo schermo', () => {
+    // Prima: a 0:13, con la sigla in corso, non compariva nemmeno toccando,
+    // perché il punto imparato (1:35) veniva da un altro episodio.
+    expect(pulsanteSigla(13, { esatta: null, punti: imparati, durata: 90 })).toBe('con-comandi')
+    expect(pulsanteSigla(13, { esatta: null, punti: PUNTI_VUOTI, durata: 90 })).toBe('con-comandi')
+  })
+
+  it('con i tempi esatti è fisso durante la sigla, e fuori solo toccando', () => {
+    const esatta = { da: 0, a: 88 }
+    expect(pulsanteSigla(13, { esatta, punti: PUNTI_VUOTI, durata: 90 })).toBe('fisso')
+    expect(pulsanteSigla(200, { esatta, punti: PUNTI_VUOTI, durata: 90 })).toBe('con-comandi')
+  })
+
+  it('a episodio inoltrato non c è più', () => {
+    expect(pulsanteSigla(7 * 60, { esatta: null, punti: imparati, durata: 90 })).toBeNull()
+    expect(pulsanteSigla(7 * 60, { esatta: { da: 0, a: 88 }, punti: PUNTI_VUOTI, durata: 90 })).toBeNull()
   })
 })

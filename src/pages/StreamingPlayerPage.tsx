@@ -77,11 +77,11 @@ import {
   leggiDurataSigla,
   leggiPuntiSigla,
   leggiSaltaSigle,
-  mostraSaltaSigla,
+  pulsanteSigla,
+  DURATA_SIGLA_PREDEFINITA,
   salvaPuntiSigla,
   salvaSaltaSigle,
   secondiAllaFine,
-  inSiglaEsatta,
   type PuntiSigla,
   type Salto,
   type SaltaSigle,
@@ -230,7 +230,8 @@ function LettoreStreaming() {
   }, [cinema])
   // Dove si è nell'episodio: all'inizio (si può saltare la sigla), nella sigla
   // finale, finito. Si aggiornano solo quando cambiano, non a ogni timeupdate.
-  const [allInizio, setAllInizio] = useState(true)
+  // «Salta sigla» fisso, solo toccando, o niente (vedi `pulsanteSigla`).
+  const [pulsante, setPulsante] = useState<'fisso' | 'con-comandi' | null>('con-comandi')
   const [inCoda, setInCoda] = useState(false)
   const [finito, setFinito] = useState(false)
   const [siglaSaltata, setSiglaSaltata] = useState(false)
@@ -589,12 +590,11 @@ function LettoreStreaming() {
     } else document.documentElement.requestFullscreen().catch(logFailure('Schermo intero del lettore'))
   }
 
-  const siglaSaltabile = durataSigla !== null && allInizio && !siglaSaltata && !finito
-  // Senza sapere dove sta la sigla il pulsante vale per i primi minuti: fisso
-  // lì per tutto quel tempo dava fastidio, quindi compare solo con la barra.
-  // Con la sigla nota (dalla serie o da TheIntroDB) resta, come su Netflix.
-  const siglaNota = siglaEsatta !== null || punti.inizio !== null
-  const saltaSiglaInVista = siglaSaltabile && (siglaNota || comandiVisibili)
+  const siglaSaltabile = durataSigla !== null && pulsante !== null && !siglaSaltata && !finito
+  // Dove la sigla c'è di sicuro il pulsante resta, come su Netflix; nel resto
+  // dei primi minuti compare con la barra: fisso per tutto quel tempo dava
+  // fastidio, ma sparire del tutto lo faceva mancare proprio a sigla in corso.
+  const saltaSiglaInVista = siglaSaltabile && (pulsante === 'fisso' || comandiVisibili)
   // Il pulsante CC passa al sottotitolo dopo, e dall'ultimo a nessuno.
   const prossimoSottotitolo = sottotitolo + 1 >= tracce.length ? -1 : sottotitolo + 1
   const nomiSottotitoli = tracce.map((t, i) => {
@@ -629,7 +629,7 @@ function LettoreStreaming() {
     const v = videoRef.current
     if (!v || durataSigla === null) return
     const da = v.currentTime
-    const a = siglaEsatta ? siglaEsatta.a : arrivoSalto(da, punti, durataSigla, Number.isFinite(v.duration) ? v.duration : null)
+    const a = arrivoSalto(da, punti, durataSigla, Number.isFinite(v.duration) ? v.duration : null, siglaEsatta)
     v.currentTime = a
     if (!siglaEsatta) ultimoSalto.current = { da, a, quando: Date.now() }
     setSiglaSaltata(true)
@@ -833,13 +833,11 @@ function LettoreStreaming() {
               posizione.current = v.currentTime
               archivio.suTempo(v)
               const t = v.currentTime
-              // Con i tempi esatti dell'episodio il pulsante c'è solo durante
-              // la sigla e la coda parte coi titoli; senza, i minuti di
-              // sempre e il punto imparato per la serie.
-              const inizio = siglaEsatta
-                ? inSiglaEsatta(t, siglaEsatta)
-                : mostraSaltaSigla(t, punti.inizio, durataSigla ?? undefined)
-              if (inizio !== allInizio) setAllInizio(inizio)
+              // Con i tempi esatti dell'episodio il pulsante è fisso durante
+              // la sigla e la coda parte coi titoli; senza, il punto imparato
+              // per la serie e i primi minuti.
+              const ora = pulsanteSigla(t, { esatta: siglaEsatta, punti, durata: durataSigla ?? DURATA_SIGLA_PREDEFINITA })
+              if (ora !== pulsante) setPulsante(ora)
               const durataVideo = Number.isFinite(v.duration) ? v.duration : null
               const coda = codaEsatta ? t >= codaEsatta.da : inSiglaFinale(t, durataVideo)
               if (coda !== inCoda) setInCoda(coda)
