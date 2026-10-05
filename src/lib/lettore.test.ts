@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { decidiErrore, descriviDiagnostica, sessioneInScadenza, TENTATIVI_MAX, vigilanzaSalto } from './lettore'
+import { decidiErrore, descriviDiagnostica, rilasciaVideo, sessioneInScadenza, TENTATIVI_MAX, vigilanzaSalto } from './lettore'
 
 const base = { codice: 2, posizione: 508, tentativi: 0, connesso: true }
 
@@ -131,5 +131,48 @@ describe('vigilanzaSalto', () => {
     vi.advanceTimersByTime(200)
     expect(suBlocco).toHaveBeenCalledTimes(1)
     vi.useRealTimers()
+  })
+})
+
+describe('rilasciaVideo', () => {
+  it('ferma il video, gli toglie il file e lo ricarica vuoto', () => {
+    // Tolto dalla pagina senza questo, il <video> dell'episodio prima
+    // continuava a scaricare da Drive e rubava la banda a quello nuovo.
+    const ordine: string[] = []
+    const v = {
+      isConnected: false,
+      pause: () => ordine.push('pause'),
+      removeAttribute: (nome: string) => ordine.push(`via ${nome}`),
+      load: () => ordine.push('load'),
+    }
+    rilasciaVideo(v)
+    expect(ordine).toEqual(['pause', 'via src', 'load'])
+  })
+
+  it('un video già andato non fa niente', () => {
+    expect(() => rilasciaVideo(null)).not.toThrow()
+  })
+
+  it('un video ancora nella pagina non si tocca', () => {
+    // React in sviluppo chiude e riapre gli effetti: il video resta e deve
+    // tenere il suo file.
+    const v = { isConnected: true, pause: vi.fn(), removeAttribute: vi.fn(), load: vi.fn() }
+    rilasciaVideo(v)
+    expect(v.removeAttribute).not.toHaveBeenCalled()
+    expect(v.load).not.toHaveBeenCalled()
+  })
+
+  it('un browser che si lamenta non blocca il cambio di episodio', () => {
+    const v = {
+      isConnected: false,
+      pause: () => {
+        throw new Error('non implementato')
+      },
+      removeAttribute: vi.fn(),
+      load: vi.fn(),
+    }
+    const suErrore = vi.fn()
+    expect(() => rilasciaVideo(v, suErrore)).not.toThrow()
+    expect(suErrore).toHaveBeenCalledOnce()
   })
 })

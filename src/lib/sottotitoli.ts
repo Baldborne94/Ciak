@@ -87,6 +87,11 @@ const EPISODIO_ANIME = /\s-\s(?:(?:episode|episodio|ep)\.?\s*(\d{1,3})|(\d{2,3})
 // subito prima delle etichette fra quadre. Solo se il nome comincia col gruppo,
 // il segno che è un anime: «Apollo 13 [1080p]» è un film.
 const EPISODIO_ANIME_NUDO = /\s(\d{2,3})(?:v\d)?(?=\s*\[)/
+// Le sigle senza scritte che accompagnano gli anime: «OP1v2_Clean», «ED3»,
+// «NCOP2», «Intro». Su TMDB non ci sono: stanno con la serie, fra gli speciali
+// senza numero. Anche qui solo col gruppo in testa: «Ed Wood» è un film.
+const SIGLA_ANIME =
+  /(?:\s-)?\s(?:(?:NC)?(?:OP|ED)\d{0,2}(?:v\d)?|intro|outro|opening|ending|creditless)(?:\s+clean)?(?=\s*[[(]|\s*$)/i
 // Gli episodi contenuti in una cartella: «(01-26)», «[01-26]». (Qui i
 // trattini sono già spazi.)
 const INTERVALLO = /[([]\d{1,3} \d{1,3}[)\]]/
@@ -113,6 +118,11 @@ function leggiNome(nome: string): NomeFilm & { anime?: true } {
     if (anime && anime.index > 0) {
       const { titolo, anno } = analizzaNomeFilm(senzaGruppo.slice(0, anime.index))
       return { titolo, ...(anno !== undefined && { anno }), stagione: 1, episodio: Number(anime[1] ?? anime[2]), anime: true }
+    }
+    const siglaAnime = conGruppo ? SIGLA_ANIME.exec(senzaGruppo) : null
+    if (siglaAnime && siglaAnime.index > 0) {
+      const { titolo, anno } = analizzaNomeFilm(senzaGruppo.slice(0, siglaAnime.index))
+      return { titolo, ...(anno !== undefined && { anno }), stagione: 0 }
     }
   }
   const s = senzaGruppo

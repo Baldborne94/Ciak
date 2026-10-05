@@ -43,6 +43,7 @@ import {
   ATTESA_AVVIO_MS,
   decidiErrore,
   descriviDiagnostica,
+  rilasciaVideo,
   senzaAudio,
   sessioneInScadenza,
   vigilanzaSalto,
@@ -281,6 +282,13 @@ function LettoreStreaming() {
     },
     [],
   )
+  // Il <video> di questo giro, preso ora: quando l'effetto si chiude il ref
+  // è già vuoto. Si rilascia cambiando episodio, a ogni nuovo tentativo
+  // (`chiaveVideo`) e passando al lettore di Drive.
+  useEffect(() => {
+    const v = videoRef.current
+    return () => rilasciaVideo(v, logFailure('Rilascio del video precedente'))
+  }, [lettore, chiaveVideo])
   useEffect(() => {
     if (lettore !== 'ciak') return vigilanzaAvvio.current.fine()
     vigilanzaAvvio.current.inizio()
