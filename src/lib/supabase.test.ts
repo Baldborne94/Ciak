@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createClient } from '@supabase/supabase-js'
 import { creaClient } from './supabase'
 
@@ -8,6 +8,13 @@ const URL_PROGETTO = 'https://abcdefgh.supabase.co'
 const CHIAVE = 'chiave-anonima'
 
 afterEach(() => vi.unstubAllGlobals())
+// Node 20 (quello della CI) non ha WebSocket: lo si toglie anche qui, perché il
+// test si comporti uguale su ogni macchina.
+beforeEach(() => vi.stubGlobal('WebSocket', undefined))
+
+// Il createClient vero, termine di paragone. Costruisce sempre anche realtime,
+// che senza WebSocket si ferma: gli si dà un trasporto finto, mai usato qui.
+const vero = () => createClient(URL_PROGETTO, CHIAVE, { realtime: { transport: class {} as never } })
 
 // Le intestazioni e l'indirizzo di una richiesta alla tabella, da un client.
 async function richiesta(client: { from: (t: string) => { select: (c: string) => PromiseLike<unknown> } }) {
@@ -25,15 +32,14 @@ async function richiesta(client: { from: (t: string) => { select: (c: string) =>
 
 describe('il client di Supabase montato a mano', () => {
   it('salva la sessione sotto la stessa chiave di supabase-js: chi è già entrato resta dentro', () => {
-    const vero = createClient(URL_PROGETTO, CHIAVE)
     const nostro = creaClient(URL_PROGETTO, CHIAVE)
     const chiave = (c: unknown) => (c as { storageKey: string }).storageKey
     expect(chiave(nostro.auth)).toBe('sb-abcdefgh-auth-token')
-    expect(chiave(nostro.auth)).toBe(chiave(vero.auth))
+    expect(chiave(nostro.auth)).toBe(chiave(vero().auth))
   })
 
   it('chiede le tabelle allo stesso indirizzo e con la stessa chiave di supabase-js', async () => {
-    const vera = await richiesta(createClient(URL_PROGETTO, CHIAVE))
+    const vera = await richiesta(vero())
     const nostra = await richiesta(creaClient(URL_PROGETTO, CHIAVE))
     expect(nostra.url).toBe(vera.url)
     expect(nostra.headers.get('apikey')).toBe(CHIAVE)
