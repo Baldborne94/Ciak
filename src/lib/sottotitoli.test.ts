@@ -237,6 +237,28 @@ describe('i nomi degli anime', () => {
     expect(analizzaNomeFilm('[Erai-raws] Frieren 05 [1080p].mkv')).toEqual({ titolo: 'Frieren', stagione: 1, episodio: 5 })
   })
 
+  it('le sigle senza scritte («OP1v2_Clean», «ED3», «Intro») sono speciali della serie', () => {
+    // Fullmetal Alchemist Brotherhood: 11 sigle restavano righe sciolte.
+    for (const nome of [
+      '[asaadas]Fullmetal_Alchemist_Brotherhood_OP1v2_Clean_[BD_720p][AtsA][39C599D1][MP4][AAC].mp4',
+      '[asaadas]Fullmetal_Alchemist_Brotherhood_ED3_Clean_[BD_720p][AtsA][C9EBB888][MP4][AAC].mp4',
+      '[asaadas]Fullmetal_Alchemist_Brotherhood_Intro_[BD_720p][AtsA][7FA59929][MP4][AAC].mp4',
+      '[Group] Frieren - NCOP2 [1080p].mkv',
+    ]) {
+      const letto = analizzaNomeFilm(nome)
+      expect(letto, nome).toMatchObject({ stagione: 0 })
+      expect(letto.episodio, nome).toBeUndefined()
+    }
+    expect(analizzaNomeFilm('[asaadas]Fullmetal_Alchemist_Brotherhood_ED3_Clean_[BD_720p].mp4').titolo).toBe(
+      'Fullmetal Alchemist Brotherhood',
+    )
+  })
+
+  it('senza il gruppo in testa «Intro» o «ED» restano parole del titolo', () => {
+    expect(analizzaNomeFilm('Ed Wood [1994].mkv').stagione).toBeUndefined()
+    expect(analizzaNomeFilm('The Intro [1080p].mkv').stagione).toBeUndefined()
+  })
+
   it('senza il gruppo in testa un numero prima delle etichette resta nel titolo', () => {
     expect(analizzaNomeFilm('Apollo 13 [1080p].mkv').episodio).toBeUndefined()
     expect(analizzaNomeFilm('Ocean s 11 [BD 720p].mkv').episodio).toBeUndefined()
