@@ -156,11 +156,37 @@ export function durataDaPunti(punti: PuntiSigla, base: number): number {
   return punti.inizio !== null && punti.fine !== null && punti.fine > punti.inizio ? punti.fine - punti.inizio : base
 }
 
-// Dove arriva «⏭ Salta sigla»: alla fine della sigla, se la serie la conosce
-// e non la si è già passata; se no avanti della sua durata.
-export function arrivoSalto(posizione: number, punti: PuntiSigla, durata: number, durataVideo: number | null): number {
-  if (punti.fine !== null && posizione < punti.fine) return punti.fine
+// Dove arriva «⏭ Salta sigla»: alla fine della sigla, se la si conosce e ci
+// si è dentro; se no avanti della sua durata. «Dentro» conta: il punto della
+// serie viene da un episodio solo, e la scena prima della sigla cambia
+// lunghezza. L'attacco dei giganti aveva imparato la sigla a 1:35; in un
+// episodio che la apre subito, premuto a 0:13 portava a 3:05, un minuto e
+// mezzo di episodio perso.
+export function arrivoSalto(
+  posizione: number,
+  punti: PuntiSigla,
+  durata: number,
+  durataVideo: number | null,
+  esatta: { da: number; a: number } | null = null,
+): number {
+  if (esatta && inSiglaEsatta(posizione, esatta)) return esatta.a
+  const dentro = punti.inizio === null || posizione >= punti.inizio - ANTICIPO_PULSANTE
+  if (!esatta && punti.fine !== null && dentro && posizione < punti.fine) return punti.fine
   return dopoLaSigla(posizione, durata, durataVideo)
+}
+
+// Come si vede «⏭ Salta sigla» a questo punto dell'episodio: fisso dove la
+// sigla c'è di sicuro (i tempi esatti, o intorno al punto della serie), solo
+// toccando lo schermo nel resto dei primi minuti, e mai più avanti. Prima
+// fuori dal punto della serie spariva del tutto, anche con la sigla in corso:
+// sembrava comparire «quando vuole lui».
+export function pulsanteSigla(
+  posizione: number,
+  { esatta, punti, durata }: { esatta: { da: number; a: number } | null; punti: PuntiSigla; durata: number },
+): 'fisso' | 'con-comandi' | null {
+  const sicura = esatta ? inSiglaEsatta(posizione, esatta) : punti.inizio !== null && mostraSaltaSigla(posizione, punti.inizio, durata)
+  if (sicura) return 'fisso'
+  return posizione < FINESTRA_SIGLA ? 'con-comandi' : null
 }
 
 // Dove finisce la sigla lo si impara da chi corregge il salto: «Salta sigla»

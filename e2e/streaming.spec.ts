@@ -1139,6 +1139,15 @@ async function videoA(page: Page, secondi: number, durata = 3600) {
     [secondi, durata],
   )
 }
+// Il film che scorre col mouse fuori dal video: la barra dei comandi sparisce,
+// e resta a schermo solo ciò che è fisso.
+async function senzaComandi(page: Page) {
+  await page.evaluate(() => document.querySelector('video')?.dispatchEvent(new Event('play')))
+  await page.getByRole('button', { name: 'Pausa o riprendi' }).hover()
+  await page.mouse.move(0, 0)
+  // Sparita vuol dire trasparente: resta nella pagina per la dissolvenza.
+  await expect(page.getByTestId('barra-lettore')).toHaveCSS('opacity', '0')
+}
 const saltoDelVideo = (page: Page) =>
   page.evaluate(() => (document.querySelector('video') as HTMLVideoElement & { salto?: number }).salto)
 
@@ -1298,8 +1307,14 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E2' })).toBeVisible()
   await videoA(page, 60)
   expect(await saltoDelVideo(page)).toBeUndefined()
-  // Lontano dal punto imparato (1:35) il pulsante non c'è: a 1:00 è presto.
+  // Lontano dal punto imparato (1:35) il pulsante non resta fisso sul video…
+  await senzaComandi(page)
   await expect(page.getByRole('button', { name: '⏭ Salta sigla' })).toHaveCount(0)
+  // …ma toccando lo schermo c'è: la scena prima della sigla cambia da un
+  // episodio all'altro, e in uno che la apre subito sparire del tutto voleva
+  // dire non poterla saltare (L'attacco dei giganti, a 0:13).
+  await page.getByRole('button', { name: 'Pausa o riprendi' }).hover()
+  await expect(page.getByRole('button', { name: '⏭ Salta sigla' })).toBeVisible()
   await videoA(page, 95.25)
   expect(await saltoDelVideo(page)).toBe(185.25)
   // …e se il punto era sbagliato si torna indietro.
@@ -1374,10 +1389,13 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
   // Con i tempi esatti quelli della serie non si usano, e non si mostrano.
   await expect(page.getByText(/In questa serie/)).toHaveCount(0)
 
-  // Prima della sigla il pulsante non c'è: questo episodio la ha a 3:20.
+  // Prima della sigla il pulsante non è fisso: questo episodio la ha a 3:20.
   await videoA(page, 60)
+  await senzaComandi(page)
   await expect(page.getByRole('button', { name: '⏭ Salta sigla' })).toHaveCount(0)
+  // Durante la sigla sì, anche senza toccare niente.
   await videoA(page, 230)
+  await expect(page.getByRole('button', { name: '⏭ Salta sigla' })).toBeVisible()
   await page.getByRole('button', { name: '⏭ Salta sigla' }).click()
   expect(await saltoDelVideo(page)).toBe(290)
   // I tempi esatti non si «imparano» per la serie: restano quelli di prima.
