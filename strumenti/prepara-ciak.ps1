@@ -43,7 +43,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-07b'
+$Versione = '2026-10-07c'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 $SottotitoliTesto = @('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text')
 
@@ -123,7 +123,10 @@ function ArgomentiVideo([string]$nome) {
 # DVDRip, spesso) senza che manchi niente: il video si vede benissimo. Contati
 # come errori superavano da soli la soglia, e un Looney Tunes su due finiva
 # fra i "danneggiati".
-$AvvisiInnocui = @('mmco: unref short failure', 'co located POCs unavailable')
+# Lo stesso vale per i tempi fuori ordine (un Toy Story in HEVC): li segnala
+# il finto file d'uscita del controllo, non chi decodifica, quindi non dicono
+# niente su quanto il video si legga; la ricodifica li sistema da se'.
+$AvvisiInnocui = @('mmco: unref short failure', 'co located POCs unavailable', 'non monotonically increasing dts')
 
 function ErroriVeri([string[]]$righe) {
   return @($righe | Where-Object {
