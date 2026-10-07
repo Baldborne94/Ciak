@@ -7,6 +7,7 @@ import InstallPrompt from './InstallPrompt'
 import ReleaseAlerts from './ReleaseAlerts'
 import ErrorBoundary from './ErrorBoundary'
 import SchemaBanner from './SchemaBanner'
+import AccessoBanner from './AccessoBanner'
 import OfflineBanner from './OfflineBanner'
 import NuovaVersioneBanner from './NuovaVersioneBanner'
 import DriveSempreCollegato from './DriveSempreCollegato'
@@ -22,6 +23,7 @@ export default function Layout() {
       <DriveSempreCollegato />
       <Navbar />
       <NuovaVersioneBanner />
+      <AccessoBanner />
       <OfflineBanner />
       <SchemaBanner />
       <main className="container-cine flex-1 py-8">

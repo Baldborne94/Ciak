@@ -27,6 +27,19 @@ test('un ospite che apre una pagina personale finisce sul login', async ({ page 
   await expect(page.getByRole('button', { name: /Accedi/ }).first()).toBeVisible()
 })
 
+test("un accesso con Google rifiutato da Supabase dice perché, invece di riproporre «Accedi» muto", async ({ page }) => {
+  await mockTmdb(page)
+  // Così torna Supabase da Google quando le registrazioni nuove sono chiuse.
+  await page.goto('/#error=server_error&error_code=signup_disabled&error_description=Signups+not+allowed+for+this+instance')
+
+  const avviso = page.getByRole('alert').filter({ hasText: 'Accesso non riuscito' })
+  await expect(avviso).toContainText('Ciak non accetta account nuovi')
+  // L'errore esce dall'indirizzo: ricaricando non ricompare.
+  await expect(page).toHaveURL(/\/$/)
+  await avviso.getByRole('button', { name: 'Chiudi' }).click()
+  await expect(avviso).toHaveCount(0)
+})
+
 test('un utente autenticato vede la sua watchlist, non il login', async ({ page }) => {
   await mockTmdb(page)
   await signIn(page)
