@@ -162,6 +162,13 @@ function leggiNome(nome: string): NomeFilm & { anime?: true } {
       return { titolo, ...(anno !== undefined && { anno }), stagione: 0 }
     }
   }
+  // «1940 - Pinocchio»: l'anno davanti, staccato da un trattino. Senza il
+  // trattino un anno in testa è del titolo («2001 Odissea nello spazio»).
+  const annoDavanti = /^\s*((?:19|20)\d{2})\s+-\s+(\S.*)$/.exec(senzaGruppo)
+  if (annoDavanti) {
+    const resto = leggiNome(annoDavanti[2])
+    if (resto.anno === undefined && resto.stagione === undefined) return { ...resto, anno: Number(annoDavanti[1]) }
+  }
   const s = senzaGruppo
     .replace(GENERE_PRIMA_DELL_ANNO, '')
     .replace(/[._]+/g, ' ')

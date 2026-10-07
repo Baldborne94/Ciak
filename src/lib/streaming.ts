@@ -42,6 +42,9 @@ export function normalizzaTitolo(t: string): string {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
+    // «Philosopher's Stone» e «Philosophers Stone» (come nei nomi dei file,
+    // che l'apostrofo lo perdono) sono lo stesso titolo.
+    .replace(/['’]/g, '')
     .replace(/&/g, ' and ')
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()

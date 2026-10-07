@@ -71,6 +71,13 @@ describe('scegliAbbinamento', () => {
     expect(scegliAbbinamento({ titolo: 'Stephen King s Fear It', anno: 2017 }, [film])).toBeNull()
   })
 
+  it('l’apostrofo che nei nomi dei file sparisce non conta: «Philosophers Stone» è «Philosopher’s Stone»', () => {
+    const hp = media({ id: 671, title: 'Harry Potter e la pietra filosofale', englishTitle: "Harry Potter and the Philosopher's Stone", releaseDate: '2001-11-16' })
+    expect(scegliAbbinamento({ titolo: 'Harry Potter and the Philosophers Stone', anno: 2001 }, [hp])?.id).toBe(671)
+    const schindler = media({ id: 424, title: "Schindler's List", releaseDate: '1993-11-30' })
+    expect(scegliAbbinamento({ titolo: 'Schindlers List', anno: 1993 }, [schindler])?.id).toBe(424)
+  })
+
   it('scarta un film omonimo di un altro anno', () => {
     expect(scegliAbbinamento({ titolo: 'Song of the Sea', anno: 2014 }, [omonimo])).toBeNull()
   })
