@@ -53,6 +53,17 @@ scheda video (NVIDIA, Intel o AMD, scelta da sola all'avvio) ci vuole una
 frazione del tempo rispetto alla CPU, che resta il ripiego. Un file che la
 scheda video non riesce a fare viene rifatto con la CPU.
 
+Un video HDR (HDR10, HLG, Dolby Vision con base HDR10) ricodificato così com'è
+sul tablet apparirebbe slavato: lo script ne ricalcola i colori per uno
+schermo normale (tone mapping con `zscale`, presente nella build di ffmpeg
+installata con winget). Il Dolby Vision profilo 5, comune nei WEB-DL «DV», non
+si può convertire bene (colori verdi e viola): lo script lo lascia dov'è e
+chiede un'altra versione.
+
+Potendo scegliere cosa scaricare, conviene **x264 / H.264 a 1080p, senza HDR**:
+il video si copia in pochi secondi invece di essere ricodificato, e non perde
+qualità.
+
 I controlli, perché su Drive non finisca un video rotto (che poi lo script
 salterebbe per sempre, credendolo già fatto):
 

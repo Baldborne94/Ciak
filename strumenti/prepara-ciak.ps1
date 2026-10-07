@@ -43,7 +43,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-07c'
+$Versione = '2026-10-07d'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 $SottotitoliTesto = @('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text')
 
@@ -107,6 +107,25 @@ if ($Encoder -eq 'auto') {
     if (EncoderFunziona $candidato) { $Encoder = $candidato; break }
   }
 }
+
+# Un video HDR (HDR10, HLG, Dolby Vision con base HDR10) ha i colori
+# descritti per uno schermo da 1000 nit. Ricodificato in H.264 a 8 bit cosi'
+# com'e', il tablet lo mostra slavato e grigiastro: i colori vanno
+# ricalcolati per uno schermo normale (tone mapping). Lo fa zscale, che c'e'
+# nella build di ffmpeg installata con winget (Gyan.FFmpeg) ma non in tutte.
+$TrasferimentiHdr = @('smpte2084', 'arib-std-b67')
+$FiltroHdr = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p'
+$ColoriSdr = @('-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709')
+function FiltroDisponibile([string]$nome) {
+  $ErrorActionPreference = 'Continue'
+  try {
+    $elenco = & ffmpeg -hide_banner -filters 2>&1 | Out-String
+    return ($elenco -match "\s$nome\s")
+  } catch {
+    return $false
+  }
+}
+$ToneMapping = (FiltroDisponibile 'zscale') -and (FiltroDisponibile 'tonemap')
 
 # Gli argomenti per ricodificare il video con un encoder: qualita' simile per
 # tutti, sempre H.264 a 8 bit (yuv420p), l'unico che ogni browser legge.
@@ -334,7 +353,7 @@ foreach ($f in $video) {
 
   Write-Host "[$n/$($video.Count)] $relativo\$($f.Name)"
   try {
-    $json = & ffprobe -v error -show_entries 'format=duration:stream=index,codec_type,codec_name,pix_fmt,channels:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags' -of json -- $f.FullName | Out-String
+    $json = & ffprobe -v error -show_entries 'format=duration:stream=index,codec_type,codec_name,pix_fmt,channels,color_transfer:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags:stream_side_data=dv_profile' -of json -- $f.FullName | Out-String
     if ($LASTEXITCODE -ne 0) { throw 'ffprobe non riesce a leggere il file' }
     $info = $json | ConvertFrom-Json
     $flussi = @($info.streams)
@@ -359,8 +378,22 @@ foreach ($f in $video) {
     $audio = @($flussi | Where-Object { $_.codec_type -eq 'audio' })
     $sub = @($flussi | Where-Object { $_.codec_type -eq 'subtitle' -and $SottotitoliTesto -contains $_.codec_name })
 
+    $hdr = $TrasferimentiHdr -contains $v.color_transfer
+    # Il Dolby Vision profilo 5 (molti WEB-DL "DV") non ha sotto un HDR10
+    # normale: senza i suoi metadati i colori escono verdi e viola, e zscale
+    # non li sa usare. Meglio dirlo che caricare un film dai colori sbagliati.
+    $dv = @($v.side_data_list | Where-Object { $_ -and $_.dv_profile -ne $null } | Select-Object -First 1)
+    if ($dv.Count -gt 0 -and "$($dv[0].dv_profile)" -eq '5') {
+      throw "video Dolby Vision profilo 5: convertito avrebbe i colori verdi e viola. Scarica una versione HDR10 o SDR (senza DV nel nome)"
+    }
+    if ($hdr -and -not $ToneMapping) {
+      throw "video HDR, ma questo ffmpeg non sa convertirne i colori (manca zscale) e uscirebbe slavato. Reinstalla ffmpeg con  winget install --id Gyan.FFmpeg -e  e rilancia"
+    }
+    $colori = if ($hdr) { @('-vf', $FiltroHdr) + $ColoriSdr } else { @() }
+
     # yuvj420p e' lo stesso 8 bit 4:2:0 con la gamma piena: il browser lo legge.
-    $copiaVideo = ($v.codec_name -eq 'h264') -and (@('yuv420p', 'yuvj420p') -contains $v.pix_fmt)
+    # Un H.264 HDR (raro) va ricodificato comunque, per i colori.
+    $copiaVideo = ($v.codec_name -eq 'h264') -and (@('yuv420p', 'yuvj420p') -contains $v.pix_fmt) -and -not $hdr
 
     $tmp = Join-Path $Lavoro "$nome.mp4"
     $audioArg = @(ArgomentiAudio $audio)
@@ -370,17 +403,18 @@ foreach ($f in $video) {
     if ($copiaVideo) {
       $esito = Esegui 'ffmpeg' ($base + @('-i', $f.FullName) + $mappe + @('-c:v', 'copy') + $audioArg + $uscita)
     } else {
-      Write-Host "   video $($v.codec_name) $($v.pix_fmt): lo ricodifico in H.264 ($Encoder)..." -ForegroundColor Yellow
+      $notaHdr = if ($hdr) { ' HDR, colori convertiti per schermi normali' } else { '' }
+      Write-Host "   video $($v.codec_name) $($v.pix_fmt)$($notaHdr): lo ricodifico in H.264 ($Encoder)..." -ForegroundColor Yellow
       $ricodificati++
       # Con la scheda video anche la lettura (HEVC compreso) passa dalla GPU;
       # se non ci riesce ffmpeg torna da solo alla CPU.
       $lettura = if ($Encoder -eq 'libx264') { @() } else { @('-hwaccel', 'auto') }
-      $esito = Esegui 'ffmpeg' ($base + $lettura + @('-i', $f.FullName) + $mappe + (ArgomentiVideo $Encoder) + $audioArg + $uscita)
+      $esito = Esegui 'ffmpeg' ($base + $lettura + @('-i', $f.FullName) + $mappe + $colori + (ArgomentiVideo $Encoder) + $audioArg + $uscita)
       if ($esito -ne 0 -and $Encoder -ne 'libx264') {
         # Qualche file la scheda video non lo prende (formati rari, risoluzioni
         # strane): lo si rifa' con la CPU invece di lasciarlo indietro.
         Write-Host "   la scheda video non ce l'ha fatta: riprovo con la CPU..." -ForegroundColor Yellow
-        $esito = Esegui 'ffmpeg' ($base + @('-i', $f.FullName) + $mappe + (ArgomentiVideo 'libx264') + $audioArg + $uscita)
+        $esito = Esegui 'ffmpeg' ($base + @('-i', $f.FullName) + $mappe + $colori + (ArgomentiVideo 'libx264') + $audioArg + $uscita)
       }
     }
     if ($esito -ne 0) { throw 'conversione non riuscita' }
