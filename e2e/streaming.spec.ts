@@ -2119,6 +2119,10 @@ test('il lettore legge solo la riga del file e gli episodi della sua serie, non 
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  // La videoteca ha finito di leggere l'archivio (a pagine: l'ultima richiesta,
+  // quella vuota, arriva dopo): la serie ha il suo titolo. Contando prima, la
+  // coda di quella lettura finiva fra le letture del lettore.
+  await expect(page.getByRole('button', { name: /Shōgun/ })).toBeVisible()
 
   const letture: string[] = []
   page.on('request', (r) => {
