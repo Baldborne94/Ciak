@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { fetchAllRows } from './paged'
 import type { MediaItem, TmdbType } from './types'
 import type { NomeFilm } from './sottotitoli'
 import { ordinaEpisodi, prossimoDaGuardare, sigla, type EpisodioVideoteca } from './videoteca'
@@ -161,10 +162,14 @@ export function titoloDaMostrare(voce: Pick<VoceStreaming, 'titolo' | 'media_typ
 
 // ── Lettura e scrittura ─────────────────────────────────────────────────────
 
+// A pagine: Supabase taglia a mille righe senza dirlo, e una videoteca con
+// le serie intere le supera presto. I file arrivati per ultimi (un film appena
+// convertito) restavano fuori, e la sua scheda non aveva «▶ Guarda ora».
+// L'ordine fisso tiene le pagine senza buchi né doppioni.
 export async function elencaStreaming(userId: string): Promise<VoceStreaming[]> {
-  const { data, error } = await client().from(TABELLA).select('*').eq('user_id', userId)
-  if (error) throw new Error(error.message)
-  return (data ?? []) as VoceStreaming[]
+  return fetchAllRows<VoceStreaming>((from, to) =>
+    client().from(TABELLA).select('*').eq('user_id', userId).order('drive_file_id', { ascending: true }).range(from, to),
+  )
 }
 
 export async function voceStreaming(userId: string, fileId: string): Promise<VoceStreaming | null> {

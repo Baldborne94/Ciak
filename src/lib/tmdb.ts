@@ -49,6 +49,7 @@ export {
   getReleaseYears,
   getSearchTitles,
   getTitleGenres,
+  getTitleSagas,
   getSagaContinuations,
   getRelatedCollections,
   type SagaContinuation,

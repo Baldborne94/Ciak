@@ -3,7 +3,8 @@ import { normalise, type RawCollection, type RawMedia } from './raw'
 import { patchReadableTitles } from './titles'
 import { mapLimit } from '../mapLimit'
 import { cacheYears, getCachedYears } from '../releaseYearCache'
-import { cacheGeneri, cacheSearchTitles, getCachedSearchTitles } from '../searchTitleCache'
+import { cacheGeneri, cacheSaghe, cacheSearchTitles, getCachedSearchTitles } from '../searchTitleCache'
+import { nomeSaga } from '../saghe'
 import type { CacheLocale } from '../cacheLocale'
 import type { Collection, CollectionDetail, MediaItem, TmdbType } from '../types'
 
@@ -90,6 +91,9 @@ interface TitleLookup {
   year: string | null
   titoli: string[]
   generi: number[]
+  // La collezione di TMDB di cui il film fa parte (Alien, Harry Potter…): è
+  // già in questa risposta, e raccoglie i film della videoteca in cartelle.
+  saga: Collection | null
 }
 const lookupInFlight = new Map<string, Promise<TitleLookup>>()
 
@@ -105,11 +109,19 @@ function fetchLookupOnce(mediaType: TmdbType, tmdbId: number, key: string): Prom
     original_title?: string
     original_name?: string
     genres?: { id: number }[]
+    belongs_to_collection?: { id: number; name: string; poster_path?: string | null } | null
   }>(`/${mediaType}/${tmdbId}`, { language: 'en-US' })
     .then((raw) => ({
       year: (raw.release_date || raw.first_air_date)?.slice(0, 4) ?? null,
       titoli: [...new Set([raw.title ?? raw.name, raw.original_title ?? raw.original_name].filter((x): x is string => !!x))],
       generi: (raw.genres ?? []).map((g) => g.id),
+      saga: raw.belongs_to_collection
+        ? {
+            id: raw.belongs_to_collection.id,
+            name: nomeSaga(raw.belongs_to_collection.name),
+            posterPath: raw.belongs_to_collection.poster_path ?? null,
+          }
+        : null,
     }))
     .finally(() => lookupInFlight.delete(key))
 
@@ -191,6 +203,14 @@ export async function getTitleGenres(
 ): Promise<{ generi: Map<string, number[]>; falliti: number }> {
   const { valori, falliti } = await perTitolo(refs, cacheGeneri, (l) => l.generi)
   return { generi: valori, falliti }
+}
+
+// La saga (collezione di TMDB) di ogni film, null se non ne ha una.
+export async function getTitleSagas(
+  refs: { tmdbId: number; mediaType: TmdbType }[],
+): Promise<{ saghe: Map<string, Collection | null>; falliti: number }> {
+  const { valori, falliti } = await perTitolo(refs, cacheSaghe, (l) => l.saga)
+  return { saghe: valori, falliti }
 }
 
 export interface SagaContinuation {
