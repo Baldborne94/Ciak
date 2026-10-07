@@ -5,7 +5,7 @@ import { EmptyState, ErrorState, Loader } from '../components/States'
 import { logFailure } from '../lib/logFailure'
 import { useAuth } from '../lib/auth'
 import { usePersistedState } from '../lib/usePersistedState'
-import { getGenres, getReleaseYears, getSearchTitles, getTitleGenres, posterUrl } from '../lib/tmdb'
+import { getGenres, getReleaseYears, getSearchTitles, getTitleGenres, getTitleSagas, posterUrl } from '../lib/tmdb'
 import { filterSelectClass } from '../components/FilterBar'
 import {
   filtraVideoteca,
@@ -19,11 +19,14 @@ import {
   type RigaVideoteca,
 } from '../lib/videoteca'
 import SerieVideoteca from '../components/SerieVideoteca'
+import SagaVideoteca from '../components/SagaVideoteca'
+import FilmVideoteca from '../components/FilmVideoteca'
+import { raggruppaSaghe, type GruppoSaga } from '../lib/saghe'
 import Modal from '../components/Modal'
 import SceltaTitolo from '../components/SceltaTitolo'
 import { abbinaAMano, riconosciNuovi, voceVuota } from '../lib/riconoscimento'
 import { filmDaCercare } from '../lib/sottotitoli'
-import type { MediaItem } from '../lib/types'
+import type { Collection, MediaItem } from '../lib/types'
 import { salvaPresenti } from '../lib/videoPresenti'
 import { dimenticaVideoteca } from '../lib/useVideoteca'
 import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
@@ -43,15 +46,6 @@ import {
   titoloVideo,
   type DriveVideo,
 } from '../lib/googleDrive'
-
-// «video/x-matroska» → «MKV»: il sottotipo MIME è poco leggibile.
-function formato(mime: string): string {
-  const sotto = mime.replace('video/', '')
-  if (sotto === 'x-matroska') return 'MKV'
-  if (sotto === 'x-msvideo') return 'AVI'
-  if (sotto === 'quicktime') return 'MOV'
-  return sotto.replace(/^x-/, '').toUpperCase()
-}
 
 export default function StreamingPage() {
   const navigate = useNavigate()
@@ -86,7 +80,8 @@ export default function StreamingPage() {
     anni: Map<string, string | null>
     generi: Map<string, number[]>
     titoli: Map<string, string[]>
-  }>({ anni: new Map(), generi: new Map(), titoli: new Map() })
+    saghe: Map<string, Collection | null>
+  }>({ anni: new Map(), generi: new Map(), titoli: new Map(), saghe: new Map() })
   const [nomiGeneri, setNomiGeneri] = useState<Map<number, string>>(new Map())
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
@@ -175,10 +170,16 @@ export default function StreamingPage() {
       return { tmdbId: Number(id), mediaType: tipo === 'tv' ? ('tv' as const) : ('movie' as const) }
     })
     let vivo = true
-    Promise.all([getReleaseYears(refs), getTitleGenres(refs), getSearchTitles(refs)])
-      .then(([anni, { generi, falliti: f1 }, { titoli, falliti: f2 }]) => {
-        if (vivo) setInfoTitoli({ anni, generi, titoli })
-        const falliti = Math.max(f1, f2)
+    Promise.all([
+      getReleaseYears(refs),
+      getTitleGenres(refs),
+      getSearchTitles(refs),
+      // Le saghe ce le hanno solo i film.
+      getTitleSagas(refs.filter((r) => r.mediaType === 'movie')),
+    ])
+      .then(([anni, { generi, falliti: f1 }, { titoli, falliti: f2 }, { saghe, falliti: f3 }]) => {
+        if (vivo) setInfoTitoli({ anni, generi, titoli, saghe })
+        const falliti = Math.max(f1, f2, f3)
         if (falliti > 0) logFailure('Dettagli dei titoli della videoteca')(new Error(`${falliti} titoli su ${refs.length} senza generi o titoli originali`))
       })
       .catch(logFailure('Dettagli dei titoli della videoteca'))
@@ -274,7 +275,7 @@ export default function StreamingPage() {
     mostrati.map((v) => ({ id: v.id, name: v.name, cartella: v.cartella, serie: v.serie ?? null, voce: archivio.get(v.id) })),
   )
   // Le righe dell'elenco: i film e una per serie.
-  const voci: { riga: RigaVideoteca; video: DriveVideo }[] = raggruppati.sciolti.map((id) => {
+  const film: { riga: RigaVideoteca; video: DriveVideo }[] = raggruppati.sciolti.map((id) => {
     const v = videoPerId.get(id) as DriveVideo
     const voce = archivio.get(id)
     return {
@@ -290,6 +291,37 @@ export default function StreamingPage() {
       },
     }
   })
+  // I film della stessa saga (Alien, Harry Potter…) in una cartella sola.
+  const chiaveTitolo = (id: string) => {
+    const voce = archivio.get(id)
+    return voce?.tmdb_id && voce.media_type === 'movie' ? `movie-${voce.tmdb_id}` : null
+  }
+  const filmPerId = new Map(film.map((f) => [f.riga.id, f]))
+  const perSaghe = raggruppaSaghe(
+    film.map((f) => ({ id: f.riga.id, chiave: chiaveTitolo(f.riga.id), anno: f.riga.anno })),
+    infoTitoli.saghe,
+  )
+  const voci = perSaghe.sciolti.map((id) => filmPerId.get(id) as { riga: RigaVideoteca; video: DriveVideo })
+  const saghe = new Map<string, GruppoSaga>(perSaghe.saghe.map((g) => [g.chiave, g]))
+  for (const g of perSaghe.saghe) {
+    const suoi = g.ids.map((id) => (filmPerId.get(id) as { riga: RigaVideoteca }).riga)
+    const anni = suoi.map((r) => r.anno).filter((a): a is string => !!a)
+    voci.push({
+      video: (filmPerId.get(g.ids[0]) as { video: DriveVideo }).video,
+      riga: {
+        id: g.chiave,
+        nome: g.saga.name,
+        // Cercando un film della saga si trova la saga, che si apre da sola.
+        file: suoi.map((r) => `${r.nome} ${r.file}`).join('\n'),
+        anno: anni[0] ?? null,
+        generi: [...new Set(suoi.flatMap((r) => r.generi))],
+        titoli: suoi.flatMap((r) => r.titoli),
+        aggiunto: suoi.map((r) => r.aggiunto ?? '').sort().pop() || null,
+        guardato: suoi.map((r) => r.guardato ?? '').sort().pop() || null,
+        daSistemare: suoi.some((r) => r.daSistemare),
+      },
+    })
+  }
   const serie = new Map(raggruppati.serie.map((g) => [g.chiave, g]))
   for (const g of raggruppati.serie) {
     const video = g.ids.map((id) => videoPerId.get(id) as DriveVideo)
@@ -316,6 +348,18 @@ export default function StreamingPage() {
   // Sistemato l'ultimo, il filtro si spegne da solo invece di lasciare un elenco vuoto.
   const filtroDaSistemare = soloDaSistemare && quantiDaSistemare > 0
   const elenco = ordinaVideoteca(filtraVideoteca(righe, { query, genere: genereValido, daSistemare: filtroDaSistemare }), ordine)
+
+  const rigaFilm = (v: DriveVideo, riga: RigaVideoteca) => (
+    <FilmVideoteca
+      video={v}
+      voce={archivio.get(v.id)}
+      nome={riga.nome}
+      anno={riga.anno}
+      scaricato={scaricati.has(v.id)}
+      onApri={() => navigate(`/streaming/${v.id}`, { state: { titolo: riga.nome, file: v.name } })}
+      onScegli={() => setScelta({ nome: riga.nome, ricerca: filmDaCercare(v.name, v.cartella, v.serie ?? null).titolo, video: [v] })}
+    />
+  )
 
   // Senza Client ID configurato la funzione non esiste: lo diciamo invece di
   // mostrare un pulsante che non farebbe nulla.
@@ -565,57 +609,29 @@ export default function StreamingPage() {
                 </li>
               )
             }
-            const v = videoDi.get(riga.id) as DriveVideo
-            const voce = archivio.get(v.id)
-            const nome = riga.nome
-            const avanzamento = voce?.durata ? Math.min(1, voce.posizione / voce.durata) : 0
+            const saga = saghe.get(riga.id)
+            if (saga) {
+              const suoi = saga.ids.map((id) => filmPerId.get(id) as { riga: RigaVideoteca; video: DriveVideo })
+              const anni = suoi.map((f) => f.riga.anno).filter((a): a is string => !!a)
+              return (
+                <li key={riga.id}>
+                  <SagaVideoteca
+                    nome={saga.saga.name}
+                    poster={saga.saga.posterPath ? (posterUrl(saga.saga.posterPath, 'w185') ?? null) : null}
+                    quanti={suoi.length}
+                    visti={suoi.filter((f) => !!archivio.get(f.video.id)?.visto_il).length}
+                    anni={anni.length === 0 ? null : anni[0] === anni[anni.length - 1] ? anni[0] : `${anni[0]}–${anni[anni.length - 1]}`}
+                    apertaSempre={query.trim() !== ''}
+                  >
+                    {suoi.map((f) => (
+                      <li key={f.video.id}>{rigaFilm(f.video, f.riga)}</li>
+                    ))}
+                  </SagaVideoteca>
+                </li>
+              )
+            }
             return (
-              <li key={v.id} className="flex items-center">
-                <button
-                  onClick={() => navigate(`/streaming/${v.id}`, { state: { titolo: nome, file: v.name } })}
-                  className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition hover:bg-theatre-800/60"
-                >
-                  {voce?.poster_path ? (
-                    <img
-                      src={posterUrl(voce.poster_path, 'w185') ?? undefined}
-                      alt=""
-                      loading="lazy"
-                      className="h-14 w-10 shrink-0 rounded object-cover"
-                    />
-                  ) : (
-                    <span className="flex h-14 w-10 shrink-0 items-center justify-center text-xl">
-                      {scaricati.has(v.id) ? '📱' : '🎬'}
-                    </span>
-                  )}
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-zinc-100">{nome}</span>
-                    <span className="block truncate text-xs text-zinc-500">
-                      {riga.anno && `${riga.anno} · `}
-                      {voce?.visto_il && '✓ Visto · '}
-                      {scaricati.has(v.id) && 'Offline · '}
-                      {formato(v.mimeType)}
-                      {taglia(v.size) && ` · ${taglia(v.size)}`}
-                      {` · ${v.name}`}
-                    </span>
-                    {avanzamento > 0.02 && !voce?.visto_il && (
-                      <span className="mt-1 block h-1 overflow-hidden rounded bg-theatre-800" aria-hidden="true">
-                        <span className="block h-full bg-projector" style={{ width: `${Math.round(avanzamento * 100)}%` }} />
-                      </span>
-                    )}
-                  </span>
-                  <span className="shrink-0 text-projector">{avanzamento > 0.02 && !voce?.visto_il ? '▶ Riprendi' : '▶ Guarda'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScelta({ nome, ricerca: filmDaCercare(v.name, v.cartella, v.serie ?? null).titolo, video: [v] })}
-                  // Senza il titolo nel nome: chi cerca la riga del film trova la riga.
-                  aria-label="Scegli il titolo"
-                  title={voce?.tmdb_id ? 'Non è questo? Scegli il titolo' : 'Scegli il titolo'}
-                  className="shrink-0 px-3 py-3 text-zinc-500 transition hover:text-projector"
-                >
-                  ✎
-                </button>
-              </li>
+              <li key={riga.id}>{rigaFilm(videoDi.get(riga.id) as DriveVideo, riga)}</li>
             )
           })}
         </ul>

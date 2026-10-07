@@ -50,7 +50,7 @@ const FILE: Record<string, unknown> = {
 // contenuto) cestinato non compare più negli elenchi, come su Drive.
 async function mockDrive(
   page: Page,
-  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false } = {},
+  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conSaga = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   const cestinati = new Set<string>()
@@ -161,6 +161,13 @@ async function mockDrive(
                 mimeType: 'video/mp4',
                 parents: ['cartella-sp-s03'],
               },
+            ]
+          : []),
+        // FILM/Alien.1979.mp4 e FILM/Aliens.1986.mp4: due film della stessa saga.
+        ...(conSaga
+          ? [
+              { id: 'video-alien-1979', name: 'Alien.1979.mp4', size: '1600000000', mimeType: 'video/mp4', parents: ['cartella-film'] },
+              { id: 'video-aliens-1986', name: 'Aliens.1986.mp4', size: '1700000000', mimeType: 'video/mp4', parents: ['cartella-film'] },
             ]
           : []),
         ...(conExtra
@@ -313,6 +320,56 @@ test('«Streaming» elenca i film della cartella Ciak e li apre nel player', asy
   await page.getByRole('link', { name: /Torna ai film/ }).click()
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
+})
+
+test('i film della stessa saga stanno in una cartella con la locandina della saga', async ({ page }) => {
+  await mockDrive(page, { conSaga: true })
+  const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
+    id: `s-${drive_file_id}`,
+    user_id: E2E_USER.id,
+    drive_file_id,
+    nome_file: null,
+    tmdb_id,
+    media_type: 'movie',
+    titolo,
+    poster_path: `/poster-${tmdb_id}.jpg`,
+    stagione: null,
+    episodio: null,
+    abbinato_a_mano: false,
+    posizione: 0,
+    durata: 7000,
+    secondi_visti: 0,
+    visto_il: tmdb_id === 348 ? '2026-09-01T20:00:00Z' : null,
+  })
+  await mockSupabase(page, { user_streaming: [film('video-alien-1979', 348, 'Alien'), film('video-aliens-1986', 679, 'Aliens')] })
+  // Il dettaglio di ogni film dice a quale saga appartiene, come su TMDB.
+  const saga = { id: 8091, name: 'Alien Collection', poster_path: '/alien-saga.jpg' }
+  await page.route('**/api/tmdb*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    if (path === '/movie/348') return route.fulfill({ json: movieDetail(348, 'Alien', { release_date: '1979-05-25', belongs_to_collection: saga }) })
+    if (path === '/movie/679') return route.fulfill({ json: movieDetail(679, 'Aliens', { release_date: '1986-07-18', belongs_to_collection: saga }) })
+    return route.fallback()
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  const cartella = page.getByRole('button', { name: /^Alien ▸/ })
+  await expect(cartella).toContainText('Saga · 2 film · 1979–1986 · 1 visti')
+  await expect(cartella.locator('img')).toHaveAttribute('src', /alien-saga\.jpg$/)
+  // Chiusa, i due film non sono righe sciolte dell'elenco.
+  await expect(page.getByRole('button', { name: /Aliens\.1986\.mp4/ })).toHaveCount(0)
+
+  await cartella.click()
+  const filmDellaSaga = page.getByRole('list', { name: 'Film di Alien' })
+  await expect(filmDellaSaga.getByRole('button', { name: /Alien\.1979\.mp4/ })).toBeVisible()
+  await filmDellaSaga.getByRole('button', { name: /Aliens\.1986\.mp4/ }).click()
+  await expect(page).toHaveURL(/\/streaming\/video-aliens-1986$/)
+
+  // Cercando un film della saga, la cartella si apre da sola.
+  await page.getByRole('link', { name: /Torna ai film/ }).click()
+  await page.getByPlaceholder(/Cerca un titolo/).fill('Aliens')
+  await expect(page.getByRole('list', { name: 'Film di Alien' }).getByRole('button', { name: /Aliens\.1986\.mp4/ })).toBeVisible()
 })
 
 test('gli extra dei film (le featurette) non compaiono come titoli, ma si contano', async ({ page }) => {

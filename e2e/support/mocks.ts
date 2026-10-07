@@ -38,6 +38,8 @@ export interface TmdbOverrides {
   discover?: (page: number, params: URLSearchParams) => RawMedia[]
   discoverTotalPages?: number
   detail?: Record<string, unknown>
+  // Un dettaglio diverso per titolo (le saghe della videoteca ne leggono molti).
+  detailOf?: (mediaType: string, id: number) => Record<string, unknown> | undefined
   season?: Record<string, unknown>
   person?: Record<string, unknown>
   personCredits?: Record<string, unknown>
@@ -101,7 +103,7 @@ export async function mockTmdb(page: Page, over: TmdbOverrides = {}): Promise<Tm
     const detailMatch = /^\/(movie|tv)\/(\d+)$/.exec(path)
     if (detailMatch) {
       const id = Number(detailMatch[2])
-      return json(over.detail ?? movieDetail(id, `Titolo ${id}`))
+      return json(over.detailOf?.(detailMatch[1], id) ?? over.detail ?? movieDetail(id, `Titolo ${id}`))
     }
     if (/\/(recommendations|similar)$/.test(path)) return json({ results: [] })
     if (/^\/tv\/\d+\/season\/\d+$/.test(path)) {
