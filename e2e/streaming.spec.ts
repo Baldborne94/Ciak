@@ -50,7 +50,7 @@ const FILE: Record<string, unknown> = {
 // contenuto) cestinato non compare più negli elenchi, come su Drive.
 async function mockDrive(
   page: Page,
-  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conSaga = false } = {},
+  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conSaga = false, conPacchetto = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   const cestinati = new Set<string>()
@@ -108,7 +108,11 @@ async function mockDrive(
           'cartella-anime': [{ id: 'cartella-snk', name: 'Shingeki no Kyojin [10bits x265]', parents: ['cartella-anime'] }],
           'cartella-snk': [{ id: 'cartella-snk-oad', name: 'OADs', parents: ['cartella-snk'] }],
         }),
-        'cartella-film': [{ id: 'cartella-song', name: 'Song of the Sea (2014) [1080p]', parents: ['cartella-film'] }],
+        'cartella-film': [
+          { id: 'cartella-song', name: 'Song of the Sea (2014) [1080p]', parents: ['cartella-film'] },
+          // FILM/Transformers Complete Movie Collection/: un pacchetto di film.
+          ...(conPacchetto ? [{ id: 'cartella-transformers', name: 'Transformers Complete Movie Collection', parents: ['cartella-film'] }] : []),
+        ],
         // FILM/Song of the Sea (2014) [1080p]/Featurettes/Making of Song of the Sea.mp4
         ...(conExtra && { 'cartella-song': [{ id: 'cartella-song-extra', name: 'Featurettes', parents: ['cartella-song'] }] }),
         ...(conSerie && {
@@ -161,6 +165,12 @@ async function mockDrive(
                 mimeType: 'video/mp4',
                 parents: ['cartella-sp-s03'],
               },
+            ]
+          : []),
+        ...(conPacchetto
+          ? [
+              { id: 'video-tf-01', name: '01 Transformers - Action 2007 Eng Rus Multi-Subs 1080p [H264-mp4].mp4', size: '4900000000', mimeType: 'video/mp4', parents: ['cartella-transformers'] },
+              { id: 'video-tf-06', name: '06 Transformers Bumblebee - Action 2018 Eng Rus Multi-Subs 1080p [H264-mp4].mp4', size: '3600000000', mimeType: 'video/mp4', parents: ['cartella-transformers'] },
             ]
           : []),
         // FILM/Alien.1979.mp4 e FILM/Aliens.1986.mp4: due film della stessa saga.
@@ -370,6 +380,42 @@ test('i film della stessa saga stanno in una cartella con la locandina della sag
   await page.getByRole('link', { name: /Torna ai film/ }).click()
   await page.getByPlaceholder(/Cerca un titolo/).fill('Aliens')
   await expect(page.getByRole('list', { name: 'Film di Alien' }).getByRole('button', { name: /Aliens\.1986\.mp4/ })).toBeVisible()
+})
+
+test('i film di un pacchetto si riconoscono uno per uno e finiscono nella cartella della loro saga', async ({ page }) => {
+  // «Transformers Complete Movie Collection/06 Transformers Bumblebee - Action
+  // 2018…»: si cercava il nome del pacchetto, o il titolo con numero e genere
+  // attaccati, e i film restavano tutti «Transformers Complete Movie Collection».
+  await mockDrive(page, { conPacchetto: true })
+  const db = await mockSupabase(page, { user_streaming: [] })
+  const saga = { id: 8650, name: 'Transformers Collection', poster_path: '/transformers-saga.jpg' }
+  const cercati: string[] = []
+  await page.route('**/api/tmdb*', (route) => {
+    const url = new URL(route.request().url())
+    const path = url.searchParams.get('path') ?? ''
+    if (path === '/search/multi') {
+      const q = url.searchParams.get('query') ?? ''
+      cercati.push(q)
+      if (q === 'Transformers') return route.fulfill({ json: { results: [{ id: 1858, media_type: 'movie', title: 'Transformers', original_title: 'Transformers', release_date: '2007-06-27', poster_path: '/tf.jpg' }] } })
+      if (q === 'Transformers Bumblebee') return route.fulfill({ json: { results: [{ id: 424783, media_type: 'movie', title: 'Bumblebee', original_title: 'Bumblebee', release_date: '2018-12-15', poster_path: '/bb.jpg' }] } })
+      return route.fulfill({ json: { results: [] } })
+    }
+    if (path === '/movie/1858') return route.fulfill({ json: movieDetail(1858, 'Transformers', { release_date: '2007-06-27', belongs_to_collection: saga }) })
+    if (path === '/movie/424783') return route.fulfill({ json: movieDetail(424783, 'Bumblebee', { release_date: '2018-12-15', belongs_to_collection: saga }) })
+    return route.fallback()
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  await expect.poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-tf-06')?.tmdb_id).toBe(424783)
+  expect(db.tables.user_streaming.find((r) => r.drive_file_id === 'video-tf-01')?.tmdb_id).toBe(1858)
+  expect(cercati).not.toContain('Transformers Complete Movie Collection')
+
+  const cartella = page.getByRole('button', { name: /^Transformers ▸/ })
+  await expect(cartella).toContainText('Saga · 2 film · 2007–2018')
+  await cartella.click()
+  await expect(page.getByRole('list', { name: 'Film di Transformers' }).getByText('Bumblebee', { exact: true })).toBeVisible()
 })
 
 test('gli extra dei film (le featurette) non compaiono come titoli, ma si contano', async ({ page }) => {

@@ -8,6 +8,16 @@ describe('titoloVideo', () => {
     ).toBe('Song of the Sea (2014) [1080p]')
   })
 
+  it('dentro un pacchetto di film mostra il film, non il nome del pacchetto', () => {
+    // Sei righe tutte «Transformers Complete Movie Collection», indistinguibili.
+    expect(
+      titoloVideo({
+        name: '06 Transformers Bumblebee - Action 2018 Eng Rus Multi-Subs 1080p [H264-mp4].mp4',
+        cartella: 'Transformers Complete Movie Collection',
+      }),
+    ).toBe('Transformers Bumblebee (2018)')
+  })
+
   it('senza sottocartella usa il nome del file senza estensione', () => {
     expect(titoloVideo({ name: 'B99 S7E2.mp4', cartella: null })).toBe('B99 S7E2')
     expect(titoloVideo({ name: 'Shogun.S01E01.mkv', cartella: null })).toBe('Shogun.S01E01')

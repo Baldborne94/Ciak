@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  cartellaRaccolta,
   analizzaNomeFilm,
   decodificaTesto,
   filmDaCercare,
@@ -108,6 +109,74 @@ describe('analizzaNomeFilm', () => {
 
   it('un nome senza niente da togliere resta com’è', () => {
     expect(analizzaNomeFilm('La vita è bella.mkv')).toEqual({ titolo: 'La vita è bella' })
+  })
+})
+
+describe('filmDaCercare: i film dentro un pacchetto', () => {
+  // I pacchetti di saghe scaricati così come sono: la cartella è il nome della
+  // raccolta, non del film, e i file portano numero di traccia, genere e
+  // versione. Questi film restavano senza titolo, quindi fuori dalle saghe.
+  it('toglie numero di traccia e genere, e tiene l’anno', () => {
+    expect(
+      filmDaCercare('06 Transformers Bumblebee - Action 2018 Eng Rus Multi-Subs 1080p [H264-mp4].mp4', 'Transformers Complete Movie Collection'),
+    ).toEqual({ titolo: 'Transformers Bumblebee', anno: 2018 })
+    expect(
+      filmDaCercare('01 The Avengers Assemble - Action 2012 Eng Ita Multi-Subs 720p [H264-mp4].mp4', 'The Avengers 4 Movie Collection - Action 2012-2019'),
+    ).toEqual({ titolo: 'The Avengers Assemble', anno: 2012 })
+  })
+
+  it('toglie la versione (Directors Cut, Special Extended, IMAX…)', () => {
+    expect(filmDaCercare('01 Alien Directors Cut - Sci-Fi 1979 Eng Subs 720p [H264-mp4].mp4', 'Alien Quadrilogy')).toEqual({
+      titolo: 'Alien',
+      anno: 1979,
+    })
+    expect(
+      filmDaCercare('04 Alien Resurrection Special Extended - Sci-Fi 1997 Eng Subs 720p [H264-mp4].mp4', 'Alien Quadrilogy'),
+    ).toEqual({ titolo: 'Alien Resurrection', anno: 1997 })
+    expect(
+      filmDaCercare('05 Transformers The Last Knight - IMAX 2017 Eng Rus Multi-Subs 1080p [H264-mp4].mp4', 'Transformers Complete Movie Collection'),
+    ).toEqual({ titolo: 'Transformers The Last Knight', anno: 2017 })
+  })
+
+  it('le sigle M02 E05 dei pacchetti di Star Wars non sono il titolo, e l’anno sta fra parentesi dopo le etichette', () => {
+    expect(
+      filmDaCercare('Star Wars M02 E05 The Empire Strikes Back [BluRay] (1980 360p re-blurip).mp4', 'Star Wars M01-M03 [Bluray] (1977-1983)'),
+    ).toEqual({ titolo: 'Star Wars The Empire Strikes Back', anno: 1980 })
+  })
+
+  it('senza anno nel file, la cartella del pacchetto non diventa il titolo', () => {
+    expect(filmDaCercare('02 Aliens.mp4', 'Alien Quadrilogy')).toEqual({ titolo: 'Aliens' })
+    // Il numero di traccia oltre il 9, senza zero: dentro un pacchetto si toglie.
+    expect(filmDaCercare('10 Thor Ragnarok - Action 2017 720p.mp4', 'Marvel 23 Movie Collection')).toEqual({ titolo: 'Thor Ragnarok', anno: 2017 })
+    expect(filmDaCercare('Harry Potter and the Chamber of Secrets.mp4', 'Harry Potter Complete 8-Film Collection')).toEqual({
+      titolo: 'Harry Potter and the Chamber of Secrets',
+    })
+  })
+
+  it('un numero che fa parte del titolo resta', () => {
+    expect(filmDaCercare('12 Angry Men 1957 1080p.mp4', null)).toEqual({ titolo: '12 Angry Men', anno: 1957 })
+    expect(filmDaCercare('28 Days Later (2002).mp4', '28 Days Later (2002)')).toEqual({ titolo: '28 Days Later', anno: 2002 })
+    // «Uncut Gems» comincia con la parola: non è una versione.
+    expect(filmDaCercare('Uncut Gems 2019.mp4', null)).toEqual({ titolo: 'Uncut Gems', anno: 2019 })
+  })
+})
+
+describe('cartellaRaccolta', () => {
+  it('riconosce i pacchetti di film', () => {
+    for (const c of [
+      'Transformers Complete Movie Collection',
+      'The Avengers 4 Movie Collection - Action 2012-2019',
+      'Star Wars M01-M03 [Bluray] (1977-1983)',
+      'Alien Quadrilogy',
+      'The Lord of the Rings Trilogy',
+      'Harry Potter Complete 8-Film Collection',
+    ])
+      expect(cartellaRaccolta(c), c).toBe(true)
+  })
+
+  it('la cartella di un film solo non è un pacchetto', () => {
+    for (const c of ['Song of the Sea (2014) [1080p]', 'The Seventh Seal (1957) Criterion', 'Blade Runner 2049 (2017)'])
+      expect(cartellaRaccolta(c), c).toBe(false)
   })
 })
 

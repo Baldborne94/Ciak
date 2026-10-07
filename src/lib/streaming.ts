@@ -78,6 +78,10 @@ export function scegliAbbinamento(
     let punti = 0
     if (titoli.includes(cercato)) punti += 10
     else if (titoli.some((t) => t.startsWith(cercato + ' ') || cercato.startsWith(t + ' '))) punti += 4
+    // Nei pacchetti la saga sta davanti al titolo: «Transformers Bumblebee»,
+    // «Star Wars The Empire Strikes Back». Come sopra, senza l'anno giusto non
+    // basta; e non per una parola corta, che finisce in troppi nomi.
+    else if (titoli.some((t) => t.length >= 6 && cercato.endsWith(' ' + t))) punti += 4
     else return
     const anno = annoDi(item)
     if (nome.anno !== undefined && anno !== null) {

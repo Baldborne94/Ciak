@@ -64,7 +64,7 @@ export interface NomeFilm {
 
 // Ciò che nei nomi delle release viene dopo il titolo: qualità, sorgente, codec.
 const ETICHETTE =
-  /\b(2160p|1080p|720p|576p|480p|4k|uhd|bluray|blu ray|brrip|bdrip|remux|web dl|webdl|webrip|hdtv|dvdrip|hdrip|x264|x265|h264|h265|h 264|h 265|hevc|avc|hdr|hdr10|10bits?|8bits?|hi10p|ddp5 1|dd5 1|aac|ac3|proper|repack|extended|yify|yts|ita|eng)\b/i
+  /\b(2160p|1080p|720p|576p|480p|360p|4k|uhd|bluray|blu ray|brrip|bdrip|remux|web dl|webdl|webrip|hdtv|dvdrip|hdrip|x264|x265|h264|h265|h 264|h 265|hevc|avc|hdr|hdr10|10bits?|8bits?|hi10p|ddp5 1|dd5 1|aac|ac3|proper|repack|extended|yify|yts|ita|eng)\b/i
 
 // Le raccolte di stagioni nei nomi delle cartelle: «Season 1 to 26», «Seasons
 // 1-9», «Stagioni 1-6», «The Complete Series», «S01-S05». Non sono il titolo:
@@ -72,6 +72,31 @@ const ETICHETTE =
 // (Qui i trattini sono già spazi.) Servono due numeri: «Hunting Season» resta.
 const RACCOLTA =
   /\b(?:seasons? \d{1,2} (?:to |a )?\d{1,2}|stagion[ei] \d{1,2} (?:a |al )?\d{1,2}|(?:the )?complete series|serie completa|s\d{1,2} s\d{1,2})\b/i
+
+// Le versioni di un film nei nomi dei pacchetti: «Alien Directors Cut»,
+// «Alien Resurrection Special Extended», «The Last Knight IMAX». Non sono il
+// titolo, ma l'anno viene dopo: non chiudono il titolo come le etichette, si
+// tolgono e basta. Mai in testa: «Uncut Gems» è un film. (Trattini già spazi.)
+const VERSIONI =
+  /(?<=\S)\s+(?:director'?s? cut|special (?:extended(?: edition)?|edition|assembly cut)|extended (?:edition|cut)|uncut|imax|theatrical(?: cut)?|unrated|remastered)(?=\s|$)/gi
+// Il genere che certi pacchetti mettono fra titolo e anno: «Transformers -
+// Action 2007», «Alien - Sci-Fi 1979». Solo così, fra un trattino e l'anno.
+const GENERE_PRIMA_DELL_ANNO =
+  /\s+-\s+(?:action|adventure|animation|comedy|crime|drama|family|fantasy|horror|musical|mystery|romance|sci-fi|scifi|thriller|war|western|IMAX)(?=\s+(?:19|20)\d{2}\b)/i
+// «Star Wars M02 E05 The Empire Strikes Back»: il numero del film nel pacchetto.
+const NUMERO_NEL_PACCHETTO = /\bM\d{2} E\d{2}\b/i
+
+// Una cartella che raccoglie più film: «Transformers Complete Movie
+// Collection», «Alien Quadrilogy», «Star Wars M01-M03 (1977-1983)». Il suo
+// nome non è il titolo di nessuno dei film che contiene.
+export function cartellaRaccolta(nome: string | null | undefined): boolean {
+  if (!nome) return false
+  return (
+    /\b(?:collection|collezione|trilogy|trilogia|quadrilogy|quadrilogia|saga|anthology|antologia|box ?set|\d+ ?(?:movies?|films?))\b/i.test(nome) ||
+    /\bM\d{2}\s*-\s*M\d{2}\b/i.test(nome) ||
+    /\b(?:19|20)\d{2}\s*-\s*(?:19|20)\d{2}\b/.test(nome)
+  )
+}
 
 // Il gruppo che ha preparato il file, in testa al nome degli anime:
 // «[SubsPlease] Frieren - 05», «[a-S] Samurai Champloo (01-26)».
@@ -138,8 +163,16 @@ function leggiNome(nome: string): NomeFilm & { anime?: true } {
     }
   }
   const s = senzaGruppo
+    .replace(GENERE_PRIMA_DELL_ANNO, '')
     .replace(/[._]+/g, ' ')
     .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    // Il numero della traccia nei pacchetti, «06 Transformers Bumblebee»: solo
+    // con lo zero davanti, perché «12 Angry Men» comincia davvero con 12.
+    .replace(/^0\d\s+(?=\D)/, '')
+    .replace(NUMERO_NEL_PACCHETTO, '')
+    .replace(VERSIONI, '')
     .replace(/\s+/g, ' ')
     .trim()
   let fine = s.length
@@ -182,6 +215,11 @@ function leggiNome(nome: string): NomeFilm & { anime?: true } {
   if (anno?.index !== undefined) {
     risultato.anno = Number(anno[1])
     fine = anno.index
+  } else {
+    // Nessun anno prima delle etichette: allora il primo dopo, come in
+    // «… [BluRay] (1980 360p re-rip)».
+    const dopo = [...s.matchAll(/\b((?:19|20)\d{2})\b/g)].find((m) => m.index !== undefined && m.index > fine)
+    if (dopo) risultato.anno = Number(dopo[1])
   }
 
   const titolo = s
@@ -260,6 +298,11 @@ export function filmDaCercare(nomeFile: string, cartella: string | null, serie: 
       stagione: mezzo ? 0 : anime ? stagione : (daFile.stagione ?? stagione),
       ...(episodio !== undefined && { episodio }),
     }
+  }
+  // Dentro un pacchetto la cartella non è il film: vale il file, senza il
+  // numero di traccia (qui anche senza zero: «10 Avengers…» è il decimo).
+  if (cartellaRaccolta(cartella) && daFile.stagione === undefined) {
+    return { ...daFile, titolo: daFile.titolo.replace(/^\d{1,2}\s+(?=\D)/, '') }
   }
   if (!cartella || daFile.anno !== undefined) return daFile
   if (daFile.stagione !== undefined) {

@@ -52,7 +52,10 @@ function segnaControllato(fileId: string): void {
 // v6: i film finiti sotto una serie di un altro anno («Memories of Murder
 // (2003)» abbinato a «Gap Dong», 2014).
 // v7: gli anime senza trattini («[Gruppo]Titolo_17v2_[BD_720p]…»).
-const VERSIONE_RICONOSCIMENTO = 7
+// v8: i film dentro i pacchetti («Transformers Complete Movie Collection/06
+// Transformers Bumblebee - Action 2018…»), che si cercavano col nome del
+// pacchetto o con numero di traccia e genere attaccati al titolo.
+const VERSIONE_RICONOSCIMENTO = 8
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {
