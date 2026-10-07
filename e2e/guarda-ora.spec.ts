@@ -62,6 +62,21 @@ test('nella scheda di un film che è nella videoteca c’è «Riprendi» e porta
   await expect(page.getByRole('heading', { name: 'Song of the Sea' })).toBeVisible()
 })
 
+test('con più di mille file nella videoteca anche gli ultimi aggiunti hanno il pulsante', async ({ page }) => {
+  // Supabase restituisce al massimo mille righe per richiesta, senza dire che
+  // ne ha tagliate: «Il settimo sigillo», appena convertito e quindi in fondo,
+  // spariva dalla videoteca letta dalla scheda del film.
+  const episodi = Array.from({ length: 1000 }, (_, i) =>
+    voce({ drive_file_id: `ep-${i}`, tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', stagione: 1 + Math.floor(i / 20), episodio: 1 + (i % 20) }),
+  )
+  const sigillo = voce({ drive_file_id: 'video-sigillo-01', tmdb_id: 490, media_type: 'movie', titolo: 'Det sjunde inseglet' })
+  await mockTmdb(page, { detail: movieDetail(490, 'Il settimo sigillo') })
+  await mockSupabase(page, { user_streaming: [...episodi, sigillo] })
+
+  await page.goto('/title/movie/490')
+  await expect(page.getByRole('link', { name: '▶ Guarda ora' })).toHaveAttribute('href', '/streaming/video-sigillo-01')
+})
+
 test('un titolo senza file nella videoteca non ha il pulsante', async ({ page }) => {
   await mockTmdb(page, { detail: movieDetail(550, 'Fight Club') })
   await mockSupabase(page, { user_streaming: [SONG] })
