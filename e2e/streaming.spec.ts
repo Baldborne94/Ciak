@@ -31,6 +31,7 @@ const FILE: Record<string, unknown> = {
   // sempre un nome, e il lettore lo usa finché l'archivio non risponde.
   'video-shogun-01': { id: 'video-shogun-01', name: 'Shogun.S01E01.mp4', size: '1000000000', mimeType: 'video/mp4', parents: ['cartella-serie'] },
   'video-shogun-02': { id: 'video-shogun-02', name: 'Shogun.S01E02.mp4', size: '1000000000', mimeType: 'video/mp4', parents: ['cartella-serie'] },
+  'video-shogun-03': { id: 'video-shogun-03', name: 'Shogun.S01E03.mp4', size: '1000000000', mimeType: 'video/mp4', parents: ['cartella-serie'] },
   'cartella-song': {
     id: 'cartella-song',
     name: 'Song of the Sea (2014) [1080p]',
@@ -49,7 +50,7 @@ const FILE: Record<string, unknown> = {
 // contenuto) cestinato non compare più negli elenchi, come su Drive.
 async function mockDrive(
   page: Page,
-  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false } = {},
+  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   const cestinati = new Set<string>()
@@ -134,6 +135,9 @@ async function mockDrive(
           parents: ['cartella-serie'],
           createdTime: '2026-09-20T10:00:00Z',
         },
+        // Gli episodi 2 e 3 di Shōgun (l'1 è il file di Song of the Sea, scelto
+        // a mano): il lettore propone come prossimo solo un file che su Drive c'è.
+        ...(conShogun ? [FILE['video-shogun-02'], FILE['video-shogun-03']] : []),
         ...(conAnime
           ? [
               { id: 'video-snk-s01e04', name: 'Shingeki no Kyojin - S01E04 - Night of the Graduation Ceremony.mp4', size: '758000000', mimeType: 'video/mp4', parents: ['cartella-snk'] },
@@ -1006,7 +1010,7 @@ async function portaIlVideoA(page: Page, secondi: number, durata: number) {
 
 test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte da solo restando a schermo intero', async ({ page }) => {
   await conLettoreCiak(page)
-  await mockDrive(page)
+  await mockDrive(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1074,6 +1078,53 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
   await page.goBack()
   await expect(page).toHaveURL(/\/streaming$/)
   await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull()
+})
+
+test('un episodio ricodificato: il prossimo episodio è il file nuovo, che eredita «visto» dal vecchio', async ({ page }) => {
+  // Lo script che ricodifica in H.264 carica il file nuovo e cancella il
+  // vecchio: due righe per lo stesso S1E2, una con un id che su Drive non c'è
+  // più. Il lettore ci portava (404, fermo su 0:00) e la spunta restava là.
+  await conLettoreCiak(page)
+  await mockDrive(page, { conShogun: true })
+  const riga = (id: string, episodio: number, campi: Record<string, unknown> = {}) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: id,
+    nome_file: `Shogun.S01E0${episodio}.mkv`,
+    tmdb_id: 126308,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    stagione: 1,
+    episodio,
+    posizione: 0,
+    durata: 3600,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: true,
+    ...campi,
+  })
+  const db = await mockSupabase(page, {
+    user_streaming: [
+      riga('video-song-0001', 1),
+      // Prima la riga vecchia: senza il filtro era lei la «prossima».
+      riga('shogun-02-vecchio', 2, { visto_il: '2026-10-01T20:00:00Z', posizione: 3500, secondi_visti: 3400 }),
+      riga('video-shogun-02', 2),
+    ],
+  })
+  await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  // Il file nuovo prende i progressi di quello che ha sostituito.
+  await expect
+    .poll(() => (db.tables.user_streaming.find((r) => r.drive_file_id === 'video-shogun-02') as Record<string, unknown>).visto_il)
+    .toBe('2026-10-01T20:00:00Z')
+
+  // S1E2 ora risulta visto: si apre l'episodio 1 direttamente.
+  await page.goto('/streaming/video-song-0001')
+  await expect(page.getByRole('heading', { name: 'Shōgun · S1E1' })).toBeVisible()
+  await videoA(page, 3480)
+  await page.getByRole('button', { name: '⏭ Prossimo episodio: S1E2' }).click()
+  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
 })
 
 test('un video tolto da Drive non porta più al lettore: niente «Guarda» nelle liste e nelle schede', async ({ page }) => {
@@ -1159,7 +1210,7 @@ async function trascinaA(page: Page, secondi: number) {
 
 test('dove finisce la sigla Ciak lo impara da chi corregge il salto, e vale per tutti gli episodi', async ({ page }) => {
   await conLettoreCiak(page)
-  await mockDrive(page)
+  await mockDrive(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1258,7 +1309,7 @@ test('nella serie gli episodi che mancano su Drive si vedono in grigio, al loro 
 
 test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole a mano', async ({ page }) => {
   await conLettoreCiak(page)
-  await mockDrive(page)
+  await mockDrive(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1337,7 +1388,7 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
 
 test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, episodio per episodio', async ({ page }) => {
   await conLettoreCiak(page)
-  await mockDrive(page)
+  await mockDrive(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1989,7 +2040,7 @@ test('il lettore legge solo la riga del file e gli episodi della sua serie, non 
   // Centinaia di righe a ogni episodio: sul telefono arrivavano dopo che il
   // film era già partito, e intanto il lettore non sapeva da dove riprendere.
   await conLettoreCiak(page)
-  await mockDrive(page)
+  await mockDrive(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -2032,7 +2083,7 @@ async function apriShogun(page: Page, initScript?: () => void) {
     for (const id of ['video-shogun-01', 'video-shogun-02']) localStorage.setItem(`ciak:titolo-originale-v1:${id}`, '1')
   })
   await conLettoreCiak(page)
-  await mockDrive(page)
+  await mockDrive(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -2195,7 +2246,7 @@ test('«Non è questo?» fa scegliere il titolo a mano, e resta scelto', async (
 
 test('a fine episodio lo spunta, mette la serie in corso e propone il prossimo', async ({ page }) => {
   await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await mockDrive(page, { sottotitoliNellaCartella: true, conShogun: true })
   const riga = (id: string, episodio: number, extra: Record<string, unknown> = {}) => ({
     id,
     user_id: 'e2e-user-0000-0000-000000000000',

@@ -5,6 +5,7 @@ import { filmDaCercare } from './sottotitoli'
 import { chiaveSerie } from './videoteca'
 import { abbinamentoDa, contaComeVisto, salvaStreaming, scegliAbbinamento, type VoceStreaming } from './streaming'
 import { markEpisode } from './episodes'
+import { progressiDaEreditare } from './progressiEreditati'
 import type { DriveVideo } from './googleDrive'
 import type { MediaItem } from './types'
 import type { NomeFilm } from './sottotitoli'
@@ -76,6 +77,9 @@ export async function riconosciNuovi(
   userId: string,
   video: DriveVideo[],
   noti: Map<string, VoceStreaming>,
+  // Tutti i file su Drive, anche quelli che la videoteca non mostra: un file
+  // che c'è ancora non è «sostituito», e non cede i suoi progressi.
+  presenti: Set<string> = new Set(video.map((v) => v.id)),
 ): Promise<Map<string, VoceStreaming>> {
   const esito = new Map(noti)
   let falliti = 0
@@ -242,6 +246,17 @@ export async function riconosciNuovi(
         esito.set(r.drive_file_id, { ...r, titolo })
       }
       segnaControllato(r.drive_file_id)
+    } catch {
+      falliti++
+    }
+  })
+  // I file sostituiti su Drive (ricodificati, ricaricati): il nuovo prende
+  // «visto» e posizione dal vecchio. Dopo il riconoscimento, perché serve
+  // sapere di che titolo ed episodio è il file nuovo.
+  await mapLimit(progressiDaEreditare([...esito.values()], presenti), 3, async ({ fileId, campi }) => {
+    try {
+      await salvaStreaming(userId, fileId, campi)
+      esito.set(fileId, { ...(esito.get(fileId) ?? voceVuota(fileId)), ...campi })
     } catch {
       falliti++
     }

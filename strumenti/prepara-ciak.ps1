@@ -43,7 +43,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-04'
+$Versione = '2026-10-07'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 $SottotitoliTesto = @('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text')
 
@@ -118,19 +118,39 @@ function ArgomentiVideo([string]$nome) {
     default { return @('-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p') }
   }
 }
+
+# Avvisi che ffmpeg ripete a ogni fotogramma su certi H.264 interlacciati (i
+# DVDRip, spesso) senza che manchi niente: il video si vede benissimo. Contati
+# come errori superavano da soli la soglia, e un Looney Tunes su due finiva
+# fra i "danneggiati".
+$AvvisiInnocui = @('mmco: unref short failure', 'co located POCs unavailable')
+
+function ErroriVeri([string[]]$righe) {
+  return @($righe | Where-Object {
+      $riga = $_
+      -not ($AvvisiInnocui | Where-Object { $riga -like "*$_*" })
+    })
+}
+
 # Un video rotto (download interrotto, contenitore rifatto male) ffmpeg non lo
 # rifiuta: scarta un pacchetto dopo l'altro riempiendo lo schermo di errori e
 # alla fine esce con 0, lasciando su Drive un MP4 vuoto che poi si salterebbe
 # per sempre. Decodificare i primi secondi lo scopre prima di cominciare.
 # Qualche errore isolato all'inizio e' normale (i .ts partono a meta' di un
 # fotogramma): se ne tollerano pochi. Come sopra, gli errori qui sono attesi.
+# $null se il video si legge; se no le prime righe d'errore di ffmpeg, da
+# mostrare: "danneggiato" senza dire perche' non si poteva verificare.
 function VideoLeggibile([string]$file, [int]$indice) {
   $ErrorActionPreference = 'Continue'
   try {
     $righe = @(& ffmpeg -hide_banner -loglevel error -t 10 -i $file -map "0:$indice" -f null - 2>&1 | ForEach-Object { "$_" })
-    return ($LASTEXITCODE -eq 0) -and ($righe.Count -le 20)
+    $errori = ErroriVeri $righe
+    if ($LASTEXITCODE -eq 0 -and $errori.Count -le 20) { return $null }
+    $primi = @($errori | Select-Object -Unique -First 3)
+    if ($primi.Count -eq 0) { return "ffmpeg e' uscito con codice $LASTEXITCODE" }
+    return ($primi -join ' | ')
   } catch {
-    return $false
+    return "$($_.Exception.Message)"
   }
 }
 
@@ -321,8 +341,9 @@ foreach ($f in $video) {
     # Il video vero: non la copertina che alcuni MKV portano come "video".
     $v = $flussi | Where-Object { $_.codec_type -eq 'video' -and -not ($_.disposition -and $_.disposition.attached_pic -eq 1) } | Select-Object -First 1
     if (-not $v) { throw 'nessuna traccia video' }
-    if (-not (VideoLeggibile $f.FullName $v.index)) {
-      throw "il video e' danneggiato e ffmpeg non riesce a leggerlo. Prova ad aprirlo con VLC: se non si vede va riscaricato, se si vede rifallo con  ffmpeg -i ""$($f.Name)"" -map 0 -c copy riparato.mkv"
+    $illeggibile = VideoLeggibile $f.FullName $v.index
+    if ($illeggibile) {
+      throw "il video e' danneggiato e ffmpeg non riesce a leggerlo ($illeggibile). Prova ad aprirlo con VLC: se non si vede va riscaricato, se si vede rifallo con  ffmpeg -i ""$($f.Name)"" -map 0 -c copy riparato.mkv"
     }
     $audio = @($flussi | Where-Object { $_.codec_type -eq 'audio' })
     $sub = @($flussi | Where-Object { $_.codec_type -eq 'subtitle' -and $SottotitoliTesto -contains $_.codec_name })
