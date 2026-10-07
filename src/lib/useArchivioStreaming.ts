@@ -6,6 +6,8 @@ import { listWatchedEpisodes, markEpisode, syncSeriesStatus } from './episodes'
 import { getDetail } from './tmdb'
 import { titoloDaSalvare } from './riconoscimento'
 import { getUserTitle, upsertUserTitle } from './userTitles'
+import { leggiPresenti, soloPresenti } from './videoPresenti'
+import { elencaFilmOffline } from './filmOffline'
 import {
   abbinamentoDa,
   contaComeVisto,
@@ -46,6 +48,17 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
   const { user } = useAuth()
   const [voce, setVoce] = useState<VoceStreaming | null>(null)
   const [tutte, setTutte] = useState<VoceStreaming[]>([])
+  // I film scaricati qui: si guardano anche se su Drive non ci sono più.
+  const [scaricati, setScaricati] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    let vivo = true
+    elencaFilmOffline()
+      .then((f) => vivo && setScaricati(new Set(f.filter((x) => x.stato === 'completo').map((x) => x.id))))
+      .catch(logFailure('Film scaricati, per il prossimo episodio'))
+    return () => {
+      vivo = false
+    }
+  }, [])
   const [caricata, setCaricata] = useState(false)
   const [puntoRipresa, setPuntoRipresa] = useState(0)
   const [ripresoDa, setRipresoDa] = useState<number | null>(null)
@@ -268,7 +281,10 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
     visto,
     votoSalvato,
     erroreArchivio,
-    prossimo: voce ? prossimoEpisodio(voce, tutte) : null,
+    // Solo fra i file che ci sono ancora, come i pulsanti «Guarda»: un
+    // episodio ricodificato ha un id nuovo, e il vecchio portava a un 404 con
+    // il lettore fermo su 0:00.
+    prossimo: voce ? prossimoEpisodio(voce, soloPresenti(tutte, leggiPresenti(), scaricati)) : null,
     suTempo,
     suPausa: salvaPosizione,
     applicaRipresa,

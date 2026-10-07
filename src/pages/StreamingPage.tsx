@@ -146,7 +146,7 @@ export default function StreamingPage() {
         try {
           const noti = new Map((await elencaStreaming(user.id)).map((v) => [v.drive_file_id, v]))
           setArchivio(noti)
-          setArchivio(await riconosciNuovi(user.id, visibili, noti))
+          setArchivio(await riconosciNuovi(user.id, visibili, noti, new Set(esito.video.map((v) => v.id))))
           dimenticaVideoteca()
         } catch (e) {
           logFailure('Titoli dei film di Drive')(e)
