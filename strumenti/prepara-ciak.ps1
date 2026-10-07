@@ -43,7 +43,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-07'
+$Versione = '2026-10-07b'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 $SottotitoliTesto = @('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text')
 
@@ -341,9 +341,17 @@ foreach ($f in $video) {
     # Il video vero: non la copertina che alcuni MKV portano come "video".
     $v = $flussi | Where-Object { $_.codec_type -eq 'video' -and -not ($_.disposition -and $_.disposition.attached_pic -eq 1) } | Select-Object -First 1
     if (-not $v) { throw 'nessuna traccia video' }
+    # Un controllo che scarta anche file sani (episodi interi di Better Call
+    # Saul e dei Looney Tunes che VLC apre benissimo) non puo' avere l'ultima
+    # parola: decide quello sulla durata del video creato, piu' sotto, che un
+    # file davvero rotto non passa comunque. Solo le clip di meno di un minuto,
+    # che quel controllo non lo fanno, si fermano qui.
     $illeggibile = VideoLeggibile $f.FullName $v.index
-    if ($illeggibile) {
+    if ($illeggibile -and $durataOrigine -le 60) {
       throw "il video e' danneggiato e ffmpeg non riesce a leggerlo ($illeggibile). Prova ad aprirlo con VLC: se non si vede va riscaricato, se si vede rifallo con  ffmpeg -i ""$($f.Name)"" -map 0 -c copy riparato.mkv"
+    }
+    if ($illeggibile) {
+      Write-Host "   ffmpeg segnala errori nei primi secondi ($illeggibile): provo comunque, il controllo sulla durata dira' se e' venuto bene" -ForegroundColor DarkYellow
     }
     $audio = @($flussi | Where-Object { $_.codec_type -eq 'audio' })
     $sub = @($flussi | Where-Object { $_.codec_type -eq 'subtitle' -and $SottotitoliTesto -contains $_.codec_name })
