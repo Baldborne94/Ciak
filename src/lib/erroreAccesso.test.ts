@@ -12,8 +12,12 @@ describe('spiegaErroreAccesso', () => {
     expect(spiegaErroreAccesso({ message: 'Signups not allowed for this instance' })).toMatch(/account nuovi/)
   })
 
-  it("l'accesso annullato su Google non sembra un guasto", () => {
-    expect(spiegaErroreAccesso({ message: 'The user denied access', code: 'access_denied' })).toMatch(/annullato/)
+  it("un rifiuto di Google indica anche la causa più comune: l'app in prova", () => {
+    // Con la schermata di consenso in «Testing», Google rifiuta chi non è fra
+    // gli utenti di prova con lo stesso access_denied di un annullamento.
+    const testo = spiegaErroreAccesso({ message: 'The user denied access', code: 'access_denied' })
+    expect(testo).toMatch(/annullato/)
+    expect(testo).toMatch(/utenti di prova/)
   })
 
   it('un errore sconosciuto riporta il messaggio originale, per poterlo cercare', () => {

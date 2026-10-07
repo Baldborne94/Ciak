@@ -34,8 +34,14 @@ export function spiegaErroreAccesso({ message, code }: ErroreAccesso): string {
       'attivarli su Supabase (Authentication → Sign In / Providers → «Allow new users to sign up»).'
     )
   }
+  // Google usa access_denied sia per chi annulla sia per chi non è fra gli
+  // utenti di prova di un'app ancora in «Testing»: il secondo è il caso di un
+  // amico che sceglie l'account e si ritrova fuori senza aver annullato nulla.
   if (code === 'access_denied') {
-    return "L'accesso con Google è stato annullato. Riprova e conferma l'account."
+    return (
+      "Google ha negato l'accesso. Se non l'hai annullato tu, chi gestisce Ciak deve aggiungere il tuo " +
+      'account Gmail fra gli utenti di prova (Google Cloud → Google Auth Platform → Audience → Test users).'
+    )
   }
   // Il testo originale resta: è quello che si cerca nei log di Supabase.
   return `L'accesso con Google non è riuscito: ${message}`
