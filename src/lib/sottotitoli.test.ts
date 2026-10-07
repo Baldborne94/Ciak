@@ -161,6 +161,21 @@ describe('filmDaCercare: i film dentro un pacchetto', () => {
   })
 })
 
+describe('filmDaCercare: l’anno davanti al titolo', () => {
+  // I classici Disney scaricati come «1940 - Pinocchio.mp4»: si cercava
+  // «1940 Pinocchio», e non si trovava niente.
+  it('«1940 - Pinocchio» è Pinocchio del 1940', () => {
+    expect(filmDaCercare('1940 - Pinocchio.mp4', 'Walt Disney Classics Collection')).toEqual({ titolo: 'Pinocchio', anno: 1940 })
+    expect(filmDaCercare('1943 - Victory Through Air Power.mp4', null)).toEqual({ titolo: 'Victory Through Air Power', anno: 1943 })
+    expect(filmDaCercare('1945 - The Three Caballeros.mp4', 'Disney')).toEqual({ titolo: 'The Three Caballeros', anno: 1945 })
+  })
+
+  it('senza il trattino un anno in testa resta parte del titolo', () => {
+    expect(filmDaCercare('2001 Odissea nello spazio 1968.mkv', null)).toEqual({ titolo: '2001 Odissea nello spazio', anno: 1968 })
+    expect(filmDaCercare('1917 (2019).mkv', null)).toEqual({ titolo: '1917', anno: 2019 })
+  })
+})
+
 describe('cartellaRaccolta', () => {
   it('riconosce i pacchetti di film', () => {
     for (const c of [

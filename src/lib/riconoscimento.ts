@@ -55,7 +55,8 @@ function segnaControllato(fileId: string): void {
 // v8: i film dentro i pacchetti («Transformers Complete Movie Collection/06
 // Transformers Bumblebee - Action 2018…»), che si cercavano col nome del
 // pacchetto o con numero di traccia e genere attaccati al titolo.
-const VERSIONE_RICONOSCIMENTO = 8
+// v9: l'anno davanti al titolo («1940 - Pinocchio», i classici Disney).
+const VERSIONE_RICONOSCIMENTO = 9
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {
