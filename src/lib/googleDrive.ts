@@ -1,5 +1,5 @@
 import type { DiagnosticaVideo } from './lettore'
-import { analizzaNomeFilm, filmDaCercare, stagioneDaCartella } from './sottotitoli'
+import { analizzaNomeFilm, cartellaRaccolta, filmDaCercare, stagioneDaCartella } from './sottotitoli'
 import { pianoCestino, type PianoCestino } from './cestinoDrive'
 import {
   CHIAVE_ATTESA_DRIVE,
@@ -407,6 +407,11 @@ export function titoloVideo(v: Pick<DriveVideo, 'name' | 'cartella' | 'serie'>):
     // una raccolta, la serie è «South Park». L'anno resta: distingue i remake.
     const serie = analizzaNomeFilm(v.serie)
     return `${serie.anno !== undefined ? `${serie.titolo} (${serie.anno})` : serie.titolo} · ${episodio ?? v.cartella}`
+  }
+  // Il nome di un pacchetto («Transformers Complete Movie Collection») è
+  // uguale per tutti i film che contiene: vale quello letto dal file.
+  if (v.cartella && cartellaRaccolta(v.cartella) && !episodio) {
+    return nome.anno !== undefined ? `${nome.titolo} (${nome.anno})` : nome.titolo
   }
   if (v.cartella) return episodio ? `${v.cartella} · ${episodio}` : v.cartella
   return v.name.replace(/\.[a-z0-9]{2,4}$/i, '')

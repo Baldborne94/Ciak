@@ -56,6 +56,21 @@ describe('scegliAbbinamento', () => {
     expect(scegliAbbinamento(nome, [aot], new Map([['movie-1429', ['Shingeki no Kyojin']]]))).toBeNull()
   })
 
+  it('nei pacchetti il nome della saga sta davanti al titolo: «Transformers Bumblebee» è Bumblebee', () => {
+    const bumblebee = media({ id: 424783, title: 'Bumblebee', releaseDate: '2018-12-15' })
+    expect(scegliAbbinamento({ titolo: 'Transformers Bumblebee', anno: 2018 }, [bumblebee])?.id).toBe(424783)
+    const impero = media({ id: 1891, title: "L'Impero colpisce ancora", englishTitle: 'The Empire Strikes Back', releaseDate: '1980-05-20' })
+    expect(scegliAbbinamento({ titolo: 'Star Wars The Empire Strikes Back', anno: 1980 }, [impero])?.id).toBe(1891)
+  })
+
+  it('ma solo con l’anno giusto, e non per una parola corta', () => {
+    const bumblebee = media({ id: 424783, title: 'Bumblebee', releaseDate: '2018-12-15' })
+    expect(scegliAbbinamento({ titolo: 'Transformers Bumblebee', anno: 2017 }, [bumblebee])).toBeNull()
+    expect(scegliAbbinamento({ titolo: 'Transformers Bumblebee' }, [bumblebee])).toBeNull()
+    const film = media({ id: 346364, title: 'It', releaseDate: '2017-09-05' })
+    expect(scegliAbbinamento({ titolo: 'Stephen King s Fear It', anno: 2017 }, [film])).toBeNull()
+  })
+
   it('scarta un film omonimo di un altro anno', () => {
     expect(scegliAbbinamento({ titolo: 'Song of the Sea', anno: 2014 }, [omonimo])).toBeNull()
   })
