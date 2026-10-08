@@ -20,6 +20,9 @@ export interface Raccolta {
   // Segnata come saga: non un riquadro in cima, ma una cartella nell'elenco
   // che raccoglie i suoi film, come le saghe di TMDB (vedi saghe.ts).
   comeSaga: boolean
+  // La collezione di TMDB che questa saga sostituisce (una saga di TMDB
+  // modificata a mano), o null.
+  sagaTmdb?: number | null
 }
 
 // Le liste salvano anche «anime» e «cartoon», che su TMDB sono film o serie:
@@ -31,7 +34,7 @@ export function chiaviElemento(mediaType: MediaType, tmdbId: number): string[] {
 }
 
 export function costruisciRaccolte(
-  liste: { id: string; name: string; copertina?: string | null; come_saga?: boolean }[],
+  liste: { id: string; name: string; copertina?: string | null; come_saga?: boolean; saga_tmdb?: number | null }[],
   elementi: { list_id: string; tmdb_id: number; media_type: MediaType }[],
 ): Raccolta[] {
   const perLista = new Map<string, Map<string, { tmdbId: number; mediaType: MediaType }[]>>(liste.map((l) => [l.id, new Map()]))
@@ -42,7 +45,7 @@ export function costruisciRaccolte(
   }
   return liste.map((l) => {
     const voci = perLista.get(l.id) ?? new Map()
-    return { id: l.id, nome: l.name, chiavi: new Set(voci.keys()), voci, copertina: l.copertina ?? null, comeSaga: !!l.come_saga }
+    return { id: l.id, nome: l.name, chiavi: new Set(voci.keys()), voci, copertina: l.copertina ?? null, comeSaga: !!l.come_saga, sagaTmdb: l.saga_tmdb ?? null }
   })
 }
 

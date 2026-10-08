@@ -59,7 +59,9 @@ function segnaControllato(fileId: string): void {
 // miniserie con «Episode 3» senza stagione.
 // v11: «Dual Audio» nel nome («[DB]Cowboy Bebop Knockin' on Heaven's Door
 // _-_(Dual Audio_10bit…)»), che finiva nel titolo cercato.
-const VERSIONE_RICONOSCIMENTO = 11
+// v12: i film rimasti abbinati a una serie omonima («Aladdin», il film del
+// 1992, sotto la serie del 1994): si riprovano con le regole di oggi.
+const VERSIONE_RICONOSCIMENTO = 12
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {

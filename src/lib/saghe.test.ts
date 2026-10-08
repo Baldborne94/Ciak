@@ -104,6 +104,26 @@ describe('unisciSaghe: le saghe fatte a mano', () => {
     expect(sciolti).toEqual(['f-altro'])
   })
 
+  it('una saga di TMDB modificata a mano la sostituisce: i film tolti restano sciolti', () => {
+    // Transformers modificata togliendo Bumblebee: niente seconda cartella
+    // «Transformers» rifatta da TMDB col solo Bumblebee.
+    const tf = { id: 8650, name: 'Transformers', posterPath: '/tf.jpg' }
+    const saghe = unisciSaghe(
+      new Map([['movie-1858', tf], ['movie-8373', tf], ['movie-424783', tf]]),
+      [manuale({ id: 'l-tf', nome: 'Transformers', chiavi: new Set(['movie-1858', 'movie-8373']), sagaTmdb: 8650 })],
+    )
+    const { saghe: gruppi, sciolti } = raggruppaSaghe(
+      [
+        { id: 'f-1', chiave: 'movie-1858', anno: '2007' },
+        { id: 'f-2', chiave: 'movie-8373', anno: '2009' },
+        { id: 'f-bb', chiave: 'movie-424783', anno: '2018' },
+      ],
+      saghe,
+    )
+    expect(gruppi.map((g) => [g.chiave, g.ids])).toEqual([['lista-l-tf', ['f-1', 'f-2']]])
+    expect(sciolti).toEqual(['f-bb'])
+  })
+
   it('anche con un film solo: l’hai voluta tu', () => {
     const saghe = unisciSaghe(new Map(), [manuale({ chiavi: new Set(['movie-862']) })])
     const { saghe: gruppi } = raggruppaSaghe([{ id: 'f-toy', chiave: 'movie-862', anno: '1995' }], saghe)
