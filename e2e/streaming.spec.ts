@@ -52,7 +52,7 @@ const FILE: Record<string, unknown> = {
 // contenuto) cestinato non compare più negli elenchi, come su Drive.
 async function mockDrive(
   page: Page,
-  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false } = {},
+  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false, conFilmAnime = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   const cestinati = new Set<string>()
@@ -156,6 +156,10 @@ async function mockDrive(
               { id: 'video-snk-oad01', name: "Shingeki no Kyojin - OADE01 - Ilse's Notebook.mp4", size: '566000000', mimeType: 'video/mp4', parents: ['cartella-snk-oad'] },
               { id: 'video-snk-s01e135', name: 'Shingeki no Kyojin - S01E13.5 - Since That Day.mp4', size: '700000000', mimeType: 'video/mp4', parents: ['cartella-snk'] },
             ]
+          : []),
+        // Il film dell'anime, nella cartella della serie accanto agli episodi.
+        ...(conFilmAnime
+          ? [{ id: 'video-snk-film', name: 'Shingeki no Kyojin Crimson Bow and Arrow (Dual Audio_10bit_BD1080p_x265).mp4', size: '3000000000', mimeType: 'video/mp4', parents: ['cartella-snk'] }]
           : []),
         ...(conSerie
           ? [
@@ -2108,6 +2112,49 @@ test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli 
   })
   // Gli altri nomi si chiedono una volta per serie, non per episodio.
   expect(altriNomi).toHaveLength(1)
+})
+
+test('un film nella cartella di un anime, fra gli «Altri episodi», si sceglie da solo ed esce dalla serie', async ({ page }) => {
+  // «Cowboy Bebop/Knockin' on Heaven's Door» stava fra gli «Altri episodi» e la
+  // serie restava «da sistemare»: il ✎ c'era solo per la serie intera.
+  const db = await mockSupabase(page)
+  await mockDrive(page, { conAnime: true, conFilmAnime: true })
+  const aot = { id: 1429, media_type: 'tv', name: "L'attacco dei giganti", original_name: '進撃の巨人', first_air_date: '2013-04-07', poster_path: '/aot.jpg', genre_ids: [16] }
+  const film = { id: 297266, media_type: 'movie', title: "L'attacco dei giganti - Il film: L'arco e la freccia cremisi", original_title: '劇場版 進撃の巨人 前編 紅蓮の弓矢', release_date: '2014-11-22', poster_path: '/arco.jpg', genre_ids: [16] }
+  await cercaTmdb(page, [aot, film], movieDetail(1429, "L'attacco dei giganti", { name: "L'attacco dei giganti", original_name: '進撃の巨人', original_title: '進撃の巨人' }))
+  await page.route('**/api/tmdb*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    if (path === '/tv/1429/alternative_titles') {
+      return route.fulfill({ json: { id: 1429, results: [{ iso_3166_1: 'JP', title: 'Shingeki no Kyojin', type: 'romaji' }] } })
+    }
+    return route.fallback()
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByRole('button', { name: /^L'attacco dei giganti/ })).toBeVisible()
+  await page.getByRole('button', { name: /⚠ Da sistemare/ }).click()
+  await page.getByRole('button', { name: /^L'attacco dei giganti/, expanded: false }).click()
+  const altri = page.getByRole('list', { name: 'Altri episodi' })
+  await altri.getByRole('button', { name: /^Scegli il titolo di Shingeki no Kyojin Crimson Bow and Arrow/ }).click()
+
+  const finestra = page.getByRole('dialog')
+  await finestra.getByRole('button', { name: 'Cerca', exact: true }).click()
+  await finestra.getByRole('button', { name: /L'arco e la freccia cremisi/ }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-snk-film')).toMatchObject({
+    tmdb_id: 297266,
+    media_type: 'movie',
+    abbinato_a_mano: true,
+  })
+  // Il film esce dalla serie, che non ha più niente da sistemare.
+  await expect(page.getByRole('list', { name: 'Altri episodi' })).toHaveCount(0)
+  const serie = page.getByRole('button', { name: /^L'attacco dei giganti [▸▾]/ })
+  await expect(serie).toHaveCount(0)
+  await page.getByRole('button', { name: /⚠ Da sistemare/ }).click()
+  await expect(serie).toBeVisible()
+  await expect(page.getByText(/L'arco e la freccia cremisi/).first()).toBeVisible()
 })
 
 test('un mezzo episodio già salvato come S1E13 passa fra gli speciali, senza cercare di nuovo', async ({ page }) => {

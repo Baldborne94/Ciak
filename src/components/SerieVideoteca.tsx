@@ -34,6 +34,9 @@ interface Props {
   // Tutta la serie nel cestino di Drive (la pagina chiede conferma).
   onCancella?: () => void
   cancellando?: boolean
+  // Un file fra gli «Altri episodi» che forse non è un episodio (il film della
+  // serie, un extra): gli si sceglie il titolo da solo, senza toccare la serie.
+  onScegliFile?: (episodio: EpisodioVideoteca) => void
 }
 
 // La stagione 0 sono gli speciali (OAD, OVA), come su TMDB.
@@ -60,6 +63,7 @@ export default function SerieVideoteca({
   tmdbId = null,
   onCancella,
   cancellando = false,
+  onScegliFile,
 }: Props) {
   const [apertaQui, setApertaQui] = useState(false)
   const aperta = apertaFuori ?? apertaQui
@@ -173,7 +177,7 @@ export default function SerieVideoteca({
                     const e = riga.e
                     const iniziato = episodioIniziato(e)
                     return (
-                      <li key={e.id}>
+                      <li key={e.id} className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => onApri(e)}
@@ -196,6 +200,17 @@ export default function SerieVideoteca({
                           </span>
                           <span className="shrink-0 text-xs text-projector">{iniziato ? '▶ Riprendi' : '▶'}</span>
                         </button>
+                        {s.stagione === null && onScegliFile && (
+                          <button
+                            type="button"
+                            onClick={() => onScegliFile(e)}
+                            aria-label={`Scegli il titolo di ${e.nome}`}
+                            title="Non è un episodio? Scegli il titolo"
+                            className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-zinc-400 transition hover:text-projector"
+                          >
+                            ✎
+                          </button>
+                        )}
                       </li>
                     )
                   })}

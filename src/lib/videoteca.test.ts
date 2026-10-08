@@ -222,6 +222,23 @@ describe('raggruppaSerie', () => {
     ])
   })
 
+  it('un file riconosciuto come film resta un film anche nella cartella della serie', () => {
+    // «Cowboy Bebop Knockin' on Heaven's Door» accanto agli episodi è il film:
+    // finiva fra gli «Altri episodi» e la serie risultava da sistemare.
+    const cartella = 'Cowboy Bebop'
+    const film = { tmdb_id: 11299, media_type: 'movie' as const, titolo: 'Cowboy Bebop - Il film', poster_path: '/cb.jpg', stagione: null, episodio: null, visto_il: null, posizione: 0, secondi_visti: 0, durata: 6900, updated_at: undefined }
+    const { serie, sciolti } = raggruppaSerie([
+      { id: 'e1', name: '[DB]Cowboy Bebop_-_01_(Dual Audio_10bit_BD1080p_x265).mkv', cartella, serie: null },
+      { id: 'e2', name: '[DB]Cowboy Bebop_-_02_(Dual Audio_10bit_BD1080p_x265).mkv', cartella, serie: null },
+      { id: 'f', name: "[DB]Cowboy Bebop Knockin' on Heaven's Door _-_(Dual Audio_10bit_BD1080p_x265).mkv", cartella, serie: null, voce: film },
+    ])
+    expect(sciolti).toEqual(['f'])
+    expect(serie).toHaveLength(1)
+    expect(serie[0].episodi.map((e) => e.id)).toEqual(['e1', 'e2'])
+    expect(serieDaSistemare(serie[0])).toBe(true) // non riconosciuta: nessun tmdb
+    expect(serie[0].episodi.some((e) => e.stagione === null)).toBe(false)
+  })
+
   it('un film da solo nella sua cartella resta un film', () => {
     const { sciolti } = raggruppaSerie([{ id: 'f', name: 'Alien.1979.mkv', cartella: 'Alien (1979)', serie: null }])
     expect(sciolti).toEqual(['f'])

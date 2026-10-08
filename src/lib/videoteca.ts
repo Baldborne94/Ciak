@@ -259,7 +259,10 @@ export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]
     const voce = v.voce ?? null
     const letto = filmDaCercare(v.name, v.cartella, v.serie)
     const tv = voce?.media_type === 'tv' && !!voce.tmdb_id
-    const vicino = !tv && letto.stagione === undefined && !v.serie && !!v.cartella && conEpisodi.has(v.cartella)
+    // Un file già riconosciuto come film resta un film anche accanto agli
+    // episodi: «Cowboy Bebop/Knockin' on Heaven's Door» è il film della serie.
+    const film = voce?.media_type === 'movie' && !!voce.tmdb_id
+    const vicino = !tv && !film && letto.stagione === undefined && !v.serie && !!v.cartella && conEpisodi.has(v.cartella)
     const daCartella = vicino ? serieDaNome(v.cartella as string) : nomeSerieDaFile(v)
     // Basta la stagione: un mezzo episodio è uno speciale senza numero.
     const episodico = tv || letto.stagione !== undefined || !!v.serie || vicino

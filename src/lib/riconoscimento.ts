@@ -58,7 +58,9 @@ function segnaControllato(fileId: string): void {
 // v9: l'anno davanti al titolo («1940 - Pinocchio», i classici Disney).
 // v10: le stagioni nel nome della cartella («Looney Tunes Season 1») e le
 // miniserie con «Episode 3» senza stagione.
-const VERSIONE_RICONOSCIMENTO = 10
+// v11: «Dual Audio» nel nome («[DB]Cowboy Bebop Knockin' on Heaven's Door
+// _-_(Dual Audio_10bit…)»), che finiva nel titolo cercato.
+const VERSIONE_RICONOSCIMENTO = 11
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {

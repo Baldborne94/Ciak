@@ -540,6 +540,10 @@ export default function StreamingPage() {
           video: gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo),
         })
       }
+      onScegliFile={(e) => {
+        const v = videoPerId.get(e.id) as DriveVideo
+        setScelta({ nome: e.nome, ricerca: filmDaCercare(v.name, v.cartella, v.serie ?? null).titolo, video: [v] })
+      }}
       onCancella={() => void cancellaGruppo(gruppo.chiave, gruppo.titolo, gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo))}
       cancellando={cancellando === gruppo.chiave}
     />
@@ -768,7 +772,7 @@ export default function StreamingPage() {
         </div>
         {filtroDaSistemare && (
           <p className="mb-3 text-sm text-zinc-500">
-            Titoli che Ciak non ha riconosciuto, senza copertina o con episodi che non sa dove mettere. Per un film premi ✎; per
+            Titoli che Ciak non ha riconosciuto, senza copertina o con episodi che non sa dove mettere. Per un film premi ✎ (anche accanto a un file fra gli «Altri episodi»); per
             una serie aprila e premi «Scegli il titolo».
           </p>
         )}
