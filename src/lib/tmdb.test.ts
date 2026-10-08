@@ -197,7 +197,7 @@ describe('la facciata di tmdb', () => {
     const attesi = [
       'altriTitoli', 'backdropUrl', 'discoverByCompany', 'discoverByGenre', 'discoverByGenres',
       'discoverMigliori',
-      'displayTitle', 'fallbackReadableTitle', 'fetchAlternativeTitles', 'fetchGenreIds', 'fetchReadableTitle',
+      'displayTitle', 'fallbackReadableTitle', 'fetchAlternativeTitles', 'fetchGenreIds', 'fetchOriginalTitle', 'fetchReadableTitle',
       'fetchTitleFacts', 'fetchTitoloEPoster',
       'getAnime',
       'getCartoons', 'getCollection', 'getCompany', 'getDetail', 'getGenres', 'getImmaginiTitolo',

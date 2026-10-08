@@ -43,7 +43,7 @@ describe('searchTitleCache', () => {
   })
 
   it('non si rompe con dati corrotti o senza storage', () => {
-    localStorage.setItem('ciak:titoli-ricerca:v1', '{non json')
+    localStorage.setItem('ciak:titoli-ricerca:v2', '{non json')
     expect(getCachedSearchTitles(['movie-1'], ORA).size).toBe(0)
     vi.stubGlobal('localStorage', {
       getItem: () => {
