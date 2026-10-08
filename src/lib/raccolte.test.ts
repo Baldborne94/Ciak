@@ -32,6 +32,21 @@ describe('costruisciRaccolte', () => {
       ['l1', 'Studio Ghibli', ['movie-129', 'movie-4935'], null, false],
     ])
   })
+
+  it('ogni chiave ricorda le righe salvate, per poterle togliere anche se sono «anime»', () => {
+    const [r] = costruisciRaccolte(
+      [{ id: 'l1', name: 'Anime' }],
+      [
+        { list_id: 'l1', tmdb_id: 1429, media_type: 'anime' },
+        { list_id: 'l1', tmdb_id: 1429, media_type: 'tv' },
+      ],
+    )
+    expect(r.voci.get('tv-1429')).toEqual([
+      { tmdbId: 1429, mediaType: 'anime' },
+      { tmdbId: 1429, mediaType: 'tv' },
+    ])
+    expect(r.voci.get('movie-1429')).toEqual([{ tmdbId: 1429, mediaType: 'anime' }])
+  })
 })
 
 describe('copertinaUrl', () => {

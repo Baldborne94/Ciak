@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { mockTmdb, mockSupabase, signIn } from './support/mocks'
+import { E2E_USER, mockTmdb, mockSupabase, signIn } from './support/mocks'
 import { movieDetail, personDetail } from './support/fixtures'
 
 // Un titolo straniero non deve mai arrivare a schermo in uno script che non si
@@ -144,4 +144,41 @@ test('lo studio di produzione in script non latino, sulla scheda film, diventa l
 
   await expect(page.getByText('CJ ENM')).toBeVisible()
   await expect(page.getByText('CJ 엔터테인먼트')).toHaveCount(0)
+})
+
+// Una lingua sola: l'italiano. Prima vinceva l'originale in alfabeto latino, e
+// l'app mescolava «The Godfather» e «L'attacco dei giganti».
+test('la scheda di un film americano si intitola in italiano, con l originale sotto', async ({ page }) => {
+  await mockTmdb(page, {
+    detail: movieDetail(238, 'Il padrino', { original_title: 'The Godfather', original_language: 'en' }),
+  })
+
+  await page.goto('/title/movie/238')
+
+  await expect(page.getByRole('heading', { level: 1, name: 'Il padrino' })).toBeVisible()
+  await expect(page.getByText('The Godfather').first()).toBeVisible()
+})
+
+test('i titoli salvati in un altra lingua diventano italiani, una volta sola', async ({ page }) => {
+  const riga = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, user_id: E2E_USER.id, tmdb_id: 238, media_type: 'movie', title: 'The Godfather', poster_path: '/poster-238.jpg', ...extra,
+  })
+  const db = await mockSupabase(page, {
+    user_titles: [riga('t-1', { status: 'watched', is_favorite: false, personal_rating: 5 })],
+    user_diary: [riga('d-1', { watched_on: '2026-08-20', rating: 5 })],
+    user_list_items: [riga('i-1', { list_id: 'lista-1' })],
+  })
+  await mockTmdb(page, {
+    detail: movieDetail(238, 'Il padrino', { original_title: 'The Godfather', original_language: 'en' }),
+  })
+  // Questo «dispositivo» non l'ha ancora fatto.
+  await page.addInitScript((id) => localStorage.removeItem(`ciak:titoli-italiani-v1:${id}`), E2E_USER.id)
+
+  await page.goto('/diario')
+
+  for (const tabella of ['user_titles', 'user_diary', 'user_list_items']) {
+    await expect.poll(() => db.tables[tabella]?.[0]?.title).toBe('Il padrino')
+  }
+  await expect(page.getByText('Ho messo in italiano 3 titoli salvati.')).toBeVisible()
+  expect(await page.evaluate((id) => localStorage.getItem(`ciak:titoli-italiani-v1:${id}`), E2E_USER.id)).toBe('1')
 })

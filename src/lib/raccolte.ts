@@ -11,6 +11,9 @@ export interface Raccolta {
   nome: string
   // I titoli della lista, come chiavi composte `${tipo}-${id}` di TMDB.
   chiavi: Set<string>
+  // Per ogni chiave, le righe della lista che la portano: togliendo «tv-1429»
+  // va tolta la riga salvata come «anime», che la chiave da sola non dice.
+  voci: Map<string, { tmdbId: number; mediaType: MediaType }[]>
   // L'immagine scelta: un percorso TMDB («/abc.jpg») o un link https. null:
   // Ciak compone un mosaico con le locandine dei titoli.
   copertina: string | null
@@ -31,11 +34,16 @@ export function costruisciRaccolte(
   liste: { id: string; name: string; copertina?: string | null; come_saga?: boolean }[],
   elementi: { list_id: string; tmdb_id: number; media_type: MediaType }[],
 ): Raccolta[] {
-  const perLista = new Map<string, Set<string>>(liste.map((l) => [l.id, new Set()]))
+  const perLista = new Map<string, Map<string, { tmdbId: number; mediaType: MediaType }[]>>(liste.map((l) => [l.id, new Map()]))
   for (const e of elementi) {
-    for (const k of chiaviElemento(e.media_type, e.tmdb_id)) perLista.get(e.list_id)?.add(k)
+    const voci = perLista.get(e.list_id)
+    if (!voci) continue
+    for (const k of chiaviElemento(e.media_type, e.tmdb_id)) voci.set(k, [...(voci.get(k) ?? []), { tmdbId: e.tmdb_id, mediaType: e.media_type }])
   }
-  return liste.map((l) => ({ id: l.id, nome: l.name, chiavi: perLista.get(l.id) ?? new Set(), copertina: l.copertina ?? null, comeSaga: !!l.come_saga }))
+  return liste.map((l) => {
+    const voci = perLista.get(l.id) ?? new Map()
+    return { id: l.id, nome: l.name, chiavi: new Set(voci.keys()), voci, copertina: l.copertina ?? null, comeSaga: !!l.come_saga }
+  })
 }
 
 // L'indirizzo dell'immagine di una copertina. Un link incollato si usa solo se
