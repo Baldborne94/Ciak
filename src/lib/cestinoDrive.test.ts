@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { pianoCestino as piano, type PianoCestino } from './cestinoDrive'
+import { cartellaDaChiudere, pianoCestino as piano, type PianoCestino } from './cestinoDrive'
 
 const pianoCestino = (a: Omit<Parameters<typeof piano>[0], 'radice'>): PianoCestino => piano({ ...a, radice: 'Ciak' })
 
@@ -56,5 +56,53 @@ describe('pianoCestino', () => {
       cartella: null,
     })
     expect(pianoCestino({ video, cartella: null, vicini: [], sottocartelle: 0, nomeCartellaSopra: null })).toEqual({ file: ['v1'], cartella: null })
+  })
+})
+
+describe('pianoCestino con più video (una serie, una saga)', () => {
+  const ep1 = { id: 'v1', name: '01 Rainforest Shmainforest.mp4' }
+  const ep2 = { id: 'v2', name: '02 Spontaneous Combustion.mp4' }
+  const sub1 = { id: 's1', name: '01 Rainforest Shmainforest.it.srt', mimeType: 'application/x-subrip' }
+  const stagione = { id: 'c-s03', name: 'Season 03' }
+
+  it('tutti i video della stagione: va nel cestino la cartella intera, con una richiesta sola', () => {
+    expect(
+      pianoCestino({
+        video: [ep1, ep2],
+        cartella: stagione,
+        vicini: [{ ...ep1, mimeType: 'video/mp4' }, { ...ep2, mimeType: 'video/mp4' }, sub1],
+        sottocartelle: 0,
+        nomeCartellaSopra: 'South Park',
+      }),
+    ).toEqual({ file: [], cartella: 'c-s03' })
+  })
+
+  it('se nella cartella resta altro, i video e i loro sottotitoli uno per uno', () => {
+    const film = { id: 'f', name: 'Alien.1979.mp4', mimeType: 'video/mp4' }
+    expect(
+      pianoCestino({
+        video: [ep1],
+        cartella: { id: 'c-film', name: 'Raccolta' },
+        vicini: [{ ...ep1, mimeType: 'video/mp4' }, sub1, film],
+        sottocartelle: 0,
+        nomeCartellaSopra: 'FILM',
+      }),
+    ).toEqual({ file: ['v1', 's1'], cartella: null })
+  })
+})
+
+describe('cartellaDaChiudere', () => {
+  it('la cartella della serie, rimasta vuota dopo le stagioni, va nel cestino', () => {
+    expect(cartellaDaChiudere({ nome: 'South Park', nomeSopra: 'SERIE TV', file: 0, sottocartelle: 0, radice: 'Ciak' })).toBe(true)
+  })
+
+  it('con qualcosa dentro resta', () => {
+    expect(cartellaDaChiudere({ nome: 'South Park', nomeSopra: 'SERIE TV', file: 1, sottocartelle: 0, radice: 'Ciak' })).toBe(false)
+    expect(cartellaDaChiudere({ nome: 'South Park', nomeSopra: 'SERIE TV', file: 0, sottocartelle: 2, radice: 'Ciak' })).toBe(false)
+  })
+
+  it('le categorie e «Ciak» restano sempre, anche vuote', () => {
+    expect(cartellaDaChiudere({ nome: 'SERIE TV', nomeSopra: 'Ciak', file: 0, sottocartelle: 0, radice: 'Ciak' })).toBe(false)
+    expect(cartellaDaChiudere({ nome: 'Ciak', nomeSopra: null, file: 0, sottocartelle: 0, radice: 'Ciak' })).toBe(false)
   })
 })

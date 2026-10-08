@@ -14,6 +14,7 @@ import {
   episodiDellaSerie,
   leggiPosizioneLocale,
   posizionePiuRecente,
+  episodioPrecedente,
   prossimoEpisodio,
   puntoDiRipresa,
   salvaStreaming,
@@ -274,6 +275,7 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
     [user, fileId],
   )
 
+  const presenti = soloPresenti(tutte, leggiPresenti(), scaricati)
   return {
     voce,
     caricata,
@@ -284,7 +286,8 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
     // Solo fra i file che ci sono ancora, come i pulsanti «Guarda»: un
     // episodio ricodificato ha un id nuovo, e il vecchio portava a un 404 con
     // il lettore fermo su 0:00.
-    prossimo: voce ? prossimoEpisodio(voce, soloPresenti(tutte, leggiPresenti(), scaricati)) : null,
+    prossimo: voce ? prossimoEpisodio(voce, presenti) : null,
+    precedente: voce ? episodioPrecedente(voce, presenti) : null,
     suTempo,
     suPausa: salvaPosizione,
     applicaRipresa,

@@ -15,6 +15,7 @@ import {
   raggruppaSerie,
   serieDaSistemare,
   sigla,
+  type GruppoSerie,
   type OrdineVideoteca,
   type RigaVideoteca,
 } from '../lib/videoteca'
@@ -22,6 +23,10 @@ import SerieVideoteca from '../components/SerieVideoteca'
 import SagaVideoteca from '../components/SagaVideoteca'
 import FilmVideoteca from '../components/FilmVideoteca'
 import { raggruppaSaghe, type GruppoSaga } from '../lib/saghe'
+import { aggiornaCopertina, raccolteUtente } from '../lib/lists'
+import { copertinaUrl, type Raccolta } from '../lib/raccolte'
+import RiquadroRaccolta from '../components/RiquadroRaccolta'
+import SceltaCopertina from '../components/SceltaCopertina'
 import Modal from '../components/Modal'
 import SceltaTitolo from '../components/SceltaTitolo'
 import { abbinaAMano, riconosciNuovi, voceVuota } from '../lib/riconoscimento'
@@ -30,7 +35,7 @@ import type { Collection, MediaItem } from '../lib/types'
 import { salvaPresenti } from '../lib/videoPresenti'
 import { dimenticaVideoteca } from '../lib/useVideoteca'
 import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
-import { ascoltaFilmOffline, elencaFilmOffline, offlineDisponibile, spazio, taglia, type FilmOffline } from '../lib/filmOffline'
+import { ascoltaFilmOffline, elencaFilmOffline, eliminaFilm, offlineDisponibile, spazio, taglia, type FilmOffline } from '../lib/filmOffline'
 import {
   CARTELLA_CIAK,
   driveConfigurato,
@@ -38,6 +43,7 @@ import {
   driveConnesso,
   driveDisconnetti,
   collegaDrive,
+  cestinaGruppo,
   erroreRitornoDrive,
   elencaVideo,
   schedeCategorie,
@@ -51,7 +57,11 @@ export default function StreamingPage() {
   const navigate = useNavigate()
   // Tornando dal lettore dopo una cancellazione: lo si dice, perché l'elenco
   // senza quel titolo non spiega da solo dov'è finito.
-  const cestinato = (useLocation().state as { cestinato?: string } | null)?.cestinato ?? null
+  const cestinatoDalLettore = (useLocation().state as { cestinato?: string } | null)?.cestinato ?? null
+  // Cancellando una serie o una saga da qui: lo stesso avviso del lettore.
+  const [cestinatoQui, setCestinatoQui] = useState<string | null>(null)
+  const cestinato = cestinatoQui ?? cestinatoDalLettore
+  const [cancellando, setCancellando] = useState<string | null>(null)
   const { user } = useAuth()
   // Il legame di ogni file col suo titolo (locandina, «visto», punto di ripresa).
   const [archivio, setArchivio] = useState<Map<string, VoceStreaming>>(new Map())
@@ -83,6 +93,11 @@ export default function StreamingPage() {
     saghe: Map<string, Collection | null>
   }>({ anni: new Map(), generi: new Map(), titoli: new Map(), saghe: new Map() })
   const [nomiGeneri, setNomiGeneri] = useState<Map<number, string>>(new Map())
+  // Le «Mie liste», che qui diventano raccolte: cartelle coi titoli su Drive.
+  const [raccolte, setRaccolte] = useState<Raccolta[]>([])
+  const [raccoltaAperta, setRaccoltaAperta] = useState<string | null>(null)
+  // La raccolta di cui si sta scegliendo la copertina (il modale aperto).
+  const [copertinaDi, setCopertinaDi] = useState<string | null>(null)
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
@@ -154,6 +169,17 @@ export default function StreamingPage() {
     } finally {
       inCorso.current = false
       setCaricando(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    let vivo = true
+    raccolteUtente(user.id)
+      .then((r) => vivo && setRaccolte(r))
+      .catch(logFailure('Raccolte della videoteca (le Mie liste)'))
+    return () => {
+      vivo = false
     }
   }, [user])
 
@@ -249,6 +275,47 @@ export default function StreamingPage() {
     }
   }
 
+  // Una serie o una saga intera nel cestino di Drive, coi sottotitoli e le
+  // cartelle rimaste vuote: dal cestino Google la recupera per trenta giorni,
+  // quindi basta una conferma. Le copie sul dispositivo vanno con lei.
+  async function cancellaGruppo(chiave: string, nome: string, video: DriveVideo[]) {
+    const quanti = video.length === 1 ? '1 file' : `${video.length} file`
+    if (!window.confirm(`Vuoi cancellare «${nome}» da Google Drive?\nSono ${quanti}, coi loro sottotitoli: finiscono nel cestino di Drive, da dove si recuperano per 30 giorni.`)) return
+    setErrore(null)
+    setCancellando(chiave)
+    try {
+      await cestinaGruppo(video)
+      for (const v of video) {
+        if (scaricati.has(v.id)) await eliminaFilm(v.id).catch(logFailure('Eliminazione del film offline'))
+      }
+      setCestinatoQui(nome)
+      dimenticaVideoteca()
+      await carica()
+    } catch (e) {
+      const messaggio = e instanceof Error ? e.message : 'Cancellazione non riuscita.'
+      setErrore(
+        messaggio.includes('403')
+          ? 'Per cancellare serve un permesso che Ciak non ha ancora chiesto a Google: premi «Scollega», ricollega Drive e riprova.'
+          : `Cancellazione di «${nome}» non riuscita: ${messaggio}`,
+      )
+      logFailure('Cancellazione di una serie o saga da Drive')(e)
+    } finally {
+      setCancellando(null)
+    }
+  }
+
+  async function scegliCopertina(listId: string, copertina: string | null) {
+    try {
+      await aggiornaCopertina(listId, copertina)
+      setRaccolte((prima) => prima.map((r) => (r.id === listId ? { ...r, copertina } : r)))
+      setCopertinaDi(null)
+    } catch (e) {
+      setErrore(`Copertina non salvata: ${(e as Error).message}`)
+      setCopertinaDi(null)
+      logFailure('Copertina della raccolta')(e)
+    }
+  }
+
   function scollega() {
     driveDisconnetti(true)
     setConnesso(false)
@@ -339,6 +406,21 @@ export default function StreamingPage() {
       },
     })
   }
+  // Le raccolte di questa scheda: i film e le serie della lista che sono su
+  // Drive. Un titolo resta anche al suo posto nell'elenco, e può stare in più
+  // raccolte. Quelle senza niente qui non si mostrano.
+  const raccolteScheda = raccolte
+    .map((r) => ({
+      raccolta: r,
+      film: film.filter((f) => {
+        const k = chiaveTitolo(f.riga.id)
+        return k !== null && r.chiavi.has(k)
+      }),
+      serie: raggruppati.serie.filter((g) => !!g.tmdb && r.chiavi.has(g.tmdb)),
+    }))
+    .filter((x) => x.film.length + x.serie.length > 0)
+  const apertaQui = raccolteScheda.find((x) => x.raccolta.id === raccoltaAperta) ?? null
+  const perCopertina = raccolteScheda.find((x) => x.raccolta.id === copertinaDi) ?? null
   const righe = voci.map((f) => f.riga)
   const videoDi = new Map(voci.map((f) => [f.riga.id, f.video]))
   const generiScheda = generiPresenti(righe, nomiGeneri)
@@ -348,6 +430,41 @@ export default function StreamingPage() {
   // Sistemato l'ultimo, il filtro si spegne da solo invece di lasciare un elenco vuoto.
   const filtroDaSistemare = soloDaSistemare && quantiDaSistemare > 0
   const elenco = ordinaVideoteca(filtraVideoteca(righe, { query, genere: genereValido, daSistemare: filtroDaSistemare }), ordine)
+
+  const rigaSerie = (gruppo: GruppoSerie) => (
+    <SerieVideoteca
+      titolo={gruppo.titolo}
+      poster={gruppo.posterPath ? (posterUrl(gruppo.posterPath, 'w185') ?? null) : null}
+      anno={infoDi(gruppo.tmdb).anno}
+      episodi={gruppo.episodi}
+      scaricati={scaricati}
+      aperta={serieAperte.has(gruppo.cartella)}
+      onAperta={(aperta) =>
+        setSerieAperte((prima) => {
+          const dopo = new Set(prima)
+          if (aperta) dopo.add(gruppo.cartella)
+          else dopo.delete(gruppo.cartella)
+          return dopo
+        })
+      }
+      onApri={(e) =>
+        navigate(`/streaming/${e.id}`, {
+          state: { titolo: sigla(e) ? `${gruppo.titolo} · ${sigla(e)}` : e.nome, file: e.file },
+        })
+      }
+      riconosciuta={!!gruppo.tmdb}
+      tmdbId={gruppo.tmdb.startsWith('tv-') ? Number(gruppo.tmdb.slice(3)) : null}
+      onScegliTitolo={() =>
+        setScelta({
+          nome: gruppo.titolo,
+          ricerca: gruppo.titolo,
+          video: gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo),
+        })
+      }
+      onCancella={() => void cancellaGruppo(gruppo.chiave, gruppo.titolo, gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo))}
+      cancellando={cancellando === gruppo.chiave}
+    />
+  )
 
   const rigaFilm = (v: DriveVideo, riga: RigaVideoteca) => (
     <FilmVideoteca
@@ -567,6 +684,52 @@ export default function StreamingPage() {
             una serie aprila e premi «Scegli il titolo».
           </p>
         )}
+        {raccolteScheda.length > 0 && !query.trim() && genereValido === null && !filtroDaSistemare && (
+          <section className="mb-6" aria-label="Le mie raccolte">
+            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-zinc-500">🗂️ Le mie raccolte</h2>
+            {/* Una fila che scorre di lato, come le collezioni di TMDB. */}
+            <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+              {raccolteScheda.map(({ raccolta, film: suoiFilm, serie: suoeSerie }) => (
+                <RiquadroRaccolta
+                  key={raccolta.id}
+                  nome={raccolta.nome}
+                  copertina={copertinaUrl(raccolta.copertina, 'w780')}
+                  mosaico={[
+                    ...suoiFilm.map((f) => archivio.get(f.video.id)?.poster_path),
+                    ...suoeSerie.map((g) => g.posterPath),
+                  ]
+                    .filter((p): p is string => !!p)
+                    .map((p) => posterUrl(p, 'w185') as string)}
+                  quanti={suoiFilm.length + suoeSerie.length}
+                  visti={suoiFilm.filter((f) => !!archivio.get(f.video.id)?.visto_il).length + suoeSerie.filter((g) => g.episodi.every((e) => e.visto)).length}
+                  aperta={raccoltaAperta === raccolta.id}
+                  onApri={() => setRaccoltaAperta((a) => (a === raccolta.id ? null : raccolta.id))}
+                />
+              ))}
+            </div>
+            {apertaQui && (
+              <div className="mt-2 rounded-2xl border border-theatre-800 bg-theatre-900/40">
+                <div className="flex flex-wrap items-center gap-3 border-b border-theatre-800 px-4 py-3">
+                  <h3 className="flex-1 font-display text-xl tracking-wide text-zinc-100">{apertaQui.raccolta.nome}</h3>
+                  <button type="button" onClick={() => setCopertinaDi(apertaQui.raccolta.id)} className="btn-ghost px-3 py-1.5 text-sm">
+                    🖼️ Cambia copertina
+                  </button>
+                  <button type="button" onClick={() => setRaccoltaAperta(null)} aria-label="Chiudi la raccolta" className="px-2 text-zinc-500 hover:text-zinc-100">
+                    ✕
+                  </button>
+                </div>
+                <ul aria-label={`Titoli di ${apertaQui.raccolta.nome}`} className="divide-y divide-theatre-800">
+                  {apertaQui.film.map((f) => (
+                    <li key={f.video.id}>{rigaFilm(f.video, f.riga)}</li>
+                  ))}
+                  {apertaQui.serie.map((g) => (
+                    <li key={g.chiave}>{rigaSerie(g)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        )}
         {elenco.length === 0 ? (
           <EmptyState title="Nessun titolo" message="Nessun video corrisponde alla ricerca o al genere scelto." icon="🔍" />
         ) : (
@@ -576,36 +739,7 @@ export default function StreamingPage() {
             if (gruppo) {
               return (
                 <li key={riga.id}>
-                  <SerieVideoteca
-                    titolo={gruppo.titolo}
-                    poster={gruppo.posterPath ? (posterUrl(gruppo.posterPath, 'w185') ?? null) : null}
-                    anno={riga.anno}
-                    episodi={gruppo.episodi}
-                    scaricati={scaricati}
-                    aperta={serieAperte.has(gruppo.cartella)}
-                    onAperta={(aperta) =>
-                      setSerieAperte((prima) => {
-                        const dopo = new Set(prima)
-                        if (aperta) dopo.add(gruppo.cartella)
-                        else dopo.delete(gruppo.cartella)
-                        return dopo
-                      })
-                    }
-                    onApri={(e) =>
-                      navigate(`/streaming/${e.id}`, {
-                        state: { titolo: sigla(e) ? `${gruppo.titolo} · ${sigla(e)}` : e.nome, file: e.file },
-                      })
-                    }
-                    riconosciuta={!!gruppo.tmdb}
-                    tmdbId={gruppo.tmdb.startsWith('tv-') ? Number(gruppo.tmdb.slice(3)) : null}
-                    onScegliTitolo={() =>
-                      setScelta({
-                        nome: gruppo.titolo,
-                        ricerca: gruppo.titolo,
-                        video: gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo),
-                      })
-                    }
-                  />
+                  {rigaSerie(gruppo)}
                 </li>
               )
             }
@@ -622,6 +756,8 @@ export default function StreamingPage() {
                     visti={suoi.filter((f) => !!archivio.get(f.video.id)?.visto_il).length}
                     anni={anni.length === 0 ? null : anni[0] === anni[anni.length - 1] ? anni[0] : `${anni[0]}–${anni[anni.length - 1]}`}
                     apertaSempre={query.trim() !== ''}
+                    onCancella={() => void cancellaGruppo(saga.chiave, saga.saga.name, suoi.map((f) => f.video))}
+                    cancellando={cancellando === saga.chiave}
                   >
                     {suoi.map((f) => (
                       <li key={f.video.id}>{rigaFilm(f.video, f.riga)}</li>
@@ -639,6 +775,23 @@ export default function StreamingPage() {
         </>
       )}
 
+      {perCopertina && (
+        <Modal title={`Copertina di «${perCopertina.raccolta.nome}»`} onClose={() => setCopertinaDi(null)}>
+          <SceltaCopertina
+            titoli={[
+              ...perCopertina.film.flatMap((f) => {
+                const voce = archivio.get(f.video.id)
+                return voce?.tmdb_id ? [{ tmdbId: voce.tmdb_id, mediaType: 'movie' as const, titolo: f.riga.nome }] : []
+              }),
+              ...perCopertina.serie.flatMap((g) =>
+                g.tmdb.startsWith('tv-') ? [{ tmdbId: Number(g.tmdb.slice(3)), mediaType: 'tv' as const, titolo: g.titolo }] : [],
+              ),
+            ]}
+            attuale={perCopertina.raccolta.copertina}
+            onScegli={(c) => void scegliCopertina(perCopertina.raccolta.id, c)}
+          />
+        </Modal>
+      )}
       {scelta && (
         <Modal title={`Che titolo è «${scelta.nome}»?`} onClose={() => setScelta(null)}>
           <p className="mb-3 text-sm text-zinc-400">

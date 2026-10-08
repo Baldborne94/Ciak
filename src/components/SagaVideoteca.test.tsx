@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import SagaVideoteca from './SagaVideoteca'
@@ -39,5 +39,14 @@ describe('SagaVideoteca', () => {
   it('tutti visti lo dice così', () => {
     saga({ visti: 3 })
     expect(screen.getByRole('button', { name: /Alien/ })).toHaveTextContent('tutti visti')
+  })
+
+  it('aperta si può cancellare tutta da Drive', async () => {
+    const onCancella = vi.fn()
+    saga({ onCancella })
+    expect(screen.queryByRole('button', { name: /Cancella la saga/ })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Alien/ }))
+    await userEvent.click(screen.getByRole('button', { name: '🗑 Cancella la saga da Drive' }))
+    expect(onCancella).toHaveBeenCalledTimes(1)
   })
 })

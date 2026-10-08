@@ -10,7 +10,7 @@
 // `../lib/tmdb` e non si sono accorte di niente. Chi aggiunge una funzione la
 // mette nel modulo giusto e la ri-esporta da qui.
 export { tmdbConfigurato } from './tmdb/client'
-export { posterUrl, backdropUrl, profileUrl, logoUrl } from './tmdb/images'
+export { posterUrl, backdropUrl, profileUrl, logoUrl, getImmaginiTitolo } from './tmdb/images'
 export { altriTitoli, isReadableTitle, fallbackReadableTitle, displayTitle } from './tmdb/titles'
 export { type BrowseSort } from './tmdb/discover'
 export {

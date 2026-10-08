@@ -21,6 +21,7 @@ describe('azioneTasto', () => {
     expect(azioneTasto(tasto('f'), pagina)).toBe('schermo')
     expect(azioneTasto(tasto('s'), pagina)).toBe('sigla')
     expect(azioneTasto(tasto('n'), pagina)).toBe('prossimo')
+    expect(azioneTasto(tasto('p'), pagina)).toBe('precedente')
     expect(azioneTasto(tasto('m'), pagina)).toBe('audio')
     expect(azioneTasto(tasto('c'), pagina)).toBe('sottotitoli')
   })

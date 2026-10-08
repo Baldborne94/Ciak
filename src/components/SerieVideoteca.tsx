@@ -31,6 +31,9 @@ interface Props {
   // L'id TMDB della serie: con quello si chiede quanti episodi ha davvero
   // ogni stagione, e i mancanti su Drive si vedono in grigio al loro posto.
   tmdbId?: number | null
+  // Tutta la serie nel cestino di Drive (la pagina chiede conferma).
+  onCancella?: () => void
+  cancellando?: boolean
 }
 
 // La stagione 0 sono gli speciali (OAD, OVA), come su TMDB.
@@ -55,6 +58,8 @@ export default function SerieVideoteca({
   riconosciuta = false,
   onScegliTitolo,
   tmdbId = null,
+  onCancella,
+  cancellando = false,
 }: Props) {
   const [apertaQui, setApertaQui] = useState(false)
   const aperta = apertaFuori ?? apertaQui
@@ -207,11 +212,19 @@ export default function SerieVideoteca({
               ))}
             </ul>
           )}
-          {onScegliTitolo && (
-            <button type="button" onClick={onScegliTitolo} className="mt-3 text-xs text-zinc-400 transition hover:text-projector">
-              ✎ {riconosciuta ? 'Non è questa serie? Scegli il titolo' : 'Scegli il titolo della serie'}
-            </button>
-          )}
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
+            {onScegliTitolo && (
+              <button type="button" onClick={onScegliTitolo} className="text-xs text-zinc-400 transition hover:text-projector">
+                ✎ {riconosciuta ? 'Non è questa serie? Scegli il titolo' : 'Scegli il titolo della serie'}
+              </button>
+            )}
+            {/* Solo a serie aperta: chiusa, un clic per sbaglio costerebbe troppo. */}
+            {onCancella && (
+              <button type="button" onClick={onCancella} disabled={cancellando} className="text-xs text-zinc-500 transition hover:text-red-400">
+                {cancellando ? 'Cancello…' : '🗑 Cancella la serie da Drive'}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </>

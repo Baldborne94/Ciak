@@ -1,6 +1,6 @@
 import type { DiagnosticaVideo } from './lettore'
 import { analizzaNomeFilm, cartellaRaccolta, filmDaCercare, stagioneDaCartella } from './sottotitoli'
-import { pianoCestino, type PianoCestino } from './cestinoDrive'
+import { cartellaDaChiudere, pianoCestino, type PianoCestino } from './cestinoDrive'
 import {
   CHIAVE_ATTESA_DRIVE,
   CHIAVE_ERRORE_DRIVE,
@@ -63,6 +63,9 @@ export interface DriveVideo {
   serie?: string | null
   // Quando è stato caricato su Drive (ISO), per «Aggiunti di recente».
   aggiunto?: string | null
+  // L'id della cartella che lo contiene: cancellando una serie intera si
+  // lavora per cartella, senza chiedere a Drive dove sta ogni file.
+  cartellaId?: string | null
 }
 
 export interface ElencoVideo {
@@ -531,6 +534,7 @@ export async function elencaVideo(): Promise<ElencoVideo> {
       serie,
       categoria: genitore ? (categoriaDi.get(genitore) ?? null) : null,
       aggiunto: f.createdTime ?? null,
+      cartellaId: genitore ?? null,
     }
   })
   video.sort((a, b) => titoloVideo(a).localeCompare(titoloVideo(b), 'it', { numeric: true }))
@@ -640,6 +644,42 @@ export async function cestinaVideo(id: string): Promise<PianoCestino> {
   if (piano.cartella) await cestinaFile(piano.cartella)
   for (const f of piano.file) await cestinaFile(f)
   return piano
+}
+
+// Cancella da Ciak una serie o una saga intera: i video nel cestino di Drive,
+// coi sottotitoli. Si lavora per cartella: una stagione che resta vuota va nel
+// cestino in una richiesta sola (non una per episodio: South Park sono 300
+// file), e poi la cartella della serie, se è rimasta vuota anche lei. Dal
+// cestino Google recupera tutto per trenta giorni.
+export async function cestinaGruppo(video: Pick<DriveVideo, 'id' | 'name' | 'cartellaId'>[]): Promise<void> {
+  const perCartella = new Map<string, { id: string; name: string }[]>()
+  for (const v of video) {
+    const idCartella = v.cartellaId ?? (await infoFile(v.id)).parents[0] ?? ''
+    perCartella.set(idCartella, [...(perCartella.get(idCartella) ?? []), { id: v.id, name: v.name }])
+  }
+  const sopraSvuotate = new Set<string>()
+  for (const [idCartella, suoi] of perCartella) {
+    if (!idCartella) {
+      for (const v of suoi) await cestinaFile(v.id)
+      continue
+    }
+    const cartella = await infoFile(idCartella)
+    const [vicini, sottocartelle] = await Promise.all([fileNellaCartella(idCartella), sottocartelleDi(idCartella)])
+    const idSopra = cartella.parents[0]
+    const nomeCartellaSopra = idSopra ? (await infoFile(idSopra)).name : null
+    const piano = pianoCestino({ video: suoi, cartella, vicini, sottocartelle, nomeCartellaSopra, radice: CARTELLA_CIAK })
+    if (piano.cartella) {
+      await cestinaFile(piano.cartella)
+      if (idSopra) sopraSvuotate.add(idSopra)
+    }
+    for (const f of piano.file) await cestinaFile(f)
+  }
+  for (const idSopra of sopraSvuotate) {
+    const sopra = await infoFile(idSopra)
+    const nomeSopra = sopra.parents[0] ? (await infoFile(sopra.parents[0])).name : null
+    const [file, sottocartelle] = await Promise.all([fileNellaCartella(idSopra), sottocartelleDi(idSopra)])
+    if (cartellaDaChiudere({ nome: sopra.name, nomeSopra, file: file.length, sottocartelle, radice: CARTELLA_CIAK })) await cestinaFile(idSopra)
+  }
 }
 
 // ── Il lettore di Ciak ──────────────────────────────────────────────────────

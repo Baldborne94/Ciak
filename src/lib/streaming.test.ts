@@ -8,6 +8,7 @@ import {
   formattaTempo,
   normalizzaTitolo,
   posizionePiuRecente,
+  episodioPrecedente,
   prossimoEpisodio,
   puntoDiRipresa,
   scegliAbbinamento,
@@ -186,6 +187,18 @@ describe('prossimoEpisodio', () => {
 
   it('finita la stagione, il primo della successiva', () => {
     expect(prossimoEpisodio(ep('e3', 1, 3), tutte)?.drive_file_id).toBe('s2e1')
+  })
+
+  it('il precedente: lo stesso ordine all’indietro, anche fra stagioni', () => {
+    expect(episodioPrecedente(ep('e3', 1, 3), tutte)?.drive_file_id).toBe('e2')
+    expect(episodioPrecedente(ep('s2e1', 2, 1), tutte)?.drive_file_id).toBe('e3')
+    expect(episodioPrecedente(ep('e1', 1, 1), tutte)).toBeNull()
+    expect(episodioPrecedente({ ...ep('f', 1, 1), media_type: 'movie' }, tutte)).toBeNull()
+  })
+
+  it('dal primo episodio vero non si torna negli speciali', () => {
+    const conSpeciali = [...tutte, ep('oad1', 0, 1)]
+    expect(episodioPrecedente(ep('e1', 1, 1), conSpeciali)).toBeNull()
   })
 
   it('nessuno dopo l’ultimo, e nessuno per un film', () => {
