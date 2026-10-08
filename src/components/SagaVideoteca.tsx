@@ -10,6 +10,8 @@ export default function SagaVideoteca({
   visti,
   anni,
   apertaSempre = false,
+  onCancella,
+  cancellando = false,
   children,
 }: {
   nome: string
@@ -20,6 +22,9 @@ export default function SagaVideoteca({
   // Mentre si cerca: la saga compare perché un suo film corrisponde, e
   // chiusa nasconderebbe proprio quello.
   apertaSempre?: boolean
+  // Tutta la saga nel cestino di Drive (la pagina chiede conferma).
+  onCancella?: () => void
+  cancellando?: boolean
   children: ReactNode
 }) {
   const [apertaQui, setApertaQui] = useState(false)
@@ -53,9 +58,22 @@ export default function SagaVideoteca({
         </span>
       </button>
       {aperta && (
-        <ul id={idElenco} aria-label={`Film di ${nome}`} className="divide-y divide-theatre-800 border-t border-theatre-800 bg-theatre-950/40 pl-6">
-          {children}
-        </ul>
+        <div id={idElenco} className="border-t border-theatre-800 bg-theatre-950/40">
+          <ul aria-label={`Film di ${nome}`} className="divide-y divide-theatre-800 pl-6">
+            {children}
+          </ul>
+          {/* Solo a saga aperta: chiusa, un clic per sbaglio costerebbe troppo. */}
+          {onCancella && (
+            <button
+              type="button"
+              onClick={onCancella}
+              disabled={cancellando}
+              className="mx-4 my-2 text-xs text-zinc-500 transition hover:text-red-400"
+            >
+              {cancellando ? 'Cancello…' : '🗑 Cancella la saga da Drive'}
+            </button>
+          )}
+        </div>
       )}
     </>
   )

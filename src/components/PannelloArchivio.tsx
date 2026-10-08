@@ -20,6 +20,7 @@ export default function PannelloArchivio({
   votoSalvato,
   errore,
   prossimo,
+  precedente = null,
   onRicomincia,
   onVota,
   onCambia,
@@ -31,6 +32,8 @@ export default function PannelloArchivio({
   votoSalvato: number | null
   errore: string | null
   prossimo: VoceStreaming | null
+  // L'episodio prima: anche col lettore di Drive, che i comandi di Ciak non ha.
+  precedente?: VoceStreaming | null
   onRicomincia: () => void
   onVota: (voto: number | null) => void
   onCambia: (item: MediaItem, nome: NomeFilm) => Promise<void>
@@ -129,6 +132,19 @@ export default function PannelloArchivio({
             </p>
           )}
         </div>
+        {precedente && (
+          <button
+            type="button"
+            onClick={() =>
+              navigate(`/streaming/${precedente.drive_file_id}`, {
+                state: { titolo: titoloDaMostrare(precedente) ?? undefined, file: precedente.nome_file ?? undefined },
+              })
+            }
+            className="btn-ghost px-3 py-1.5"
+          >
+            ◀ Episodio precedente: {sigla(precedente)}
+          </button>
+        )}
         {!visto && prossimoPulsante}
         <button type="button" onClick={() => setScegliendo((s) => !s)} className="btn-ghost px-3 py-1.5">
           {abbinato ? 'Non è questo?' : 'Scegli il titolo'}

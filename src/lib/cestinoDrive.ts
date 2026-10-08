@@ -25,7 +25,9 @@ export interface PianoCestino {
 }
 
 export function pianoCestino(args: {
-  video: { id: string; name: string }
+  // Il video da cancellare, o più video della stessa cartella (una stagione
+  // intera, i film di una saga): allora la cartella si guarda una volta sola.
+  video: { id: string; name: string } | { id: string; name: string }[]
   cartella: CartellaDrive | null
   // I file (non le cartelle) nella cartella del video, video compreso.
   vicini: FileCartella[]
@@ -36,9 +38,9 @@ export function pianoCestino(args: {
   // googleDrive.ts da qui, che a sua volta importa questo modulo.
   radice: string
 }): PianoCestino {
-  const { video, cartella, vicini, sottocartelle, nomeCartellaSopra, radice } = args
-  const sottotitoli = sottotitoliPerVideo(video.name, vicini).map((s) => s.id)
-  const file = [video.id, ...sottotitoli]
+  const { cartella, vicini, sottocartelle, nomeCartellaSopra, radice } = args
+  const video = Array.isArray(args.video) ? args.video : [args.video]
+  const file = [...new Set(video.flatMap((v) => [v.id, ...sottotitoliPerVideo(v.name, vicini).map((s) => s.id)]))]
   const resta = vicini.some((f) => !file.includes(f.id)) || sottocartelle > 0
   const dedicata =
     cartella !== null &&
@@ -47,4 +49,18 @@ export function pianoCestino(args: {
     nomeCartellaSopra !== radice
   if (cartella && dedicata && !resta) return { file: [], cartella: cartella.id }
   return { file, cartella: null }
+}
+
+// Dopo aver cestinato le stagioni, la cartella della serie sopra di loro può
+// restare vuota: allora va anche lei, come la cartella di un film. Mai «Ciak»
+// né una categoria (FILM, SERIE TV…), che lo script e l'elenco si aspettano.
+export function cartellaDaChiudere(args: {
+  nome: string
+  nomeSopra: string | null
+  file: number
+  sottocartelle: number
+  radice: string
+}): boolean {
+  const { nome, nomeSopra, file, sottocartelle, radice } = args
+  return nome !== radice && nomeSopra !== null && nomeSopra !== radice && file === 0 && sottocartelle === 0
 }

@@ -30,7 +30,7 @@ import type { Collection, MediaItem } from '../lib/types'
 import { salvaPresenti } from '../lib/videoPresenti'
 import { dimenticaVideoteca } from '../lib/useVideoteca'
 import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
-import { ascoltaFilmOffline, elencaFilmOffline, offlineDisponibile, spazio, taglia, type FilmOffline } from '../lib/filmOffline'
+import { ascoltaFilmOffline, elencaFilmOffline, eliminaFilm, offlineDisponibile, spazio, taglia, type FilmOffline } from '../lib/filmOffline'
 import {
   CARTELLA_CIAK,
   driveConfigurato,
@@ -38,6 +38,7 @@ import {
   driveConnesso,
   driveDisconnetti,
   collegaDrive,
+  cestinaGruppo,
   erroreRitornoDrive,
   elencaVideo,
   schedeCategorie,
@@ -51,7 +52,11 @@ export default function StreamingPage() {
   const navigate = useNavigate()
   // Tornando dal lettore dopo una cancellazione: lo si dice, perché l'elenco
   // senza quel titolo non spiega da solo dov'è finito.
-  const cestinato = (useLocation().state as { cestinato?: string } | null)?.cestinato ?? null
+  const cestinatoDalLettore = (useLocation().state as { cestinato?: string } | null)?.cestinato ?? null
+  // Cancellando una serie o una saga da qui: lo stesso avviso del lettore.
+  const [cestinatoQui, setCestinatoQui] = useState<string | null>(null)
+  const cestinato = cestinatoQui ?? cestinatoDalLettore
+  const [cancellando, setCancellando] = useState<string | null>(null)
   const { user } = useAuth()
   // Il legame di ogni file col suo titolo (locandina, «visto», punto di ripresa).
   const [archivio, setArchivio] = useState<Map<string, VoceStreaming>>(new Map())
@@ -246,6 +251,35 @@ export default function StreamingPage() {
     } catch (e) {
       setErrore((e as Error).message)
       setScelta(null)
+    }
+  }
+
+  // Una serie o una saga intera nel cestino di Drive, coi sottotitoli e le
+  // cartelle rimaste vuote: dal cestino Google la recupera per trenta giorni,
+  // quindi basta una conferma. Le copie sul dispositivo vanno con lei.
+  async function cancellaGruppo(chiave: string, nome: string, video: DriveVideo[]) {
+    const quanti = video.length === 1 ? '1 file' : `${video.length} file`
+    if (!window.confirm(`Vuoi cancellare «${nome}» da Google Drive?\nSono ${quanti}, coi loro sottotitoli: finiscono nel cestino di Drive, da dove si recuperano per 30 giorni.`)) return
+    setErrore(null)
+    setCancellando(chiave)
+    try {
+      await cestinaGruppo(video)
+      for (const v of video) {
+        if (scaricati.has(v.id)) await eliminaFilm(v.id).catch(logFailure('Eliminazione del film offline'))
+      }
+      setCestinatoQui(nome)
+      dimenticaVideoteca()
+      await carica()
+    } catch (e) {
+      const messaggio = e instanceof Error ? e.message : 'Cancellazione non riuscita.'
+      setErrore(
+        messaggio.includes('403')
+          ? 'Per cancellare serve un permesso che Ciak non ha ancora chiesto a Google: premi «Scollega», ricollega Drive e riprova.'
+          : `Cancellazione di «${nome}» non riuscita: ${messaggio}`,
+      )
+      logFailure('Cancellazione di una serie o saga da Drive')(e)
+    } finally {
+      setCancellando(null)
     }
   }
 
@@ -605,6 +639,8 @@ export default function StreamingPage() {
                         video: gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo),
                       })
                     }
+                    onCancella={() => void cancellaGruppo(gruppo.chiave, gruppo.titolo, gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo))}
+                    cancellando={cancellando === gruppo.chiave}
                   />
                 </li>
               )
@@ -622,6 +658,8 @@ export default function StreamingPage() {
                     visti={suoi.filter((f) => !!archivio.get(f.video.id)?.visto_il).length}
                     anni={anni.length === 0 ? null : anni[0] === anni[anni.length - 1] ? anni[0] : `${anni[0]}–${anni[anni.length - 1]}`}
                     apertaSempre={query.trim() !== ''}
+                    onCancella={() => void cancellaGruppo(saga.chiave, saga.saga.name, suoi.map((f) => f.video))}
+                    cancellando={cancellando === saga.chiave}
                   >
                     {suoi.map((f) => (
                       <li key={f.video.id}>{rigaFilm(f.video, f.riga)}</li>

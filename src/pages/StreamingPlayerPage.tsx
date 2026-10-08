@@ -372,7 +372,7 @@ function LettoreStreaming() {
   // Il legame con l'archivio: quale titolo è, dove ci si era fermati, e a fine
   // visione «visto» nel diario (o l'episodio spuntato) e il voto.
   const archivio = useArchivioStreaming(fileId, valido)
-  const { caricata: archivioCaricato, applicaRipresa, prossimo } = archivio
+  const { caricata: archivioCaricato, applicaRipresa, prossimo, precedente } = archivio
   const serie = archivio.voce?.media_type === 'tv' && archivio.voce.tmdb_id ? `tv-${archivio.voce.tmdb_id}` : null
   const [durataBase, setDurataBase] = useState<number | null>(null)
   useEffect(() => setDurataBase(serie ? leggiDurataSigla(serie) : null), [serie])
@@ -413,6 +413,14 @@ function LettoreStreaming() {
       state: { titolo: titoloDaMostrare(prossimo) ?? undefined, file: prossimo.nome_file ?? undefined },
     })
   }, [navigate, prossimo])
+  // Tornare all'episodio prima: dal lettore, dalla tastiera (P) e dalla
+  // schermata di blocco del telefono, come per il successivo.
+  const vaiAlPrecedente = useCallback(() => {
+    if (!precedente) return
+    navigate(`/streaming/${precedente.drive_file_id}`, {
+      state: { titolo: titoloDaMostrare(precedente) ?? undefined, file: precedente.nome_file ?? undefined },
+    })
+  }, [navigate, precedente])
   // Premuto a mano durante la sigla finale: quanto mancava alla fine è dove
   // comincia la sigla finale di questa serie, per saltarla da sola. Un punto
   // già impostato (a mano o così) non si tocca: si cambia dalle «Sigle».
@@ -531,6 +539,7 @@ function LettoreStreaming() {
         },
       ],
       ['nexttrack', prossimo ? vaiAlProssimo : null],
+      ['previoustrack', precedente ? vaiAlPrecedente : null],
     ]
     const imposta = (azione: MediaSessionAction, gestore: MediaSessionActionHandler | null) => {
       try {
@@ -544,7 +553,7 @@ function LettoreStreaming() {
       sessione.metadata = null
       for (const [azione] of azioni) imposta(azione, null)
     }
-  }, [lettore, titolo, posterSessione, prossimo, vaiAlProssimo, salta])
+  }, [lettore, titolo, posterSessione, prossimo, vaiAlProssimo, precedente, vaiAlPrecedente, salta])
 
   const indietro = (
     <Link to="/streaming" className="text-sm text-zinc-400 transition hover:text-projector">
@@ -617,7 +626,8 @@ function LettoreStreaming() {
       // Come il pulsante: durante la sigla finale insegna dove comincia.
       if (inCoda) prossimoDallaSigla()
       else vaiAlProssimo()
-    } else if (azione === 'audio' && videoRef.current) videoRef.current.muted = !videoRef.current.muted
+    } else if (azione === 'precedente' && precedente) vaiAlPrecedente()
+    else if (azione === 'audio' && videoRef.current) videoRef.current.muted = !videoRef.current.muted
     else if (azione === 'sottotitoli' && tracce.length > 0) scegliSottotitoli(prossimoSottotitolo)
   }
 
@@ -901,6 +911,30 @@ function LettoreStreaming() {
         )}
         {lettore === 'ciak' && (
           <BarraLettore videoRef={videoRef} visibile={comandiVisibili} cinema={cinema} onSchermoIntero={alternaSchermoIntero}>
+            {/* Gli episodi accanto, sempre a portata: non solo «il prossimo» a fine
+                episodio, ma anche tornare a quello prima. */}
+            {precedente && (
+              <button
+                type="button"
+                onClick={vaiAlPrecedente}
+                aria-label={`Episodio precedente: ${sigla(precedente) ?? ''}`}
+                title={`Episodio precedente (${sigla(precedente) ?? ''}) · P`}
+                className="rounded-md px-2 py-1 text-zinc-100 transition hover:bg-white/10"
+              >
+                ⏮
+              </button>
+            )}
+            {prossimo && (
+              <button
+                type="button"
+                onClick={inCoda ? prossimoDallaSigla : vaiAlProssimo}
+                aria-label={`Episodio successivo: ${sigla(prossimo) ?? ''}`}
+                title={`Episodio successivo (${sigla(prossimo) ?? ''}) · N`}
+                className="rounded-md px-2 py-1 text-zinc-100 transition hover:bg-white/10"
+              >
+                ⏭
+              </button>
+            )}
             {tracce.length > 0 && (
               <MenuSottotitoli
                 nomi={nomiSottotitoli}
@@ -949,7 +983,7 @@ function LettoreStreaming() {
       {lettore === 'ciak' && !touch && (
         <p className="text-xs text-zinc-500">
           Dalla tastiera: spazio pausa · ← → 10 secondi · F schermo intero · M audio{tracce.length > 0 && ' · C sottotitoli'}
-          {serie && ' · S salta la sigla · N episodio dopo'}
+          {serie && ' · S salta la sigla · N episodio dopo · P episodio prima'}
         </p>
       )}
 
@@ -1019,6 +1053,7 @@ function LettoreStreaming() {
           votoSalvato={archivio.votoSalvato}
           errore={archivio.erroreArchivio}
           prossimo={archivio.prossimo}
+          precedente={archivio.precedente}
           onRicomincia={() => {
             if (videoRef.current) videoRef.current.currentTime = 0
           }}

@@ -137,6 +137,15 @@ export function formattaTempo(secondi: number): string {
 // L'episodio che viene dopo, fra i file della stessa serie: il successivo della
 // stessa stagione, altrimenti il primo della stagione dopo.
 export function prossimoEpisodio(voce: VoceStreaming, tutte: VoceStreaming[]): VoceStreaming | null {
+  return vicinoNellaSerie(voce, tutte, 1)
+}
+
+// Il precedente, per tornare indietro dal lettore: lo stesso ordine, all'indietro.
+export function episodioPrecedente(voce: VoceStreaming, tutte: VoceStreaming[]): VoceStreaming | null {
+  return vicinoNellaSerie(voce, tutte, -1)
+}
+
+function vicinoNellaSerie(voce: VoceStreaming, tutte: VoceStreaming[], verso: 1 | -1): VoceStreaming | null {
   if (voce.media_type !== 'tv' || voce.stagione == null || voce.episodio == null) return null
   // Gli speciali (stagione 0) proseguono fra loro: dopo l'ultimo OAD non si
   // ricomincia da S1E1, e dalle stagioni vere non si finisce negli speciali.
@@ -149,14 +158,12 @@ export function prossimoEpisodio(voce: VoceStreaming, tutte: VoceStreaming[]): V
       v.episodio != null &&
       (v.stagione === 0) === speciale,
   )
-  const dopo = stessaSerie
-    .filter(
-      (v) =>
-        (v.stagione as number) > (voce.stagione as number) ||
-        ((v.stagione as number) === voce.stagione && (v.episodio as number) > (voce.episodio as number)),
-    )
-    .sort((a, b) => (a.stagione as number) - (b.stagione as number) || (a.episodio as number) - (b.episodio as number))
-  return dopo[0] ?? null
+  // Il confronto in ordine di stagione ed episodio, moltiplicato per il verso:
+  // positivo vuol dire «dalla parte giusta».
+  const confronta = (a: VoceStreaming, b: VoceStreaming) =>
+    (a.stagione as number) - (b.stagione as number) || (a.episodio as number) - (b.episodio as number)
+  const vicini = stessaSerie.filter((v) => confronta(v, voce) * verso > 0).sort((a, b) => confronta(a, b) * verso)
+  return vicini[0] ?? null
 }
 
 // Come si chiama il file nella lista: il titolo di TMDB, e per un episodio
