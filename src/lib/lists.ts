@@ -202,19 +202,31 @@ export async function aggiornaCopertina(listId: string, copertina: string | null
 // Una saga fatta a mano: una lista segnata come saga, coi film scelti. I
 // titoli in una scrittura sola, non uno per volta.
 export async function creaSaga(userId: string, nome: string, film: ListItemRef[]): Promise<string> {
+  return creaListaCon(userId, nome, film, true)
+}
+
+// Una raccolta nuova dalla videoteca: una lista qualunque, che compare anche
+// fra le «Mie liste», coi titoli di Drive scelti.
+export async function creaRaccolta(userId: string, nome: string, titoli: ListItemRef[]): Promise<string> {
+  return creaListaCon(userId, nome, titoli, false)
+}
+
+async function creaListaCon(userId: string, nome: string, titoli: ListItemRef[], comeSaga: boolean): Promise<string> {
+  // Senza saga non si scrive la colonna: una raccolta si crea anche con un
+  // database che non è ancora alla v21.
   const { data, error } = await client()
     .from('user_lists')
-    .insert({ user_id: userId, name: nome, description: null, come_saga: true })
+    .insert({ user_id: userId, name: nome, description: null, ...(comeSaga && { come_saga: true }) })
     .select('id')
     .single()
   if (error) throw new Error(error.message)
   const id = (data as { id: string }).id
-  await aggiungiTitoli(userId, id, film)
+  await aggiungiTitoli(userId, id, titoli)
   return id
 }
 
-// Rinomina la saga e ne cambia i film: aggiunge quelli nuovi, toglie quelli
-// tolti. I film tolti tornano al loro posto nell'elenco.
+// Rinomina la saga (o la raccolta) e ne cambia i titoli: aggiunge quelli
+// nuovi, toglie quelli tolti. I film tolti da una saga tornano al loro posto.
 export async function modificaSaga(
   userId: string,
   listId: string,

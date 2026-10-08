@@ -42,4 +42,28 @@ describe('ModificaSaga', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Sciogli la saga' }))
     expect(onSciogli).toHaveBeenCalled()
   })
+
+  it('una raccolta: si tolgono e si aggiungono titoli, anche serie, e si può eliminare', async () => {
+    const onSalva = vi.fn()
+    const onSciogli = vi.fn()
+    const titoli = [...FILM, { chiave: 'tv-1429', titolo: "L'attacco dei giganti", anno: '2013', poster: null }]
+    render(
+      <ModificaSaga tipo="raccolta" film={titoli} iniziale={{ nome: 'Natale', chiavi: new Set(['movie-862', 'movie-12']) }} onSalva={onSalva} onSciogli={onSciogli} />,
+    )
+    expect(screen.getByLabelText('Nome della raccolta')).toHaveValue('Natale')
+    expect(screen.getByText('2 titoli scelti')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: /Toy Story/ }))
+    await userEvent.type(screen.getByLabelText('Cerca un titolo'), 'giganti')
+    await userEvent.click(screen.getByRole('checkbox', { name: /L'attacco dei giganti/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Salva' }))
+    expect(onSalva).toHaveBeenCalledWith('Natale', ['movie-12', 'tv-1429'])
+    await userEvent.click(screen.getByRole('button', { name: 'Elimina la raccolta' }))
+    expect(onSciogli).toHaveBeenCalled()
+  })
+
+  it('una raccolta nuova si crea con «Crea la raccolta»', () => {
+    render(<ModificaSaga tipo="raccolta" film={FILM} onSalva={vi.fn()} />)
+    expect(screen.getByRole('button', { name: 'Crea la raccolta' })).toBeDisabled()
+    expect(screen.queryByText(/saga/i)).not.toBeInTheDocument()
+  })
 })

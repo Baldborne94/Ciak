@@ -82,6 +82,7 @@ describe('unisciSaghe: le saghe fatte a mano', () => {
     id: 'l-pixar',
     nome: 'Pixar anni 90',
     chiavi: new Set(['movie-862', 'movie-9487']),
+    voci: new Map(),
     copertina: null,
     comeSaga: true,
     ...over,

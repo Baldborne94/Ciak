@@ -80,15 +80,16 @@ export async function fetchReadableTitle(type: TmdbType, id: number): Promise<st
   return resolveReadableTitle(normalise(raw, type), raw)
 }
 
-// Il titolo originale, tradotto solo se non si legge (giapponese, coreano,
-// cirillico…): per i film di Drive, dove il file è quello e si guarda in lingua
-// originale, «Song of the Sea» resta «Song of the Sea».
-export async function fetchOriginalTitle(type: TmdbType, id: number): Promise<string> {
+// Il titolo leggibile e la locandina, con una richiesta: per riscrivere in
+// italiano i titoli salvati di un anime o di un cartone, per cui l'archivio
+// non dice se su TMDB è un film o una serie. La locandina salvata dice quale
+// dei due è: gli id sono unici solo dentro un tipo.
+export async function fetchTitoloEPoster(type: TmdbType, id: number): Promise<{ titolo: string; posterPath: string | null }> {
   const raw = await tmdbFetch<RawDetail>(`/${type}/${id}`, {
     append_to_response: 'translations,alternative_titles',
   })
   const base = normalise(raw, type)
-  return isReadableTitle(base.originalTitle) ? (base.originalTitle as string) : resolveReadableTitle(base, raw)
+  return { titolo: resolveReadableTitle(base, raw), posterPath: base.posterPath }
 }
 
 // Gli altri nomi con cui un titolo è conosciuto («Shingeki no Kyojin» per

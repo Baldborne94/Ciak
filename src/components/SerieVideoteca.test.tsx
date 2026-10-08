@@ -91,6 +91,22 @@ describe('SerieVideoteca', () => {
     expect(screen.getByRole('button', { name: '✎ Non è questa serie? Scegli il titolo' })).toBeInTheDocument()
   })
 
+  it('fra gli «Altri episodi» ogni file ha il suo ✎, gli episodi numerati no', async () => {
+    // Il film di Cowboy Bebop finito accanto agli episodi: si sceglie il suo
+    // titolo da solo, senza cambiare quello della serie.
+    const onScegliFile = vi.fn()
+    const film = ep(1, 1, { id: 'film', nome: "Cowboy Bebop Knockin' on Heaven's Door", stagione: null, episodio: null })
+    render(
+      <SerieVideoteca titolo="Cowboy Bebop" poster={null} anno="1998" episodi={[ep(1, 1), film]} scaricati={new Set()} onApri={vi.fn()} onScegliFile={onScegliFile} />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Cowboy Bebop/, expanded: false }))
+    expect(within(screen.getByRole('list', { name: 'Stagione 1' })).queryByRole('button', { name: /Scegli il titolo di/ })).not.toBeInTheDocument()
+    await userEvent.click(
+      within(screen.getByRole('list', { name: 'Altri episodi' })).getByRole('button', { name: "Scegli il titolo di Cowboy Bebop Knockin' on Heaven's Door" }),
+    )
+    expect(onScegliFile).toHaveBeenCalledWith(film)
+  })
+
   it('gli speciali (stagione 0) stanno in fondo, sotto «Speciali»', async () => {
     monta([ep(0, 1, { nome: 'OADE01' }), ep(1, 1)])
     await userEvent.click(screen.getByRole('button', { name: /South Park/, expanded: false }))

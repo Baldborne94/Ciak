@@ -64,7 +64,7 @@ export interface NomeFilm {
 
 // Ciò che nei nomi delle release viene dopo il titolo: qualità, sorgente, codec.
 const ETICHETTE =
-  /\b(2160p|1080p|720p|576p|480p|360p|4k|uhd|bluray|blu ray|brrip|bdrip|remux|web dl|webdl|webrip|hdtv|dvdrip|hdrip|x264|x265|h264|h265|h 264|h 265|hevc|avc|hdr|hdr10|10bits?|8bits?|hi10p|ddp5 1|dd5 1|aac|ac3|proper|repack|extended|yify|yts|ita|eng)\b/i
+  /\b(2160p|1080p|720p|576p|480p|360p|4k|uhd|bluray|blu ray|brrip|bdrip|remux|web dl|webdl|webrip|hdtv|dvdrip|hdrip|x264|x265|h264|h265|h 264|h 265|hevc|avc|hdr|hdr10|10bits?|8bits?|hi10p|ddp5 1|dd5 1|aac|ac3|proper|repack|extended|yify|yts|ita|eng|dual audio|multi audio|multi subs?)\b/i
 
 // Le raccolte di stagioni nei nomi delle cartelle: «Season 1 to 26», «Seasons
 // 1-9», «Stagioni 1-6», «The Complete Series», «S01-S05». Non sono il titolo:

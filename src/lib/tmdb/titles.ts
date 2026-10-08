@@ -1,14 +1,5 @@
 import type { RawMedia, RawAltTitle } from './raw'
 
-// Languages written in Latin script — readable as-is. For everything else
-// (Japanese, Korean, Chinese, …) the original title isn't useful, so we fall
-// back to the localized (Italian/English) title.
-const LATIN_LANGS = new Set([
-  'en', 'it', 'es', 'fr', 'de', 'pt', 'nl', 'sv', 'da', 'no', 'fi', 'pl',
-  'cs', 'hu', 'ro', 'tr', 'id', 'vi', 'ca', 'hr', 'sk', 'sl', 'et', 'lv',
-  'lt', 'is', 'ga', 'eu', 'gl', 'af', 'sw', 'ms', 'tl',
-])
-
 // True when the string is in a script we can read (no CJK, Hangul, Thai,
 // Arabic, Cyrillic, Hebrew, Devanagari, kana…).
 // eslint-disable-next-line no-misleading-character-class
@@ -63,17 +54,15 @@ export function fallbackReadableTitle(
   return null
 }
 
-// The best title to show: original if it's in a readable script, otherwise
-// the localized one — and never a non-readable script when a readable
-// alternative exists (so anime/foreign titles show their IT/EN name).
+// Il titolo da mostrare: l'italiano, sempre, se si legge; altrimenti
+// l'originale, se si legge. Prima vinceva l'originale in alfabeto latino, e
+// l'app era a metà fra due lingue: «The Godfather» accanto a «L'attacco dei
+// giganti». L'originale resta nella scheda e nella ricerca.
 export function displayTitle(item: {
   title: string
   originalTitle: string | null
-  originalLanguage: string | null
+  originalLanguage?: string | null
 }): string {
-  if (item.originalTitle && item.originalLanguage && LATIN_LANGS.has(item.originalLanguage)) {
-    return item.originalTitle
-  }
   if (isReadableTitle(item.title)) return item.title
   if (isReadableTitle(item.originalTitle)) return item.originalTitle as string
   return item.title || item.originalTitle || 'Senza titolo'

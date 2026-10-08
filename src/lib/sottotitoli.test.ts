@@ -196,6 +196,14 @@ describe('filmDaCercare: serie in cartelle scritte a modo loro', () => {
     expect(filmDaCercare('Elements.of Chernobyl Episode 1 1.23.45.mp4', 'Elements of Chernobyl')).toMatchObject({ stagione: 1, episodio: 1 })
   })
 
+  it('«Dual Audio» non fa parte del titolo', () => {
+    // Si cercava «Cowboy Bebop Knockin' on Heaven's Door (Dual Audio», e TMDB
+    // non trovava niente.
+    expect(
+      filmDaCercare("[DB]Cowboy Bebop Knockin' on Heaven's Door _-_(Dual Audio_10bit_BD1080p_x265).mkv", 'Cowboy Bebop'),
+    ).toEqual({ titolo: "Cowboy Bebop Knockin' on Heaven's Door" })
+  })
+
   it('ma un film con l’anno resta un film anche se dice «Episode»', () => {
     expect(filmDaCercare('Star.Wars.Episode.4.A.New.Hope.1977.1080p.mkv', null).stagione).toBeUndefined()
   })

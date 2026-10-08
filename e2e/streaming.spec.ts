@@ -52,7 +52,7 @@ const FILE: Record<string, unknown> = {
 // contenuto) cestinato non compare più negli elenchi, come su Drive.
 async function mockDrive(
   page: Page,
-  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false } = {},
+  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false, conFilmAnime = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   const cestinati = new Set<string>()
@@ -156,6 +156,10 @@ async function mockDrive(
               { id: 'video-snk-oad01', name: "Shingeki no Kyojin - OADE01 - Ilse's Notebook.mp4", size: '566000000', mimeType: 'video/mp4', parents: ['cartella-snk-oad'] },
               { id: 'video-snk-s01e135', name: 'Shingeki no Kyojin - S01E13.5 - Since That Day.mp4', size: '700000000', mimeType: 'video/mp4', parents: ['cartella-snk'] },
             ]
+          : []),
+        // Il film dell'anime, nella cartella della serie accanto agli episodi.
+        ...(conFilmAnime
+          ? [{ id: 'video-snk-film', name: 'Shingeki no Kyojin Crimson Bow and Arrow (Dual Audio_10bit_BD1080p_x265).mp4', size: '3000000000', mimeType: 'video/mp4', parents: ['cartella-snk'] }]
           : []),
         ...(conSerie
           ? [
@@ -480,13 +484,13 @@ test('le «Mie liste» diventano raccolte nella videoteca, coi titoli che sono s
 
   // Aperta, i titoli sotto la fila; e si sceglie la copertina.
   await riquadro.click()
-  await expect(page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /Song of the Sea/ })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /La canzone del mare/ })).toBeVisible()
   await page.getByRole('button', { name: '🖼️ Cambia copertina' }).click()
   await page.getByRole('dialog').getByRole('button', { name: /Sfondo 1 di/ }).click()
   await expect.poll(() => db.tables.user_lists.find((l) => l.id === 'l-cartoon')?.copertina).toBe('/mare.jpg')
   await expect(riquadro.locator('img')).toHaveAttribute('src', 'https://image.tmdb.org/t/p/w780/mare.jpg')
 
-  await page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /Song of the Sea/ }).click()
+  await page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /La canzone del mare/ }).click()
   await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
 })
 
@@ -558,6 +562,67 @@ test('una saga fatta a mano raccoglie film che su TMDB una saga non ce l’hanno
   await expect(page.getByRole('button', { name: /^Xenomorfi/ })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /Alien\.1979\.mp4/ })).toBeVisible()
   expect(db.tables.user_lists.some((l) => l.name === 'Xenomorfi')).toBe(false)
+})
+
+test('una raccolta si modifica dalla videoteca: si aggiungono e si tolgono titoli, se ne crea una e si elimina', async ({ page }) => {
+  await mockDrive(page, { conSaga: true })
+  const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
+    id: `s-${drive_file_id}`, user_id: E2E_USER.id, drive_file_id, nome_file: null, tmdb_id, media_type: 'movie', titolo,
+    poster_path: `/poster-${tmdb_id}.jpg`, stagione: null, episodio: null, abbinato_a_mano: false, posizione: 0, durata: 7000, secondi_visti: 0, visto_il: null,
+  })
+  const db = await mockSupabase(page, {
+    user_streaming: [film('video-alien-1979', 348, 'Alien'), film('video-aliens-1986', 679, 'Aliens')],
+    user_lists: [{ id: 'l-horror', user_id: E2E_USER.id, name: 'Notte horror', description: null, is_public: false }],
+    user_list_items: [
+      { id: 'i1', list_id: 'l-horror', user_id: E2E_USER.id, tmdb_id: 348, media_type: 'movie', title: 'Alien', poster_path: '/poster-348.jpg' },
+      // Non è su Drive: modificando la raccolta dalla videoteca non si tocca.
+      { id: 'i2', list_id: 'l-horror', user_id: E2E_USER.id, tmdb_id: 550, media_type: 'movie', title: 'Fight Club', poster_path: null },
+    ],
+  })
+  await page.route('**/api/tmdb*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    if (path === '/movie/348') return route.fulfill({ json: movieDetail(348, 'Alien', { release_date: '1979-05-25' }) })
+    if (path === '/movie/679') return route.fulfill({ json: movieDetail(679, 'Aliens', { release_date: '1986-07-18' }) })
+    return route.fallback()
+  })
+  page.on('dialog', (d) => void d.accept())
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  const raccolte = page.getByRole('region', { name: 'Le mie raccolte' })
+  await raccolte.getByRole('button', { name: /^Notte horror/ }).click()
+  await page.getByRole('button', { name: '✎ Modifica la raccolta' }).click()
+
+  // Al posto di Alien, Aliens.
+  const finestra = page.getByRole('dialog')
+  await expect(finestra.getByText('1 titolo scelto')).toBeVisible()
+  await finestra.getByRole('checkbox', { name: /^Alien ·/ }).uncheck()
+  await finestra.getByRole('checkbox', { name: /^Aliens ·/ }).check()
+  await finestra.getByRole('button', { name: 'Salva' }).click()
+  await expect
+    .poll(() => db.tables.user_list_items.filter((i) => i.list_id === 'l-horror').map((i) => i.tmdb_id).sort())
+    .toEqual([550, 679])
+  await expect(page.getByRole('list', { name: 'Titoli di Notte horror' }).getByRole('button', { name: /Aliens\.1986\.mp4/ })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Titoli di Notte horror' }).getByRole('button', { name: /Alien\.1979\.mp4/ })).toHaveCount(0)
+
+  // Una nuova, da qui: è una lista qualunque, non una saga.
+  await page.getByRole('button', { name: '＋ Crea una raccolta' }).click()
+  await finestra.getByLabel('Nome della raccolta').fill('Ripley')
+  await finestra.getByRole('checkbox', { name: /^Alien ·/ }).check()
+  await finestra.getByRole('button', { name: 'Crea la raccolta' }).click()
+  await expect.poll(() => db.tables.user_lists.find((l) => l.name === 'Ripley')).toBeTruthy()
+  expect(db.tables.user_lists.find((l) => l.name === 'Ripley')?.come_saga).toBeFalsy()
+  const ripley = raccolte.getByRole('button', { name: /^Ripley/ })
+  await expect(ripley).toContainText('1 titolo')
+
+  // E si elimina.
+  await ripley.click()
+  await page.getByRole('button', { name: '✎ Modifica la raccolta' }).click()
+  await finestra.getByRole('button', { name: 'Elimina la raccolta' }).click()
+  await expect(raccolte.getByRole('button', { name: /^Ripley/ })).toHaveCount(0)
+  expect(db.tables.user_lists.some((l) => l.name === 'Ripley')).toBe(false)
+  // I file restano.
+  await expect(page.getByRole('button', { name: /Alien\.1979\.mp4/ }).first()).toBeVisible()
 })
 
 test('gli extra dei film (le featurette) non compaiono come titoli, ma si contano', async ({ page }) => {
@@ -1749,11 +1814,11 @@ test('la lista riconosce i film di Drive e li mostra col titolo e la locandina',
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
   // Il file «Song.of.the.Sea.2014.1080p.mp4» è diventato il film di TMDB.
-  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001')).toMatchObject({
     tmdb_id: 110416,
     media_type: 'movie',
-    titolo: 'Song of the Sea',
+    titolo: 'La canzone del mare',
     nome_file: 'Song.of.the.Sea.2014.1080p.mp4',
   })
   // «B99» non somiglia abbastanza a niente: resta il nome del file, e la riga
@@ -1773,17 +1838,20 @@ test('la videoteca si cerca, si ordina e si filtra per genere', async ({ page })
 
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
   const righe = () => page.getByRole('list', { name: 'Video della videoteca' }).getByRole('listitem').allTextContents()
 
-  // Ricerca: per titolo tradotto, per nome del file.
+  // Ricerca: per titolo italiano, per titolo originale, per nome del file.
   const cerca = page.getByRole('searchbox', { name: 'Cerca nella videoteca' })
   await cerca.fill('canzone del')
   await expect(page.getByText('B99 S7E2', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
+  await expect(page.getByText('1 di 2')).toBeVisible()
+  await cerca.fill('song of the')
+  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
   await expect(page.getByText('1 di 2')).toBeVisible()
   await cerca.fill('s7e2')
-  await expect(page.getByText('Song of the Sea', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('La canzone del mare', { exact: true })).toHaveCount(0)
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
   await cerca.fill('nessun film così')
   await expect(page.getByText('Nessun video corrisponde alla ricerca o al genere scelto.')).toBeVisible()
@@ -1794,17 +1862,17 @@ test('la videoteca si cerca, si ordina e si filtra per genere', async ({ page })
   await expect(genere.locator('option', { hasText: 'Horror (1)' })).toHaveCount(1)
   await genere.selectOption({ label: 'Horror (1)' })
   await expect(page.getByText('B99 S7E2', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
   await genere.selectOption({ label: 'Tutti i generi' })
 
   // Ordine: per titolo, per anno (chi non ha l'anno in fondo), per arrivo su Drive.
   const ordina = page.getByRole('combobox', { name: 'Ordina la videoteca' })
-  await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('Song of the Sea')])
+  await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('La canzone del mare')])
   await ordina.selectOption({ label: 'Anno: più recenti' })
-  await expect.poll(righe).toEqual([expect.stringContaining('Song of the Sea'), expect.stringContaining('B99 S7E2')])
+  await expect.poll(righe).toEqual([expect.stringContaining('La canzone del mare'), expect.stringContaining('B99 S7E2')])
   await expect(page.getByText(/^2020 · MP4/)).toBeVisible()
   await ordina.selectOption({ label: 'Aggiunti di recente' })
-  await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('Song of the Sea')])
+  await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('La canzone del mare')])
 
   // L'ordine scelto resta alla visita successiva.
   await page.reload()
@@ -1828,7 +1896,7 @@ test('le serie in cartelle di stagione prendono il nome della serie e vengono ri
   await cercaTmdb(page, [
     SONG,
     { id: 2190, media_type: 'tv', name: 'South Park', original_name: 'South Park', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] },
-  ])
+  ], movieDetail(2190, 'South Park', { name: 'South Park', original_name: 'South Park' }))
 
   // TMDB risponde solo dopo che la serie è stata aperta: è il momento in cui,
   // riconosciuta, la serie cambiava identità e la lista aperta si richiudeva
@@ -1882,7 +1950,7 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   // (e il titolo del primo è già stato controllato: niente richieste a TMDB).
   await page.addInitScript(() => {
     localStorage.setItem('ciak:riconoscimento-v3:video-sp-000302', '1')
-    localStorage.setItem('ciak:titolo-originale-v1:video-sp-000301', '1')
+    localStorage.setItem('ciak:titolo-italiano-v2:video-sp-000301', '1')
   })
   await mockDrive(page, { conSerie: true })
   await cercaTmdb(page, [SONG])
@@ -1896,7 +1964,7 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
-  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /^South Park/ })).toHaveCount(1)
   await page.getByRole('button', { name: /^South Park/ }).click()
   const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
@@ -1993,9 +2061,9 @@ test('dalla videoteca si sceglie il titolo di una serie intera, e di un film', a
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
   // «Da sistemare»: solo ciò che Ciak non ha riconosciuto. Song of the Sea sì.
-  await expect(page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' })).toBeVisible()
+  await expect(page.getByRole('listitem').filter({ hasText: 'La canzone del mare' }).getByRole('button', { name: 'Scegli il titolo' })).toBeVisible()
   await page.getByRole('button', { name: /⚠ Da sistemare/ }).click()
-  await expect(page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' })).toHaveCount(0)
+  await expect(page.getByRole('listitem').filter({ hasText: 'La canzone del mare' }).getByRole('button', { name: 'Scegli il titolo' })).toHaveCount(0)
   await page.getByRole('button', { name: /^South Park/, expanded: false }).click()
   await page.getByRole('button', { name: '✎ Scegli il titolo della serie' }).click()
 
@@ -2019,7 +2087,7 @@ test('dalla videoteca si sceglie il titolo di una serie intera, e di un film', a
   await expect(page.getByRole('button', { name: /^Parco del Sud/ })).toBeVisible()
 
   // Un film: il ✎ accanto alla riga.
-  await page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' }).click()
+  await page.getByRole('listitem').filter({ hasText: 'La canzone del mare' }).getByRole('button', { name: 'Scegli il titolo' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerca', exact: true }).click()
   await page.getByRole('dialog').getByRole('button', { name: /La canzone del mare/ }).click()
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001')?.abbinato_a_mano).toBe(true)
@@ -2110,6 +2178,49 @@ test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli 
   expect(altriNomi).toHaveLength(1)
 })
 
+test('un film nella cartella di un anime, fra gli «Altri episodi», si sceglie da solo ed esce dalla serie', async ({ page }) => {
+  // «Cowboy Bebop/Knockin' on Heaven's Door» stava fra gli «Altri episodi» e la
+  // serie restava «da sistemare»: il ✎ c'era solo per la serie intera.
+  const db = await mockSupabase(page)
+  await mockDrive(page, { conAnime: true, conFilmAnime: true })
+  const aot = { id: 1429, media_type: 'tv', name: "L'attacco dei giganti", original_name: '進撃の巨人', first_air_date: '2013-04-07', poster_path: '/aot.jpg', genre_ids: [16] }
+  const film = { id: 297266, media_type: 'movie', title: "L'attacco dei giganti - Il film: L'arco e la freccia cremisi", original_title: '劇場版 進撃の巨人 前編 紅蓮の弓矢', release_date: '2014-11-22', poster_path: '/arco.jpg', genre_ids: [16] }
+  await cercaTmdb(page, [aot, film], movieDetail(1429, "L'attacco dei giganti", { name: "L'attacco dei giganti", original_name: '進撃の巨人', original_title: '進撃の巨人' }))
+  await page.route('**/api/tmdb*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    if (path === '/tv/1429/alternative_titles') {
+      return route.fulfill({ json: { id: 1429, results: [{ iso_3166_1: 'JP', title: 'Shingeki no Kyojin', type: 'romaji' }] } })
+    }
+    return route.fallback()
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByRole('button', { name: /^L'attacco dei giganti/ })).toBeVisible()
+  await page.getByRole('button', { name: /⚠ Da sistemare/ }).click()
+  await page.getByRole('button', { name: /^L'attacco dei giganti/, expanded: false }).click()
+  const altri = page.getByRole('list', { name: 'Altri episodi' })
+  await altri.getByRole('button', { name: /^Scegli il titolo di Shingeki no Kyojin Crimson Bow and Arrow/ }).click()
+
+  const finestra = page.getByRole('dialog')
+  await finestra.getByRole('button', { name: 'Cerca', exact: true }).click()
+  await finestra.getByRole('button', { name: /L'arco e la freccia cremisi/ }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-snk-film')).toMatchObject({
+    tmdb_id: 297266,
+    media_type: 'movie',
+    abbinato_a_mano: true,
+  })
+  // Il film esce dalla serie, che non ha più niente da sistemare.
+  await expect(page.getByRole('list', { name: 'Altri episodi' })).toHaveCount(0)
+  const serie = page.getByRole('button', { name: /^L'attacco dei giganti [▸▾]/ })
+  await expect(serie).toHaveCount(0)
+  await page.getByRole('button', { name: /⚠ Da sistemare/ }).click()
+  await expect(serie).toBeVisible()
+  await expect(page.getByText(/L'arco e la freccia cremisi/).first()).toBeVisible()
+})
+
 test('un mezzo episodio già salvato come S1E13 passa fra gli speciali, senza cercare di nuovo', async ({ page }) => {
   // «S01E13.5 - Since That Day» compariva come un secondo «Ep. 13».
   const riga = (id: string, extra: Record<string, unknown>) => ({ user_id: E2E_USER.id, drive_file_id: id, abbinato_a_mano: false, posizione: 0, secondi_visti: 0, tmdb_id: 1429, media_type: 'tv', titolo: "L'attacco dei giganti", poster_path: '/aot.jpg', ...extra })
@@ -2121,7 +2232,7 @@ test('un mezzo episodio già salvato come S1E13 passa fra gli speciali, senza ce
     ],
   })
   await page.addInitScript(() => {
-    for (const id of ['video-snk-s01e04', 'video-snk-oad01', 'video-snk-s01e135']) localStorage.setItem(`ciak:titolo-originale-v1:${id}`, '1')
+    for (const id of ['video-snk-s01e04', 'video-snk-oad01', 'video-snk-s01e135']) localStorage.setItem(`ciak:titolo-italiano-v2:${id}`, '1')
   })
   await mockDrive(page, { conAnime: true })
   await cercaTmdb(page, [SONG])
@@ -2172,7 +2283,7 @@ test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede
   })
 
   await apriSongOfTheSea(page)
-  await expect(page.getByRole('link', { name: 'Song of the Sea' })).toHaveAttribute('href', '/title/movie/110416')
+  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toHaveAttribute('href', '/title/movie/110416')
 
   await portaIlVideoA(page, 5400, 5640)
 
@@ -2196,7 +2307,7 @@ test('saltare alla fine senza averlo guardato non lo segna come visto', async ({
   })
 
   await apriSongOfTheSea(page)
-  await expect(page.getByRole('link', { name: 'Song of the Sea' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toBeVisible()
   await portaIlVideoA(page, 5500, 5640)
   await page.waitForTimeout(500)
 
@@ -2214,7 +2325,7 @@ test('riapre il film dal punto in cui ci si era fermati', async ({ page }) => {
   })
 
   await apriSongOfTheSea(page)
-  await expect(page.getByRole('link', { name: 'Song of the Sea' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toBeVisible()
   // I metadati del video arrivano: si riparte qualche secondo prima.
   await page.evaluate(() => document.querySelector('video')?.dispatchEvent(new Event('loadedmetadata')))
 
@@ -2355,7 +2466,7 @@ async function apriShogun(page: Page, initScript?: () => void) {
   // Titoli già verificati: altrimenti la videoteca li ricontrolla in sottofondo
   // e il finto TMDB li rinomina a test in corso.
   await page.addInitScript(() => {
-    for (const id of ['video-shogun-01', 'video-shogun-02']) localStorage.setItem(`ciak:titolo-originale-v1:${id}`, '1')
+    for (const id of ['video-shogun-01', 'video-shogun-02']) localStorage.setItem(`ciak:titolo-italiano-v2:${id}`, '1')
   })
   await conLettoreCiak(page)
   await mockDrive(page, { conShogun: true, conShogunPrimo: true })
@@ -2530,8 +2641,8 @@ test('«Non è questo?» fa scegliere il titolo a mano, e resta scelto', async (
   await cercaTmdb(page, [SONG, { ...SONG, id: 42, title: 'Song of the Sea (corto)', original_title: 'Song of the Sea (corto)', release_date: '2012-01-01' }])
 
   await apriSongOfTheSea(page)
-  // La lista l'ha già riconosciuto come «Song of the Sea»: lo si corregge.
-  await expect(page.getByRole('link', { name: 'Song of the Sea' })).toBeVisible()
+  // La lista l'ha già riconosciuto come «La canzone del mare»: lo si corregge.
+  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toBeVisible()
   await page.getByRole('button', { name: 'Non è questo?' }).click()
   await page.getByRole('button', { name: 'Cerca', exact: true }).click()
   // Accanto al titolo italiano c'è quello originale: i file hanno quel nome.
@@ -2591,35 +2702,34 @@ test('a fine episodio lo spunta, mette la serie in corso e propone il prossimo',
   await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
 })
 
-test('i titoli restano quelli originali del film, tradotti solo se illeggibili', async ({ page }) => {
+test('i titoli della videoteca sono in italiano, anche quelli salvati prima in originale', async ({ page }) => {
   const db = await mockSupabase(page, {
-    // Riconosciuto prima della correzione: col titolo tradotto.
+    // Riconosciuto quando Ciak salvava il titolo originale.
     user_streaming: [
-      { id: 's0', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: 'video-b99-00001', nome_file: 'B99 S7E2.mp4', tmdb_id: 48891, media_type: 'tv', titolo: 'Brooklyn 99 - Nove-Nove', stagione: 7, episodio: 2, posizione: 0, secondi_visti: 0, abbinato_a_mano: true },
+      { id: 's0', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: 'video-b99-00001', nome_file: 'B99 S7E2.mp4', tmdb_id: 48891, media_type: 'tv', titolo: 'Brooklyn Nine-Nine', stagione: 7, episodio: 2, posizione: 0, secondi_visti: 0, abbinato_a_mano: true },
     ],
   })
   await mockDrive(page)
   await page.route('**/api/tmdb*', (route) => {
     const path = new URL(route.request().url()).searchParams.get('path') ?? ''
-    // La ricerca in italiano restituisce il titolo tradotto…
     if (path === '/search/multi') return route.fulfill({ json: { results: [SONG] } })
-    // …ma il film è «Song of the Sea», ed è quello che si guarda.
-    if (path === '/tv/48891') return route.fulfill({ json: movieDetail(48891, 'Brooklyn 99 - Nove-Nove', { original_title: 'Brooklyn Nine-Nine' }) })
+    if (path === '/tv/48891') return route.fulfill({ json: movieDetail(48891, 'Brooklyn 99 - Nove-Nove', { name: 'Brooklyn 99 - Nove-Nove', original_name: 'Brooklyn Nine-Nine' }) })
     return route.fallback()
   })
 
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
-  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
-  // L'episodio sta sotto la sua serie, che ha il titolo originale.
-  await expect(page.getByRole('button', { name: /^Brooklyn Nine-Nine/ })).toBeVisible()
+  // Una lingua sola: «La canzone del mare» accanto a «Brooklyn 99», non a
+  // «Brooklyn Nine-Nine».
+  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Brooklyn 99 - Nove-Nove/ })).toBeVisible()
   await expect
     .poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-song-0001')?.titolo)
-    .toBe('Song of the Sea')
+    .toBe('La canzone del mare')
   await expect
     .poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-b99-00001')?.titolo)
-    .toBe('Brooklyn Nine-Nine')
+    .toBe('Brooklyn 99 - Nove-Nove')
 })
 
 test('un film che non parte (un MKV che il browser non apre) lo dice e propone Drive', async ({ page }) => {

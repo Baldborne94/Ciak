@@ -48,10 +48,15 @@ describe('altriTitoli', () => {
 })
 
 describe('displayTitle', () => {
-  it('preferisce il titolo originale quando la lingua è in alfabeto latino', () => {
+  it('preferisce sempre il titolo italiano, anche quando l originale si legge', () => {
+    // Prima l'originale vinceva se in alfabeto latino: i film americani in
+    // inglese, gli anime in italiano, e le liste a metà fra le due lingue.
     expect(
       displayTitle({ title: 'Il padrino', originalTitle: 'The Godfather', originalLanguage: 'en' }),
-    ).toBe('The Godfather')
+    ).toBe('Il padrino')
+    expect(
+      displayTitle({ title: 'Il favoloso mondo di Amélie', originalTitle: "Le Fabuleux Destin d'Amélie Poulain", originalLanguage: 'fr' }),
+    ).toBe('Il favoloso mondo di Amélie')
   })
 
   it('usa il titolo localizzato per lingue non latine', () => {
@@ -192,8 +197,8 @@ describe('la facciata di tmdb', () => {
     const attesi = [
       'altriTitoli', 'backdropUrl', 'discoverByCompany', 'discoverByGenre', 'discoverByGenres',
       'discoverMigliori',
-      'displayTitle', 'fallbackReadableTitle', 'fetchAlternativeTitles', 'fetchGenreIds', 'fetchOriginalTitle', 'fetchReadableTitle',
-      'fetchTitleFacts',
+      'displayTitle', 'fallbackReadableTitle', 'fetchAlternativeTitles', 'fetchGenreIds', 'fetchReadableTitle',
+      'fetchTitleFacts', 'fetchTitoloEPoster',
       'getAnime',
       'getCartoons', 'getCollection', 'getCompany', 'getDetail', 'getGenres', 'getImmaginiTitolo',
       'getPersonDetail', 'getPervertitoAnime', 'getRecentReleases',
