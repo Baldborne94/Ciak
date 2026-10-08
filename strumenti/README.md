@@ -27,6 +27,14 @@ su Drive va solo il risultato, una volta.
 
 I video già presenti su Drive si saltano: si può rilanciare quando si vuole.
 
+Un video con dei pezzi mancanti (un torrent non finito: il file è già lungo
+quanto quello completo, ma dove i dati non sono arrivati ci sono solo zeri)
+non si converte: ffmpeg lo farebbe lo stesso, con salti e immagini rotte
+(«invalid as first byte of an EBML number», «Could not find ref with POC»).
+Lo script lo dice, lascia l'originale dov'è e passa al successivo: in
+qBittorrent, tasto destro sul torrent → **Forza ricontrollo**, e quando è al
+100% si rilancia.
+
 Su Drive va solo il film: gli scarti delle release si saltano. Sono le
 anteprime (`….Sample.mp4`), i promo di pochi MB del gruppo che ha fatto la
 release (`ETRG.mp4`, sotto i 5 MB) e le cartelle degli extra (`Featurettes`,

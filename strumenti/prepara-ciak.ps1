@@ -49,7 +49,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-08a'
+$Versione = '2026-10-08b'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 # Gli scarti: un video sotto questa misura e' il promo di una release, non un
 # film ne' un episodio; le cartelle degli extra dei film (gli "Extras" e gli
@@ -173,6 +173,52 @@ function ErroriVeri([string[]]$righe) {
 # fotogramma): se ne tollerano pochi. Come sopra, gli errori qui sono attesi.
 # $null se il video si legge; se no le prime righe d'errore di ffmpeg, da
 # mostrare: "danneggiato" senza dire perche' non si poteva verificare.
+# Un download a meta' (torrent) e' gia' lungo quanto il file finito, ma i
+# pezzi non ancora arrivati sono zeri: ffmpeg lo converte lo stesso, con
+# salti e immagini rotte ("invalid as first byte of an EBML number", "Could
+# not find ref with POC"), e la durata puo' tornare giusta. Un video vero non
+# ha mai mezzo MB di zeri di fila: se li ha, mancano dei dati. Lo si cerca in
+# C#, perche' leggere gigabyte un byte alla volta in PowerShell e' lentissimo.
+Add-Type -TypeDefinition @'
+using System.IO;
+public static class CiakBuchi {
+  // La posizione del primo tratto di zeri lungo almeno minBlocchi blocchi
+  // interi, o -1.
+  public static long PrimoBuco(string percorso, int blocco, int minBlocchi) {
+    using (FileStream fs = new FileStream(percorso, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 1 << 20)) {
+      byte[] buf = new byte[blocco];
+      long pos = 0; int fila = 0; long inizio = -1;
+      while (true) {
+        int letti = 0;
+        while (letti < blocco) {
+          int n = fs.Read(buf, letti, blocco - letti);
+          if (n == 0) break;
+          letti += n;
+        }
+        if (letti == 0) break;
+        bool zeri = letti == blocco;
+        for (int i = 0; zeri && i < letti; i++) if (buf[i] != 0) zeri = false;
+        if (zeri) {
+          if (fila == 0) inizio = pos;
+          fila++;
+          if (fila >= minBlocchi) return inizio;
+        } else {
+          fila = 0;
+        }
+        pos += letti;
+        if (letti < blocco) break;
+      }
+    }
+    return -1;
+  }
+}
+'@
+
+# Blocchi da 64 KB, almeno 8 di fila: mezzo MB di zeri.
+function PrimoBuco([string]$file) {
+  return [CiakBuchi]::PrimoBuco($file, 65536, 8)
+}
+
 function VideoLeggibile([string]$file, [int]$indice) {
   $ErrorActionPreference = 'Continue'
   try {
@@ -378,6 +424,10 @@ foreach ($f in $video) {
 
   Write-Host "[$n/$($video.Count)] $relativo\$($f.Name)"
   try {
+    $buco = PrimoBuco $f.FullName
+    if ($buco -ge 0) {
+      throw "mancano dei dati a $([math]::Round($buco / 1MB)) MB dall'inizio (solo zeri): il download non e' finito o il file e' rovinato. In qBittorrent: tasto destro sul torrent > Forza ricontrollo, aspetta che arrivi al 100% e rilancia. L'originale resta dov'e'"
+    }
     $json = & ffprobe -v error -show_entries 'format=duration:stream=index,codec_type,codec_name,pix_fmt,channels,color_transfer:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags:stream_side_data=dv_profile' -of json -- $f.FullName | Out-String
     if ($LASTEXITCODE -ne 0) { throw 'ffprobe non riesce a leggere il file' }
     $info = $json | ConvertFrom-Json
