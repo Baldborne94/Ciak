@@ -161,15 +161,7 @@ export async function listIdsContaining(
 // mille righe), non una richiesta per lista.
 export async function raccolteUtente(userId: string): Promise<Raccolta[]> {
   const [liste, elementi] = await Promise.all([
-    client()
-      .from('user_lists')
-      .select('id, name')
-      .eq('user_id', userId)
-      .order('name', { ascending: true })
-      .then(({ data, error }) => {
-        if (error) throw new Error(error.message)
-        return (data ?? []) as { id: string; name: string }[]
-      }),
+    listeConCopertina(userId),
     fetchAllRows<{ list_id: string; tmdb_id: number; media_type: MediaType }>((from, to) =>
       client()
         .from('user_list_items')
@@ -182,4 +174,25 @@ export async function raccolteUtente(userId: string): Promise<Raccolta[]> {
     ),
   ])
   return costruisciRaccolte(liste, elementi)
+}
+
+// Le liste con la copertina. Se il database non ha ancora la colonna (il file
+// schema_v20 non è stato eseguito: lo dice la banda in cima) le raccolte ci
+// sono lo stesso, col mosaico: per una copertina mancante non spariscono.
+async function listeConCopertina(userId: string): Promise<{ id: string; name: string; copertina?: string | null }[]> {
+  const leggi = (colonne: string) =>
+    client().from('user_lists').select(colonne).eq('user_id', userId).order('name', { ascending: true })
+  const { data, error } = await leggi('id, name, copertina')
+  if (!error) return (data ?? []) as unknown as { id: string; name: string; copertina: string | null }[]
+  if (error.code !== '42703' && !/copertina/.test(error.message)) throw new Error(error.message)
+  const senza = await leggi('id, name')
+  if (senza.error) throw new Error(senza.error.message)
+  return (senza.data ?? []) as unknown as { id: string; name: string }[]
+}
+
+// La copertina di una lista: un percorso TMDB, un link https, o null per
+// tornare al mosaico.
+export async function aggiornaCopertina(listId: string, copertina: string | null): Promise<void> {
+  const { error } = await client().from('user_lists').update({ copertina }).eq('id', listId)
+  if (error) throw new Error(error.message)
 }

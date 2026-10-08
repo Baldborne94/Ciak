@@ -426,9 +426,9 @@ test('i film di un pacchetto si riconoscono uno per uno e finiscono nella cartel
   await expect(page.getByRole('list', { name: 'Film di Transformers' }).getByText('Bumblebee', { exact: true })).toBeVisible()
 })
 
-test('le «Mie liste» diventano raccolte nella videoteca, coi titoli che sono su Drive', async ({ page }) => {
+test('le «Mie liste» diventano raccolte nella videoteca, coi titoli che sono su Drive e una copertina scelta', async ({ page }) => {
   await mockDrive(page)
-  await mockSupabase(page, {
+  const db = await mockSupabase(page, {
     user_streaming: [
       {
         id: 's-song',
@@ -459,14 +459,33 @@ test('le «Mie liste» diventano raccolte nella videoteca, coi titoli che sono s
     ],
   })
 
+  // Le immagini del film, fra cui scegliere la copertina.
+  await page.route('**/api/tmdb*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    if (path === '/movie/110416/images') {
+      return route.fulfill({ json: { backdrops: [{ file_path: '/mare.jpg', vote_average: 5.6, iso_639_1: null }], posters: [] } })
+    }
+    return route.fallback()
+  })
+
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
-  const raccolte = page.getByRole('list', { name: 'Le mie raccolte' })
-  const cartella = raccolte.getByRole('button', { name: /^Cartoon Saloon/ })
-  await expect(cartella).toContainText('Raccolta · 1 titolo')
+  // Un riquadro largo come le collezioni di TMDB: senza copertina, il mosaico.
+  const raccolte = page.getByRole('region', { name: 'Le mie raccolte' })
+  const riquadro = raccolte.getByRole('button', { name: /^Cartoon Saloon/ })
+  await expect(riquadro).toContainText('1 titolo')
+  await expect(riquadro.locator('img')).toHaveAttribute('src', 'https://image.tmdb.org/t/p/w185/song.jpg')
   await expect(raccolte.getByText('Da comprare')).toHaveCount(0)
-  await cartella.click()
+
+  // Aperta, i titoli sotto la fila; e si sceglie la copertina.
+  await riquadro.click()
+  await expect(page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /Song of the Sea/ })).toBeVisible()
+  await page.getByRole('button', { name: '🖼️ Cambia copertina' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: /Sfondo 1 di/ }).click()
+  await expect.poll(() => db.tables.user_lists.find((l) => l.id === 'l-cartoon')?.copertina).toBe('/mare.jpg')
+  await expect(riquadro.locator('img')).toHaveAttribute('src', 'https://image.tmdb.org/t/p/w780/mare.jpg')
+
   await page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /Song of the Sea/ }).click()
   await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
 })

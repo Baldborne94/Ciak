@@ -209,6 +209,9 @@ export interface UserList {
   name: string
   description: string | null
   is_public: boolean
+  // L'immagine della raccolta nella videoteca (schema v20): percorso TMDB o
+  // link https; null per il mosaico.
+  copertina?: string | null
   created_at: string
   updated_at: string
   item_count?: number

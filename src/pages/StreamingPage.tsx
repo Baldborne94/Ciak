@@ -23,8 +23,10 @@ import SerieVideoteca from '../components/SerieVideoteca'
 import SagaVideoteca from '../components/SagaVideoteca'
 import FilmVideoteca from '../components/FilmVideoteca'
 import { raggruppaSaghe, type GruppoSaga } from '../lib/saghe'
-import { raccolteUtente } from '../lib/lists'
-import type { Raccolta } from '../lib/raccolte'
+import { aggiornaCopertina, raccolteUtente } from '../lib/lists'
+import { copertinaUrl, type Raccolta } from '../lib/raccolte'
+import RiquadroRaccolta from '../components/RiquadroRaccolta'
+import SceltaCopertina from '../components/SceltaCopertina'
 import Modal from '../components/Modal'
 import SceltaTitolo from '../components/SceltaTitolo'
 import { abbinaAMano, riconosciNuovi, voceVuota } from '../lib/riconoscimento'
@@ -93,6 +95,9 @@ export default function StreamingPage() {
   const [nomiGeneri, setNomiGeneri] = useState<Map<number, string>>(new Map())
   // Le «Mie liste», che qui diventano raccolte: cartelle coi titoli su Drive.
   const [raccolte, setRaccolte] = useState<Raccolta[]>([])
+  const [raccoltaAperta, setRaccoltaAperta] = useState<string | null>(null)
+  // La raccolta di cui si sta scegliendo la copertina (il modale aperto).
+  const [copertinaDi, setCopertinaDi] = useState<string | null>(null)
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
@@ -299,6 +304,18 @@ export default function StreamingPage() {
     }
   }
 
+  async function scegliCopertina(listId: string, copertina: string | null) {
+    try {
+      await aggiornaCopertina(listId, copertina)
+      setRaccolte((prima) => prima.map((r) => (r.id === listId ? { ...r, copertina } : r)))
+      setCopertinaDi(null)
+    } catch (e) {
+      setErrore(`Copertina non salvata: ${(e as Error).message}`)
+      setCopertinaDi(null)
+      logFailure('Copertina della raccolta')(e)
+    }
+  }
+
   function scollega() {
     driveDisconnetti(true)
     setConnesso(false)
@@ -402,6 +419,8 @@ export default function StreamingPage() {
       serie: raggruppati.serie.filter((g) => !!g.tmdb && r.chiavi.has(g.tmdb)),
     }))
     .filter((x) => x.film.length + x.serie.length > 0)
+  const apertaQui = raccolteScheda.find((x) => x.raccolta.id === raccoltaAperta) ?? null
+  const perCopertina = raccolteScheda.find((x) => x.raccolta.id === copertinaDi) ?? null
   const righe = voci.map((f) => f.riga)
   const videoDi = new Map(voci.map((f) => [f.riga.id, f.video]))
   const generiScheda = generiPresenti(righe, nomiGeneri)
@@ -666,33 +685,49 @@ export default function StreamingPage() {
           </p>
         )}
         {raccolteScheda.length > 0 && !query.trim() && genereValido === null && !filtroDaSistemare && (
-          <section className="mb-4">
+          <section className="mb-6" aria-label="Le mie raccolte">
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-zinc-500">🗂️ Le mie raccolte</h2>
-            <ul aria-label="Le mie raccolte" className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
-              {raccolteScheda.map(({ raccolta, film: suoiFilm, serie: suoeSerie }) => {
-                const copertina = suoiFilm.map((f) => archivio.get(f.video.id)?.poster_path).find(Boolean) ?? suoeSerie.find((g) => g.posterPath)?.posterPath ?? null
-                const visti = suoiFilm.filter((f) => !!archivio.get(f.video.id)?.visto_il).length + suoeSerie.filter((g) => g.episodi.every((e) => e.visto)).length
-                return (
-                  <li key={raccolta.id}>
-                    <SagaVideoteca
-                      tipo="raccolta"
-                      nome={raccolta.nome}
-                      poster={copertina ? (posterUrl(copertina, 'w185') ?? null) : null}
-                      quanti={suoiFilm.length + suoeSerie.length}
-                      visti={visti}
-                      anni={null}
-                    >
-                      {suoiFilm.map((f) => (
-                        <li key={f.video.id}>{rigaFilm(f.video, f.riga)}</li>
-                      ))}
-                      {suoeSerie.map((g) => (
-                        <li key={g.chiave}>{rigaSerie(g)}</li>
-                      ))}
-                    </SagaVideoteca>
-                  </li>
-                )
-              })}
-            </ul>
+            {/* Una fila che scorre di lato, come le collezioni di TMDB. */}
+            <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
+              {raccolteScheda.map(({ raccolta, film: suoiFilm, serie: suoeSerie }) => (
+                <RiquadroRaccolta
+                  key={raccolta.id}
+                  nome={raccolta.nome}
+                  copertina={copertinaUrl(raccolta.copertina, 'w780')}
+                  mosaico={[
+                    ...suoiFilm.map((f) => archivio.get(f.video.id)?.poster_path),
+                    ...suoeSerie.map((g) => g.posterPath),
+                  ]
+                    .filter((p): p is string => !!p)
+                    .map((p) => posterUrl(p, 'w185') as string)}
+                  quanti={suoiFilm.length + suoeSerie.length}
+                  visti={suoiFilm.filter((f) => !!archivio.get(f.video.id)?.visto_il).length + suoeSerie.filter((g) => g.episodi.every((e) => e.visto)).length}
+                  aperta={raccoltaAperta === raccolta.id}
+                  onApri={() => setRaccoltaAperta((a) => (a === raccolta.id ? null : raccolta.id))}
+                />
+              ))}
+            </div>
+            {apertaQui && (
+              <div className="mt-2 rounded-2xl border border-theatre-800 bg-theatre-900/40">
+                <div className="flex flex-wrap items-center gap-3 border-b border-theatre-800 px-4 py-3">
+                  <h3 className="flex-1 font-display text-xl tracking-wide text-zinc-100">{apertaQui.raccolta.nome}</h3>
+                  <button type="button" onClick={() => setCopertinaDi(apertaQui.raccolta.id)} className="btn-ghost px-3 py-1.5 text-sm">
+                    🖼️ Cambia copertina
+                  </button>
+                  <button type="button" onClick={() => setRaccoltaAperta(null)} aria-label="Chiudi la raccolta" className="px-2 text-zinc-500 hover:text-zinc-100">
+                    ✕
+                  </button>
+                </div>
+                <ul aria-label={`Titoli di ${apertaQui.raccolta.nome}`} className="divide-y divide-theatre-800">
+                  {apertaQui.film.map((f) => (
+                    <li key={f.video.id}>{rigaFilm(f.video, f.riga)}</li>
+                  ))}
+                  {apertaQui.serie.map((g) => (
+                    <li key={g.chiave}>{rigaSerie(g)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </section>
         )}
         {elenco.length === 0 ? (
@@ -740,6 +775,23 @@ export default function StreamingPage() {
         </>
       )}
 
+      {perCopertina && (
+        <Modal title={`Copertina di «${perCopertina.raccolta.nome}»`} onClose={() => setCopertinaDi(null)}>
+          <SceltaCopertina
+            titoli={[
+              ...perCopertina.film.flatMap((f) => {
+                const voce = archivio.get(f.video.id)
+                return voce?.tmdb_id ? [{ tmdbId: voce.tmdb_id, mediaType: 'movie' as const, titolo: f.riga.nome }] : []
+              }),
+              ...perCopertina.serie.flatMap((g) =>
+                g.tmdb.startsWith('tv-') ? [{ tmdbId: Number(g.tmdb.slice(3)), mediaType: 'tv' as const, titolo: g.titolo }] : [],
+              ),
+            ]}
+            attuale={perCopertina.raccolta.copertina}
+            onScegli={(c) => void scegliCopertina(perCopertina.raccolta.id, c)}
+          />
+        </Modal>
+      )}
       {scelta && (
         <Modal title={`Che titolo è «${scelta.nome}»?`} onClose={() => setScelta(null)}>
           <p className="mb-3 text-sm text-zinc-400">
