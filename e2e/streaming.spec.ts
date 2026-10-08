@@ -454,6 +454,13 @@ test('una saga di TMDB si modifica: diventa tua, e i film tolti tornano sciolti'
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
   const cartella = page.getByRole('button', { name: /^Transformers ▸/ })
   await expect(cartella).toContainText('Saga · 2 film')
+
+  // Una saga nuova è per i film che TMDB non raccoglie già: questi no.
+  await page.getByRole('button', { name: '＋ Crea una saga' }).click()
+  await expect(page.getByRole('dialog').getByText(/I film che TMDB mette già in una saga/)).toBeVisible()
+  await expect(page.getByRole('dialog').getByRole('checkbox')).toHaveCount(0)
+  await page.getByRole('dialog').getByRole('button', { name: /Chiudi/ }).click()
+
   await cartella.click()
   await page.getByRole('toolbar', { name: 'Comandi di Transformers' }).getByRole('button', { name: '✎ Modifica la saga' }).click()
 
@@ -472,39 +479,26 @@ test('una saga di TMDB si modifica: diventa tua, e i film tolti tornano sciolti'
   await expect(page.getByRole('button', { name: /06 Transformers Bumblebee/ })).toBeVisible()
 })
 
-test('le «Mie liste» diventano raccolte nella videoteca, coi titoli che sono su Drive e una copertina scelta', async ({ page }) => {
+test('le «Mie liste» non compaiono nella videoteca; una saga fatta a mano si sceglie la copertina', async ({ page }) => {
   await mockDrive(page)
   const db = await mockSupabase(page, {
     user_streaming: [
       {
-        id: 's-song',
-        user_id: E2E_USER.id,
-        drive_file_id: 'video-song-0001',
-        nome_file: 'Song.of.the.Sea.2014.1080p.mp4',
-        tmdb_id: 110416,
-        media_type: 'movie',
-        titolo: 'Song of the Sea',
-        poster_path: '/song.jpg',
-        stagione: null,
-        episodio: null,
-        abbinato_a_mano: false,
-        posizione: 0,
-        durata: 5640,
-        secondi_visti: 0,
-        visto_il: null,
+        id: 's-song', user_id: E2E_USER.id, drive_file_id: 'video-song-0001', nome_file: 'Song.of.the.Sea.2014.1080p.mp4', tmdb_id: 110416,
+        media_type: 'movie', titolo: 'Song of the Sea', poster_path: '/song.jpg', stagione: null, episodio: null, abbinato_a_mano: false,
+        posizione: 0, durata: 5640, secondi_visti: 0, visto_il: null,
       },
     ],
     user_lists: [
-      { id: 'l-cartoon', user_id: E2E_USER.id, name: 'Cartoon Saloon', description: null, is_public: false },
-      // Una lista senza niente su Drive non diventa una raccolta vuota.
-      { id: 'l-vuota', user_id: E2E_USER.id, name: 'Da comprare', description: null, is_public: false },
+      // Una lista qualunque: resta fra le «Mie liste», non nella videoteca.
+      { id: 'l-preferiti', user_id: E2E_USER.id, name: 'Preferiti', description: null, is_public: false },
+      { id: 'l-cartoon', user_id: E2E_USER.id, name: 'Cartoon Saloon', description: null, is_public: false, come_saga: true },
     ],
     user_list_items: [
+      { id: 'i0', list_id: 'l-preferiti', user_id: E2E_USER.id, tmdb_id: 110416, media_type: 'movie', title: 'La canzone del mare', poster_path: '/song.jpg' },
       { id: 'i1', list_id: 'l-cartoon', user_id: E2E_USER.id, tmdb_id: 110416, media_type: 'movie', title: 'La canzone del mare', poster_path: '/song.jpg' },
-      { id: 'i2', list_id: 'l-vuota', user_id: E2E_USER.id, tmdb_id: 550, media_type: 'movie', title: 'Fight Club', poster_path: null },
     ],
   })
-
   // Le immagini del film, fra cui scegliere la copertina.
   await page.route('**/api/tmdb*', (route) => {
     const path = new URL(route.request().url()).searchParams.get('path') ?? ''
@@ -517,23 +511,17 @@ test('le «Mie liste» diventano raccolte nella videoteca, coi titoli che sono s
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
-  // Un riquadro largo come le collezioni di TMDB: senza copertina, il mosaico.
-  const raccolte = page.getByRole('region', { name: 'Le mie raccolte' })
-  const riquadro = raccolte.getByRole('button', { name: /^Cartoon Saloon/ })
-  await expect(riquadro).toContainText('1 titolo')
-  await expect(riquadro.locator('img')).toHaveAttribute('src', 'https://image.tmdb.org/t/p/w185/song.jpg')
-  await expect(raccolte.getByText('Da comprare')).toHaveCount(0)
+  const saga = page.getByRole('button', { name: /^Cartoon Saloon ▸/ })
+  await expect(saga).toContainText('Saga · 1 film')
+  await expect(page.getByText('Preferiti')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Le mie raccolte' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Crea una raccolta/ })).toHaveCount(0)
 
-  // Aperta, i titoli sotto la fila; e si sceglie la copertina.
-  await riquadro.click()
-  await expect(page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /Song of the Sea/ })).toBeVisible()
+  await saga.click()
   await page.getByRole('button', { name: '🖼️ Cambia copertina' }).click()
   await page.getByRole('dialog').getByRole('button', { name: /Sfondo 1 di/ }).click()
   await expect.poll(() => db.tables.user_lists.find((l) => l.id === 'l-cartoon')?.copertina).toBe('/mare.jpg')
-  await expect(riquadro.locator('img')).toHaveAttribute('src', 'https://image.tmdb.org/t/p/w780/mare.jpg')
-
-  await page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /Song of the Sea/ }).click()
-  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
+  await expect(page.getByRole('button', { name: /^Cartoon Saloon/ }).locator('img')).toHaveAttribute('src', 'https://image.tmdb.org/t/p/w780/mare.jpg')
 })
 
 test('una saga fatta a mano raccoglie film che su TMDB una saga non ce l’hanno', async ({ page }) => {
@@ -587,8 +575,6 @@ test('una saga fatta a mano raccoglie film che su TMDB una saga non ce l’hanno
   const cartella = page.getByRole('button', { name: /^Xenomorfi ▸/ })
   await expect(cartella).toContainText('Saga · 2 film · 1979–1986')
   await expect(page.getByRole('button', { name: /Aliens\.1986\.mp4/ })).toHaveCount(0)
-  // Non è una raccolta in cima: è una saga.
-  await expect(page.getByRole('region', { name: 'Le mie raccolte' })).toHaveCount(0)
 
   // Si cambia: via Aliens, che torna al suo posto.
   await cartella.click()
@@ -608,70 +594,7 @@ test('una saga fatta a mano raccoglie film che su TMDB una saga non ce l’hanno
   expect(db.tables.user_lists.some((l) => l.name === 'Xenomorfi')).toBe(false)
 })
 
-test('una raccolta si modifica dalla videoteca: si aggiungono e si tolgono titoli, se ne crea una e si elimina', async ({ page }) => {
-  await mockDrive(page, { conSaga: true })
-  const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
-    id: `s-${drive_file_id}`, user_id: E2E_USER.id, drive_file_id, nome_file: null, tmdb_id, media_type: 'movie', titolo,
-    poster_path: `/poster-${tmdb_id}.jpg`, stagione: null, episodio: null, abbinato_a_mano: false, posizione: 0, durata: 7000, secondi_visti: 0, visto_il: null,
-  })
-  const db = await mockSupabase(page, {
-    user_streaming: [film('video-alien-1979', 348, 'Alien'), film('video-aliens-1986', 679, 'Aliens')],
-    user_lists: [{ id: 'l-horror', user_id: E2E_USER.id, name: 'Notte horror', description: null, is_public: false }],
-    user_list_items: [
-      { id: 'i1', list_id: 'l-horror', user_id: E2E_USER.id, tmdb_id: 348, media_type: 'movie', title: 'Alien', poster_path: '/poster-348.jpg' },
-      // Non è su Drive: modificando la raccolta dalla videoteca non si tocca.
-      { id: 'i2', list_id: 'l-horror', user_id: E2E_USER.id, tmdb_id: 550, media_type: 'movie', title: 'Fight Club', poster_path: null },
-    ],
-  })
-  await page.route('**/api/tmdb*', (route) => {
-    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
-    if (path === '/movie/348') return route.fulfill({ json: movieDetail(348, 'Alien', { release_date: '1979-05-25' }) })
-    if (path === '/movie/679') return route.fulfill({ json: movieDetail(679, 'Aliens', { release_date: '1986-07-18' }) })
-    return route.fallback()
-  })
-  page.on('dialog', (d) => void d.accept())
-
-  await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  const raccolte = page.getByRole('region', { name: 'Le mie raccolte' })
-  await raccolte.getByRole('button', { name: /^Notte horror/ }).click()
-  await page.getByRole('button', { name: '✎ Modifica la raccolta' }).click()
-
-  // Al posto di Alien, Aliens.
-  const finestra = page.getByRole('dialog')
-  await expect(finestra.getByText('1 titolo scelto')).toBeVisible()
-  // Da aggiungere c'è solo Aliens; Alien sta fra quelli nella raccolta.
-  await finestra.getByRole('checkbox', { name: /^Aliens ·/ }).check()
-  await finestra.getByRole('button', { name: /^Nella raccolta/ }).click()
-  await finestra.getByRole('checkbox', { name: /^Alien ·/ }).uncheck()
-  await finestra.getByRole('button', { name: 'Salva' }).click()
-  await expect
-    .poll(() => db.tables.user_list_items.filter((i) => i.list_id === 'l-horror').map((i) => i.tmdb_id).sort())
-    .toEqual([550, 679])
-  await expect(page.getByRole('list', { name: 'Titoli di Notte horror' }).getByRole('button', { name: /Aliens\.1986\.mp4/ })).toBeVisible()
-  await expect(page.getByRole('list', { name: 'Titoli di Notte horror' }).getByRole('button', { name: /Alien\.1979\.mp4/ })).toHaveCount(0)
-
-  // Una nuova, da qui: è una lista qualunque, non una saga.
-  await page.getByRole('button', { name: '＋ Crea una raccolta' }).click()
-  await finestra.getByLabel('Nome della raccolta').fill('Ripley')
-  await finestra.getByRole('checkbox', { name: /^Alien ·/ }).check()
-  await finestra.getByRole('button', { name: 'Crea la raccolta' }).click()
-  await expect.poll(() => db.tables.user_lists.find((l) => l.name === 'Ripley')).toBeTruthy()
-  expect(db.tables.user_lists.find((l) => l.name === 'Ripley')?.come_saga).toBeFalsy()
-  const ripley = raccolte.getByRole('button', { name: /^Ripley/ })
-  await expect(ripley).toContainText('1 titolo')
-
-  // E si elimina.
-  await ripley.click()
-  await page.getByRole('button', { name: '✎ Modifica la raccolta' }).click()
-  await finestra.getByRole('button', { name: 'Elimina la raccolta' }).click()
-  await expect(raccolte.getByRole('button', { name: /^Ripley/ })).toHaveCount(0)
-  expect(db.tables.user_lists.some((l) => l.name === 'Ripley')).toBe(false)
-  // I file restano.
-  await expect(page.getByRole('button', { name: /Alien\.1979\.mp4/ }).first()).toBeVisible()
-})
-
-test('una raccolta si riempie coi film di uno studio, quelli che sono su Drive', async ({ page }) => {
+test('una saga si riempie coi film di uno studio, quelli che sono su Drive', async ({ page }) => {
   await mockDrive(page, { conSaga: true })
   const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
     id: `s-${drive_file_id}`, user_id: E2E_USER.id, drive_file_id, nome_file: null, tmdb_id, media_type: 'movie', titolo,
@@ -697,16 +620,17 @@ test('una raccolta si riempie coi film di uno studio, quelli che sono su Drive',
 
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  await page.getByRole('button', { name: '＋ Crea una raccolta' }).click()
+  await page.getByRole('button', { name: '＋ Crea una saga' }).click()
   const finestra = page.getByRole('dialog')
   await finestra.getByLabel('Aggiungi i film di uno studio').fill('brandywine')
   await finestra.getByRole('button', { name: 'Aggiungi', exact: true }).click()
   await expect(finestra.getByRole('status')).toHaveText('Brandywine Productions: aggiunto 1 film.')
-  await expect(finestra.getByLabel('Nome della raccolta')).toHaveValue('Brandywine Productions')
-  await finestra.getByRole('button', { name: 'Crea la raccolta' }).click()
+  await expect(finestra.getByLabel('Nome della saga')).toHaveValue('Brandywine Productions')
+  await finestra.getByRole('button', { name: 'Crea la saga' }).click()
 
   await expect.poll(() => db.tables.user_list_items.map((i) => i.tmdb_id)).toEqual([348])
-  await expect(page.getByRole('region', { name: 'Le mie raccolte' }).getByRole('button', { name: /^Brandywine Productions/ })).toContainText('1 titolo')
+  await expect.poll(() => db.tables.user_lists.find((l) => l.name === 'Brandywine Productions')?.come_saga).toBe(true)
+  await expect(page.getByRole('button', { name: /^Brandywine Productions ▸/ })).toContainText('Saga · 1 film')
 })
 
 test('gli extra dei film (le featurette) non compaiono come titoli, ma si contano', async ({ page }) => {

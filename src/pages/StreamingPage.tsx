@@ -23,11 +23,10 @@ import SerieVideoteca from '../components/SerieVideoteca'
 import SagaVideoteca from '../components/SagaVideoteca'
 import FilmVideoteca from '../components/FilmVideoteca'
 import { raggruppaSaghe, unisciSaghe, type GruppoSaga } from '../lib/saghe'
-import { aggiornaCopertina, creaRaccolta, creaSaga, deleteList, modificaSaga, raccolteUtente } from '../lib/lists'
+import { aggiornaCopertina, creaSaga, deleteList, modificaSaga, raccolteUtente } from '../lib/lists'
 import ModificaSaga from '../components/ModificaSaga'
 import { filmDelloStudio } from '../lib/perStudio'
 import { copertinaUrl, type Raccolta } from '../lib/raccolte'
-import RiquadroRaccolta from '../components/RiquadroRaccolta'
 import SceltaCopertina from '../components/SceltaCopertina'
 import Modal from '../components/Modal'
 import SceltaTitolo from '../components/SceltaTitolo'
@@ -97,14 +96,11 @@ export default function StreamingPage() {
   const [nomiGeneri, setNomiGeneri] = useState<Map<number, string>>(new Map())
   // Le «Mie liste», che qui diventano raccolte: cartelle coi titoli su Drive.
   const [raccolte, setRaccolte] = useState<Raccolta[]>([])
-  const [raccoltaAperta, setRaccoltaAperta] = useState<string | null>(null)
-  // La raccolta di cui si sta scegliendo la copertina (il modale aperto).
+  // La saga fatta a mano di cui si sta scegliendo la copertina (il modale aperto).
   const [copertinaDi, setCopertinaDi] = useState<string | null>(null)
   // La saga fatta a mano che si sta creando (listaId null) o cambiando.
-  // Una saga fatta a mano o una raccolta da creare (listaId null) o cambiare.
   // `daTmdb`: una saga di TMDB da cambiare, che diventa una fatta a mano.
   const [inModifica, setInModifica] = useState<{
-    tipo: 'saga' | 'raccolta'
     listaId: string | null
     daTmdb?: { id: number; nome: string; chiavi: Set<string> }
   } | null>(null)
@@ -312,10 +308,9 @@ export default function StreamingPage() {
     }
   }
 
-  // Una saga fatta a mano (una lista segnata come saga, coi film scelti) o
-  // una raccolta (una lista qualunque, anche con serie). Si toccano solo i
-  // titoli che qui si possono scegliere: quelli della lista che non sono su
-  // Drive, o che stanno in un'altra scheda, restano dove sono.
+  // Una saga fatta a mano: una lista segnata come saga, coi film scelti. Si
+  // toccano solo i film che qui si possono scegliere: quelli della lista che
+  // non sono su Drive, o che stanno in un'altra scheda, restano dove sono.
   async function salvaLista(nome: string, chiavi: string[]) {
     if (!user || !inModifica) return
     const perChiave = new Map(sceglibili.map((f) => [f.chiave, f]))
@@ -324,12 +319,10 @@ export default function StreamingPage() {
       const tv = k.startsWith('tv-')
       return { tmdbId: Number(k.slice(k.indexOf('-') + 1)), mediaType: tv ? ('tv' as const) : ('movie' as const), title: f?.titolo ?? k, posterPath: posterDi.get(k) ?? null }
     }
-    const saga = inModifica.tipo === 'saga'
     setSalvandoLista(true)
     try {
       if (!inModifica.listaId) {
-        if (saga) await creaSaga(user.id, nome, chiavi.map(ref), inModifica.daTmdb?.id ?? null)
-        else await creaRaccolta(user.id, nome, chiavi.map(ref))
+        await creaSaga(user.id, nome, chiavi.map(ref), inModifica.daTmdb?.id ?? null)
       } else {
         const lista = raccolte.find((r) => r.id === inModifica.listaId)
         const prima = lista?.chiavi ?? new Set<string>()
@@ -345,10 +338,10 @@ export default function StreamingPage() {
           ? 'Per le saghe fatte a mano il database va aggiornato: esegui supabase/schema_v21_saghe_manuali.sql nel SQL Editor di Supabase.'
           : /saga_tmdb/.test(messaggio)
             ? 'Per modificare le saghe di TMDB il database va aggiornato: esegui supabase/schema_v22_saghe_tmdb_modificate.sql nel SQL Editor di Supabase.'
-          : `${saga ? 'Saga' : 'Raccolta'} non salvata: ${messaggio}`,
+          : `Saga non salvata: ${messaggio}`,
       )
       setInModifica(null)
-      logFailure(saga ? 'Saga fatta a mano' : 'Raccolta della videoteca')(e)
+      logFailure('Saga fatta a mano')(e)
     } finally {
       setSalvandoLista(false)
     }
@@ -368,20 +361,6 @@ export default function StreamingPage() {
     }
   }
 
-  // Una raccolta è una delle «Mie liste»: eliminarla la toglie anche da lì.
-  async function eliminaRaccolta(listaId: string, nome: string) {
-    if (!window.confirm(`Vuoi eliminare la raccolta «${nome}»?\nSparisce anche dalle «Mie liste»; i file restano su Drive.`)) return
-    try {
-      await deleteList(listaId)
-      await caricaRaccolte()
-      setInModifica(null)
-      setRaccoltaAperta(null)
-    } catch (e) {
-      setErrore(`Raccolta non eliminata: ${(e as Error).message}`)
-      logFailure('Raccolta della videoteca')(e)
-    }
-  }
-
   async function scegliCopertina(listId: string, copertina: string | null) {
     try {
       await aggiornaCopertina(listId, copertina)
@@ -390,7 +369,7 @@ export default function StreamingPage() {
     } catch (e) {
       setErrore(`Copertina non salvata: ${(e as Error).message}`)
       setCopertinaDi(null)
-      logFailure('Copertina della raccolta')(e)
+      logFailure('Copertina della saga')(e)
     }
   }
 
@@ -485,23 +464,7 @@ export default function StreamingPage() {
       },
     })
   }
-  // Le raccolte di questa scheda: i film e le serie della lista che sono su
-  // Drive. Un titolo resta anche al suo posto nell'elenco, e può stare in più
-  // raccolte. Quelle senza niente qui non si mostrano.
-  const raccolteScheda = raccolte
-    .filter((r) => !r.comeSaga)
-    .map((r) => ({
-      raccolta: r,
-      film: film.filter((f) => {
-        const k = chiaveTitolo(f.riga.id)
-        return k !== null && r.chiavi.has(k)
-      }),
-      serie: raggruppati.serie.filter((g) => !!g.tmdb && r.chiavi.has(g.tmdb)),
-    }))
-    .filter((x) => x.film.length + x.serie.length > 0)
-  const apertaQui = raccolteScheda.find((x) => x.raccolta.id === raccoltaAperta) ?? null
-  // La copertina si sceglie per una raccolta o per una saga fatta a mano: le
-  // immagini sono quelle dei loro titoli.
+  // La copertina di una saga fatta a mano: le immagini sono quelle dei suoi film.
   const listaCopertina = raccolte.find((r) => r.id === copertinaDi) ?? null
   const perCopertina = listaCopertina
     ? {
@@ -526,14 +489,13 @@ export default function StreamingPage() {
       }),
     ).values(),
   ].sort((a, b) => a.titolo.localeCompare(b.titolo, 'it'))
-  // Una raccolta può tenere anche serie e anime: quelle riconosciute.
-  const seriePerRaccolta = raggruppati.serie
-    .filter((g) => g.tmdb.startsWith('tv-'))
-    .map((g) => ({ chiave: g.tmdb, titolo: g.titolo, anno: infoDi(g.tmdb).anno, poster: g.posterPath ? posterUrl(g.posterPath, 'w185') : null }))
+  // Una saga nuova serve per i film che TMDB non mette già in una saga: quelli
+  // che stanno in una sua cartella non si propongono (quella saga c'è già, e
+  // si cambia con «✎ Modifica la saga»). Cambiando una saga esistente si
+  // sceglie fra tutti.
+  const inSagaTmdb = new Set(perSaghe.saghe.filter((g) => !g.saga.listaId).flatMap((g) => g.ids.map(chiaveTitolo)))
   const sceglibili =
-    inModifica?.tipo === 'raccolta'
-      ? [...filmPerSaga, ...seriePerRaccolta].sort((a, b) => a.titolo.localeCompare(b.titolo, 'it'))
-      : filmPerSaga
+    inModifica && !inModifica.listaId && !inModifica.daTmdb ? filmPerSaga.filter((f) => !inSagaTmdb.has(f.chiave)) : filmPerSaga
   // La locandina da salvare con ogni titolo scelto (percorso TMDB).
   const posterDi = new Map<string, string | null>([
     ...film.flatMap((f) => {
@@ -801,19 +763,10 @@ export default function StreamingPage() {
           {filmPerSaga.length > 0 && (
             <button
               type="button"
-              onClick={() => setInModifica({ tipo: 'saga', listaId: null })}
+              onClick={() => setInModifica({ listaId: null })}
               className="rounded-lg border border-theatre-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:text-zinc-100"
             >
               ＋ Crea una saga
-            </button>
-          )}
-          {filmPerSaga.length + seriePerRaccolta.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setInModifica({ tipo: 'raccolta', listaId: null })}
-              className="rounded-lg border border-theatre-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:text-zinc-100"
-            >
-              ＋ Crea una raccolta
             </button>
           )}
           {elenco.length !== righe.length && (
@@ -827,55 +780,6 @@ export default function StreamingPage() {
             Titoli che Ciak non ha riconosciuto, senza copertina o con episodi che non sa dove mettere. Per un film premi ✎ (anche accanto a un file fra gli «Altri episodi»); per
             una serie aprila e premi «Scegli il titolo».
           </p>
-        )}
-        {raccolteScheda.length > 0 && !query.trim() && genereValido === null && !filtroDaSistemare && (
-          <section className="mb-6" aria-label="Le mie raccolte">
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-zinc-500">🗂️ Le mie raccolte</h2>
-            {/* Una fila che scorre di lato, come le collezioni di TMDB. */}
-            <div className="-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2">
-              {raccolteScheda.map(({ raccolta, film: suoiFilm, serie: suoeSerie }) => (
-                <RiquadroRaccolta
-                  key={raccolta.id}
-                  nome={raccolta.nome}
-                  copertina={copertinaUrl(raccolta.copertina, 'w780')}
-                  mosaico={[
-                    ...suoiFilm.map((f) => archivio.get(f.video.id)?.poster_path),
-                    ...suoeSerie.map((g) => g.posterPath),
-                  ]
-                    .filter((p): p is string => !!p)
-                    .map((p) => posterUrl(p, 'w185') as string)}
-                  quanti={suoiFilm.length + suoeSerie.length}
-                  visti={suoiFilm.filter((f) => !!archivio.get(f.video.id)?.visto_il).length + suoeSerie.filter((g) => g.episodi.every((e) => e.visto)).length}
-                  aperta={raccoltaAperta === raccolta.id}
-                  onApri={() => setRaccoltaAperta((a) => (a === raccolta.id ? null : raccolta.id))}
-                />
-              ))}
-            </div>
-            {apertaQui && (
-              <div className="mt-2 rounded-2xl border border-theatre-800 bg-theatre-900/40">
-                <div className="flex flex-wrap items-center gap-3 border-b border-theatre-800 px-4 py-3">
-                  <h3 className="flex-1 font-display text-xl tracking-wide text-zinc-100">{apertaQui.raccolta.nome}</h3>
-                  <button type="button" onClick={() => setInModifica({ tipo: 'raccolta', listaId: apertaQui.raccolta.id })} className="btn-ghost px-3 py-1.5 text-sm">
-                    ✎ Modifica la raccolta
-                  </button>
-                  <button type="button" onClick={() => setCopertinaDi(apertaQui.raccolta.id)} className="btn-ghost px-3 py-1.5 text-sm">
-                    🖼️ Cambia copertina
-                  </button>
-                  <button type="button" onClick={() => setRaccoltaAperta(null)} aria-label="Chiudi la raccolta" className="px-2 text-zinc-500 hover:text-zinc-100">
-                    ✕
-                  </button>
-                </div>
-                <ul aria-label={`Titoli di ${apertaQui.raccolta.nome}`} className="divide-y divide-theatre-800">
-                  {apertaQui.film.map((f) => (
-                    <li key={f.video.id}>{rigaFilm(f.video, f.riga)}</li>
-                  ))}
-                  {apertaQui.serie.map((g) => (
-                    <li key={g.chiave}>{rigaSerie(g)}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
         )}
         {elenco.length === 0 ? (
           <EmptyState title="Nessun titolo" message="Nessun video corrisponde alla ricerca o al genere scelto." icon="🔍" />
@@ -912,7 +816,6 @@ export default function StreamingPage() {
                           type="button"
                           onClick={() =>
                             setInModifica({
-                              tipo: 'saga',
                               listaId: null,
                               daTmdb: {
                                 id: Number(saga.chiave.slice('saga-'.length)),
@@ -929,7 +832,7 @@ export default function StreamingPage() {
                         <>
                           <button
                             type="button"
-                            onClick={() => setInModifica({ tipo: 'saga', listaId: saga.saga.listaId as string })}
+                            onClick={() => setInModifica({ listaId: saga.saga.listaId as string })}
                             className="text-xs text-zinc-400 transition hover:text-projector"
                           >
                             ✎ Modifica la saga
@@ -965,15 +868,16 @@ export default function StreamingPage() {
 
       {inModifica && (
         <Modal
-          title={
-            inModifica.tipo === 'saga'
-              ? listaAperta ? `Saga «${listaAperta.nome}»` : inModifica.daTmdb ? `Saga «${inModifica.daTmdb.nome}»` : 'Crea una saga'
-              : listaAperta ? `Raccolta «${listaAperta.nome}»` : 'Crea una raccolta'
-          }
+          title={listaAperta ? `Saga «${listaAperta.nome}»` : inModifica.daTmdb ? `Saga «${inModifica.daTmdb.nome}»` : 'Crea una saga'}
           onClose={() => setInModifica(null)}
         >
+          {!listaAperta && !inModifica.daTmdb && inSagaTmdb.size > 0 && (
+            <p className="mb-3 text-sm text-zinc-400">
+              I film che TMDB mette già in una saga (Alien, Harry Potter…) non compaiono: quella saga c’è già nell’elenco, e si cambia con «✎
+              Modifica la saga».
+            </p>
+          )}
           <ModificaSaga
-            tipo={inModifica.tipo}
             film={sceglibili}
             // Scelti in partenza solo i titoli che qui si vedono: gli altri della
             // lista non si toccano, e non vanno contati.
@@ -986,11 +890,7 @@ export default function StreamingPage() {
             }
             onSalva={(nome, chiavi) => void salvaLista(nome, chiavi)}
             onCercaStudio={(nome) => filmDelloStudio(nome)}
-            onSciogli={
-              listaAperta
-                ? () => void (inModifica.tipo === 'saga' ? sciogliSaga(listaAperta.id, listaAperta.nome) : eliminaRaccolta(listaAperta.id, listaAperta.nome))
-                : undefined
-            }
+            onSciogli={listaAperta ? () => void sciogliSaga(listaAperta.id, listaAperta.nome) : undefined}
             salvando={salvandoLista}
           />
         </Modal>

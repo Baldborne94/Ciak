@@ -1,10 +1,10 @@
 import type { MediaType } from './types'
 import { backdropUrl } from './tmdb/images'
 
-// Le raccolte della videoteca sono le «Mie liste»: una lista («Studio
-// Ghibli», «Natale») diventa una cartella con dentro i titoli che sono su
-// Drive. Si decide cosa metterci da «Aggiungi a lista», senza spostare file, e
-// un film può stare in più raccolte.
+// Le «Mie liste» lette per la videoteca. Solo quelle segnate come saga ci
+// compaiono, come cartelle dei loro film (vedi saghe.ts): le liste normali
+// restano nella loro pagina. (Fino all'ottobre 2026 diventavano anche
+// «raccolte» in cima alla videoteca; tolte su richiesta: bastano le saghe.)
 
 export interface Raccolta {
   id: string
