@@ -426,6 +426,51 @@ test('i film di un pacchetto si riconoscono uno per uno e finiscono nella cartel
   await expect(page.getByRole('list', { name: 'Film di Transformers' }).getByText('Bumblebee', { exact: true })).toBeVisible()
 })
 
+test('le «Mie liste» diventano raccolte nella videoteca, coi titoli che sono su Drive', async ({ page }) => {
+  await mockDrive(page)
+  await mockSupabase(page, {
+    user_streaming: [
+      {
+        id: 's-song',
+        user_id: E2E_USER.id,
+        drive_file_id: 'video-song-0001',
+        nome_file: 'Song.of.the.Sea.2014.1080p.mp4',
+        tmdb_id: 110416,
+        media_type: 'movie',
+        titolo: 'Song of the Sea',
+        poster_path: '/song.jpg',
+        stagione: null,
+        episodio: null,
+        abbinato_a_mano: false,
+        posizione: 0,
+        durata: 5640,
+        secondi_visti: 0,
+        visto_il: null,
+      },
+    ],
+    user_lists: [
+      { id: 'l-cartoon', user_id: E2E_USER.id, name: 'Cartoon Saloon', description: null, is_public: false },
+      // Una lista senza niente su Drive non diventa una raccolta vuota.
+      { id: 'l-vuota', user_id: E2E_USER.id, name: 'Da comprare', description: null, is_public: false },
+    ],
+    user_list_items: [
+      { id: 'i1', list_id: 'l-cartoon', user_id: E2E_USER.id, tmdb_id: 110416, media_type: 'movie', title: 'La canzone del mare', poster_path: '/song.jpg' },
+      { id: 'i2', list_id: 'l-vuota', user_id: E2E_USER.id, tmdb_id: 550, media_type: 'movie', title: 'Fight Club', poster_path: null },
+    ],
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  const raccolte = page.getByRole('list', { name: 'Le mie raccolte' })
+  const cartella = raccolte.getByRole('button', { name: /^Cartoon Saloon/ })
+  await expect(cartella).toContainText('Raccolta · 1 titolo')
+  await expect(raccolte.getByText('Da comprare')).toHaveCount(0)
+  await cartella.click()
+  await page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /Song of the Sea/ }).click()
+  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
+})
+
 test('gli extra dei film (le featurette) non compaiono come titoli, ma si contano', async ({ page }) => {
   // «Paprika (2006)/Featurettes/Restoring Paprika.mp4» compariva come un film, «Featurettes».
   await mockDrive(page, { conExtra: true })

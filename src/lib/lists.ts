@@ -1,4 +1,6 @@
 import { supabase } from './supabase'
+import { fetchAllRows } from './paged'
+import { costruisciRaccolte, type Raccolta } from './raccolte'
 import type { MediaType, UserList, UserListItem } from './types'
 
 function client() {
@@ -152,4 +154,32 @@ export async function listIdsContaining(
     .eq('media_type', mediaType)
   if (error) throw new Error(error.message)
   return new Set((data ?? []).map((r) => (r as { list_id: string }).list_id))
+}
+
+// Le liste come raccolte della videoteca: ogni lista coi suoi titoli. I titoli
+// di tutte le liste in una lettura (a pagine: con tante liste si superano le
+// mille righe), non una richiesta per lista.
+export async function raccolteUtente(userId: string): Promise<Raccolta[]> {
+  const [liste, elementi] = await Promise.all([
+    client()
+      .from('user_lists')
+      .select('id, name')
+      .eq('user_id', userId)
+      .order('name', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) throw new Error(error.message)
+        return (data ?? []) as { id: string; name: string }[]
+      }),
+    fetchAllRows<{ list_id: string; tmdb_id: number; media_type: MediaType }>((from, to) =>
+      client()
+        .from('user_list_items')
+        .select('list_id, tmdb_id, media_type')
+        .eq('user_id', userId)
+        .order('list_id', { ascending: true })
+        .order('tmdb_id', { ascending: true })
+        .order('media_type', { ascending: true })
+        .range(from, to),
+    ),
+  ])
+  return costruisciRaccolte(liste, elementi)
 }

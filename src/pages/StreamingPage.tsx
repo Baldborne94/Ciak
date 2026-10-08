@@ -15,6 +15,7 @@ import {
   raggruppaSerie,
   serieDaSistemare,
   sigla,
+  type GruppoSerie,
   type OrdineVideoteca,
   type RigaVideoteca,
 } from '../lib/videoteca'
@@ -22,6 +23,8 @@ import SerieVideoteca from '../components/SerieVideoteca'
 import SagaVideoteca from '../components/SagaVideoteca'
 import FilmVideoteca from '../components/FilmVideoteca'
 import { raggruppaSaghe, type GruppoSaga } from '../lib/saghe'
+import { raccolteUtente } from '../lib/lists'
+import type { Raccolta } from '../lib/raccolte'
 import Modal from '../components/Modal'
 import SceltaTitolo from '../components/SceltaTitolo'
 import { abbinaAMano, riconosciNuovi, voceVuota } from '../lib/riconoscimento'
@@ -88,6 +91,8 @@ export default function StreamingPage() {
     saghe: Map<string, Collection | null>
   }>({ anni: new Map(), generi: new Map(), titoli: new Map(), saghe: new Map() })
   const [nomiGeneri, setNomiGeneri] = useState<Map<number, string>>(new Map())
+  // Le «Mie liste», che qui diventano raccolte: cartelle coi titoli su Drive.
+  const [raccolte, setRaccolte] = useState<Raccolta[]>([])
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
@@ -159,6 +164,17 @@ export default function StreamingPage() {
     } finally {
       inCorso.current = false
       setCaricando(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    let vivo = true
+    raccolteUtente(user.id)
+      .then((r) => vivo && setRaccolte(r))
+      .catch(logFailure('Raccolte della videoteca (le Mie liste)'))
+    return () => {
+      vivo = false
     }
   }, [user])
 
@@ -373,6 +389,19 @@ export default function StreamingPage() {
       },
     })
   }
+  // Le raccolte di questa scheda: i film e le serie della lista che sono su
+  // Drive. Un titolo resta anche al suo posto nell'elenco, e può stare in più
+  // raccolte. Quelle senza niente qui non si mostrano.
+  const raccolteScheda = raccolte
+    .map((r) => ({
+      raccolta: r,
+      film: film.filter((f) => {
+        const k = chiaveTitolo(f.riga.id)
+        return k !== null && r.chiavi.has(k)
+      }),
+      serie: raggruppati.serie.filter((g) => !!g.tmdb && r.chiavi.has(g.tmdb)),
+    }))
+    .filter((x) => x.film.length + x.serie.length > 0)
   const righe = voci.map((f) => f.riga)
   const videoDi = new Map(voci.map((f) => [f.riga.id, f.video]))
   const generiScheda = generiPresenti(righe, nomiGeneri)
@@ -382,6 +411,41 @@ export default function StreamingPage() {
   // Sistemato l'ultimo, il filtro si spegne da solo invece di lasciare un elenco vuoto.
   const filtroDaSistemare = soloDaSistemare && quantiDaSistemare > 0
   const elenco = ordinaVideoteca(filtraVideoteca(righe, { query, genere: genereValido, daSistemare: filtroDaSistemare }), ordine)
+
+  const rigaSerie = (gruppo: GruppoSerie) => (
+    <SerieVideoteca
+      titolo={gruppo.titolo}
+      poster={gruppo.posterPath ? (posterUrl(gruppo.posterPath, 'w185') ?? null) : null}
+      anno={infoDi(gruppo.tmdb).anno}
+      episodi={gruppo.episodi}
+      scaricati={scaricati}
+      aperta={serieAperte.has(gruppo.cartella)}
+      onAperta={(aperta) =>
+        setSerieAperte((prima) => {
+          const dopo = new Set(prima)
+          if (aperta) dopo.add(gruppo.cartella)
+          else dopo.delete(gruppo.cartella)
+          return dopo
+        })
+      }
+      onApri={(e) =>
+        navigate(`/streaming/${e.id}`, {
+          state: { titolo: sigla(e) ? `${gruppo.titolo} · ${sigla(e)}` : e.nome, file: e.file },
+        })
+      }
+      riconosciuta={!!gruppo.tmdb}
+      tmdbId={gruppo.tmdb.startsWith('tv-') ? Number(gruppo.tmdb.slice(3)) : null}
+      onScegliTitolo={() =>
+        setScelta({
+          nome: gruppo.titolo,
+          ricerca: gruppo.titolo,
+          video: gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo),
+        })
+      }
+      onCancella={() => void cancellaGruppo(gruppo.chiave, gruppo.titolo, gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo))}
+      cancellando={cancellando === gruppo.chiave}
+    />
+  )
 
   const rigaFilm = (v: DriveVideo, riga: RigaVideoteca) => (
     <FilmVideoteca
@@ -601,6 +665,36 @@ export default function StreamingPage() {
             una serie aprila e premi «Scegli il titolo».
           </p>
         )}
+        {raccolteScheda.length > 0 && !query.trim() && genereValido === null && !filtroDaSistemare && (
+          <section className="mb-4">
+            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wider text-zinc-500">🗂️ Le mie raccolte</h2>
+            <ul aria-label="Le mie raccolte" className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
+              {raccolteScheda.map(({ raccolta, film: suoiFilm, serie: suoeSerie }) => {
+                const copertina = suoiFilm.map((f) => archivio.get(f.video.id)?.poster_path).find(Boolean) ?? suoeSerie.find((g) => g.posterPath)?.posterPath ?? null
+                const visti = suoiFilm.filter((f) => !!archivio.get(f.video.id)?.visto_il).length + suoeSerie.filter((g) => g.episodi.every((e) => e.visto)).length
+                return (
+                  <li key={raccolta.id}>
+                    <SagaVideoteca
+                      tipo="raccolta"
+                      nome={raccolta.nome}
+                      poster={copertina ? (posterUrl(copertina, 'w185') ?? null) : null}
+                      quanti={suoiFilm.length + suoeSerie.length}
+                      visti={visti}
+                      anni={null}
+                    >
+                      {suoiFilm.map((f) => (
+                        <li key={f.video.id}>{rigaFilm(f.video, f.riga)}</li>
+                      ))}
+                      {suoeSerie.map((g) => (
+                        <li key={g.chiave}>{rigaSerie(g)}</li>
+                      ))}
+                    </SagaVideoteca>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )}
         {elenco.length === 0 ? (
           <EmptyState title="Nessun titolo" message="Nessun video corrisponde alla ricerca o al genere scelto." icon="🔍" />
         ) : (
@@ -610,38 +704,7 @@ export default function StreamingPage() {
             if (gruppo) {
               return (
                 <li key={riga.id}>
-                  <SerieVideoteca
-                    titolo={gruppo.titolo}
-                    poster={gruppo.posterPath ? (posterUrl(gruppo.posterPath, 'w185') ?? null) : null}
-                    anno={riga.anno}
-                    episodi={gruppo.episodi}
-                    scaricati={scaricati}
-                    aperta={serieAperte.has(gruppo.cartella)}
-                    onAperta={(aperta) =>
-                      setSerieAperte((prima) => {
-                        const dopo = new Set(prima)
-                        if (aperta) dopo.add(gruppo.cartella)
-                        else dopo.delete(gruppo.cartella)
-                        return dopo
-                      })
-                    }
-                    onApri={(e) =>
-                      navigate(`/streaming/${e.id}`, {
-                        state: { titolo: sigla(e) ? `${gruppo.titolo} · ${sigla(e)}` : e.nome, file: e.file },
-                      })
-                    }
-                    riconosciuta={!!gruppo.tmdb}
-                    tmdbId={gruppo.tmdb.startsWith('tv-') ? Number(gruppo.tmdb.slice(3)) : null}
-                    onScegliTitolo={() =>
-                      setScelta({
-                        nome: gruppo.titolo,
-                        ricerca: gruppo.titolo,
-                        video: gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo),
-                      })
-                    }
-                    onCancella={() => void cancellaGruppo(gruppo.chiave, gruppo.titolo, gruppo.ids.map((id) => videoPerId.get(id) as DriveVideo))}
-                    cancellando={cancellando === gruppo.chiave}
-                  />
+                  {rigaSerie(gruppo)}
                 </li>
               )
             }

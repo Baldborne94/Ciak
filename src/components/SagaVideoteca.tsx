@@ -2,8 +2,10 @@ import { useState, type ReactNode } from 'react'
 
 // Una saga della videoteca (Alien, Harry Potter…): una riga con la locandina
 // della collezione e quanti film ci sono; aperta, i film in ordine di uscita.
+// Lo stesso per una raccolta, cioè una delle «Mie liste» (vedi raccolte.ts).
 // I film li disegna la pagina (`children`), uguali a quelli dell'elenco.
 export default function SagaVideoteca({
+  tipo = 'saga',
   nome,
   poster,
   quanti,
@@ -14,6 +16,7 @@ export default function SagaVideoteca({
   cancellando = false,
   children,
 }: {
+  tipo?: 'saga' | 'raccolta'
   nome: string
   poster: string | null
   quanti: number
@@ -51,7 +54,7 @@ export default function SagaVideoteca({
             {nome} <span className="text-zinc-500">{aperta ? '▾' : '▸'}</span>
           </span>
           <span className="block truncate text-xs text-zinc-500">
-            Saga · {quanti} film
+            {tipo === 'saga' ? `Saga · ${quanti} film` : `Raccolta · ${quanti} ${quanti === 1 ? 'titolo' : 'titoli'}`}
             {anni && ` · ${anni}`}
             {visti > 0 && ` · ${visti === quanti ? 'tutti visti' : `${visti} visti`}`}
           </span>
@@ -59,7 +62,7 @@ export default function SagaVideoteca({
       </button>
       {aperta && (
         <div id={idElenco} className="border-t border-theatre-800 bg-theatre-950/40">
-          <ul aria-label={`Film di ${nome}`} className="divide-y divide-theatre-800 pl-6">
+          <ul aria-label={`${tipo === 'saga' ? 'Film' : 'Titoli'} di ${nome}`} className="divide-y divide-theatre-800 pl-6">
             {children}
           </ul>
           {/* Solo a saga aperta: chiusa, un clic per sbaglio costerebbe troppo. */}

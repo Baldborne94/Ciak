@@ -49,4 +49,13 @@ describe('SagaVideoteca', () => {
     await userEvent.click(screen.getByRole('button', { name: '🗑 Cancella la saga da Drive' }))
     expect(onCancella).toHaveBeenCalledTimes(1)
   })
+
+  it('una raccolta (una delle «Mie liste») si presenta come tale, coi titoli contati', () => {
+    render(
+      <SagaVideoteca tipo="raccolta" nome="Studio Ghibli" poster={null} quanti={1} visti={0} anni={null}>
+        <li>La città incantata</li>
+      </SagaVideoteca>,
+    )
+    expect(screen.getByRole('button', { name: /Studio Ghibli/ })).toHaveTextContent('Raccolta · 1 titolo')
+  })
 })
