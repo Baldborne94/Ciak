@@ -177,17 +177,17 @@ export async function raccolteUtente(userId: string): Promise<Raccolta[]> {
 }
 
 // Le liste con copertina e segno di saga. Se il database è indietro (i file
-// schema_v20 e v21 non eseguiti: lo dice la banda in cima) le raccolte ci sono
-// lo stesso, col mosaico e senza saghe fatte a mano: non spariscono per una
-// colonna che manca.
-type RigaLista = { id: string; name: string; copertina?: string | null; come_saga?: boolean }
+// schema_v20, v21 o v22 non eseguiti: lo dice la banda in cima) le raccolte ci
+// sono lo stesso, col mosaico e senza saghe fatte a mano: non spariscono per
+// una colonna che manca.
+type RigaLista = { id: string; name: string; copertina?: string | null; come_saga?: boolean; saga_tmdb?: number | null }
 async function listeConCopertina(userId: string): Promise<RigaLista[]> {
   const leggi = (colonne: string) =>
     client().from('user_lists').select(colonne).eq('user_id', userId).order('name', { ascending: true })
-  for (const colonne of ['id, name, copertina, come_saga', 'id, name, copertina', 'id, name']) {
+  for (const colonne of ['id, name, copertina, come_saga, saga_tmdb', 'id, name, copertina, come_saga', 'id, name, copertina', 'id, name']) {
     const { data, error } = await leggi(colonne)
     if (!error) return (data ?? []) as unknown as RigaLista[]
-    if (error.code !== '42703' && !/copertina|come_saga/.test(error.message)) throw new Error(error.message)
+    if (error.code !== '42703' && !/copertina|come_saga|saga_tmdb/.test(error.message)) throw new Error(error.message)
   }
   return []
 }
@@ -200,9 +200,10 @@ export async function aggiornaCopertina(listId: string, copertina: string | null
 }
 
 // Una saga fatta a mano: una lista segnata come saga, coi film scelti. I
-// titoli in una scrittura sola, non uno per volta.
-export async function creaSaga(userId: string, nome: string, film: ListItemRef[]): Promise<string> {
-  return creaListaCon(userId, nome, film, true)
+// titoli in una scrittura sola, non uno per volta. `sagaTmdb`: la collezione
+// di TMDB che sostituisce, quando nasce modificandone una (Transformers).
+export async function creaSaga(userId: string, nome: string, film: ListItemRef[], sagaTmdb: number | null = null): Promise<string> {
+  return creaListaCon(userId, nome, film, true, sagaTmdb)
 }
 
 // Una raccolta nuova dalla videoteca: una lista qualunque, che compare anche
@@ -211,12 +212,12 @@ export async function creaRaccolta(userId: string, nome: string, titoli: ListIte
   return creaListaCon(userId, nome, titoli, false)
 }
 
-async function creaListaCon(userId: string, nome: string, titoli: ListItemRef[], comeSaga: boolean): Promise<string> {
+async function creaListaCon(userId: string, nome: string, titoli: ListItemRef[], comeSaga: boolean, sagaTmdb: number | null = null): Promise<string> {
   // Senza saga non si scrive la colonna: una raccolta si crea anche con un
   // database che non è ancora alla v21.
   const { data, error } = await client()
     .from('user_lists')
-    .insert({ user_id: userId, name: nome, description: null, ...(comeSaga && { come_saga: true }) })
+    .insert({ user_id: userId, name: nome, description: null, ...(comeSaga && { come_saga: true }), ...(sagaTmdb !== null && { saga_tmdb: sagaTmdb }) })
     .select('id')
     .single()
   if (error) throw new Error(error.message)

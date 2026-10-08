@@ -430,6 +430,48 @@ test('i film di un pacchetto si riconoscono uno per uno e finiscono nella cartel
   await expect(page.getByRole('list', { name: 'Film di Transformers' }).getByText('Bumblebee', { exact: true })).toBeVisible()
 })
 
+test('una saga di TMDB si modifica: diventa tua, e i film tolti tornano sciolti', async ({ page }) => {
+  // Transformers senza Bumblebee: niente seconda cartella «Transformers».
+  await mockDrive(page, { conPacchetto: true })
+  const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
+    id: `s-${drive_file_id}`, user_id: E2E_USER.id, drive_file_id, nome_file: null, tmdb_id, media_type: 'movie', titolo,
+    poster_path: `/poster-${tmdb_id}.jpg`, stagione: null, episodio: null, abbinato_a_mano: false, posizione: 0, durata: 7000, secondi_visti: 0, visto_il: null,
+  })
+  const db = await mockSupabase(page, {
+    user_streaming: [film('video-tf-01', 1858, 'Transformers'), film('video-tf-06', 424783, 'Bumblebee')],
+    user_lists: [],
+    user_list_items: [],
+  })
+  const saga = { id: 8650, name: 'Transformers Collection', poster_path: '/transformers-saga.jpg' }
+  await page.route('**/api/tmdb*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    if (path === '/movie/1858') return route.fulfill({ json: movieDetail(1858, 'Transformers', { release_date: '2007-06-27', belongs_to_collection: saga }) })
+    if (path === '/movie/424783') return route.fulfill({ json: movieDetail(424783, 'Bumblebee', { release_date: '2018-12-15', belongs_to_collection: saga }) })
+    return route.fallback()
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  const cartella = page.getByRole('button', { name: /^Transformers ▸/ })
+  await expect(cartella).toContainText('Saga · 2 film')
+  await cartella.click()
+  await page.getByRole('toolbar', { name: 'Comandi di Transformers' }).getByRole('button', { name: '✎ Modifica la saga' }).click()
+
+  const finestra = page.getByRole('dialog')
+  await expect(finestra.getByLabel('Nome della saga')).toHaveValue('Transformers')
+  await finestra.getByRole('button', { name: 'Nella saga (2)' }).click()
+  await finestra.getByRole('checkbox', { name: /^Bumblebee/ }).uncheck()
+  await finestra.getByRole('button', { name: 'Salva' }).click()
+
+  // Una saga fatta a mano, che ricorda quale saga di TMDB sostituisce.
+  await expect.poll(() => db.tables.user_lists.find((l) => l.name === 'Transformers')).toMatchObject({ come_saga: true, saga_tmdb: 8650 })
+  await expect.poll(() => db.tables.user_list_items.map((i) => i.tmdb_id)).toEqual([1858])
+  await expect(page.getByRole('button', { name: /^Transformers ▸|^Transformers ▾/ })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: /^Transformers/ }).first()).toContainText('Saga · 1 film')
+  // Bumblebee fuori, da solo nell'elenco.
+  await expect(page.getByRole('button', { name: /06 Transformers Bumblebee/ })).toBeVisible()
+})
+
 test('le «Mie liste» diventano raccolte nella videoteca, coi titoli che sono su Drive e una copertina scelta', async ({ page }) => {
   await mockDrive(page)
   const db = await mockSupabase(page, {
@@ -551,6 +593,8 @@ test('una saga fatta a mano raccoglie film che su TMDB una saga non ce l’hanno
   // Si cambia: via Aliens, che torna al suo posto.
   await cartella.click()
   await page.getByRole('button', { name: '✎ Modifica la saga' }).click()
+  // Si parte da quelli da aggiungere; per togliere, quelli nella saga.
+  await page.getByRole('dialog').getByRole('button', { name: 'Nella saga (2)' }).click()
   await page.getByRole('dialog').getByRole('checkbox', { name: /^Aliens ·/ }).uncheck()
   await page.getByRole('dialog').getByRole('button', { name: 'Salva' }).click()
   await expect(page.getByRole('button', { name: /^Xenomorfi/ })).toContainText('Saga · 1 film')
@@ -596,8 +640,10 @@ test('una raccolta si modifica dalla videoteca: si aggiungono e si tolgono titol
   // Al posto di Alien, Aliens.
   const finestra = page.getByRole('dialog')
   await expect(finestra.getByText('1 titolo scelto')).toBeVisible()
-  await finestra.getByRole('checkbox', { name: /^Alien ·/ }).uncheck()
+  // Da aggiungere c'è solo Aliens; Alien sta fra quelli nella raccolta.
   await finestra.getByRole('checkbox', { name: /^Aliens ·/ }).check()
+  await finestra.getByRole('button', { name: /^Nella raccolta/ }).click()
+  await finestra.getByRole('checkbox', { name: /^Alien ·/ }).uncheck()
   await finestra.getByRole('button', { name: 'Salva' }).click()
   await expect
     .poll(() => db.tables.user_list_items.filter((i) => i.list_id === 'l-horror').map((i) => i.tmdb_id).sort())
@@ -623,6 +669,44 @@ test('una raccolta si modifica dalla videoteca: si aggiungono e si tolgono titol
   expect(db.tables.user_lists.some((l) => l.name === 'Ripley')).toBe(false)
   // I file restano.
   await expect(page.getByRole('button', { name: /Alien\.1979\.mp4/ }).first()).toBeVisible()
+})
+
+test('una raccolta si riempie coi film di uno studio, quelli che sono su Drive', async ({ page }) => {
+  await mockDrive(page, { conSaga: true })
+  const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
+    id: `s-${drive_file_id}`, user_id: E2E_USER.id, drive_file_id, nome_file: null, tmdb_id, media_type: 'movie', titolo,
+    poster_path: `/poster-${tmdb_id}.jpg`, stagione: null, episodio: null, abbinato_a_mano: false, posizione: 0, durata: 7000, secondi_visti: 0, visto_il: null,
+  })
+  const db = await mockSupabase(page, {
+    user_streaming: [film('video-alien-1979', 348, 'Alien'), film('video-aliens-1986', 679, 'Aliens')],
+    user_lists: [],
+    user_list_items: [],
+  })
+  await page.route('**/api/tmdb*', (route) => {
+    const u = new URL(route.request().url())
+    const path = u.searchParams.get('path') ?? ''
+    if (path === '/search/company') return route.fulfill({ json: { results: [{ id: 401, name: 'Brandywine Productions', logo_path: null }] } })
+    // Dello studio c'è Alien, non Aliens; e un film che su Drive non c'è.
+    if (path === '/discover/movie' && u.searchParams.get('with_companies') === '401') {
+      return route.fulfill({ json: { results: [{ id: 348, title: 'Alien' }, { id: 8077, title: 'Alien³' }], total_pages: 1 } })
+    }
+    if (path === '/movie/348') return route.fulfill({ json: movieDetail(348, 'Alien', { release_date: '1979-05-25' }) })
+    if (path === '/movie/679') return route.fulfill({ json: movieDetail(679, 'Aliens', { release_date: '1986-07-18' }) })
+    return route.fallback()
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.getByRole('button', { name: '＋ Crea una raccolta' }).click()
+  const finestra = page.getByRole('dialog')
+  await finestra.getByLabel('Aggiungi i film di uno studio').fill('brandywine')
+  await finestra.getByRole('button', { name: 'Aggiungi', exact: true }).click()
+  await expect(finestra.getByRole('status')).toHaveText('Brandywine Productions: aggiunto 1 film.')
+  await expect(finestra.getByLabel('Nome della raccolta')).toHaveValue('Brandywine Productions')
+  await finestra.getByRole('button', { name: 'Crea la raccolta' }).click()
+
+  await expect.poll(() => db.tables.user_list_items.map((i) => i.tmdb_id)).toEqual([348])
+  await expect(page.getByRole('region', { name: 'Le mie raccolte' }).getByRole('button', { name: /^Brandywine Productions/ })).toContainText('1 titolo')
 })
 
 test('gli extra dei film (le featurette) non compaiono come titoli, ma si contano', async ({ page }) => {

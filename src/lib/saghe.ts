@@ -33,9 +33,14 @@ export interface GruppoSaga {
 }
 
 // La saga di ogni film: quella di TMDB, ma una saga fatta a mano vince, perché
-// il film va dove l'hai messo tu.
+// il film va dove l'hai messo tu. Una saga di TMDB modificata a mano non c'è
+// più: i film che le hai tolto restano sciolti, invece di rifare una seconda
+// cartella col suo nome.
 export function unisciSaghe(tmdb: Map<string, Collection | null>, liste: Raccolta[]): Map<string, SagaVideoteca | null> {
-  const saghe = new Map<string, SagaVideoteca | null>([...tmdb].map(([k, c]) => [k, c ? daCollezione(c) : null]))
+  const sostituite = new Set(liste.filter((l) => l.comeSaga && l.sagaTmdb != null).map((l) => l.sagaTmdb))
+  const saghe = new Map<string, SagaVideoteca | null>(
+    [...tmdb].map(([k, c]) => [k, c && !sostituite.has(c.id) ? daCollezione(c) : null]),
+  )
   for (const l of liste) {
     if (!l.comeSaga) continue
     const saga: SagaVideoteca = { chiave: `lista-${l.id}`, name: l.nome, posterPath: null, listaId: l.id, copertina: l.copertina }

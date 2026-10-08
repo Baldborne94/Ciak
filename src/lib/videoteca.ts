@@ -264,8 +264,10 @@ export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]
     const film = voce?.media_type === 'movie' && !!voce.tmdb_id
     const vicino = !tv && !film && letto.stagione === undefined && !v.serie && !!v.cartella && conEpisodi.has(v.cartella)
     const daCartella = vicino ? serieDaNome(v.cartella as string) : nomeSerieDaFile(v)
-    // Basta la stagione: un mezzo episodio è uno speciale senza numero.
-    const episodico = tv || letto.stagione !== undefined || !!v.serie || vicino
+    // Basta la stagione: un mezzo episodio è uno speciale senza numero. Un file
+    // riconosciuto come film (a mano: il riconoscimento non dà mai un film a un
+    // nome da episodio) resta un film, qualunque cosa dica il nome.
+    const episodico = !film && (tv || letto.stagione !== undefined || !!v.serie || vicino)
     if (!episodico) {
       sciolti.push(v.id)
       continue

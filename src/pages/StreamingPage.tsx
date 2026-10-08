@@ -25,6 +25,7 @@ import FilmVideoteca from '../components/FilmVideoteca'
 import { raggruppaSaghe, unisciSaghe, type GruppoSaga } from '../lib/saghe'
 import { aggiornaCopertina, creaRaccolta, creaSaga, deleteList, modificaSaga, raccolteUtente } from '../lib/lists'
 import ModificaSaga from '../components/ModificaSaga'
+import { filmDelloStudio } from '../lib/perStudio'
 import { copertinaUrl, type Raccolta } from '../lib/raccolte'
 import RiquadroRaccolta from '../components/RiquadroRaccolta'
 import SceltaCopertina from '../components/SceltaCopertina'
@@ -101,7 +102,12 @@ export default function StreamingPage() {
   const [copertinaDi, setCopertinaDi] = useState<string | null>(null)
   // La saga fatta a mano che si sta creando (listaId null) o cambiando.
   // Una saga fatta a mano o una raccolta da creare (listaId null) o cambiare.
-  const [inModifica, setInModifica] = useState<{ tipo: 'saga' | 'raccolta'; listaId: string | null } | null>(null)
+  // `daTmdb`: una saga di TMDB da cambiare, che diventa una fatta a mano.
+  const [inModifica, setInModifica] = useState<{
+    tipo: 'saga' | 'raccolta'
+    listaId: string | null
+    daTmdb?: { id: number; nome: string; chiavi: Set<string> }
+  } | null>(null)
   const [salvandoLista, setSalvandoLista] = useState(false)
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
@@ -322,7 +328,8 @@ export default function StreamingPage() {
     setSalvandoLista(true)
     try {
       if (!inModifica.listaId) {
-        await (saga ? creaSaga : creaRaccolta)(user.id, nome, chiavi.map(ref))
+        if (saga) await creaSaga(user.id, nome, chiavi.map(ref), inModifica.daTmdb?.id ?? null)
+        else await creaRaccolta(user.id, nome, chiavi.map(ref))
       } else {
         const lista = raccolte.find((r) => r.id === inModifica.listaId)
         const prima = lista?.chiavi ?? new Set<string>()
@@ -336,6 +343,8 @@ export default function StreamingPage() {
       setErrore(
         /come_saga/.test(messaggio)
           ? 'Per le saghe fatte a mano il database va aggiornato: esegui supabase/schema_v21_saghe_manuali.sql nel SQL Editor di Supabase.'
+          : /saga_tmdb/.test(messaggio)
+            ? 'Per modificare le saghe di TMDB il database va aggiornato: esegui supabase/schema_v22_saghe_tmdb_modificate.sql nel SQL Editor di Supabase.'
           : `${saga ? 'Saga' : 'Raccolta'} non salvata: ${messaggio}`,
       )
       setInModifica(null)
@@ -897,7 +906,26 @@ export default function StreamingPage() {
                         : posterUrl(saga.saga.posterPath, 'w185')
                     }
                     azioni={
-                      saga.saga.listaId ? (
+                      !saga.saga.listaId ? (
+                        // Una saga di TMDB: modificandola diventa tua, al suo posto.
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setInModifica({
+                              tipo: 'saga',
+                              listaId: null,
+                              daTmdb: {
+                                id: Number(saga.chiave.slice('saga-'.length)),
+                                nome: saga.saga.name,
+                                chiavi: new Set(suoi.flatMap((f) => chiaveTitolo(f.riga.id) ?? [])),
+                              },
+                            })
+                          }
+                          className="text-xs text-zinc-400 transition hover:text-projector"
+                        >
+                          ✎ Modifica la saga
+                        </button>
+                      ) : saga.saga.listaId ? (
                         <>
                           <button
                             type="button"
@@ -939,7 +967,7 @@ export default function StreamingPage() {
         <Modal
           title={
             inModifica.tipo === 'saga'
-              ? listaAperta ? `Saga «${listaAperta.nome}»` : 'Crea una saga'
+              ? listaAperta ? `Saga «${listaAperta.nome}»` : inModifica.daTmdb ? `Saga «${inModifica.daTmdb.nome}»` : 'Crea una saga'
               : listaAperta ? `Raccolta «${listaAperta.nome}»` : 'Crea una raccolta'
           }
           onClose={() => setInModifica(null)}
@@ -949,8 +977,15 @@ export default function StreamingPage() {
             film={sceglibili}
             // Scelti in partenza solo i titoli che qui si vedono: gli altri della
             // lista non si toccano, e non vanno contati.
-            iniziale={listaAperta ? { nome: listaAperta.nome, chiavi: new Set(sceglibili.map((f) => f.chiave).filter((k) => listaAperta.chiavi.has(k))) } : undefined}
+            iniziale={
+              listaAperta
+                ? { nome: listaAperta.nome, chiavi: new Set(sceglibili.map((f) => f.chiave).filter((k) => listaAperta.chiavi.has(k))) }
+                : inModifica.daTmdb
+                  ? { nome: inModifica.daTmdb.nome, chiavi: inModifica.daTmdb.chiavi }
+                  : undefined
+            }
             onSalva={(nome, chiavi) => void salvaLista(nome, chiavi)}
+            onCercaStudio={(nome) => filmDelloStudio(nome)}
             onSciogli={
               listaAperta
                 ? () => void (inModifica.tipo === 'saga' ? sciogliSaga(listaAperta.id, listaAperta.nome) : eliminaRaccolta(listaAperta.id, listaAperta.nome))

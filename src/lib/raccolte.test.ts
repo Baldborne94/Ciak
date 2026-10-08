@@ -17,7 +17,7 @@ describe('costruisciRaccolte', () => {
   it('ogni lista con i suoi titoli, nell’ordine delle liste', () => {
     const raccolte = costruisciRaccolte(
       [
-        { id: 'l2', name: 'Natale', copertina: '/natale.jpg', come_saga: true },
+        { id: 'l2', name: 'Natale', copertina: '/natale.jpg', come_saga: true, saga_tmdb: 8650 },
         { id: 'l1', name: 'Studio Ghibli' },
       ],
       [
@@ -31,6 +31,7 @@ describe('costruisciRaccolte', () => {
       ['l2', 'Natale', ['movie-771'], '/natale.jpg', true],
       ['l1', 'Studio Ghibli', ['movie-129', 'movie-4935'], null, false],
     ])
+    expect(raccolte.map((r) => r.sagaTmdb)).toEqual([8650, null])
   })
 
   it('ogni chiave ricorda le righe salvate, per poterle togliere anche se sono «anime»', () => {

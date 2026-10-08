@@ -239,6 +239,18 @@ describe('raggruppaSerie', () => {
     expect(serie[0].episodi.some((e) => e.stagione === null)).toBe(false)
   })
 
+  it('un file scelto come film resta un film anche se il nome sembra un episodio', () => {
+    // «Aladdin» abbinato alla serie del 1994: scegliendo a mano il film del
+    // 1992, un nome con un numero lo teneva fra gli episodi.
+    const film = { tmdb_id: 812, media_type: 'movie' as const, titolo: 'Aladdin', poster_path: '/a.jpg', stagione: null, episodio: null, visto_il: null, posizione: 0, secondi_visti: 0, durata: 5400, updated_at: undefined }
+    const { sciolti, serie } = raggruppaSerie([
+      { id: 'a', name: 'Aladdin S01E01.mp4', cartella: 'Disney', serie: null, voce: film },
+      { id: 'b', name: 'Aladdin S01E02.mp4', cartella: 'Disney', serie: null },
+    ])
+    expect(sciolti).toContain('a')
+    expect(serie.flatMap((g) => g.ids)).not.toContain('a')
+  })
+
   it('un film da solo nella sua cartella resta un film', () => {
     const { sciolti } = raggruppaSerie([{ id: 'f', name: 'Alien.1979.mkv', cartella: 'Alien (1979)', serie: null }])
     expect(sciolti).toEqual(['f'])
