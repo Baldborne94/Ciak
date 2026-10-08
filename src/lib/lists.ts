@@ -206,12 +206,6 @@ export async function creaSaga(userId: string, nome: string, film: ListItemRef[]
   return creaListaCon(userId, nome, film, true, sagaTmdb)
 }
 
-// Una raccolta nuova dalla videoteca: una lista qualunque, che compare anche
-// fra le «Mie liste», coi titoli di Drive scelti.
-export async function creaRaccolta(userId: string, nome: string, titoli: ListItemRef[]): Promise<string> {
-  return creaListaCon(userId, nome, titoli, false)
-}
-
 async function creaListaCon(userId: string, nome: string, titoli: ListItemRef[], comeSaga: boolean, sagaTmdb: number | null = null): Promise<string> {
   // Senza saga non si scrive la colonna: una raccolta si crea anche con un
   // database che non è ancora alla v21.

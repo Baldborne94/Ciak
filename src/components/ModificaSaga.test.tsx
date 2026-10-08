@@ -47,26 +47,16 @@ describe('ModificaSaga', () => {
     expect(onSciogli).toHaveBeenCalled()
   })
 
-  it('una raccolta: si tolgono e si aggiungono titoli, anche serie, e si può eliminare', async () => {
+  it('esistente: tolto un film, resta lì senza spunta e si può rimettere', async () => {
     const onSalva = vi.fn()
-    const onSciogli = vi.fn()
-    const titoli = [...FILM, { chiave: 'tv-1429', titolo: "L'attacco dei giganti", anno: '2013', poster: null }]
-    render(
-      <ModificaSaga tipo="raccolta" film={titoli} iniziale={{ nome: 'Natale', chiavi: new Set(['movie-862', 'movie-12']) }} onSalva={onSalva} onSciogli={onSciogli} />,
-    )
-    expect(screen.getByLabelText('Nome della raccolta')).toHaveValue('Natale')
-    expect(screen.getByText('2 titoli scelti')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Nella raccolta (2)' }))
+    render(<ModificaSaga film={FILM} iniziale={{ nome: 'Pixar', chiavi: new Set(['movie-862', 'movie-12']) }} onSalva={onSalva} />)
+    expect(screen.getByText('2 film scelti')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Nella saga (2)' }))
     await userEvent.click(screen.getByRole('checkbox', { name: /Toy Story/ }))
-    // Tolto, resta lì senza spunta: si può rimettere.
     expect(screen.getByRole('checkbox', { name: /Toy Story/ })).not.toBeChecked()
-    expect(screen.getByRole('button', { name: 'Nella raccolta (1)' })).toBeInTheDocument()
-    await userEvent.type(screen.getByLabelText('Cerca un titolo'), 'giganti')
-    await userEvent.click(screen.getByRole('checkbox', { name: /L'attacco dei giganti/ }))
+    expect(screen.getByRole('button', { name: 'Nella saga (1)' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Salva' }))
-    expect(onSalva).toHaveBeenCalledWith('Natale', ['movie-12', 'tv-1429'])
-    await userEvent.click(screen.getByRole('button', { name: 'Elimina la raccolta' }))
-    expect(onSciogli).toHaveBeenCalled()
+    expect(onSalva).toHaveBeenCalledWith('Pixar', ['movie-12'])
   })
 
   it('cercando si trova un film anche se sta dall altra parte', async () => {
@@ -82,12 +72,12 @@ describe('ModificaSaga', () => {
 
   it('i film di uno studio si spuntano in un colpo, e una nuova ne prende il nome', async () => {
     const onCercaStudio = vi.fn().mockResolvedValue({ studio: 'Pixar', chiavi: new Set(['movie-862', 'movie-12', 'movie-999']) })
-    render(<ModificaSaga tipo="raccolta" film={FILM} onSalva={vi.fn()} onCercaStudio={onCercaStudio} />)
+    render(<ModificaSaga film={FILM} onSalva={vi.fn()} onCercaStudio={onCercaStudio} />)
     await userEvent.type(screen.getByLabelText('Aggiungi i film di uno studio'), 'pixar{Enter}')
     expect(onCercaStudio).toHaveBeenCalledWith('pixar')
     // movie-999 non è fra quelli qui: non conta.
     expect(await screen.findByRole('status')).toHaveTextContent('Pixar: aggiunti 2 film.')
-    expect(screen.getByLabelText('Nome della raccolta')).toHaveValue('Pixar')
+    expect(screen.getByLabelText('Nome della saga')).toHaveValue('Pixar')
     expect(screen.getByRole('checkbox', { name: /Toy Story/ })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /Finding Nemo/ })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /A Bug’s Life/ })).not.toBeChecked()
@@ -100,9 +90,4 @@ describe('ModificaSaga', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Nessuno studio «boh» su TMDB.')
   })
 
-  it('una raccolta nuova si crea con «Crea la raccolta»', () => {
-    render(<ModificaSaga tipo="raccolta" film={FILM} onSalva={vi.fn()} />)
-    expect(screen.getByRole('button', { name: 'Crea la raccolta' })).toBeDisabled()
-    expect(screen.queryByText(/saga/i)).not.toBeInTheDocument()
-  })
 })

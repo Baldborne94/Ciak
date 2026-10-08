@@ -3,21 +3,17 @@ import { corrispondeRicerca } from '../lib/ricercaLista'
 import { logFailure } from '../lib/logFailure'
 import type { FilmDelloStudio } from '../lib/perStudio'
 
-// Creare o cambiare una saga fatta a mano, o una raccolta: un nome e i titoli
-// della videoteca che ci vanno dentro. I titoli sono quelli già riconosciuti
-// (con un id di TMDB): la lista li ritrova per titolo, anche se il file cambia.
-// Una saga raccoglie film; una raccolta anche serie e anime.
+// Creare o cambiare una saga fatta a mano: un nome e i film della videoteca
+// che ci vanno dentro. I film sono quelli già riconosciuti (con un id di
+// TMDB): la saga li ritrova per titolo, anche se il file cambia.
 export interface FilmSceglibile {
-  chiave: string // `movie-<id>` o `tv-<id>`
+  chiave: string // `movie-<id>`
   titolo: string
   anno: string | null
   poster: string | null // indirizzo della locandina piccola
 }
 
-const PAROLE = {
-  saga: { dentro: 'Nella saga', nome: 'Nome della saga', esempio: 'Es. Pixar anni 90', cerca: 'Cerca un film', uno: 'film', tanti: 'film', crea: 'Crea la saga', sciogli: 'Sciogli la saga', nessuno: 'Nessun film riconosciuto con questo nome.' },
-  raccolta: { dentro: 'Nella raccolta', nome: 'Nome della raccolta', esempio: 'Es. Natale', cerca: 'Cerca un titolo', uno: 'titolo', tanti: 'titoli', crea: 'Crea la raccolta', sciogli: 'Elimina la raccolta', nessuno: 'Nessun titolo riconosciuto con questo nome.' },
-}
+const TESTI = { dentro: 'Nella saga', nome: 'Nome della saga', esempio: 'Es. Pixar anni 90', cerca: 'Cerca un film', uno: 'film', tanti: 'film', crea: 'Crea la saga', sciogli: 'Sciogli la saga', nessuno: 'Nessun film riconosciuto con questo nome.' }
 
 export default function ModificaSaga({
   film,
@@ -25,7 +21,6 @@ export default function ModificaSaga({
   onSalva,
   onSciogli,
   salvando = false,
-  tipo = 'saga',
   onCercaStudio,
 }: {
   film: FilmSceglibile[]
@@ -33,11 +28,10 @@ export default function ModificaSaga({
   onSalva: (nome: string, chiavi: string[]) => void
   onSciogli?: () => void
   salvando?: boolean
-  tipo?: 'saga' | 'raccolta'
   // «Studio Ghibli» → i suoi film: spuntati in un colpo quelli che sono qui.
   onCercaStudio?: (nome: string) => Promise<FilmDelloStudio | null>
 }) {
-  const p = PAROLE[tipo]
+  const p = TESTI
   const [nome, setNome] = useState(iniziale?.nome ?? '')
   const [scelti, setScelti] = useState<Set<string>>(() => new Set(iniziale?.chiavi ?? []))
   const [cerca, setCerca] = useState('')
@@ -188,7 +182,15 @@ export default function ModificaSaga({
         ))}
         {visibili.length === 0 && (
           <li className="px-2 text-sm text-zinc-500">
-            {cercando ? p.nessuno : vista === 'fuori' ? 'Non c’è altro da aggiungere: sono già tutti dentro.' : 'Ancora vuota: scegli da «Da aggiungere».'}
+            {cercando
+              ? p.nessuno
+              : film.length === 0
+                ? 'Nessun film da proporre qui.'
+                : vista === 'fuori'
+                  ? 'Non c’è altro da aggiungere: sono già tutti dentro.'
+                  : vista === 'dentro'
+                    ? 'Ancora vuota: scegli da «Da aggiungere».'
+                    : p.nessuno}
           </li>
         )}
       </ul>
