@@ -12,6 +12,7 @@ export default function SagaVideoteca({
   apertaSempre = false,
   onCancella,
   cancellando = false,
+  azioni,
   children,
 }: {
   nome: string
@@ -25,6 +26,8 @@ export default function SagaVideoteca({
   // Tutta la saga nel cestino di Drive (la pagina chiede conferma).
   onCancella?: () => void
   cancellando?: boolean
+  // Altri comandi a saga aperta (per quelle fatte a mano: modificarla, la copertina).
+  azioni?: ReactNode
   children: ReactNode
 }) {
   const [apertaQui, setApertaQui] = useState(false)
@@ -62,17 +65,15 @@ export default function SagaVideoteca({
           <ul aria-label={`Film di ${nome}`} className="divide-y divide-theatre-800 pl-6">
             {children}
           </ul>
-          {/* Solo a saga aperta: chiusa, un clic per sbaglio costerebbe troppo. */}
-          {onCancella && (
-            <button
-              type="button"
-              onClick={onCancella}
-              disabled={cancellando}
-              className="mx-4 my-2 text-xs text-zinc-500 transition hover:text-red-400"
-            >
-              {cancellando ? 'Cancello…' : '🗑 Cancella la saga da Drive'}
-            </button>
-          )}
+          <div className="flex flex-wrap gap-x-5 gap-y-1 px-4 py-2">
+            {azioni}
+            {/* Solo a saga aperta: chiusa, un clic per sbaglio costerebbe troppo. */}
+            {onCancella && (
+              <button type="button" onClick={onCancella} disabled={cancellando} className="text-xs text-zinc-500 transition hover:text-red-400">
+                {cancellando ? 'Cancello…' : '🗑 Cancella la saga da Drive'}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </>

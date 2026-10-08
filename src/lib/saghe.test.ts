@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { nomeSaga, raggruppaSaghe } from './saghe'
+import { daCollezione, nomeSaga, raggruppaSaghe, unisciSaghe, type SagaVideoteca } from './saghe'
 import type { Collection } from './types'
+import type { Raccolta } from './raccolte'
 
-const ALIEN: Collection = { id: 8091, name: 'Alien', posterPath: '/alien.jpg' }
-const POTTER: Collection = { id: 1241, name: 'Harry Potter', posterPath: '/hp.jpg' }
+const ALIEN_TMDB: Collection = { id: 8091, name: 'Alien', posterPath: '/alien.jpg' }
+const ALIEN = daCollezione(ALIEN_TMDB)
+const POTTER = daCollezione({ id: 1241, name: 'Harry Potter', posterPath: '/hp.jpg' })
 
 describe('nomeSaga', () => {
   it('toglie «Collection» dal nome inglese di TMDB', () => {
@@ -17,7 +19,7 @@ describe('nomeSaga', () => {
 })
 
 describe('raggruppaSaghe', () => {
-  const saghe = new Map<string, Collection | null>([
+  const saghe = new Map<string, SagaVideoteca | null>([
     ['movie-348', ALIEN],
     ['movie-679', ALIEN],
     ['movie-8077', ALIEN],
@@ -72,5 +74,48 @@ describe('raggruppaSaghe', () => {
     )
     expect(gruppi).toEqual([])
     expect(sciolti).toEqual(['f-ignoto', 'f-nuovo'])
+  })
+})
+
+describe('unisciSaghe: le saghe fatte a mano', () => {
+  const manuale = (over: Partial<Raccolta> = {}): Raccolta => ({
+    id: 'l-pixar',
+    nome: 'Pixar anni 90',
+    chiavi: new Set(['movie-862', 'movie-9487']),
+    copertina: null,
+    comeSaga: true,
+    ...over,
+  })
+
+  it('una lista segnata come saga raccoglie i suoi film, anche senza saga su TMDB', () => {
+    const saghe = unisciSaghe(new Map([['movie-862', null], ['movie-9487', null]]), [manuale()])
+    const { saghe: gruppi, sciolti } = raggruppaSaghe(
+      [
+        { id: 'f-toy', chiave: 'movie-862', anno: '1995' },
+        { id: 'f-bug', chiave: 'movie-9487', anno: '1998' },
+        { id: 'f-altro', chiave: 'movie-1', anno: '2000' },
+      ],
+      saghe,
+    )
+    expect(gruppi.map((g) => [g.chiave, g.saga.name, g.saga.listaId, g.ids])).toEqual([
+      ['lista-l-pixar', 'Pixar anni 90', 'l-pixar', ['f-toy', 'f-bug']],
+    ])
+    expect(sciolti).toEqual(['f-altro'])
+  })
+
+  it('anche con un film solo: l’hai voluta tu', () => {
+    const saghe = unisciSaghe(new Map(), [manuale({ chiavi: new Set(['movie-862']) })])
+    const { saghe: gruppi } = raggruppaSaghe([{ id: 'f-toy', chiave: 'movie-862', anno: '1995' }], saghe)
+    expect(gruppi.map((g) => g.ids)).toEqual([['f-toy']])
+  })
+
+  it('vince sulla saga di TMDB: il film va dove l’hai messo', () => {
+    const saghe = unisciSaghe(new Map([['movie-348', ALIEN_TMDB]]), [manuale({ chiavi: new Set(['movie-348']) })])
+    expect(saghe.get('movie-348')?.chiave).toBe('lista-l-pixar')
+  })
+
+  it('le liste che non sono saghe non toccano niente', () => {
+    const saghe = unisciSaghe(new Map([['movie-348', ALIEN_TMDB]]), [manuale({ comeSaga: false, chiavi: new Set(['movie-348']) })])
+    expect(saghe.get('movie-348')).toEqual(ALIEN)
   })
 })

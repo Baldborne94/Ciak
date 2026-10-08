@@ -14,6 +14,9 @@ export interface Raccolta {
   // L'immagine scelta: un percorso TMDB («/abc.jpg») o un link https. null:
   // Ciak compone un mosaico con le locandine dei titoli.
   copertina: string | null
+  // Segnata come saga: non un riquadro in cima, ma una cartella nell'elenco
+  // che raccoglie i suoi film, come le saghe di TMDB (vedi saghe.ts).
+  comeSaga: boolean
 }
 
 // Le liste salvano anche «anime» e «cartoon», che su TMDB sono film o serie:
@@ -25,14 +28,14 @@ export function chiaviElemento(mediaType: MediaType, tmdbId: number): string[] {
 }
 
 export function costruisciRaccolte(
-  liste: { id: string; name: string; copertina?: string | null }[],
+  liste: { id: string; name: string; copertina?: string | null; come_saga?: boolean }[],
   elementi: { list_id: string; tmdb_id: number; media_type: MediaType }[],
 ): Raccolta[] {
   const perLista = new Map<string, Set<string>>(liste.map((l) => [l.id, new Set()]))
   for (const e of elementi) {
     for (const k of chiaviElemento(e.media_type, e.tmdb_id)) perLista.get(e.list_id)?.add(k)
   }
-  return liste.map((l) => ({ id: l.id, nome: l.name, chiavi: perLista.get(l.id) ?? new Set(), copertina: l.copertina ?? null }))
+  return liste.map((l) => ({ id: l.id, nome: l.name, chiavi: perLista.get(l.id) ?? new Set(), copertina: l.copertina ?? null, comeSaga: !!l.come_saga }))
 }
 
 // L'indirizzo dell'immagine di una copertina. Un link incollato si usa solo se
