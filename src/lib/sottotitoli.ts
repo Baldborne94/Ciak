@@ -184,11 +184,16 @@ function leggiNome(nome: string): NomeFilm & { anime?: true } {
     .trim()
   let fine = s.length
   const risultato: Omit<NomeFilm, 'titolo'> = {}
+  let supposta = false
 
   const ep = /\bS(\d{1,2}) ?E(\d{1,3})\b/i.exec(s) ?? /\b(\d{1,2})x(\d{2,3})\b/.exec(s)
   // Gli speciali degli anime: «OADE01», «OVA 3», «Special 1». Su TMDB sono la
   // stagione 0, ed è lì che si spuntano.
   const speciale = ep ? null : /\b(?:OAD|OVA|ONA|Special|Speciale)\s*E?\s*(\d{1,3})\b/i.exec(s)
+  // «Elements of Chernobyl Episode 3»: una miniserie, senza stagione. Non con
+  // un anno nel nome: «Star Wars Episode 4 A New Hope 1977» è un film.
+  const episodioNudo =
+    ep || speciale || /\b(?:19|20)\d{2}\b/.test(s) ? null : /\b(?:episode|episodio)\s*(\d{1,3})\b/i.exec(s)
   if (ep && (mezzoEpisodio(nome) || Number(ep[2]) === 0)) {
     // «S01E13.5» è un riassunto fra due episodi: su TMDB sta fra gli speciali,
     // con un numero che dal nome non si ricava. Leggerlo come E13 ne faceva
@@ -204,6 +209,12 @@ function leggiNome(nome: string): NomeFilm & { anime?: true } {
     risultato.stagione = 0
     risultato.episodio = Number(speciale[1])
     fine = Math.min(fine, speciale.index)
+  } else if (episodioNudo) {
+    // La stagione 1 è supposta, come per gli anime: quella della cartella vince.
+    supposta = true
+    risultato.stagione = 1
+    risultato.episodio = Number(episodioNudo[1])
+    fine = Math.min(fine, episodioNudo.index)
   }
 
   const etichetta = ETICHETTE.exec(s)
@@ -212,6 +223,9 @@ function leggiNome(nome: string): NomeFilm & { anime?: true } {
   if (raccolta && raccolta.index > 0) fine = Math.min(fine, raccolta.index)
   const intervallo = INTERVALLO.exec(s)
   if (intervallo && intervallo.index > 0) fine = Math.min(fine, intervallo.index)
+  // «Looney Tunes Season 1»: la stagione non fa parte del nome della serie.
+  const stagioneInCoda = /\b(?:season|stagione) \d{1,2}\b/i.exec(s)
+  if (stagioneInCoda && stagioneInCoda.index > 0) fine = Math.min(fine, stagioneInCoda.index)
 
   // L'anno è l'ULTIMO prima delle etichette, e mai la prima parola: «Blade
   // Runner 2049 (2017)» è del 2017, «2001 Odissea nello spazio 1968» del 1968.
@@ -233,7 +247,7 @@ function leggiNome(nome: string): NomeFilm & { anime?: true } {
     .slice(0, fine)
     .replace(/[\s([\]-]+$/, '')
     .trim()
-  return { titolo: titolo || s, ...risultato }
+  return { titolo: titolo || s, ...risultato, ...(supposta && { anime: true as const }) }
 }
 
 // Una cartella di stagione: «Season 03», «Stagione 2», «S01», «Series 7».
@@ -265,9 +279,17 @@ function mezzoEpisodio(nomeFile: string): boolean {
   return /\bS\d{1,2} ?E\d{1,3}[.,]\d\b/i.test(s) || /^\s*(?:e|ep|episode|episodio)?\s*[-.]?\s*\d{1,3}[.,]\d\b/i.test(s)
 }
 
+// «110 Big Top Bunny» nella stagione 1: il numero porta davanti la stagione
+// (1, poi l'episodio 10), come si usa per i cartoni. Solo se la prima cifra è
+// proprio la stagione: in un'altra cartella 110 resta 110.
+function numeroInStagione(episodio: number | undefined, stagione: number): number | undefined {
+  if (episodio === undefined || episodio < 100 || episodio > 999 || stagione < 1) return episodio
+  return Math.floor(episodio / 100) === stagione && episodio % 100 > 0 ? episodio % 100 : episodio
+}
+
 // Un «titolo» che è solo il segno dell'episodio: «S03E01.mp4», «OVA 3.mkv».
 function soloEpisodio(titolo: string): boolean {
-  return /^(?:S\d{1,2} ?E\d{1,3}|\d{1,2}x\d{2,3}|(?:OAD|OVA|ONA|Special|Speciale)\s*E?\s*\d{1,3})\b/i.test(titolo)
+  return /^(?:S\d{1,2} ?E\d{1,3}|\d{1,2}x\d{2,3}|(?:OAD|OVA|ONA|Special|Speciale)\s*E?\s*\d{1,3}|(?:episode|episodio)\s*\d{1,3})\b/i.test(titolo)
 }
 
 // L'episodio di un file dentro una cartella di stagione, quando il nome non
@@ -285,6 +307,13 @@ function episodioDaNomeFile(nomeFile: string): number | undefined {
 // `serie` è la cartella sopra una cartella di stagione: «South Park/Season 03/
 // 01 Rainforest Shmainforest.mp4» è South Park, stagione 3, episodio 1.
 export function filmDaCercare(nomeFile: string, cartella: string | null, serie: string | null = null): NomeFilm {
+  // «Looney Tunes Season 1»: serie e stagione nella stessa cartella. Vale come
+  // «Looney Tunes/Season 1». Non una raccolta («Friends Season 1-10»).
+  const serieEStagione =
+    !serie && cartella
+      ? /^(.+?)[\s._-]+(?:season|stagione)\s*(\d{1,2})(?!\d)(?!\s*(?:-|to\b|a\b|al\b)\s*\d)/i.exec(cartella)
+      : null
+  if (serieEStagione) return filmDaCercare(nomeFile, `Season ${Number(serieEStagione[2])}`, serieEStagione[1])
   const { anime, ...daFile } = leggiNome(nomeFile)
   const stagione = stagioneDaCartella(cartella)
   if (serie && stagione !== null) {
@@ -292,7 +321,7 @@ export function filmDaCercare(nomeFile: string, cartella: string | null, serie: 
     // Senza numero: un mezzo episodio, o uno speciale che il file chiama
     // episodio 0 («S04E00»).
     const mezzo = mezzoEpisodio(nomeFile) || (daFile.stagione === 0 && daFile.episodio === undefined)
-    const episodio = mezzo ? undefined : (daFile.episodio ?? episodioDaNomeFile(nomeFile))
+    const episodio = mezzo ? undefined : (daFile.episodio ?? numeroInStagione(episodioDaNomeFile(nomeFile), stagione))
     // «South Park S03E06.mp4» dice da sé di che serie è, ed è più affidabile
     // della cartella sopra, che può essere una raccolta col nome della release.
     const dalFile = daFile.stagione !== undefined && !soloEpisodio(daFile.titolo)

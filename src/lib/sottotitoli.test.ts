@@ -176,6 +176,35 @@ describe('filmDaCercare: l’anno davanti al titolo', () => {
   })
 })
 
+describe('filmDaCercare: serie in cartelle scritte a modo loro', () => {
+  it('«Looney Tunes Season 1» è la stagione 1 di Looney Tunes, e «110» il suo episodio 10', () => {
+    expect(filmDaCercare('110 Big Top Bunny.mp4', 'Looney Tunes Season 1')).toEqual({ titolo: 'Looney Tunes', stagione: 1, episodio: 10 })
+    expect(filmDaCercare('101 Baseball Bugs.mp4', 'Looney Tunes Season 1')).toEqual({ titolo: 'Looney Tunes', stagione: 1, episodio: 1 })
+    expect(filmDaCercare('07 Rabbit Kin.mp4', 'Looney Tunes - Stagione 2')).toEqual({ titolo: 'Looney Tunes', stagione: 2, episodio: 7 })
+  })
+
+  it('una raccolta di più stagioni non è una stagione', () => {
+    expect(filmDaCercare('Friends S03E04.mkv', 'Friends Season 1-10')).toMatchObject({ titolo: 'Friends', stagione: 3, episodio: 4 })
+  })
+
+  it('«Episode 3» senza stagione è l’episodio 3 di una miniserie', () => {
+    expect(filmDaCercare('Elements.of.Chernobyl.Episode.3.Open.Wide.O.Earth.mp4', 'Elements of Chernobyl')).toEqual({
+      titolo: 'Elements of Chernobyl',
+      stagione: 1,
+      episodio: 3,
+    })
+    expect(filmDaCercare('Elements.of Chernobyl Episode 1 1.23.45.mp4', 'Elements of Chernobyl')).toMatchObject({ stagione: 1, episodio: 1 })
+  })
+
+  it('ma un film con l’anno resta un film anche se dice «Episode»', () => {
+    expect(filmDaCercare('Star.Wars.Episode.4.A.New.Hope.1977.1080p.mkv', null).stagione).toBeUndefined()
+  })
+
+  it('il nome della serie non porta con sé «Season 1»', () => {
+    expect(analizzaNomeFilm('Looney Tunes Season 1').titolo).toBe('Looney Tunes')
+  })
+})
+
 describe('cartellaRaccolta', () => {
   it('riconosce i pacchetti di film', () => {
     for (const c of [

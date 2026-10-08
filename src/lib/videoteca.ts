@@ -1,5 +1,5 @@
 import { corrispondeRicerca, normalizzaRicerca } from './ricercaLista'
-import { analizzaNomeFilm, filmDaCercare, stagioneDaCartella } from './sottotitoli'
+import { analizzaNomeFilm, cartellaRaccolta, filmDaCercare, stagioneDaCartella } from './sottotitoli'
 import type { VoceStreaming } from './streaming'
 import { arrivatoAllaFine, contaComeVisto } from './fineVisione'
 
@@ -217,6 +217,10 @@ function nomeSerieDaFile(v: Pick<VideoDaRaggruppare, 'name' | 'cartella' | 'seri
   const grezzo = v.serie ?? (letto.stagione !== undefined && v.cartella && stagioneDaCartella(v.cartella) === null ? v.cartella : null) ?? letto.titolo
   // «Shingeki no Kyojin [10bits x265]» si mostra senza le etichette della
   // release; l'anno, se c'è, resta: distingue i remake.
+  return serieDaNome(grezzo)
+}
+
+function serieDaNome(grezzo: string): { chiave: string; nome: string } {
   const pulito = analizzaNomeFilm(grezzo)
   const nome = pulito.anno !== undefined ? `${pulito.titolo} (${pulito.anno})` : pulito.titolo
   return { chiave: normalizzaRicerca(pulito.titolo), nome }
@@ -241,15 +245,24 @@ export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]
     if (!riconosciute.has(chiave)) riconosciute.set(chiave, { chiave: `tv-${v.voce.tmdb_id}`, titolo: v.voce.titolo ?? chiave })
   }
 
+  // Le cartelle che contengono episodi: un file senza numero accanto a loro
+  // («Elements of Chernobyl/Vichnaya Pamyat.mp4») è un episodio di quella
+  // serie, non un film col nome della cartella. Non un pacchetto di film.
+  const conEpisodi = new Set<string>()
+  for (const v of video) {
+    if (v.cartella && !cartellaRaccolta(v.cartella) && filmDaCercare(v.name, v.cartella, v.serie).stagione !== undefined) conEpisodi.add(v.cartella)
+  }
+
   const gruppi = new Map<string, GruppoSerie & { riconosciuta: boolean }>()
   const sciolti: string[] = []
   for (const v of video) {
     const voce = v.voce ?? null
     const letto = filmDaCercare(v.name, v.cartella, v.serie)
-    const daCartella = nomeSerieDaFile(v)
     const tv = voce?.media_type === 'tv' && !!voce.tmdb_id
+    const vicino = !tv && letto.stagione === undefined && !v.serie && !!v.cartella && conEpisodi.has(v.cartella)
+    const daCartella = vicino ? serieDaNome(v.cartella as string) : nomeSerieDaFile(v)
     // Basta la stagione: un mezzo episodio è uno speciale senza numero.
-    const episodico = tv || letto.stagione !== undefined || !!v.serie
+    const episodico = tv || letto.stagione !== undefined || !!v.serie || vicino
     if (!episodico) {
       sciolti.push(v.id)
       continue
