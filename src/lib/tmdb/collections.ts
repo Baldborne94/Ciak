@@ -84,7 +84,8 @@ export async function getMovieCollectionId(movieId: number): Promise<number | nu
 // aprire una richiesta gemella. La cache da sola non basta, perché viene
 // scritta solo quando la risposta è arrivata.
 // Una sola richiesta, in inglese, porta sia l'anno (che non dipende dalla
-// lingua) sia i titoli per la ricerca: originale e inglese. Anno e titoli si
+// lingua) sia i titoli per la ricerca: originale, inglese e italiano (dalle
+// traduzioni). Anno e titoli si
 // chiedono insieme all'apertura di una lista, e così costano una richiesta
 // per titolo invece di due.
 interface TitleLookup {
@@ -96,6 +97,13 @@ interface TitleLookup {
   saga: Collection | null
 }
 const lookupInFlight = new Map<string, Promise<TitleLookup>>()
+
+// Il titolo italiano fra le traduzioni: la videoteca mostra l'originale
+// («Snow White and the Seven Dwarfs»), e cercando «Biancaneve» lo si trova lo stesso.
+function titoloItaliano(traduzioni: { iso_639_1?: string; data?: { title?: string; name?: string } }[] = []): string | null {
+  const it = traduzioni.find((t) => t.iso_639_1 === 'it' && (t.data?.title || t.data?.name))
+  return it?.data?.title || it?.data?.name || null
+}
 
 function fetchLookupOnce(mediaType: TmdbType, tmdbId: number, key: string): Promise<TitleLookup> {
   const pending = lookupInFlight.get(key)
@@ -110,10 +118,17 @@ function fetchLookupOnce(mediaType: TmdbType, tmdbId: number, key: string): Prom
     original_name?: string
     genres?: { id: number }[]
     belongs_to_collection?: { id: number; name: string; poster_path?: string | null } | null
-  }>(`/${mediaType}/${tmdbId}`, { language: 'en-US' })
+    translations?: { translations?: { iso_639_1?: string; data?: { title?: string; name?: string } }[] }
+  }>(`/${mediaType}/${tmdbId}`, { language: 'en-US', append_to_response: 'translations' })
     .then((raw) => ({
       year: (raw.release_date || raw.first_air_date)?.slice(0, 4) ?? null,
-      titoli: [...new Set([raw.title ?? raw.name, raw.original_title ?? raw.original_name].filter((x): x is string => !!x))],
+      titoli: [
+        ...new Set(
+          [raw.title ?? raw.name, raw.original_title ?? raw.original_name, titoloItaliano(raw.translations?.translations)].filter(
+            (x): x is string => !!x,
+          ),
+        ),
+      ],
       generi: (raw.genres ?? []).map((g) => g.id),
       saga: raw.belongs_to_collection
         ? {

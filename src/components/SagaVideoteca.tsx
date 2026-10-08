@@ -62,18 +62,22 @@ export default function SagaVideoteca({
       </button>
       {aperta && (
         <div id={idElenco} className="border-t border-theatre-800 bg-theatre-950/40">
+          {/* In cima, subito sotto il nome: in fondo, dopo 133 film Disney, non
+              li trovava nessuno. */}
+          {(azioni || onCancella) && (
+            <div role="toolbar" aria-label={`Comandi di ${nome}`} className="flex flex-wrap gap-x-5 gap-y-1 border-b border-theatre-800 px-4 py-2">
+              {azioni}
+              {/* Solo a saga aperta: chiusa, un clic per sbaglio costerebbe troppo. */}
+              {onCancella && (
+                <button type="button" onClick={onCancella} disabled={cancellando} className="text-xs text-zinc-500 transition hover:text-red-400">
+                  {cancellando ? 'Cancello…' : '🗑 Cancella la saga da Drive'}
+                </button>
+              )}
+            </div>
+          )}
           <ul aria-label={`Film di ${nome}`} className="divide-y divide-theatre-800 pl-6">
             {children}
           </ul>
-          <div className="flex flex-wrap gap-x-5 gap-y-1 px-4 py-2">
-            {azioni}
-            {/* Solo a saga aperta: chiusa, un clic per sbaglio costerebbe troppo. */}
-            {onCancella && (
-              <button type="button" onClick={onCancella} disabled={cancellando} className="text-xs text-zinc-500 transition hover:text-red-400">
-                {cancellando ? 'Cancello…' : '🗑 Cancella la saga da Drive'}
-              </button>
-            )}
-          </div>
         </div>
       )}
     </>

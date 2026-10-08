@@ -1,6 +1,6 @@
 import { mapLimit } from './mapLimit'
 import { logFailure } from './logFailure'
-import { fetchAlternativeTitles, fetchReadableTitle, searchMulti } from './tmdb'
+import { fetchAlternativeTitles, fetchOriginalTitle, searchMulti } from './tmdb'
 import { filmDaCercare } from './sottotitoli'
 import { chiaveSerie } from './videoteca'
 import { abbinamentoDa, contaComeVisto, salvaStreaming, scegliAbbinamento, type VoceStreaming } from './streaming'
@@ -10,13 +10,12 @@ import type { DriveVideo } from './googleDrive'
 import type { MediaItem } from './types'
 import type { NomeFilm } from './sottotitoli'
 
-// Il titolo da salvare: quello italiano, come nel resto dell'app (l'originale
-// solo se non c'è una traduzione leggibile). Prima era l'originale: i film
-// americani in inglese, gli anime in italiano, e la videoteca a metà. La
-// ricerca trova comunque anche il nome originale e quello inglese.
+// Il titolo da salvare: quello originale del film, come lo si scarica e lo si
+// guarda; tradotto solo se è in un alfabeto che non si legge (gli anime). Il
+// resto dell'app è in italiano, e la videoteca si cerca anche in italiano.
 export async function titoloDaSalvare(item: MediaItem): Promise<string> {
   try {
-    return await fetchReadableTitle(item.mediaType, item.id)
+    return await fetchOriginalTitle(item.mediaType, item.id)
   } catch {
     return item.title
   }
@@ -24,8 +23,9 @@ export async function titoloDaSalvare(item: MediaItem): Promise<string> {
 
 // I titoli già salvati prima di questa correzione si ricontrollano una volta
 // per dispositivo: rifarlo a ogni apertura della lista vorrebbe dire una
-// richiesta a TMDB per file, ogni volta. v2: da originale a italiano.
-const CHIAVE_TITOLO_IT = 'ciak:titolo-italiano-v2:'
+// richiesta a TMDB per file, ogni volta. v3: di nuovo l'originale, dopo un
+// giorno in italiano (v2).
+const CHIAVE_TITOLO_IT = 'ciak:titolo-originale-v3:'
 function giaControllato(fileId: string): boolean {
   try {
     return localStorage.getItem(CHIAVE_TITOLO_IT + fileId) === '1'
@@ -231,8 +231,8 @@ export async function riconosciNuovi(
       falliti++
     }
   })
-  // I titoli salvati prima, forse in un'altra lingua: una verifica sola per
-  // file. Vale anche per quelli scelti a mano, di cui cambia solo la lingua.
+  // I titoli salvati prima, forse tradotti: una verifica sola per file. Vale
+  // anche per quelli scelti a mano, di cui cambia solo la lingua.
   const daCorreggere = [...esito.values()].filter(
     (r) => r.tmdb_id && r.media_type && !giaControllato(r.drive_file_id),
   )
@@ -243,7 +243,7 @@ export async function riconosciNuovi(
       const k = `${r.media_type}-${r.tmdb_id}`
       let p = originali.get(k)
       if (!p) {
-        p = fetchReadableTitle(r.media_type as 'movie' | 'tv', r.tmdb_id as number)
+        p = fetchOriginalTitle(r.media_type as 'movie' | 'tv', r.tmdb_id as number)
         p.catch(() => originali.delete(k))
         originali.set(k, p)
       }

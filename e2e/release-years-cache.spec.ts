@@ -63,7 +63,7 @@ test('gli anni di uscita non vengono richiesti di nuovo alla visita successiva',
   // seconda visita le richiedeva tutte, facendo fallire il test a caso.
   const salvati = () =>
     page.evaluate(() =>
-      ['ciak:release-years:v1', 'ciak:titoli-ricerca:v1'].map(
+      ['ciak:release-years:v1', 'ciak:titoli-ricerca:v2'].map(
         (k) => Object.keys(JSON.parse(localStorage.getItem(k) ?? '{}')).length,
       ),
     )

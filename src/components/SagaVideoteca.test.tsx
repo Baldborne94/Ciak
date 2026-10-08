@@ -49,4 +49,21 @@ describe('SagaVideoteca', () => {
     await userEvent.click(screen.getByRole('button', { name: '🗑 Cancella la saga da Drive' }))
     expect(onCancella).toHaveBeenCalledTimes(1)
   })
+
+  it('aperta, i comandi stanno in cima, prima dei film', async () => {
+    // Con 133 film Disney, in fondo non li trovava nessuno.
+    saga({ azioni: <button type="button">✎ Modifica la saga</button>, onCancella: vi.fn() })
+    await userEvent.click(screen.getByRole('button', { name: /Alien/ }))
+    const comandi = screen.getByRole('toolbar', { name: 'Comandi di Alien' })
+    expect(comandi).toContainElement(screen.getByRole('button', { name: '✎ Modifica la saga' }))
+    const film = screen.getByRole('list', { name: 'Film di Alien' })
+    // Nel documento la barra viene prima dell'elenco.
+    expect(comandi.compareDocumentPosition(film) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('senza comandi non c è una barra vuota', async () => {
+    saga()
+    await userEvent.click(screen.getByRole('button', { name: /Alien/ }))
+    expect(screen.queryByRole('toolbar')).not.toBeInTheDocument()
+  })
 })

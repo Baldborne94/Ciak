@@ -484,13 +484,13 @@ test('le «Mie liste» diventano raccolte nella videoteca, coi titoli che sono s
 
   // Aperta, i titoli sotto la fila; e si sceglie la copertina.
   await riquadro.click()
-  await expect(page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /La canzone del mare/ })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /Song of the Sea/ })).toBeVisible()
   await page.getByRole('button', { name: '🖼️ Cambia copertina' }).click()
   await page.getByRole('dialog').getByRole('button', { name: /Sfondo 1 di/ }).click()
   await expect.poll(() => db.tables.user_lists.find((l) => l.id === 'l-cartoon')?.copertina).toBe('/mare.jpg')
   await expect(riquadro.locator('img')).toHaveAttribute('src', 'https://image.tmdb.org/t/p/w780/mare.jpg')
 
-  await page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /La canzone del mare/ }).click()
+  await page.getByRole('list', { name: 'Titoli di Cartoon Saloon' }).getByRole('button', { name: /Song of the Sea/ }).click()
   await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
 })
 
@@ -1814,11 +1814,11 @@ test('la lista riconosce i film di Drive e li mostra col titolo e la locandina',
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
   // Il file «Song.of.the.Sea.2014.1080p.mp4» è diventato il film di TMDB.
-  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001')).toMatchObject({
     tmdb_id: 110416,
     media_type: 'movie',
-    titolo: 'La canzone del mare',
+    titolo: 'Song of the Sea',
     nome_file: 'Song.of.the.Sea.2014.1080p.mp4',
   })
   // «B99» non somiglia abbastanza a niente: resta il nome del file, e la riga
@@ -1835,23 +1835,34 @@ test('la videoteca si cerca, si ordina e si filtra per genere', async ({ page })
   // Song of the Sea riconosciuto: la sua scheda dice anno (2020 nel finto
   // catalogo) e genere (Horror); B99 resta un file senza titolo.
   await cercaTmdb(page, [SONG])
+  // La scheda in inglese, come la chiede Ciak per anno, generi e titoli da
+  // cercare: l'italiano arriva solo dalle traduzioni.
+  await page.route('**/api/tmdb*', (route) => {
+    const u = new URL(route.request().url())
+    if (u.searchParams.get('path') === '/movie/110416' && u.searchParams.get('language') === 'en-US') {
+      return route.fulfill({
+        json: movieDetail(110416, 'Song of the Sea', { translations: { translations: [{ iso_639_1: 'it', data: { title: 'La canzone del mare' } }] } }),
+      })
+    }
+    return route.fallback()
+  })
 
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   const righe = () => page.getByRole('list', { name: 'Video della videoteca' }).getByRole('listitem').allTextContents()
 
-  // Ricerca: per titolo italiano, per titolo originale, per nome del file.
+  // Ricerca: per titolo originale, per titolo italiano, per nome del file.
   const cerca = page.getByRole('searchbox', { name: 'Cerca nella videoteca' })
-  await cerca.fill('canzone del')
-  await expect(page.getByText('B99 S7E2', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
-  await expect(page.getByText('1 di 2')).toBeVisible()
   await cerca.fill('song of the')
-  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
+  await expect(page.getByText('B99 S7E2', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  await expect(page.getByText('1 di 2')).toBeVisible()
+  await cerca.fill('canzone del')
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   await expect(page.getByText('1 di 2')).toBeVisible()
   await cerca.fill('s7e2')
-  await expect(page.getByText('La canzone del mare', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('Song of the Sea', { exact: true })).toHaveCount(0)
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
   await cerca.fill('nessun film così')
   await expect(page.getByText('Nessun video corrisponde alla ricerca o al genere scelto.')).toBeVisible()
@@ -1862,17 +1873,17 @@ test('la videoteca si cerca, si ordina e si filtra per genere', async ({ page })
   await expect(genere.locator('option', { hasText: 'Horror (1)' })).toHaveCount(1)
   await genere.selectOption({ label: 'Horror (1)' })
   await expect(page.getByText('B99 S7E2', { exact: true })).toHaveCount(0)
-  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   await genere.selectOption({ label: 'Tutti i generi' })
 
   // Ordine: per titolo, per anno (chi non ha l'anno in fondo), per arrivo su Drive.
   const ordina = page.getByRole('combobox', { name: 'Ordina la videoteca' })
-  await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('La canzone del mare')])
+  await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('Song of the Sea')])
   await ordina.selectOption({ label: 'Anno: più recenti' })
-  await expect.poll(righe).toEqual([expect.stringContaining('La canzone del mare'), expect.stringContaining('B99 S7E2')])
+  await expect.poll(righe).toEqual([expect.stringContaining('Song of the Sea'), expect.stringContaining('B99 S7E2')])
   await expect(page.getByText(/^2020 · MP4/)).toBeVisible()
   await ordina.selectOption({ label: 'Aggiunti di recente' })
-  await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('La canzone del mare')])
+  await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('Song of the Sea')])
 
   // L'ordine scelto resta alla visita successiva.
   await page.reload()
@@ -1950,7 +1961,7 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   // (e il titolo del primo è già stato controllato: niente richieste a TMDB).
   await page.addInitScript(() => {
     localStorage.setItem('ciak:riconoscimento-v3:video-sp-000302', '1')
-    localStorage.setItem('ciak:titolo-italiano-v2:video-sp-000301', '1')
+    localStorage.setItem('ciak:titolo-originale-v3:video-sp-000301', '1')
   })
   await mockDrive(page, { conSerie: true })
   await cercaTmdb(page, [SONG])
@@ -1964,7 +1975,7 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
-  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /^South Park/ })).toHaveCount(1)
   await page.getByRole('button', { name: /^South Park/ }).click()
   const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
@@ -2061,9 +2072,9 @@ test('dalla videoteca si sceglie il titolo di una serie intera, e di un film', a
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
   // «Da sistemare»: solo ciò che Ciak non ha riconosciuto. Song of the Sea sì.
-  await expect(page.getByRole('listitem').filter({ hasText: 'La canzone del mare' }).getByRole('button', { name: 'Scegli il titolo' })).toBeVisible()
+  await expect(page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' })).toBeVisible()
   await page.getByRole('button', { name: /⚠ Da sistemare/ }).click()
-  await expect(page.getByRole('listitem').filter({ hasText: 'La canzone del mare' }).getByRole('button', { name: 'Scegli il titolo' })).toHaveCount(0)
+  await expect(page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' })).toHaveCount(0)
   await page.getByRole('button', { name: /^South Park/, expanded: false }).click()
   await page.getByRole('button', { name: '✎ Scegli il titolo della serie' }).click()
 
@@ -2087,7 +2098,7 @@ test('dalla videoteca si sceglie il titolo di una serie intera, e di un film', a
   await expect(page.getByRole('button', { name: /^Parco del Sud/ })).toBeVisible()
 
   // Un film: il ✎ accanto alla riga.
-  await page.getByRole('listitem').filter({ hasText: 'La canzone del mare' }).getByRole('button', { name: 'Scegli il titolo' }).click()
+  await page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerca', exact: true }).click()
   await page.getByRole('dialog').getByRole('button', { name: /La canzone del mare/ }).click()
   await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001')?.abbinato_a_mano).toBe(true)
@@ -2232,7 +2243,7 @@ test('un mezzo episodio già salvato come S1E13 passa fra gli speciali, senza ce
     ],
   })
   await page.addInitScript(() => {
-    for (const id of ['video-snk-s01e04', 'video-snk-oad01', 'video-snk-s01e135']) localStorage.setItem(`ciak:titolo-italiano-v2:${id}`, '1')
+    for (const id of ['video-snk-s01e04', 'video-snk-oad01', 'video-snk-s01e135']) localStorage.setItem(`ciak:titolo-originale-v3:${id}`, '1')
   })
   await mockDrive(page, { conAnime: true })
   await cercaTmdb(page, [SONG])
@@ -2283,7 +2294,7 @@ test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede
   })
 
   await apriSongOfTheSea(page)
-  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toHaveAttribute('href', '/title/movie/110416')
+  await expect(page.getByRole('link', { name: 'Song of the Sea' })).toHaveAttribute('href', '/title/movie/110416')
 
   await portaIlVideoA(page, 5400, 5640)
 
@@ -2307,7 +2318,7 @@ test('saltare alla fine senza averlo guardato non lo segna come visto', async ({
   })
 
   await apriSongOfTheSea(page)
-  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Song of the Sea' })).toBeVisible()
   await portaIlVideoA(page, 5500, 5640)
   await page.waitForTimeout(500)
 
@@ -2325,7 +2336,7 @@ test('riapre il film dal punto in cui ci si era fermati', async ({ page }) => {
   })
 
   await apriSongOfTheSea(page)
-  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Song of the Sea' })).toBeVisible()
   // I metadati del video arrivano: si riparte qualche secondo prima.
   await page.evaluate(() => document.querySelector('video')?.dispatchEvent(new Event('loadedmetadata')))
 
@@ -2466,7 +2477,7 @@ async function apriShogun(page: Page, initScript?: () => void) {
   // Titoli già verificati: altrimenti la videoteca li ricontrolla in sottofondo
   // e il finto TMDB li rinomina a test in corso.
   await page.addInitScript(() => {
-    for (const id of ['video-shogun-01', 'video-shogun-02']) localStorage.setItem(`ciak:titolo-italiano-v2:${id}`, '1')
+    for (const id of ['video-shogun-01', 'video-shogun-02']) localStorage.setItem(`ciak:titolo-originale-v3:${id}`, '1')
   })
   await conLettoreCiak(page)
   await mockDrive(page, { conShogun: true, conShogunPrimo: true })
@@ -2641,8 +2652,8 @@ test('«Non è questo?» fa scegliere il titolo a mano, e resta scelto', async (
   await cercaTmdb(page, [SONG, { ...SONG, id: 42, title: 'Song of the Sea (corto)', original_title: 'Song of the Sea (corto)', release_date: '2012-01-01' }])
 
   await apriSongOfTheSea(page)
-  // La lista l'ha già riconosciuto come «La canzone del mare»: lo si corregge.
-  await expect(page.getByRole('link', { name: 'La canzone del mare' })).toBeVisible()
+  // La lista l'ha già riconosciuto come «Song of the Sea»: lo si corregge.
+  await expect(page.getByRole('link', { name: 'Song of the Sea' })).toBeVisible()
   await page.getByRole('button', { name: 'Non è questo?' }).click()
   await page.getByRole('button', { name: 'Cerca', exact: true }).click()
   // Accanto al titolo italiano c'è quello originale: i file hanno quel nome.
@@ -2702,34 +2713,35 @@ test('a fine episodio lo spunta, mette la serie in corso e propone il prossimo',
   await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
 })
 
-test('i titoli della videoteca sono in italiano, anche quelli salvati prima in originale', async ({ page }) => {
+test('i titoli restano quelli originali del film, tradotti solo se illeggibili', async ({ page }) => {
   const db = await mockSupabase(page, {
-    // Riconosciuto quando Ciak salvava il titolo originale.
+    // Riconosciuto prima della correzione: col titolo tradotto.
     user_streaming: [
-      { id: 's0', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: 'video-b99-00001', nome_file: 'B99 S7E2.mp4', tmdb_id: 48891, media_type: 'tv', titolo: 'Brooklyn Nine-Nine', stagione: 7, episodio: 2, posizione: 0, secondi_visti: 0, abbinato_a_mano: true },
+      { id: 's0', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: 'video-b99-00001', nome_file: 'B99 S7E2.mp4', tmdb_id: 48891, media_type: 'tv', titolo: 'Brooklyn 99 - Nove-Nove', stagione: 7, episodio: 2, posizione: 0, secondi_visti: 0, abbinato_a_mano: true },
     ],
   })
   await mockDrive(page)
   await page.route('**/api/tmdb*', (route) => {
     const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    // La ricerca in italiano restituisce il titolo tradotto…
     if (path === '/search/multi') return route.fulfill({ json: { results: [SONG] } })
-    if (path === '/tv/48891') return route.fulfill({ json: movieDetail(48891, 'Brooklyn 99 - Nove-Nove', { name: 'Brooklyn 99 - Nove-Nove', original_name: 'Brooklyn Nine-Nine' }) })
+    // …ma il film è «Song of the Sea», ed è quello che si guarda.
+    if (path === '/tv/48891') return route.fulfill({ json: movieDetail(48891, 'Brooklyn 99 - Nove-Nove', { original_title: 'Brooklyn Nine-Nine' }) })
     return route.fallback()
   })
 
   await page.goto('/streaming')
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
-  // Una lingua sola: «La canzone del mare» accanto a «Brooklyn 99», non a
-  // «Brooklyn Nine-Nine».
-  await expect(page.getByText('La canzone del mare', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: /^Brooklyn 99 - Nove-Nove/ })).toBeVisible()
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+  // L'episodio sta sotto la sua serie, che ha il titolo originale.
+  await expect(page.getByRole('button', { name: /^Brooklyn Nine-Nine/ })).toBeVisible()
   await expect
     .poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-song-0001')?.titolo)
-    .toBe('La canzone del mare')
+    .toBe('Song of the Sea')
   await expect
     .poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-b99-00001')?.titolo)
-    .toBe('Brooklyn 99 - Nove-Nove')
+    .toBe('Brooklyn Nine-Nine')
 })
 
 test('un film che non parte (un MKV che il browser non apre) lo dice e propone Drive', async ({ page }) => {

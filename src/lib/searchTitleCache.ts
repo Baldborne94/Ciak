@@ -1,12 +1,13 @@
 import { creaCacheLocale } from './cacheLocale'
 import type { Collection } from './types'
 
-// I titoli con cui cercare un titolo salvato, oltre a quello italiano che
-// user_titles già conserva: l'originale e quello inglese. Si chiedono a TMDB
+// I titoli con cui cercare un titolo salvato, oltre a quello che la riga già
+// conserva: l'originale, l'inglese e l'italiano (v2: prima l'italiano non
+// c'era, e la videoteca, che mostra l'originale, non si cercava in italiano). Si chiedono a TMDB
 // una volta per dispositivo, come gli anni di uscita (`releaseYearCache`).
 // Un titolo cambia di rado (una traduzione che arriva tardi), ma cambia: dopo
 // un mese si richiede.
-const cache = creaCacheLocale<string[]>('ciak:titoli-ricerca:v1', {
+const cache = creaCacheLocale<string[]>('ciak:titoli-ricerca:v2', {
   durataMs: 30 * 24 * 60 * 60 * 1000,
   valido: (v): v is string[] => Array.isArray(v),
 })
