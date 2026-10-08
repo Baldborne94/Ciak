@@ -368,8 +368,20 @@ export function soloRiproducibili(video: DriveVideo[]): { visibili: DriveVideo[]
 const CARTELLA_EXTRA =
   /^\s*(?:featurettes?|trailers?|interviews?|interviste|behind[ ._-]?the[ ._-]?scenes|dietro le quinte|deleted[ ._-]?scenes|scene tagliate|making[ ._-]?of|samples?)\s*$/i
 
-export function senzaExtra<T extends Pick<DriveVideo, 'cartella'>>(video: T[]): { visibili: T[]; extra: number } {
-  const visibili = video.filter((v) => !v.cartella || !CARTELLA_EXTRA.test(v.cartella))
+// Gli scarti delle release, accanto al film: l'anteprima («….Sample.mp4») e il
+// promo di pochi MB del gruppo che l'ha fatta («ETRG.mp4»). Nessun film né
+// episodio sta sotto i 5 MB; senza misura nota il file resta.
+const ANTEPRIMA = /(?:^|[._ -])sample(?:$|[._ -])/i
+const MINIMO_BYTE = 5 * 1024 * 1024
+
+function scarto(v: Pick<DriveVideo, 'cartella' | 'name' | 'size'>): boolean {
+  if (v.cartella && CARTELLA_EXTRA.test(v.cartella)) return true
+  if (ANTEPRIMA.test(v.name.replace(/\.[a-z0-9]{2,4}$/i, ''))) return true
+  return v.size !== null && v.size < MINIMO_BYTE
+}
+
+export function senzaExtra<T extends Pick<DriveVideo, 'cartella' | 'name' | 'size'>>(video: T[]): { visibili: T[]; extra: number } {
+  const visibili = video.filter((v) => !scarto(v))
   return { visibili, extra: video.length - visibili.length }
 }
 

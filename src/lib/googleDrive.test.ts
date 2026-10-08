@@ -94,6 +94,22 @@ describe('senzaExtra', () => {
     expect(visibili.map((x) => x.name)).toEqual(['Paprika (2006).mp4', 'OADE01.mp4', 'NCOP.mp4'])
     expect(extra).toBe(3)
   })
+
+  it('le anteprime e i promo delle release non sono titoli', () => {
+    // Accanto a «Deathly Hallows Part 1»: «ETRG.mp4» da 1 MB (il promo del
+    // gruppo) e «…ETRG.Sample.mp4», un pezzo del film.
+    const mb = (n: number) => n * 1024 * 1024
+    const { visibili, extra } = senzaExtra([
+      { ...v('ETRG.mp4', 'HP'), size: mb(1) },
+      { ...v('Deathly.Hallows.Part.1.2010.1080p.BluRay.x264.DTS-ETRG.Sample.mp4', 'HP'), size: mb(26) },
+      { ...v('Deathly.Hallows.Part.1.2010.1080p.BluRay.x264.DTS-ETRG.mp4', 'HP'), size: mb(2400) },
+      // «Sample» dentro un titolo non è un'anteprima, e senza misura nota non si scarta.
+      { ...v('Sampled.Lives.2019.mp4', null), size: mb(900) },
+      v('Corto.mp4', null),
+    ])
+    expect(visibili.map((x) => x.name)).toEqual(['Deathly.Hallows.Part.1.2010.1080p.BluRay.x264.DTS-ETRG.mp4', 'Sampled.Lives.2019.mp4', 'Corto.mp4'])
+    expect(extra).toBe(2)
+  })
 })
 
 describe('soloRiproducibili', () => {

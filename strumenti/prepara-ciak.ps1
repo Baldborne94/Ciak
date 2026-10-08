@@ -18,6 +18,12 @@
 # file letto e riscritto direttamente su Drive va scaricato e ricaricato
 # intero, ed e' quello che rendeva tutto lentissimo.
 #
+# Gli scarti delle release non vanno su Drive: le anteprime ("...Sample.mp4"),
+# i video promozionali di pochi MB del gruppo che ha fatto la release
+# ("ETRG.mp4") e gli extra dei film (Featurettes, Trailers, Samples...). Su
+# Drive va solo il film. Quando il film della stessa cartella e' fatto, gli
+# scarti si cancellano con l'originale (non con -TieniOriginali).
+#
 # Le sottocartelle si ricopiano uguali (FILM, SERIE TV\South Park\Season 01...):
 # sono le schede e le serie di Ciak. I video gia' presenti su Drive si saltano,
 # quindi si puo' rilanciare quando si vuole: fa solo quelli nuovi.
@@ -43,8 +49,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-07d'
+$Versione = '2026-10-08a'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
+# Gli scarti: un video sotto questa misura e' il promo di una release, non un
+# film ne' un episodio; le cartelle degli extra dei film (gli "Extras" e gli
+# speciali delle serie no: sono la stagione 0).
+$MinimoMB = 5
+$CartelleExtra = '^\s*(featurettes?|trailers?|interviews?|interviste|behind[ ._-]?the[ ._-]?scenes|dietro le quinte|deleted[ ._-]?scenes|scene tagliate|making[ ._-]?of|samples?)\s*$'
 $SottotitoliTesto = @('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text')
 
 # Le lingue dei sottotitoli che servono: il lettore di Ciak offre solo italiano
@@ -298,6 +309,15 @@ function CancellaOriginale($f, [string]$nome, [string]$cartellaDest, [string]$re
   $script:cartelleToccate[$f.DirectoryName] = $true
 }
 
+# Perche' un video e' uno scarto, o $null se va preparato.
+function Scarto($f) {
+  $base = [IO.Path]::GetFileNameWithoutExtension($f.Name)
+  if ($base -match '(^|[._ -])sample($|[._ -])') { return 'anteprima' }
+  if ($f.Directory.Name -match $CartelleExtra) { return 'extra' }
+  if ($f.Length -lt $MinimoMB * 1MB) { return 'promo' }
+  return $null
+}
+
 $Lavoro = Join-Path ([IO.Path]::GetTempPath()) 'ciak-conversione'
 New-Item -ItemType Directory -Force -Path $Lavoro | Out-Null
 
@@ -309,9 +329,14 @@ if ($Encoder -eq 'libx264') { Write-Host 'Ricodifica: con la CPU (nessuna scheda
 Write-Host ''
 
 Write-Host 'Cerco i video...'
-$video = Get-ChildItem -LiteralPath $Origine -Recurse -File |
+$tutti = Get-ChildItem -LiteralPath $Origine -Recurse -File |
   Where-Object { $EstensioniVideo -contains $_.Extension.ToLower() } |
   Sort-Object FullName
+$video = @($tutti | Where-Object { -not (Scarto $_) })
+$scarti = @($tutti | Where-Object { Scarto $_ })
+if ($scarti.Count -gt 0) {
+  Write-Host "Salto $($scarti.Count) scarti delle release (anteprime, promo, extra): su Drive va solo il film." -ForegroundColor DarkGray
+}
 
 $fatti = 0; $saltati = 0; $errori = 0; $ricodificati = 0; $inDownload = 0
 $elencoErrori = @()
@@ -494,6 +519,25 @@ if ($elencoErrori.Count -gt 0) {
 } elseif (Test-Path -LiteralPath $fileErrori) {
   Remove-Item -LiteralPath $fileErrori -ErrorAction SilentlyContinue
 }
+# Gli scarti accanto a un film fatto (o nella sua cartella degli extra) se ne
+# vanno con lui: altrimenti la cartella non si svuoterebbe mai.
+$scartiCancellati = 0
+if (-not $TieniOriginali) {
+  foreach ($f in $scarti) {
+    $cartella = $f.DirectoryName
+    $padre = Split-Path $cartella -Parent
+    if (-not ($cartelleToccate.ContainsKey($cartella) -or $cartelleToccate.ContainsKey($padre))) { continue }
+    if ($f.LastWriteTime -gt $calma -or (InUso $f.FullName)) { continue }
+    try {
+      Remove-Item -LiteralPath $f.FullName -Force
+      $scartiCancellati++
+      $cartelleToccate[$cartella] = $true
+    } catch {
+      $nonCancellati += "$($f.FullName): $($_.Exception.Message)"
+    }
+  }
+}
+
 # Le cartelle rimaste vuote (Season 01, poi la serie) se ne vanno anche loro;
 # quelle di primo livello (FILM, SERIE TV...) restano: e' li' che si mettono i
 # video nuovi.
@@ -514,5 +558,6 @@ if ($nonCancellati.Count -gt 0) {
 
 $inDownloadTesto = if ($inDownload) { ", $inDownload forse ancora in download (rilancia piu' tardi)" } else { '' }
 $cancellatiTesto = if ($cancellati) { ", $cancellati originali cancellati" } else { '' }
+if ($scartiCancellati) { $cancellatiTesto += ", $scartiCancellati scarti cancellati" }
 Write-Host "Finito: $fatti pronti per Ciak ($ricodificati ricodificati), $saltati gia' presenti, $errori errori$inDownloadTesto$cancellatiTesto."
 if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
