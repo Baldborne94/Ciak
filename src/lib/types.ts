@@ -212,6 +212,8 @@ export interface UserList {
   // L'immagine della raccolta nella videoteca (schema v20): percorso TMDB o
   // link https; null per il mosaico.
   copertina?: string | null
+  // Una saga fatta a mano (schema v21): nella videoteca raccoglie i suoi film.
+  come_saga?: boolean
   created_at: string
   updated_at: string
   item_count?: number

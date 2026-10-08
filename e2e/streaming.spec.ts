@@ -490,6 +490,76 @@ test('le «Mie liste» diventano raccolte nella videoteca, coi titoli che sono s
   await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
 })
 
+test('una saga fatta a mano raccoglie film che su TMDB una saga non ce l’hanno', async ({ page }) => {
+  // Alien e Aliens, qui senza saga su TMDB: li si mette insieme a mano.
+  await mockDrive(page, { conSaga: true })
+  const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
+    id: `s-${drive_file_id}`,
+    user_id: E2E_USER.id,
+    drive_file_id,
+    nome_file: null,
+    tmdb_id,
+    media_type: 'movie',
+    titolo,
+    poster_path: `/poster-${tmdb_id}.jpg`,
+    stagione: null,
+    episodio: null,
+    abbinato_a_mano: false,
+    posizione: 0,
+    durata: 7000,
+    secondi_visti: 0,
+    visto_il: null,
+  })
+  const db = await mockSupabase(page, {
+    user_streaming: [film('video-alien-1979', 348, 'Alien'), film('video-aliens-1986', 679, 'Aliens')],
+    user_lists: [],
+    user_list_items: [],
+  })
+  await page.route('**/api/tmdb*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path') ?? ''
+    if (path === '/movie/348') return route.fulfill({ json: movieDetail(348, 'Alien', { release_date: '1979-05-25' }) })
+    if (path === '/movie/679') return route.fulfill({ json: movieDetail(679, 'Aliens', { release_date: '1986-07-18' }) })
+    return route.fallback()
+  })
+  page.on('dialog', (d) => void d.accept())
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByRole('button', { name: /Alien\.1979\.mp4/ })).toBeVisible()
+
+  await page.getByRole('button', { name: '＋ Crea una saga' }).click()
+  const finestra = page.getByRole('dialog')
+  await finestra.getByLabel('Nome della saga').fill('Xenomorfi')
+  await finestra.getByRole('checkbox', { name: /^Alien ·/ }).check()
+  await finestra.getByRole('checkbox', { name: /^Aliens ·/ }).check()
+  await finestra.getByRole('button', { name: 'Crea la saga' }).click()
+
+  // Salvata come lista segnata saga, coi due film.
+  await expect.poll(() => db.tables.user_lists.find((l) => l.name === 'Xenomorfi')?.come_saga).toBe(true)
+  await expect.poll(() => db.tables.user_list_items.map((i) => i.tmdb_id).sort()).toEqual([348, 679])
+  // Nell'elenco una cartella come le saghe di TMDB, e i film non più sparsi.
+  const cartella = page.getByRole('button', { name: /^Xenomorfi ▸/ })
+  await expect(cartella).toContainText('Saga · 2 film · 1979–1986')
+  await expect(page.getByRole('button', { name: /Aliens\.1986\.mp4/ })).toHaveCount(0)
+  // Non è una raccolta in cima: è una saga.
+  await expect(page.getByRole('region', { name: 'Le mie raccolte' })).toHaveCount(0)
+
+  // Si cambia: via Aliens, che torna al suo posto.
+  await cartella.click()
+  await page.getByRole('button', { name: '✎ Modifica la saga' }).click()
+  await page.getByRole('dialog').getByRole('checkbox', { name: /^Aliens ·/ }).uncheck()
+  await page.getByRole('dialog').getByRole('button', { name: 'Salva' }).click()
+  await expect(page.getByRole('button', { name: /^Xenomorfi/ })).toContainText('Saga · 1 film')
+  await expect(page.getByRole('button', { name: /Aliens\.1986\.mp4/ })).toBeVisible()
+
+  // E si scioglie: i film restano, la saga no.
+  await page.getByRole('button', { name: '✎ Modifica la saga' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Sciogli la saga' }).click()
+  await expect(page.getByRole('button', { name: /^Xenomorfi/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /Alien\.1979\.mp4/ })).toBeVisible()
+  expect(db.tables.user_lists.some((l) => l.name === 'Xenomorfi')).toBe(false)
+})
+
 test('gli extra dei film (le featurette) non compaiono come titoli, ma si contano', async ({ page }) => {
   // «Paprika (2006)/Featurettes/Restoring Paprika.mp4» compariva come un film, «Featurettes».
   await mockDrive(page, { conExtra: true })

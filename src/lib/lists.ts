@@ -176,23 +176,72 @@ export async function raccolteUtente(userId: string): Promise<Raccolta[]> {
   return costruisciRaccolte(liste, elementi)
 }
 
-// Le liste con la copertina. Se il database non ha ancora la colonna (il file
-// schema_v20 non è stato eseguito: lo dice la banda in cima) le raccolte ci
-// sono lo stesso, col mosaico: per una copertina mancante non spariscono.
-async function listeConCopertina(userId: string): Promise<{ id: string; name: string; copertina?: string | null }[]> {
+// Le liste con copertina e segno di saga. Se il database è indietro (i file
+// schema_v20 e v21 non eseguiti: lo dice la banda in cima) le raccolte ci sono
+// lo stesso, col mosaico e senza saghe fatte a mano: non spariscono per una
+// colonna che manca.
+type RigaLista = { id: string; name: string; copertina?: string | null; come_saga?: boolean }
+async function listeConCopertina(userId: string): Promise<RigaLista[]> {
   const leggi = (colonne: string) =>
     client().from('user_lists').select(colonne).eq('user_id', userId).order('name', { ascending: true })
-  const { data, error } = await leggi('id, name, copertina')
-  if (!error) return (data ?? []) as unknown as { id: string; name: string; copertina: string | null }[]
-  if (error.code !== '42703' && !/copertina/.test(error.message)) throw new Error(error.message)
-  const senza = await leggi('id, name')
-  if (senza.error) throw new Error(senza.error.message)
-  return (senza.data ?? []) as unknown as { id: string; name: string }[]
+  for (const colonne of ['id, name, copertina, come_saga', 'id, name, copertina', 'id, name']) {
+    const { data, error } = await leggi(colonne)
+    if (!error) return (data ?? []) as unknown as RigaLista[]
+    if (error.code !== '42703' && !/copertina|come_saga/.test(error.message)) throw new Error(error.message)
+  }
+  return []
 }
 
 // La copertina di una lista: un percorso TMDB, un link https, o null per
 // tornare al mosaico.
 export async function aggiornaCopertina(listId: string, copertina: string | null): Promise<void> {
   const { error } = await client().from('user_lists').update({ copertina }).eq('id', listId)
+  if (error) throw new Error(error.message)
+}
+
+// Una saga fatta a mano: una lista segnata come saga, coi film scelti. I
+// titoli in una scrittura sola, non uno per volta.
+export async function creaSaga(userId: string, nome: string, film: ListItemRef[]): Promise<string> {
+  const { data, error } = await client()
+    .from('user_lists')
+    .insert({ user_id: userId, name: nome, description: null, come_saga: true })
+    .select('id')
+    .single()
+  if (error) throw new Error(error.message)
+  const id = (data as { id: string }).id
+  await aggiungiTitoli(userId, id, film)
+  return id
+}
+
+// Rinomina la saga e ne cambia i film: aggiunge quelli nuovi, toglie quelli
+// tolti. I film tolti tornano al loro posto nell'elenco.
+export async function modificaSaga(
+  userId: string,
+  listId: string,
+  nome: string,
+  aggiungi: ListItemRef[],
+  togli: { tmdbId: number; mediaType: MediaType }[],
+): Promise<void> {
+  const { error } = await client().from('user_lists').update({ name: nome }).eq('id', listId)
+  if (error) throw new Error(error.message)
+  await aggiungiTitoli(userId, listId, aggiungi)
+  for (const t of togli) await removeFromList(listId, t.tmdbId, t.mediaType)
+}
+
+async function aggiungiTitoli(userId: string, listId: string, film: ListItemRef[]): Promise<void> {
+  if (film.length === 0) return
+  const { error } = await client()
+    .from('user_list_items')
+    .upsert(
+      film.map((f) => ({
+        list_id: listId,
+        user_id: userId,
+        tmdb_id: f.tmdbId,
+        media_type: f.mediaType,
+        title: f.title,
+        poster_path: f.posterPath,
+      })),
+      { onConflict: 'list_id,tmdb_id,media_type' },
+    )
   if (error) throw new Error(error.message)
 }

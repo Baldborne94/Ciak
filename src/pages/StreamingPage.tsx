@@ -22,8 +22,9 @@ import {
 import SerieVideoteca from '../components/SerieVideoteca'
 import SagaVideoteca from '../components/SagaVideoteca'
 import FilmVideoteca from '../components/FilmVideoteca'
-import { raggruppaSaghe, type GruppoSaga } from '../lib/saghe'
-import { aggiornaCopertina, raccolteUtente } from '../lib/lists'
+import { raggruppaSaghe, unisciSaghe, type GruppoSaga } from '../lib/saghe'
+import { aggiornaCopertina, creaSaga, deleteList, modificaSaga, raccolteUtente } from '../lib/lists'
+import ModificaSaga from '../components/ModificaSaga'
 import { copertinaUrl, type Raccolta } from '../lib/raccolte'
 import RiquadroRaccolta from '../components/RiquadroRaccolta'
 import SceltaCopertina from '../components/SceltaCopertina'
@@ -98,6 +99,9 @@ export default function StreamingPage() {
   const [raccoltaAperta, setRaccoltaAperta] = useState<string | null>(null)
   // La raccolta di cui si sta scegliendo la copertina (il modale aperto).
   const [copertinaDi, setCopertinaDi] = useState<string | null>(null)
+  // La saga fatta a mano che si sta creando (listaId null) o cambiando.
+  const [sagaInModifica, setSagaInModifica] = useState<{ listaId: string | null } | null>(null)
+  const [salvandoSaga, setSalvandoSaga] = useState(false)
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
@@ -172,16 +176,13 @@ export default function StreamingPage() {
     }
   }, [user])
 
-  useEffect(() => {
+  const caricaRaccolte = useCallback(async () => {
     if (!user) return
-    let vivo = true
-    raccolteUtente(user.id)
-      .then((r) => vivo && setRaccolte(r))
-      .catch(logFailure('Raccolte della videoteca (le Mie liste)'))
-    return () => {
-      vivo = false
-    }
+    setRaccolte(await raccolteUtente(user.id))
   }, [user])
+  useEffect(() => {
+    void caricaRaccolte().catch(logFailure('Raccolte della videoteca (le Mie liste)'))
+  }, [caricaRaccolte])
 
   // Anno, generi e titoli originali per ordinare, filtrare e cercare: una
   // richiesta per titolo la prima volta, poi dalla cache del dispositivo. Si
@@ -304,6 +305,56 @@ export default function StreamingPage() {
     }
   }
 
+  // Una saga fatta a mano: una lista segnata come saga, coi film scelti.
+  async function salvaSaga(nome: string, chiavi: string[]) {
+    if (!user || !sagaInModifica) return
+    const perChiave = new Map(filmPerSaga.map((f) => [f.chiave, f]))
+    const ref = (k: string) => {
+      const f = perChiave.get(k)
+      const voce = film.map((x) => archivio.get(x.video.id)).find((v) => v?.media_type === 'movie' && `movie-${v.tmdb_id}` === k)
+      return { tmdbId: Number(k.slice('movie-'.length)), mediaType: 'movie' as const, title: f?.titolo ?? k, posterPath: voce?.poster_path ?? null }
+    }
+    setSalvandoSaga(true)
+    try {
+      if (!sagaInModifica.listaId) {
+        await creaSaga(user.id, nome, chiavi.map(ref))
+      } else {
+        const prima = raccolte.find((r) => r.id === sagaInModifica.listaId)?.chiavi ?? new Set<string>()
+        const togli = [...prima]
+          .filter((k) => k.startsWith('movie-') && !chiavi.includes(k))
+          .map((k) => ({ tmdbId: Number(k.slice('movie-'.length)), mediaType: 'movie' as const }))
+        await modificaSaga(user.id, sagaInModifica.listaId, nome, chiavi.filter((k) => !prima.has(k)).map(ref), togli)
+      }
+      await caricaRaccolte()
+      setSagaInModifica(null)
+    } catch (e) {
+      const messaggio = (e as Error).message
+      setErrore(
+        /come_saga/.test(messaggio)
+          ? 'Per le saghe fatte a mano il database va aggiornato: esegui supabase/schema_v21_saghe_manuali.sql nel SQL Editor di Supabase.'
+          : `Saga non salvata: ${messaggio}`,
+      )
+      setSagaInModifica(null)
+      logFailure('Saga fatta a mano')(e)
+    } finally {
+      setSalvandoSaga(false)
+    }
+  }
+
+  // Sciogliere una saga toglie solo la lista: i file restano, e ogni film
+  // torna al suo posto nell'elenco.
+  async function sciogliSaga(listaId: string, nome: string) {
+    if (!window.confirm(`Vuoi sciogliere la saga «${nome}»?\nI film restano su Drive e tornano al loro posto nell'elenco.`)) return
+    try {
+      await deleteList(listaId)
+      await caricaRaccolte()
+      setSagaInModifica(null)
+    } catch (e) {
+      setErrore(`Saga non sciolta: ${(e as Error).message}`)
+      logFailure('Saga fatta a mano')(e)
+    }
+  }
+
   async function scegliCopertina(listId: string, copertina: string | null) {
     try {
       await aggiornaCopertina(listId, copertina)
@@ -366,7 +417,8 @@ export default function StreamingPage() {
   const filmPerId = new Map(film.map((f) => [f.riga.id, f]))
   const perSaghe = raggruppaSaghe(
     film.map((f) => ({ id: f.riga.id, chiave: chiaveTitolo(f.riga.id), anno: f.riga.anno })),
-    infoTitoli.saghe,
+    // Le saghe di TMDB e quelle fatte a mano (le liste segnate come saga).
+    unisciSaghe(infoTitoli.saghe, raccolte),
   )
   const voci = perSaghe.sciolti.map((id) => filmPerId.get(id) as { riga: RigaVideoteca; video: DriveVideo })
   const saghe = new Map<string, GruppoSaga>(perSaghe.saghe.map((g) => [g.chiave, g]))
@@ -410,6 +462,7 @@ export default function StreamingPage() {
   // Drive. Un titolo resta anche al suo posto nell'elenco, e può stare in più
   // raccolte. Quelle senza niente qui non si mostrano.
   const raccolteScheda = raccolte
+    .filter((r) => !r.comeSaga)
     .map((r) => ({
       raccolta: r,
       film: film.filter((f) => {
@@ -420,7 +473,33 @@ export default function StreamingPage() {
     }))
     .filter((x) => x.film.length + x.serie.length > 0)
   const apertaQui = raccolteScheda.find((x) => x.raccolta.id === raccoltaAperta) ?? null
-  const perCopertina = raccolteScheda.find((x) => x.raccolta.id === copertinaDi) ?? null
+  // La copertina si sceglie per una raccolta o per una saga fatta a mano: le
+  // immagini sono quelle dei loro titoli.
+  const listaCopertina = raccolte.find((r) => r.id === copertinaDi) ?? null
+  const perCopertina = listaCopertina
+    ? {
+        raccolta: listaCopertina,
+        film: film.filter((f) => {
+          const k = chiaveTitolo(f.riga.id)
+          return k !== null && listaCopertina.chiavi.has(k)
+        }),
+        serie: raggruppati.serie.filter((g) => !!g.tmdb && listaCopertina.chiavi.has(g.tmdb)),
+      }
+    : null
+  // I film fra cui comporre una saga: quelli riconosciuti di questa scheda,
+  // uno per titolo (due versioni dello stesso film sono un titolo solo).
+  const filmPerSaga = [
+    ...new Map(
+      film.flatMap((f) => {
+        const k = chiaveTitolo(f.riga.id)
+        const voce = archivio.get(f.video.id)
+        return k
+          ? [[k, { chiave: k, titolo: f.riga.nome, anno: f.riga.anno, poster: voce?.poster_path ? posterUrl(voce.poster_path, 'w185') : null }] as const]
+          : []
+      }),
+    ).values(),
+  ].sort((a, b) => a.titolo.localeCompare(b.titolo, 'it'))
+  const sagaAperta = sagaInModifica?.listaId ? (raccolte.find((r) => r.id === sagaInModifica.listaId) ?? null) : null
   const righe = voci.map((f) => f.riga)
   const videoDi = new Map(voci.map((f) => [f.riga.id, f.video]))
   const generiScheda = generiPresenti(righe, nomiGeneri)
@@ -672,6 +751,15 @@ export default function StreamingPage() {
               ⚠ Da sistemare {quantiDaSistemare}
             </button>
           )}
+          {filmPerSaga.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSagaInModifica({ listaId: null })}
+              className="rounded-lg border border-theatre-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:text-zinc-100"
+            >
+              ＋ Crea una saga
+            </button>
+          )}
           {elenco.length !== righe.length && (
             <span className="text-sm text-zinc-500">
               {elenco.length} di {righe.length}
@@ -747,11 +835,33 @@ export default function StreamingPage() {
             if (saga) {
               const suoi = saga.ids.map((id) => filmPerId.get(id) as { riga: RigaVideoteca; video: DriveVideo })
               const anni = suoi.map((f) => f.riga.anno).filter((a): a is string => !!a)
+              const primaLocandina = suoi.map((f) => archivio.get(f.video.id)?.poster_path).find((p): p is string => !!p) ?? null
               return (
                 <li key={riga.id}>
                   <SagaVideoteca
                     nome={saga.saga.name}
-                    poster={saga.saga.posterPath ? (posterUrl(saga.saga.posterPath, 'w185') ?? null) : null}
+                    poster={
+                      // Fatta a mano: la copertina scelta, se no la locandina del primo film.
+                      saga.saga.listaId
+                        ? (copertinaUrl(saga.saga.copertina ?? null, 'w780') ?? posterUrl(primaLocandina, 'w185'))
+                        : posterUrl(saga.saga.posterPath, 'w185')
+                    }
+                    azioni={
+                      saga.saga.listaId ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setSagaInModifica({ listaId: saga.saga.listaId as string })}
+                            className="text-xs text-zinc-400 transition hover:text-projector"
+                          >
+                            ✎ Modifica la saga
+                          </button>
+                          <button type="button" onClick={() => setCopertinaDi(saga.saga.listaId as string)} className="text-xs text-zinc-400 transition hover:text-projector">
+                            🖼️ Cambia copertina
+                          </button>
+                        </>
+                      ) : undefined
+                    }
                     quanti={suoi.length}
                     visti={suoi.filter((f) => !!archivio.get(f.video.id)?.visto_il).length}
                     anni={anni.length === 0 ? null : anni[0] === anni[anni.length - 1] ? anni[0] : `${anni[0]}–${anni[anni.length - 1]}`}
@@ -775,6 +885,20 @@ export default function StreamingPage() {
         </>
       )}
 
+      {sagaInModifica && (
+        <Modal
+          title={sagaAperta ? `Saga «${sagaAperta.nome}»` : 'Crea una saga'}
+          onClose={() => setSagaInModifica(null)}
+        >
+          <ModificaSaga
+            film={filmPerSaga}
+            iniziale={sagaAperta ? { nome: sagaAperta.nome, chiavi: sagaAperta.chiavi } : undefined}
+            onSalva={(nome, chiavi) => void salvaSaga(nome, chiavi)}
+            onSciogli={sagaAperta ? () => void sciogliSaga(sagaAperta.id, sagaAperta.nome) : undefined}
+            salvando={salvandoSaga}
+          />
+        </Modal>
+      )}
       {perCopertina && (
         <Modal title={`Copertina di «${perCopertina.raccolta.nome}»`} onClose={() => setCopertinaDi(null)}>
           <SceltaCopertina

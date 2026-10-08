@@ -17,7 +17,7 @@ describe('costruisciRaccolte', () => {
   it('ogni lista con i suoi titoli, nell’ordine delle liste', () => {
     const raccolte = costruisciRaccolte(
       [
-        { id: 'l2', name: 'Natale', copertina: '/natale.jpg' },
+        { id: 'l2', name: 'Natale', copertina: '/natale.jpg', come_saga: true },
         { id: 'l1', name: 'Studio Ghibli' },
       ],
       [
@@ -27,9 +27,9 @@ describe('costruisciRaccolte', () => {
         { list_id: 'altra', tmdb_id: 1, media_type: 'movie' },
       ],
     )
-    expect(raccolte.map((r) => [r.id, r.nome, [...r.chiavi], r.copertina])).toEqual([
-      ['l2', 'Natale', ['movie-771'], '/natale.jpg'],
-      ['l1', 'Studio Ghibli', ['movie-129', 'movie-4935'], null],
+    expect(raccolte.map((r) => [r.id, r.nome, [...r.chiavi], r.copertina, r.comeSaga])).toEqual([
+      ['l2', 'Natale', ['movie-771'], '/natale.jpg', true],
+      ['l1', 'Studio Ghibli', ['movie-129', 'movie-4935'], null, false],
     ])
   })
 })
