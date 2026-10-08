@@ -56,7 +56,9 @@ function segnaControllato(fileId: string): void {
 // Transformers Bumblebee - Action 2018…»), che si cercavano col nome del
 // pacchetto o con numero di traccia e genere attaccati al titolo.
 // v9: l'anno davanti al titolo («1940 - Pinocchio», i classici Disney).
-const VERSIONE_RICONOSCIMENTO = 9
+// v10: le stagioni nel nome della cartella («Looney Tunes Season 1») e le
+// miniserie con «Episode 3» senza stagione.
+const VERSIONE_RICONOSCIMENTO = 10
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {

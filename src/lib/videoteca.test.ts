@@ -190,6 +190,43 @@ describe('raggruppaSerie', () => {
     ])
   })
 
+  it('le stagioni chiamate «Looney Tunes Season 1», «… Season 2» sono una serie sola', () => {
+    const { serie, sciolti } = raggruppaSerie([
+      { id: 'a', name: '110 Big Top Bunny.mp4', cartella: 'Looney Tunes Season 1', serie: null },
+      { id: 'b', name: '101 Baseball Bugs.mp4', cartella: 'Looney Tunes Season 1', serie: null },
+      { id: 'c', name: '203 Bunny Hugged.mp4', cartella: 'Looney Tunes Season 2', serie: null },
+    ])
+    expect(sciolti).toEqual([])
+    expect(serie).toHaveLength(1)
+    expect(serie[0].titolo).toBe('Looney Tunes')
+    expect(serie[0].episodi.map((e) => [e.id, e.stagione, e.episodio]).sort()).toEqual([
+      ['a', 1, 10],
+      ['b', 1, 1],
+      ['c', 2, 3],
+    ])
+  })
+
+  it('un file senza numero nella cartella di una serie è un episodio di quella serie, non un film', () => {
+    // «Elements of Chernobyl/Vichnaya Pamyat.mp4» accanto a «…Episode.3…»:
+    // compariva come un film a sé col nome della cartella.
+    const cartella = 'Elements of Chernobyl'
+    const { serie, sciolti } = raggruppaSerie([
+      { id: 'e3', name: 'Elements.of.Chernobyl.Episode.3.Open.Wide.O.Earth.mp4', cartella, serie: null },
+      { id: 'e5', name: 'Vichnaya Pamyat.mp4', cartella, serie: null },
+    ])
+    expect(sciolti).toEqual([])
+    expect(serie).toHaveLength(1)
+    expect(serie[0].episodi.map((e) => [e.id, e.stagione])).toEqual([
+      ['e3', 1],
+      ['e5', null],
+    ])
+  })
+
+  it('un film da solo nella sua cartella resta un film', () => {
+    const { sciolti } = raggruppaSerie([{ id: 'f', name: 'Alien.1979.mkv', cartella: 'Alien (1979)', serie: null }])
+    expect(sciolti).toEqual(['f'])
+  })
+
   it('gli episodi di un anime con i nomi alla giapponese sono una serie sola', () => {
     // Prima: 26 righe «[a-S] Samurai Champloo (01-26) (1080p)», una per file.
     const cartella = '[a-S] Samurai Champloo (01-26) (1080p)'
