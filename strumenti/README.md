@@ -27,6 +27,13 @@ su Drive va solo il risultato, una volta.
 
 I video già presenti su Drive si saltano: si può rilanciare quando si vuole.
 
+Su Drive va solo il film: gli scarti delle release si saltano. Sono le
+anteprime (`….Sample.mp4`), i promo di pochi MB del gruppo che ha fatto la
+release (`ETRG.mp4`, sotto i 5 MB) e le cartelle degli extra (`Featurettes`,
+`Trailers`, `Samples`…). Gli `Extras` e gli speciali delle serie restano: sono
+la stagione 0. Quando il film della stessa cartella è fatto, gli scarti si
+cancellano con l'originale. Quelli già finiti su Drive Ciak li nasconde.
+
 **Gli originali si cancellano definitivamente** (niente Cestino) appena la
 copia su Drive è controllata: deve durare quanto l'originale. Con loro se ne
 vanno i `.srt` che su Drive ci sono già e le sottocartelle rimaste vuote

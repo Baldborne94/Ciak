@@ -632,7 +632,7 @@ test('gli extra dei film (le featurette) non compaiono come titoli, ma si contan
   await page.getByRole('button', { name: /Collega Google Drive/ }).click()
 
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await expect(page.getByText('1 extra (featurette, trailer, interviste…) non è in elenco', { exact: false })).toBeVisible()
+  await expect(page.getByText('1 extra (featurette, trailer, anteprime…) non è in elenco', { exact: false })).toBeVisible()
   await expect(page.getByText('Featurettes')).toHaveCount(0)
   await expect(page.getByText(/Making of Song of the Sea/)).toHaveCount(0)
 })

@@ -742,8 +742,8 @@ export default function StreamingPage() {
         )}
         {extra > 0 && (
           <p className="mb-3 text-sm text-zinc-500">
-            {extra === 1 ? '1 extra (featurette, trailer, interviste…) non è in elenco' : `${extra} extra (featurette, trailer, interviste…) non sono in elenco`}
-            : stanno nelle cartelle degli extra dei film, e non sono titoli da guardare.
+            {extra === 1 ? '1 extra (featurette, trailer, anteprime…) non è in elenco' : `${extra} extra (featurette, trailer, anteprime…) non sono in elenco`}
+            : sono extra dei film o scarti delle release (anteprime, promo), non titoli da guardare.
           </p>
         )}
         <div className="mb-3 flex flex-wrap items-center gap-2">
