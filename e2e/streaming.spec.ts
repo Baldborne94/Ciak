@@ -9,6 +9,14 @@ import { movieDetail } from './support/fixtures'
 const CARTELLA = 'application/vnd.google-apps.folder'
 
 const SRT = '1\n00:00:01,000 --> 00:00:03,000\nC\'era una volta\n'
+// L'elenco delle lingue come lo scrive prepara-ciak (Windows PowerShell).
+const ELENCO_AUDIO = JSON.stringify({
+  versione: 1,
+  tracce: [
+    { indice: 1, lingua: 'en', titolo: '', file: null },
+    { indice: 2, lingua: 'it', titolo: '', file: 'Song.of.the.Sea.2014.1080p.audio-2.m4a' },
+  ],
+})
 
 // I singoli file, come li restituisce files.get.
 const FILE: Record<string, unknown> = {
@@ -52,7 +60,7 @@ const FILE: Record<string, unknown> = {
 // contenuto) cestinato non compare più negli elenchi, come su Drive.
 async function mockDrive(
   page: Page,
-  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false, conFilmAnime = false } = {},
+  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false, conFilmAnime = false, conLingueAudio = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   const cestinati = new Set<string>()
@@ -78,6 +86,7 @@ async function mockDrive(
     if (id) {
       if (url.searchParams.get('alt') === 'media') {
         if (id === 'sub-song-it-0001') return route.fulfill({ contentType: 'application/x-subrip', body: SRT })
+        if (id === 'audio-song-elenco-01') return route.fulfill({ contentType: 'application/json', body: ELENCO_AUDIO })
         // I due pezzi da 64 KB per l'hash di OpenSubtitles: zeri.
         return route.fulfill({ status: 206, body: Buffer.alloc(65536) })
       }
@@ -96,6 +105,14 @@ async function mockDrive(
         FILE['video-song-0001'],
         ...(sottotitoliNellaCartella
           ? [{ id: 'sub-song-it-0001', name: 'Song.of.the.Sea.it.srt', mimeType: 'application/x-subrip' }]
+          : []),
+        // Le lingue dell'audio preparate da prepara-ciak: l'inglese sta nel
+        // video, l'italiano accanto.
+        ...(conLingueAudio
+          ? [
+              { id: 'audio-song-elenco-01', name: 'Song.of.the.Sea.2014.1080p.audio.json', mimeType: 'application/json' },
+              { id: 'audio-song-it-0002', name: 'Song.of.the.Sea.2014.1080p.audio-2.m4a', mimeType: 'audio/mp4' },
+            ]
           : []),
       ]
     } else if (q.includes("name = 'Ciak'")) {
@@ -1061,6 +1078,54 @@ test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', as
   // La versione del worker dice se il browser ha preso davvero l'ultimo.
   await expect(page.getByText('Service worker: e2e-test')).toBeVisible()
   await expect(page.getByText(/chiesto bytes=1048576- → Drive ha ignorato il Range/)).toBeVisible()
+})
+
+test('la lingua dell’audio si sceglie dal menu Audio, e resta per il film dopo', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page, { conLingueAudio: true })
+  await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
+  await apriSongOfTheSea(page)
+
+  const video = page.locator('video')
+  const audio = page.getByTestId('audio-lingua')
+  // Si parte dalla traccia dentro il video: nessun <audio> a parte.
+  const menu = page.getByRole('button', { name: 'Audio: Inglese. Cambia lingua' })
+  await expect(menu).toBeVisible()
+  await expect(audio).toHaveCount(0)
+
+  await menu.click()
+  await page.getByRole('group', { name: "Lingua dell'audio" }).getByRole('button', { name: 'Italiano' }).click()
+  // L'italiano arriva dal suo file su Drive; il video tace.
+  await expect(audio).toHaveAttribute('src', '/drive-video/audio-song-it-0002')
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(true)
+  await expect(page.getByRole('button', { name: 'Audio: Italiano. Cambia lingua' })).toBeVisible()
+
+  // Il muto (tasto M) è quello della lingua che si sente.
+  await page.keyboard.press('m')
+  await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.muted)).toBe(true)
+  await page.keyboard.press('m')
+  await expect.poll(() => audio.evaluate((a: HTMLAudioElement) => a.muted)).toBe(false)
+
+  // Riaprendo il film l'italiano è già scelto.
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Audio: Italiano. Cambia lingua' })).toBeVisible()
+  await expect(audio).toHaveAttribute('src', '/drive-video/audio-song-it-0002')
+
+  // Tornando all'inglese il video riprende la voce.
+  await page.getByRole('button', { name: 'Audio: Italiano. Cambia lingua' }).click()
+  await page.getByRole('group', { name: "Lingua dell'audio" }).getByRole('button', { name: 'Inglese' }).click()
+  await expect(audio).toHaveCount(0)
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(false)
+})
+
+test('un film con una lingua sola non ha il menu Audio', async ({ page }) => {
+  await conLettoreCiak(page)
+  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
+  await apriSongOfTheSea(page)
+  // La cartella è stata letta: il sottotitolo che sta lì è già nel menu CC.
+  await expect(page.getByRole('button', { name: /^Sottotitoli/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Audio:/ })).toHaveCount(0)
 })
 
 test('senza sottotitoli nella cartella li cerca online, in italiano e in inglese, e li salva accanto al film', async ({ page }) => {

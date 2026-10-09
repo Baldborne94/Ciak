@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 // I sottotitoli scelti da un menu di Ciak, nella barra del lettore. Quello del
 // browser era minuscolo e sul telefono finiva sotto altri pulsanti: toccare
 // «Inglese» era una lotteria. Qui ogni voce è alta quanto un dito, il menu si
 // apre sopra il pulsante, e c'è anche la dimensione delle battute.
 import { DIMENSIONI_SOTTOTITOLI } from '../lib/sceltaSottotitoli'
+import { useChiusuraMenu } from '../lib/useChiusuraMenu'
 
 interface Props {
   nomi: string[] // «Italiano», «Inglese», nell'ordine delle tracce
@@ -21,27 +22,9 @@ export default function MenuSottotitoli({ nomi, scelto, sigla, onScegli, onApert
   useEffect(() => onAperto?.(aperto), [aperto, onAperto])
   const contenitore = useRef<HTMLDivElement>(null)
   const pulsante = useRef<HTMLButtonElement>(null)
+  const chiudi = useCallback(() => setAperto(false), [])
 
-  // Si chiude toccando fuori o con Esc, come ogni menu.
-  useEffect(() => {
-    if (!aperto) return
-    const fuori = (e: PointerEvent) => {
-      if (!contenitore.current?.contains(e.target as Node)) setAperto(false)
-    }
-    const esc = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      // Prima del lettore: Esc chiude il menu, non lo schermo intero.
-      e.stopPropagation()
-      setAperto(false)
-      pulsante.current?.focus()
-    }
-    document.addEventListener('pointerdown', fuori)
-    window.addEventListener('keydown', esc, true)
-    return () => {
-      document.removeEventListener('pointerdown', fuori)
-      window.removeEventListener('keydown', esc, true)
-    }
-  }, [aperto])
+  useChiusuraMenu(aperto, chiudi, contenitore, pulsante)
 
   const voci = [{ indice: -1, nome: 'Nessuno' }, ...nomi.map((nome, indice) => ({ indice, nome }))]
 

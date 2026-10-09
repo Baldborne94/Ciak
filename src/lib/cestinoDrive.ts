@@ -1,11 +1,13 @@
 import { sottotitoliPerVideo, type FileCartella } from './sottotitoli'
+import { fileAudioDelVideo } from './tracceAudio'
 
 // Cosa spostare nel cestino di Drive quando si cancella un video da Ciak.
 // Logica pura, separata da googleDrive.ts per provarla senza rete.
 //
 // Col video vanno i suoi sottotitoli (gli stessi che il lettore gli
 // attribuisce: vedi sottotitoliPerVideo), altrimenti restano .srt orfani
-// che Ciak attribuirebbe al prossimo video della cartella. Se la cartella
+// che Ciak attribuirebbe al prossimo video della cartella, e le sue lingue
+// dell'audio (vedi tracceAudio.ts), che occuperebbero Drive per niente. Se la cartella
 // resta vuota ed è una cartella dedicata (quella del film, o una stagione),
 // nel cestino va la cartella intera, e Drive porta con sé il contenuto: una
 // cartella vuota non serve a nessuno. «Ciak» e le categorie subito sotto
@@ -40,7 +42,15 @@ export function pianoCestino(args: {
 }): PianoCestino {
   const { cartella, vicini, sottocartelle, nomeCartellaSopra, radice } = args
   const video = Array.isArray(args.video) ? args.video : [args.video]
-  const file = [...new Set(video.flatMap((v) => [v.id, ...sottotitoliPerVideo(v.name, vicini).map((s) => s.id)]))]
+  const file = [
+    ...new Set(
+      video.flatMap((v) => [
+        v.id,
+        ...sottotitoliPerVideo(v.name, vicini).map((s) => s.id),
+        ...fileAudioDelVideo(v.name, vicini).map((a) => a.id),
+      ]),
+    ),
+  ]
   const resta = vicini.some((f) => !file.includes(f.id)) || sottocartelle > 0
   const dedicata =
     cartella !== null &&

@@ -27,6 +27,23 @@ su Drive va solo il risultato, una volta.
 
 I video già presenti su Drive si saltano: si può rilanciare quando si vuole.
 
+### Le lingue dell'audio
+
+Chrome e Firefox di un MP4 suonano solo la prima traccia audio: il doppiaggio
+italiano di un anime giapponese, o l'originale inglese di un film doppiato,
+resterebbero muti. Per questo lo script salva ogni traccia oltre la prima in un
+file a parte accanto al video (`Film.audio-2.m4a`), più un elenco delle lingue
+(`Film.audio.json`), e il lettore di Ciak le offre nel menu **Audio**. Le
+tracce si copiano così come sono: un film con due lingue occupa su Drive quanto
+prima, più la seconda lingua.
+
+Per i video **già su Drive** c'è `tracce-audio.bat`: scaricalo nella stessa
+cartella di `prepara-ciak.ps1` e fai doppio clic. Guarda uno per uno i video di
+`G:\Il mio Drive\Ciak` che non hanno ancora l'elenco e prepara le lingue in
+più; quelli con una lingua sola li segna come guardati e basta. Drive per
+desktop deve scaricare ogni video per leggerlo, quindi la prima volta ci vuole
+un po': si può chiudere quando si vuole e rilanciare, riparte da dove era.
+
 Un video con dei pezzi mancanti (un torrent non finito: il file è già lungo
 quanto quello completo, ma dove i dati non sono arrivati ci sono solo zeri)
 non si converte: ffmpeg lo farebbe lo stesso, con salti e immagini rotte

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { ErrorState } from '../components/States'
 import PannelloArchivio from '../components/PannelloArchivio'
 import MenuSottotitoli from '../components/MenuSottotitoli'
+import MenuAudio from '../components/MenuAudio'
 import SottotitoliVideo from '../components/SottotitoliVideo'
 import BarraLettore from '../components/BarraLettore'
 import IndicatoreCaricamento from '../components/IndicatoreCaricamento'
@@ -91,6 +92,10 @@ import { formattaTempo, titoloDaMostrare } from '../lib/streaming'
 import { sigla } from '../lib/videoteca'
 import { useArchivioStreaming } from '../lib/useArchivioStreaming'
 import { useSottotitoli } from '../lib/useSottotitoli'
+import { useTracceAudio } from '../lib/useTracceAudio'
+import { useElementoVideo } from '../lib/useElementoVideo'
+import { collegaAudio } from '../lib/sincroniaAudio'
+import { indiceAudio, leggiLinguaAudio, nomiTracceAudio, salvaLinguaAudio, siglaTracciaAudio } from '../lib/tracceAudio'
 
 // Due lettori per lo stesso film:
 //  - quello di Ciak, un <video> che legge il file originale da Drive (tramite
@@ -493,7 +498,44 @@ function LettoreStreaming() {
   // anticipati, perché gli hook vanno chiamati sempre nello stesso ordine.
   const ultimoSalto = useRef<Salto | null>(null)
   const [menuSottotitoliAperto, setMenuSottotitoliAperto] = useState(false)
-  const comandiVisibili = useComandiVisibili(riquadroVideo, videoRef, menuSottotitoliAperto)
+  const [menuAudioAperto, setMenuAudioAperto] = useState(false)
+  const comandiVisibili = useComandiVisibili(riquadroVideo, videoRef, menuSottotitoliAperto || menuAudioAperto)
+
+  // La lingua dell'audio (vedi lib/tracceAudio): il menu c'è solo per i video
+  // con più lingue, preparate da prepara-ciak accanto al film su Drive. Le
+  // altre lingue arrivano da Drive: senza collegamento resta quella del video.
+  const tracceAudio = useTracceAudio(fileId, valido && connesso && lettore === 'ciak')
+  const voceAudio = archivio.voce
+  // Ricordata per serie (un anime doppiato, un altro in originale); per i film
+  // una scelta sola.
+  const ambitoAudio =
+    voceAudio?.tmdb_id && voceAudio.stagione != null ? `${voceAudio.media_type}-${voceAudio.tmdb_id}` : 'film'
+  const [audioToccato, setAudioToccato] = useState<{ fileId: string; indice: number } | null>(null)
+  const audioRicordato = useMemo(
+    () => (archivioCaricato ? indiceAudio(tracceAudio, leggiLinguaAudio(ambitoAudio)) : 0),
+    [archivioCaricato, tracceAudio, ambitoAudio],
+  )
+  const sceltaAudio = audioToccato?.fileId === fileId ? audioToccato.indice : audioRicordato
+  const tracciaAudio = tracceAudio[sceltaAudio]
+  const scegliAudio = useCallback(
+    (indice: number) => {
+      setAudioToccato({ fileId, indice })
+      salvaLinguaAudio(ambitoAudio, tracceAudio[indice]?.lingua ?? null)
+    },
+    [fileId, ambitoAudio, tracceAudio],
+  )
+  // L'<audio> della lingua scelta, quando non è quella dentro il video: lo
+  // segue in tutto, e il video tace (vedi lib/sincroniaAudio).
+  const srcAudio = tracciaAudio?.fileId ? flussoVideoUrl(tracciaAudio.fileId) : null
+  const [elementoAudio, setElementoAudio] = useState<HTMLAudioElement | null>(null)
+  const videoCorrente = useElementoVideo(videoRef)
+  useEffect(() => {
+    if (!videoCorrente || !elementoAudio) return
+    return collegaAudio(videoCorrente, elementoAudio, (e) => {
+      // Un play() interrotto da una pausa subito dopo non è un guasto.
+      if (!(e instanceof DOMException && e.name === 'AbortError')) logFailure('Lingua dell’audio')(e)
+    })
+  }, [videoCorrente, elementoAudio])
 
   const titolo =
     stato?.titolo ??
@@ -627,7 +669,11 @@ function LettoreStreaming() {
       if (inCoda) prossimoDallaSigla()
       else vaiAlProssimo()
     } else if (azione === 'precedente' && precedente) vaiAlPrecedente()
-    else if (azione === 'audio' && videoRef.current) videoRef.current.muted = !videoRef.current.muted
+    else if (azione === 'audio') {
+      // Con un'altra lingua il video tace già: il muto è quello dell'audio.
+      const suono = elementoAudio ?? videoRef.current
+      if (suono) suono.muted = !suono.muted
+    }
     else if (azione === 'sottotitoli' && tracce.length > 0) scegliSottotitoli(prossimoSottotitolo)
   }
 
@@ -886,6 +932,10 @@ function LettoreStreaming() {
             sollevate={comandiVisibili}
           />
         )}
+        {lettore === 'ciak' && srcAudio && (
+          // Una lingua nuova è un elemento nuovo: riparte allineato al video.
+          <audio key={srcAudio} ref={setElementoAudio} src={srcAudio} preload="auto" data-testid="audio-lingua" />
+        )}
         {lettore === 'ciak' && <IndicatoreCaricamento videoRef={videoRef} />}
         {lettore === 'ciak' && (
           // Anche col mouse: senza i comandi del browser il clic sul video
@@ -910,7 +960,13 @@ function LettoreStreaming() {
           />
         )}
         {lettore === 'ciak' && (
-          <BarraLettore videoRef={videoRef} visibile={comandiVisibili} cinema={cinema} onSchermoIntero={alternaSchermoIntero}>
+          <BarraLettore
+            videoRef={videoRef}
+            visibile={comandiVisibili}
+            cinema={cinema}
+            onSchermoIntero={alternaSchermoIntero}
+            suono={elementoAudio}
+          >
             {/* Gli episodi accanto, sempre a portata: non solo «il prossimo» a fine
                 episodio, ma anche tornare a quello prima. */}
             {precedente && (
@@ -934,6 +990,15 @@ function LettoreStreaming() {
               >
                 ⏭
               </button>
+            )}
+            {tracceAudio.length > 1 && (
+              <MenuAudio
+                nomi={nomiTracceAudio(tracceAudio)}
+                scelto={sceltaAudio}
+                sigla={siglaTracciaAudio(tracciaAudio)}
+                onScegli={scegliAudio}
+                onAperto={setMenuAudioAperto}
+              />
             )}
             {tracce.length > 0 && (
               <MenuSottotitoli
