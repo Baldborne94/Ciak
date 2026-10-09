@@ -53,6 +53,7 @@ import {
   titoloVideo,
   type DriveVideo,
 } from '../lib/googleDrive'
+import { chiaveVideotecaArchivio, chiaveVideotecaDrive, etichettaCopia, leggiCopia, salvaCopia } from '../lib/offlineCache'
 
 export default function StreamingPage() {
   const navigate = useNavigate()
@@ -74,6 +75,9 @@ export default function StreamingPage() {
   // e l'altra. '*' = tutto.
   const [scheda, setScheda] = usePersistedState<string>('ciak:videoteca-scheda', '*')
   const [cartellaTrovata, setCartellaTrovata] = useState(true)
+  // L'elenco mostrato è quello salvato l'ultima volta (quando): Drive si sta
+  // rileggendo in sottofondo. null quando è quello fresco.
+  const [copiaDel, setCopiaDel] = useState<string | null>(null)
   // Ricerca, ordine e genere: l'ordine si ricorda, gli altri due no (riaprendo
   // la videoteca la si vuole vedere tutta).
   const [query, setQuery] = useState('')
@@ -141,6 +145,26 @@ export default function StreamingPage() {
   }, [])
   const scaricati = new Set(offline.filter((f) => f.stato === 'completo').map((f) => f.id))
 
+  // Si parte dall'elenco dell'ultima volta, se c'è: compare subito, invece di
+  // una pagina vuota finché Drive non ha risposto per ogni cartella.
+  const daCopia = useRef(false)
+  // Drive ha già risposto: la copia arriverebbe tardi, e sarebbe più vecchia.
+  const freschi = useRef(false)
+  useEffect(() => {
+    if (!user || daCopia.current || freschi.current || !driveConfigurato() || !driveConnesso()) return
+    daCopia.current = true
+    const drive = leggiCopia<DriveVideo>(chiaveVideotecaDrive(user.id))
+    if (!drive || drive.dati.length === 0) return
+    const archivioSalvato = leggiCopia<VoceStreaming>(chiaveVideotecaArchivio(user.id))
+    const { visibili: mp4, nascosti: altri } = soloRiproducibili(drive.dati)
+    const { visibili, extra: daParte } = senzaExtra(mp4)
+    setVideo((attuali) => (attuali.length > 0 ? attuali : visibili))
+    setNascosti(altri)
+    setExtra(daParte)
+    if (archivioSalvato) setArchivio((attuale) => (attuale.size > 0 ? attuale : new Map(archivioSalvato.dati.map((v) => [v.drive_file_id, v]))))
+    setCopiaDel(drive.salvatoIl)
+  }, [user])
+
   const carica = useCallback(async () => {
     inCorso.current = true
     setErrore(null)
@@ -156,14 +180,19 @@ export default function StreamingPage() {
       setVideo(visibili)
       setNascosti(altri)
       setExtra(daParte)
+      freschi.current = true
       setCaricato(true)
+      setCopiaDel(null)
+      if (user && esito.cartellaTrovata) salvaCopia(chiaveVideotecaDrive(user.id), esito.video)
       // Locandine e titoli: prima ciò che è già collegato, poi si riconoscono
       // i file nuovi. Best effort: senza, la lista resta quella dei file.
       if (user) {
         try {
           const noti = new Map((await elencaStreaming(user.id)).map((v) => [v.drive_file_id, v]))
           setArchivio(noti)
-          setArchivio(await riconosciNuovi(user.id, visibili, noti, new Set(esito.video.map((v) => v.id))))
+          const riconosciuti = await riconosciNuovi(user.id, visibili, noti, new Set(esito.video.map((v) => v.id)))
+          setArchivio(riconosciuti)
+          salvaCopia(chiaveVideotecaArchivio(user.id), [...riconosciuti.values()])
           dimenticaVideoteca()
         } catch (e) {
           logFailure('Titoli dei film di Drive')(e)
@@ -667,7 +696,7 @@ export default function StreamingPage() {
             {caricando ? 'Collego…' : '📁 Collega Google Drive'}
           </button>
         </div>
-      ) : caricando && !caricato ? (
+      ) : caricando && !caricato && copiaDel === null ? (
         <Loader />
       ) : !cartellaTrovata ? (
         <EmptyState
@@ -709,6 +738,12 @@ export default function StreamingPage() {
           <p className="mb-3 text-sm text-zinc-500">
             {nascosti === 1 ? '1 video in un altro formato (MKV, AVI…) è nascosto' : `${nascosti} video in altri formati (MKV, AVI…) sono nascosti`}
             : Ciak riproduce gli MP4. Convertili con <code>converti-mkv.bat</code> e premi «Aggiorna».
+          </p>
+        )}
+        {copiaDel !== null && (
+          // Un elenco vecchio senza dirlo farebbe cercare un film appena caricato.
+          <p role="status" className="mb-3 text-sm text-zinc-500">
+            🔄 Copia dell’elenco {etichettaCopia(copiaDel)}: {caricando ? 'la aggiorno da Drive…' : 'premi «Aggiorna» per rileggere Drive.'}
           </p>
         )}
         {extra > 0 && (

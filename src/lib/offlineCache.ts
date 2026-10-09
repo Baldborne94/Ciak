@@ -21,6 +21,16 @@ export function chiaveCollezione(userId: string): string {
   return `${PREFISSO}collezione:${VERSIONE}:${userId}`
 }
 
+// La videoteca dell'ultima volta: i video di Drive e le loro righe in
+// archivio. Leggere Drive cartella per cartella vuol dire secondi di attesa a
+// ogni apertura; con la copia l'elenco compare subito, e si aggiorna da sé.
+export function chiaveVideotecaDrive(userId: string): string {
+  return `${PREFISSO}videoteca-drive:${VERSIONE}:${userId}`
+}
+export function chiaveVideotecaArchivio(userId: string): string {
+  return `${PREFISSO}videoteca-archivio:${VERSIONE}:${userId}`
+}
+
 // Una copia va usata solo se ha la forma attesa: il residuo di una versione
 // precedente non deve produrre una schermata sbagliata in silenzio.
 export function copiaValida<T>(grezzo: unknown): Copia<T> | null {

@@ -645,6 +645,31 @@ test('gli extra dei film (le featurette) non compaiono come titoli, ma si contan
   await expect(page.getByText(/Making of Song of the Sea/)).toHaveCount(0)
 })
 
+test('riaprendo la videoteca l\u2019elenco dell\u2019ultima volta compare subito, e si aggiorna da Drive', async ({ page }) => {
+  await mockDrive(page)
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: /Copia dell’elenco/ })).toHaveCount(0)
+
+  // Drive ora tarda a rispondere: l'elenco dei video resta in sospeso.
+  let rispondi!: () => void
+  const risposta = new Promise<void>((r) => (rispondi = r))
+  await page.route(/^https:\/\/www\.googleapis\.com\/drive\/v3\/files\?/, async (route) => {
+    if ((new URL(route.request().url()).searchParams.get('q') ?? '').includes("mimeType contains 'video/'")) await risposta
+    return route.fallback()
+  })
+  await page.reload()
+
+  // Niente pagina vuota: i film di prima, e la pagina dice che sta aggiornando.
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: /Copia dell’elenco salvata oggi alle .*: la aggiorno da Drive/ })).toBeVisible()
+
+  rispondi()
+  await expect(page.getByRole('status').filter({ hasText: /Copia dell’elenco/ })).toHaveCount(0)
+  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+})
+
 test('ricaricando la pagina il collegamento a Drive resta', async ({ page }) => {
   await mockDrive(page)
   await page.goto('/streaming')
