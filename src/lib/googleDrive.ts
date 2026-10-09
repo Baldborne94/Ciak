@@ -1,4 +1,5 @@
 import type { DiagnosticaVideo } from './lettore'
+import { mapLimit } from './mapLimit'
 import { analizzaNomeFilm, cartellaRaccolta, filmDaCercare, stagioneDaCartella } from './sottotitoli'
 import { cartellaDaChiudere, pianoCestino, type PianoCestino } from './cestinoDrive'
 import {
@@ -489,6 +490,10 @@ async function cercaFile(q: string, campi: string): Promise<FileGrezzo[]> {
 // oltre sparivano dall'elenco senza dirlo. Le richieste restano poche (venti
 // cartelle per richiesta), e Drive non ha cicli: una cartella non può stare
 // dentro sé stessa, e ognuna si visita una volta sola.
+// Quante richieste a Drive insieme: abbastanza da non aspettarle in fila,
+// poche abbastanza da non farsi rispondere 429.
+const PARALLELE = 6
+
 export async function elencaVideo(): Promise<ElencoVideo> {
   const radici = await cercaFile(
     `name = '${CARTELLA_CIAK}' and mimeType = '${MIME_CARTELLA}' and 'root' in parents and trashed = false`,
@@ -506,10 +511,10 @@ export async function elencaVideo(): Promise<ElencoVideo> {
   const tutte: string[] = [...idRadici]
   let livello = [...idRadici]
   for (let profondita = 0; livello.length > 0; profondita++) {
-    const figli: FileGrezzo[] = []
-    for (const q of queryInCartelle(livello, `mimeType = '${MIME_CARTELLA}'`)) {
-      figli.push(...(await cercaFile(q, 'id, name, parents')))
-    }
+    // Le query di un livello sono indipendenti: in parallelo, a scaglioni.
+    // Una dopo l'altra, con una cartella per stagione, erano decine di
+    // richieste in fila e secondi di schermata vuota.
+    const figli = (await mapLimit(queryInCartelle(livello, `mimeType = '${MIME_CARTELLA}'`), PARALLELE, (q) => cercaFile(q, 'id, name, parents'))).flat()
     livello = []
     for (const f of figli) {
       if (nomiCartelle.has(f.id) || idRadici.has(f.id)) continue
@@ -524,10 +529,9 @@ export async function elencaVideo(): Promise<ElencoVideo> {
     }
   }
 
-  const grezzi: FileGrezzo[] = []
-  for (const q of queryInCartelle(tutte, "mimeType contains 'video/'")) {
-    grezzi.push(...(await cercaFile(q, 'id, name, size, mimeType, parents, createdTime')))
-  }
+  const grezzi = (
+    await mapLimit(queryInCartelle(tutte, "mimeType contains 'video/'"), PARALLELE, (q) => cercaFile(q, 'id, name, size, mimeType, parents, createdTime'))
+  ).flat()
 
   const video = grezzi.map((f) => {
     const genitore = f.parents?.[0]
