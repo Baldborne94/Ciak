@@ -32,6 +32,12 @@
 # l'originale), si cancellano definitivamente insieme ai loro .srt, cosi' il
 # disco non si riempie. -TieniOriginali li lascia dove sono.
 #
+# Le lingue dell'audio: il browser suona solo la prima traccia di un MP4 e
+# non lascia passare alle altre. Le altre si salvano accanto al video, una per
+# file (Film.audio-2.m4a, ...), con l'elenco di tutte in Film.audio.json: il
+# lettore di Ciak le offre nel menu Audio. -SoloTracceAudio le prepara per i
+# video gia' su Drive (lancialo con tracce-audio.bat).
+#
 # Il file e' scritto senza lettere accentate apposta: Windows PowerShell legge
 # gli script senza BOM come ANSI, e una "e'" accentata diventerebbe illeggibile.
 
@@ -44,12 +50,14 @@ param(
   # Un file scritto da meno minuti di cosi' e' probabilmente ancora in download.
   [int]$MinutiDiCalma = 5,
   # Lascia gli originali dove sono invece di cancellarli.
-  [switch]$TieniOriginali
+  [switch]$TieniOriginali,
+  # Non converte niente: prepara le tracce audio dei video gia' su Drive.
+  [switch]$SoloTracceAudio
 )
 
 $ErrorActionPreference = 'Stop'
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-08b'
+$Versione = '2026-10-09a'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 # Gli scarti: un video sotto questa misura e' il promo di una release, non un
 # film ne' un episodio; le cartelle degli extra dei film (gli "Extras" e gli
@@ -88,13 +96,14 @@ foreach ($p in 'ffmpeg', 'ffprobe') {
     exit 1
   }
 }
-if (-not (Test-Path -LiteralPath $Origine)) {
+# Per le sole tracce audio la cartella dei download non serve.
+if (-not $SoloTracceAudio -and -not (Test-Path -LiteralPath $Origine)) {
   Write-Host "La cartella $Origine non esiste." -ForegroundColor Red
   Read-Host 'Premi Invio per chiudere'
   exit 1
 }
 
-$Origine = (Resolve-Path -LiteralPath $Origine).Path.TrimEnd('\', '/')
+if (Test-Path -LiteralPath $Origine) { $Origine = (Resolve-Path -LiteralPath $Origine).Path.TrimEnd('\', '/') }
 
 # Ricodificare con la CPU va a circa 3 volte il tempo reale: una serie in
 # HEVC a 10 bit sono ore. La scheda video (NVENC, Quick Sync, AMF) fa lo
@@ -248,6 +257,46 @@ function Durata([string]$file) {
   return 0
 }
 
+# Le tracce audio di un MP4 oltre la prima, ognuna in un .m4a accanto (in
+# $cartella), e l'elenco di tutte in nome.audio.json. Una lettura sola del
+# video per tutte le tracce: su Drive il file si scarica, e due letture
+# costerebbero il doppio. Le tracce sono gia' AAC: si copiano, niente
+# ricodifica. Torna i file creati, elenco compreso: si scrive anche per un
+# video con una traccia sola, perche' dice che il video e' gia' stato guardato.
+function TracceAudio([string]$mp4, [string]$cartella, [string]$nome) {
+  $ErrorActionPreference = 'Continue'
+  $info = (& ffprobe -v error -select_streams a -show_entries 'stream=index:stream_tags=language,title' -of json -- $mp4 | Out-String) | ConvertFrom-Json
+  $audio = @($info.streams)
+  $elenco = @()
+  $creati = @()
+  $uscite = @()
+  for ($i = 0; $i -lt $audio.Count; $i++) {
+    $file = $null
+    if ($i -gt 0) {
+      $file = "$nome.audio-$($i + 1).m4a"
+      $percorso = Join-Path $cartella $file
+      $uscite += @('-map', "0:a:$i", '-c', 'copy', '-vn', '-sn', '-movflags', '+faststart', $percorso)
+      $creati += $percorso
+    }
+    $elenco += [ordered]@{ indice = $i + 1; lingua = Lingua "$($audio[$i].tags.language)"; titolo = "$($audio[$i].tags.title)"; file = $file }
+  }
+  if ($uscite.Count -gt 0) {
+    $esito = Esegui 'ffmpeg' (@('-hide_banner', '-loglevel', 'error', '-y', '-i', $mp4) + $uscite)
+    if ($esito -ne 0) {
+      $creati | ForEach-Object { Remove-Item -LiteralPath $_ -ErrorAction SilentlyContinue }
+      throw 'estrazione delle tracce audio non riuscita'
+    }
+  }
+  $json = ConvertTo-Json -InputObject ([ordered]@{ versione = 1; tracce = $elenco }) -Depth 4
+  $elencoFile = Join-Path $cartella "$nome.audio.json"
+  # Senza BOM: Windows PowerShell con Set-Content -Encoding UTF8 lo mette, e il
+  # JSON non si leggerebbe piu'.
+  [IO.File]::WriteAllText($elencoFile, $json, (New-Object Text.UTF8Encoding $false))
+  return @($creati) + @($elencoFile)
+}
+
+function TracceInPiu([int]$n) { if ($n -eq 1) { return "1 lingua dell'audio in piu'" } return "$n lingue dell'audio in piu'" }
+
 function Tempo([double]$secondi) { return [TimeSpan]::FromSeconds([math]::Round($secondi)).ToString('h\:mm\:ss') }
 
 # Quanto e' utile una traccia, dal nome che le da' chi ha fatto il file: gli
@@ -373,6 +422,52 @@ Write-Host "A:   $Destinazione"
 if ($TieniOriginali) { Write-Host 'Originali: restano dove sono' } else { Write-Host "Originali: cancellati quando la copia su Drive e' intera" }
 if ($Encoder -eq 'libx264') { Write-Host 'Ricodifica: con la CPU (nessuna scheda video utilizzabile trovata)' } else { Write-Host "Ricodifica: con la scheda video ($Encoder)" }
 Write-Host ''
+
+if ($SoloTracceAudio) {
+  # I video gia' su Drive senza elenco delle tracce: uno alla volta, e solo
+  # quelli con piu' di una traccia si leggono per intero (Drive per desktop li
+  # scarica). Si puo' interrompere e rilanciare: riparte da dove era.
+  if (-not (Test-Path -LiteralPath $Destinazione)) {
+    Write-Host "La cartella $Destinazione non esiste: Google Drive per desktop e' aperto?" -ForegroundColor Red
+    if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
+    exit 1
+  }
+  Write-Host 'Preparo le tracce audio dei video gia'' su Drive...'
+  $suDrive = @(Get-ChildItem -LiteralPath $Destinazione -Recurse -File -Filter '*.mp4' |
+      Where-Object { -not (Test-Path -LiteralPath (Join-Path $_.DirectoryName "$([IO.Path]::GetFileNameWithoutExtension($_.Name)).audio.json")) } |
+      Sort-Object FullName)
+  $conTracce = 0; $erroriAudio = @(); $k = 0
+  foreach ($f in $suDrive) {
+    $k++
+    $nome = [IO.Path]::GetFileNameWithoutExtension($f.Name)
+    $relativo = $f.DirectoryName.Substring($Destinazione.Length).TrimStart('\', '/')
+    Write-Host "[$k/$($suDrive.Count)] $relativo\$($f.Name)"
+    try {
+      $fatti = @(TracceAudio $f.FullName $Lavoro $nome)
+      foreach ($file in $fatti) {
+        $finale = Join-Path $f.DirectoryName (Split-Path $file -Leaf)
+        Move-Item -LiteralPath $file -Destination $finale -Force
+      }
+      if ($fatti.Count -gt 1) {
+        $conTracce++
+        Write-Host "   $(TracceInPiu ($fatti.Count - 1))" -ForegroundColor Green
+      }
+    } catch {
+      $erroriAudio += "$relativo\$($f.Name): $($_.Exception.Message)"
+      Write-Host "   ERRORE: $($_.Exception.Message)" -ForegroundColor Red
+      Get-ChildItem -LiteralPath $Lavoro -File -Filter "$nome.*" -ErrorAction SilentlyContinue | Remove-Item -ErrorAction SilentlyContinue
+    }
+  }
+  if ($erroriAudio.Count -gt 0) {
+    Write-Host ''
+    Write-Host "Video con errori ($($erroriAudio.Count)):" -ForegroundColor Red
+    $erroriAudio | ForEach-Object { Write-Host "  $_" }
+  }
+  Write-Host ''
+  Write-Host "Finito: $($suDrive.Count) video controllati, $conTracce con lingue in piu' pronte per Ciak."
+  if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
+  exit 0
+}
 
 Write-Host 'Cerco i video...'
 $tutti = Get-ChildItem -LiteralPath $Origine -Recurse -File |
@@ -527,9 +622,13 @@ foreach ($f in $video) {
       }
     }
 
+    # Le lingue dell'audio oltre la prima, accanto al video (vedi TracceAudio).
+    $audioExtra = @(TracceAudio $tmp $Lavoro $nome)
+    if ($audioExtra.Count -gt 1) { Write-Host "   $(TracceInPiu ($audioExtra.Count - 1)) salvate a parte, per il menu Audio di Ciak" -ForegroundColor DarkGray }
+
     New-Item -ItemType Directory -Force -Path $cartellaDest | Out-Null
     Move-Item -LiteralPath $tmp -Destination $dest -Force
-    foreach ($file in $srt) {
+    foreach ($file in @($srt) + $audioExtra) {
       $finale = Join-Path $cartellaDest (Split-Path $file -Leaf)
       if (Test-Path -LiteralPath $finale) { Remove-Item -LiteralPath $file } else { Move-Item -LiteralPath $file -Destination $finale }
     }

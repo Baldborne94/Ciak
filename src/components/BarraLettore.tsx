@@ -14,6 +14,9 @@ interface Props {
   visibile: boolean
   cinema: boolean // già a schermo intero
   onSchermoIntero: () => void
+  // Dove sta il volume: il video, o l'<audio> della lingua scelta dal menu
+  // Audio, mentre il video tace (vedi sincroniaAudio.ts).
+  suono?: HTMLMediaElement | null
   children?: ReactNode // il menu dei sottotitoli
 }
 
@@ -27,8 +30,9 @@ interface Stato {
 
 const VUOTO: Stato = { inPausa: true, tempo: 0, durata: null, muto: false, volume: 1 }
 
-export default function BarraLettore({ videoRef, visibile, cinema, onSchermoIntero, children }: Props) {
+export default function BarraLettore({ videoRef, visibile, cinema, onSchermoIntero, suono, children }: Props) {
   const video = useElementoVideo(videoRef)
+  const volumeDi = suono ?? video
   const [stato, setStato] = useState<Stato>(VUOTO)
 
   useEffect(() => {
@@ -39,14 +43,18 @@ export default function BarraLettore({ videoRef, visibile, cinema, onSchermoInte
         inPausa: v.paused,
         tempo: v.currentTime,
         durata: Number.isFinite(v.duration) && v.duration > 0 ? v.duration : null,
-        muto: v.muted,
-        volume: v.volume,
+        muto: (volumeDi ?? v).muted,
+        volume: (volumeDi ?? v).volume,
       })
     leggi()
     const eventi = ['play', 'pause', 'ended', 'timeupdate', 'seeked', 'durationchange', 'loadedmetadata', 'volumechange']
     eventi.forEach((e) => v.addEventListener(e, leggi))
-    return () => eventi.forEach((e) => v.removeEventListener(e, leggi))
-  }, [video])
+    if (volumeDi && volumeDi !== v) volumeDi.addEventListener('volumechange', leggi)
+    return () => {
+      eventi.forEach((e) => v.removeEventListener(e, leggi))
+      volumeDi?.removeEventListener('volumechange', leggi)
+    }
+  }, [video, volumeDi])
 
   const alterna = () => {
     if (!video) return
@@ -90,9 +98,9 @@ export default function BarraLettore({ videoRef, visibile, cinema, onSchermoInte
         <Tasto
           etichetta={silenzioso ? "Riattiva l'audio" : "Togli l'audio"}
           onClick={() => {
-            if (!video) return
-            if (silenzioso && video.volume === 0) video.volume = 1
-            video.muted = !silenzioso
+            if (!volumeDi) return
+            if (silenzioso && volumeDi.volume === 0) volumeDi.volume = 1
+            volumeDi.muted = !silenzioso
           }}
         >
           {silenzioso ? '🔇' : '🔊'}
@@ -106,9 +114,9 @@ export default function BarraLettore({ videoRef, visibile, cinema, onSchermoInte
           step={0.05}
           value={stato.muto ? 0 : stato.volume}
           onChange={(e) => {
-            if (!video) return
-            video.volume = Number(e.target.value)
-            video.muted = video.volume === 0
+            if (!volumeDi) return
+            volumeDi.volume = Number(e.target.value)
+            volumeDi.muted = volumeDi.volume === 0
           }}
           className="hidden w-20 cursor-pointer accent-projector sm:block"
         />

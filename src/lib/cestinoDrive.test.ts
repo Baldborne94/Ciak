@@ -32,6 +32,27 @@ describe('pianoCestino', () => {
     ).toEqual({ file: ['v1', 's1'], cartella: null })
   })
 
+  it('le lingue dell’audio vanno col video: con loro la cartella resta vuota', () => {
+    const m4a = { id: 'a2', name: 'Song.of.the.Sea.2014.1080p.audio-2.m4a', mimeType: 'audio/mp4' }
+    const elenco = { id: 'aj', name: 'Song.of.the.Sea.2014.1080p.audio.json', mimeType: 'application/json' }
+    expect(
+      pianoCestino({ video, cartella: cartellaFilm, vicini: [me, srtIt, m4a, elenco], sottocartelle: 0, nomeCartellaSopra: 'FILM' }),
+    ).toEqual({ file: [], cartella: 'c-song' })
+
+    // In una stagione, uno per uno, e non quelle dell'episodio accanto.
+    const ep = { id: 'v1', name: '01.mp4', mimeType: 'video/mp4' }
+    const vicini = [
+      ep,
+      { id: 'v2', name: '02.mp4', mimeType: 'video/mp4' },
+      { id: 'a1', name: '01.audio-2.m4a', mimeType: 'audio/mp4' },
+      { id: 'j1', name: '01.audio.json', mimeType: 'application/json' },
+      { id: 'a2', name: '02.audio-2.m4a', mimeType: 'audio/mp4' },
+    ]
+    expect(
+      pianoCestino({ video: ep, cartella: { id: 'c', name: 'Season 01' }, vicini, sottocartelle: 0, nomeCartellaSopra: 'Shogun' }),
+    ).toEqual({ file: ['v1', 'a1', 'j1'], cartella: null })
+  })
+
   it('una sottocartella (gli extra) tiene in vita la cartella', () => {
     expect(pianoCestino({ video, cartella: cartellaFilm, vicini: [me], sottocartelle: 1, nomeCartellaSopra: 'FILM' })).toEqual({
       file: ['v1'],
