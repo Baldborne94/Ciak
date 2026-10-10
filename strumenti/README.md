@@ -44,6 +44,33 @@ più; quelli con una lingua sola li segna come guardati e basta. Drive per
 desktop deve scaricare ogni video per leggerlo, quindi la prima volta ci vuole
 un po': si può chiudere quando si vuole e rilanciare, riparte da dove era.
 
+### Lo stesso film in un'altra lingua
+
+Un film scaricato anche in italiano (o in inglese) non va su Drive due volte:
+lo script se ne accorge, ne prende solo l'audio e lo aggiunge come lingua al
+film che c'è già, nel menu **Audio** di Ciak. Basta metterlo in
+`E:\Intrattenimento` come ogni altro video. Riconosce lo stesso film dal
+titolo e dall'anno nel nome del file (`Inception.2010.1080p.mkv` e
+`Inception (2010) ITA.mkv`), lo stesso episodio da serie e sigla
+(`S03E01`). Se le due versioni arrivano insieme, va su Drive come video la più
+grande (di solito la qualità migliore) e l'altra ne diventa una lingua.
+
+Le due versioni quasi mai combaciano al secondo: loghi diversi all'inizio, e
+le copie europee vanno a 25 fotogrammi invece di 23,976 (il 4% più veloci).
+Lo script misura lo scarto confrontando musica ed effetti, che sono uguali in
+tutte le lingue, in cinque punti del film, e rimette l'audio a tempo. Se i
+cinque punti non sono d'accordo le versioni sono montate in modo diverso (una
+«Extended», una scena tagliata): la lingua non si aggiunge, perché sarebbe
+fuori sincrono, e lo script lo dice.
+
+Quando i nomi non si somigliano (`Il.Padrino.1972.mkv` e
+`The.Godfather.1972.mp4`) c'è `aggiungi-lingua.bat`: scaricalo nella stessa
+cartella di `prepara-ciak.ps1` e **trascinaci sopra** il video con la lingua
+da aggiungere. Propone i film su Drive che gli somigliano (anche solo per
+anno), o si cerca scrivendo una parola del titolo; alla fine chiede se
+cancellare il file, che ormai non serve più. Se il file non dice di che lingua
+è l'audio e non lo dice nemmeno il nome, lo chiede.
+
 Un video con dei pezzi mancanti (un torrent non finito: il file è già lungo
 quanto quello completo, ma dove i dati non sono arrivati ci sono solo zeri)
 non si converte: ffmpeg lo farebbe lo stesso, con salti e immagini rotte

@@ -38,6 +38,13 @@
 # lettore di Ciak le offre nel menu Audio. -SoloTracceAudio le prepara per i
 # video gia' su Drive (lancialo con tracce-audio.bat).
 #
+# Lo stesso film scaricato in due lingue non va su Drive due volte: se un
+# video ha lo stesso titolo e anno (o la stessa serie ed episodio) di uno gia'
+# su Drive, se ne prende solo l'audio, rimesso a tempo, e diventa una lingua
+# in piu' del primo. Per i nomi che non si somigliano ("Il Padrino" e "The
+# Godfather") c'e' aggiungi-lingua.bat: ci si trascina sopra il video e si
+# sceglie il film.
+#
 # Il file e' scritto senza lettere accentate apposta: Windows PowerShell legge
 # gli script senza BOM come ANSI, e una "e'" accentata diventerebbe illeggibile.
 
@@ -52,12 +59,18 @@ param(
   # Lascia gli originali dove sono invece di cancellarli.
   [switch]$TieniOriginali,
   # Non converte niente: prepara le tracce audio dei video gia' su Drive.
-  [switch]$SoloTracceAudio
+  [switch]$SoloTracceAudio,
+  # Non converte niente: aggiunge l'audio di questo video, come lingua in piu',
+  # al film gia' su Drive (lancialo con aggiungi-lingua.bat). -Film dice quale
+  # film senza chiederlo; -LinguaNuova la lingua, se il file non la dice.
+  [string]$AggiungiLingua,
+  [string]$Film,
+  [string]$LinguaNuova
 )
 
 $ErrorActionPreference = 'Stop'
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-09a'
+$Versione = '2026-10-10a'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 # Gli scarti: un video sotto questa misura e' il promo di una release, non un
 # film ne' un episodio; le cartelle degli extra dei film (gli "Extras" e gli
@@ -76,6 +89,16 @@ function Lingua([string]$codice) {
   switch ($codice.ToLower()) {
     { $_ -in 'it', 'ita', 'italian' } { return 'it' }
     { $_ -in 'en', 'eng', 'english' } { return 'en' }
+    # Le altre piu' comuni a due lettere, come le prime: "ger" e "de" sono la
+    # stessa lingua, e non deve entrare due volte nel menu Audio.
+    { $_ -in 'fr', 'fre', 'fra' } { return 'fr' }
+    { $_ -in 'de', 'ger', 'deu' } { return 'de' }
+    { $_ -in 'es', 'spa' } { return 'es' }
+    { $_ -in 'ja', 'jpn' } { return 'ja' }
+    { $_ -in 'pt', 'por' } { return 'pt' }
+    { $_ -in 'ru', 'rus' } { return 'ru' }
+    { $_ -in 'zh', 'chi', 'zho' } { return 'zh' }
+    { $_ -in 'ko', 'kor' } { return 'ko' }
     { $_ -in 'und', '' } { return $null }
     default { return $_.ToLower() }
   }
@@ -97,7 +120,7 @@ foreach ($p in 'ffmpeg', 'ffprobe') {
   }
 }
 # Per le sole tracce audio la cartella dei download non serve.
-if (-not $SoloTracceAudio -and -not (Test-Path -LiteralPath $Origine)) {
+if (-not $SoloTracceAudio -and -not $AggiungiLingua -and -not (Test-Path -LiteralPath $Origine)) {
   Write-Host "La cartella $Origine non esiste." -ForegroundColor Red
   Read-Host 'Premi Invio per chiudere'
   exit 1
@@ -281,7 +304,7 @@ function TracceAudio([string]$mp4, [string]$cartella, [string]$nome) {
     $elenco += [ordered]@{ indice = $i + 1; lingua = Lingua "$($audio[$i].tags.language)"; titolo = "$($audio[$i].tags.title)"; file = $file }
   }
   if ($uscite.Count -gt 0) {
-    $esito = Esegui 'ffmpeg' (@('-hide_banner', '-loglevel', 'error', '-y', '-i', $mp4) + $uscite)
+    $esito = Esegui 'ffmpeg' (@('-nostdin', '-hide_banner', '-loglevel', 'error', '-y', '-i', $mp4) + $uscite)
     if ($esito -ne 0) {
       $creati | ForEach-Object { Remove-Item -LiteralPath $_ -ErrorAction SilentlyContinue }
       throw 'estrazione delle tracce audio non riuscita'
@@ -413,6 +436,290 @@ function Scarto($f) {
   return $null
 }
 
+# ---- Lo stesso film in un'altra lingua ---------------------------------------
+# Un film scaricato anche in italiano (o in inglese) non va su Drive una
+# seconda volta: si prende solo il suo audio e lo si aggiunge come lingua al
+# film che c'e' gia', nel menu Audio di Ciak. Le due versioni pero' non
+# combaciano quasi mai al secondo: loghi diversi all'inizio, e le copie
+# europee (PAL) vanno a 25 fotogrammi invece di 23,976, cioe' il 4% piu'
+# veloci. Prima di aggiungere niente si misura lo scarto confrontando i rumori
+# del film (musica ed effetti, uguali nelle due lingue) in tre punti: se i tre
+# punti non dicono la stessa cosa le versioni sono montate diversamente, e la
+# lingua non si aggiunge, perche' sarebbe fuori sincrono.
+
+# Le parole che nei nomi delle release vengono dopo il titolo.
+$EtichetteRelease = '^(2160p|1080p|720p|576p|480p|4k|uhd|bluray|bdrip|brrip|remux|web|webdl|webrip|hdtv|dvdrip|hdrip|x264|x265|h264|h265|hevc|avc|hdr|hdr10|10bit|10bits|ita|eng|italian|english|multi|dual|subs?|ac3|aac|dts|extended|proper|repack|complete)$'
+
+# Titolo, anno ed episodio dal nome di un file: "Inception.2010.1080p.mkv" e
+# "Inception (2010) ITA.mp4" danno la stessa chiave.
+function ChiaveVideo([string]$nome) {
+  $base = [IO.Path]::GetFileNameWithoutExtension($nome).ToLower() -replace '\[[^\]]*\]', ' ' -replace '[._()\-]', ' '
+  $titolo = @(); $anno = $null; $episodio = $null
+  foreach ($p in @($base -split '\s+' | Where-Object { $_ })) {
+    if ($p -match '^s(\d{1,2})e(\d{1,3})$') { $episodio = 'S{0:D2}E{1:D2}' -f [int]$Matches[1], [int]$Matches[2]; break }
+    if ($titolo.Count -gt 0 -and $p -match '^(19|20)\d\d$') { $anno = [int]$p; break }
+    if ($p -match $EtichetteRelease) { break }
+    $titolo += $p
+  }
+  if ($titolo.Count -eq 0) { return $null }
+  return @{ titolo = ($titolo -join ' '); anno = $anno; episodio = $episodio }
+}
+
+# Stesso film: stesso titolo e stesso anno; stesso episodio: stessa serie e
+# stessa sigla. Senza anno ne' episodio non si rischia: "Alien" non basta.
+function StessoVideo($a, $b) {
+  if (-not $a -or -not $b -or $a.titolo -ne $b.titolo) { return $false }
+  if ($a.episodio -or $b.episodio) { return $a.episodio -eq $b.episodio }
+  return $a.anno -and $a.anno -eq $b.anno
+}
+
+# I video gia' su Drive con la loro chiave, letti una volta sola.
+$script:SuDrive = $null
+function VideoSuDrive {
+  if ($null -eq $script:SuDrive) {
+    $script:SuDrive = [Collections.ArrayList]@()
+    if (Test-Path -LiteralPath $Destinazione) {
+      foreach ($v in @(Get-ChildItem -LiteralPath $Destinazione -Recurse -File -Filter '*.mp4' -ErrorAction SilentlyContinue)) {
+        [void]$script:SuDrive.Add(@{ file = $v.FullName; chiave = (ChiaveVideo $v.Name) })
+      }
+    }
+  }
+  return $script:SuDrive
+}
+
+function Gemello([string]$nome) {
+  $chiave = ChiaveVideo $nome
+  if (-not $chiave) { return $null }
+  return (VideoSuDrive | Where-Object { StessoVideo $chiave $_.chiave } | Select-Object -First 1)
+}
+
+function Num([double]$x) { return $x.ToString('0.######', [Globalization.CultureInfo]::InvariantCulture) }
+
+# Il confronto vero e proprio, in C#: in PowerShell sarebbero minuti.
+# Inviluppo: per ogni centesimo di secondo quanto cresce il volume (gli
+# attacchi di musica ed effetti). Allinea: dove il pezzo corto combacia meglio
+# dentro quello lungo, con la correlazione normalizzata; torna lo spostamento,
+# quanto combacia e quanto combacia il secondo punto migliore lontano da li'.
+$CodiceSincronia = @'
+using System;
+public static class CiakSincronia {
+  public static double[] Inviluppo(byte[] pcm, int finestra) {
+    int n = pcm.Length / 2 / finestra;
+    double[] e = new double[n];
+    for (int i = 0; i < n; i++) {
+      double s = 0;
+      int b = i * finestra * 2;
+      for (int j = 0; j < finestra; j++) {
+        short v = (short)(pcm[b + 2 * j] | (pcm[b + 2 * j + 1] << 8));
+        s += (double)v * v;
+      }
+      e[i] = Math.Log(1.0 + s / finestra);
+    }
+    double[] d = new double[n];
+    for (int i = 1; i < n; i++) { double x = e[i] - e[i - 1]; d[i] = x > 0 ? x : 0; }
+    return d;
+  }
+  public static double[] Allinea(double[] a, double[] b) {
+    int n = a.Length, passi = b.Length - n + 1;
+    if (n < 100 || passi < 1) return new double[] { -1, 0, 0 };
+    double ma = 0;
+    for (int i = 0; i < n; i++) ma += a[i];
+    ma /= n;
+    double[] az = new double[n];
+    double va = 0;
+    for (int i = 0; i < n; i++) { az[i] = a[i] - ma; va += az[i] * az[i]; }
+    if (va <= 0) return new double[] { -1, 0, 0 };
+    double sa = Math.Sqrt(va);
+    double[] c = new double[passi];
+    double sb = 0, sbb = 0;
+    for (int i = 0; i < n; i++) { sb += b[i]; sbb += b[i] * b[i]; }
+    for (int k = 0; k < passi; k++) {
+      if (k > 0) { double via = b[k - 1], nuovo = b[k + n - 1]; sb += nuovo - via; sbb += nuovo * nuovo - via * via; }
+      double vb = sbb - sb * sb / n;
+      if (vb <= 1e-9) { c[k] = 0; continue; }
+      double dot = 0;
+      for (int i = 0; i < n; i++) dot += az[i] * b[k + i];
+      c[k] = dot / (sa * Math.Sqrt(vb));
+    }
+    int meglio = 0;
+    for (int k = 1; k < passi; k++) if (c[k] > c[meglio]) meglio = k;
+    double secondo = 0;
+    for (int k = 0; k < passi; k++) if (Math.Abs(k - meglio) > 50 && c[k] > secondo) secondo = c[k];
+    // Fra due centesimi: la parabola per i tre punti attorno al picco.
+    double fine = meglio;
+    if (meglio > 0 && meglio < passi - 1) {
+      double curva = c[meglio - 1] - 2 * c[meglio] + c[meglio + 1];
+      if (curva < 0) fine += 0.5 * (c[meglio - 1] - c[meglio + 1]) / curva;
+    }
+    return new double[] { fine, c[meglio], secondo };
+  }
+}
+'@
+
+# Un pezzo d'audio come inviluppo (vedi sopra). $tempo accelera o rallenta
+# prima di misurare, come si fara' con l'audio vero.
+function Inviluppo([string]$file, [int]$traccia, [double]$da, [double]$durata, [double]$tempo) {
+  $ErrorActionPreference = 'Continue'
+  $raw = Join-Path $Lavoro 'sincronia.raw'
+  $filtro = 'aresample=8000'
+  if ([math]::Abs($tempo - 1) -gt 1e-6) { $filtro = "atempo=$(Num $tempo),$filtro" }
+  $esito = Esegui 'ffmpeg' @('-nostdin', '-hide_banner', '-loglevel', 'error', '-y', '-ss', (Num $da), '-t', (Num $durata), '-i', $file, '-map', "0:a:$traccia", '-ac', '1', '-af', $filtro, '-f', 's16le', $raw)
+  if ($esito -ne 0 -or -not (Test-Path -LiteralPath $raw)) { throw "non riesco a leggere l'audio di $(Split-Path $file -Leaf)" }
+  $byte = [IO.File]::ReadAllBytes($raw)
+  Remove-Item -LiteralPath $raw -ErrorAction SilentlyContinue
+  return , [CiakSincronia]::Inviluppo($byte, 80)
+}
+
+# Quanto spostare l'audio di $fonte perche' combaci col film: torna
+# @{ tempo; scarto } (secondi, positivo: l'audio della fonte e' in ritardo e si
+# taglia l'inizio) o $null se non si trova un accordo.
+# Cinque punti lungo il film, e devono dire tutti la stessa cosa: una scena
+# tagliata a meta' fa cambiare lo scarto da li' in poi, e con la maggioranza
+# sola la prima meta' del film sarebbe rimasta fuori sincrono. Un punto senza
+# un picco chiaro (una scena silenziosa) non vota; ne servono almeno tre.
+function MisuraSincronia([string]$film, [string]$fonte, [int]$tracciaFonte, [double]$durataFilm, [double]$durataFonte) {
+  if (-not ('CiakSincronia' -as [type])) { Add-Type -TypeDefinition $CodiceSincronia }
+  $W = 60; $L = 45
+  if ($durataFilm -lt 5 * $W + 2 * $L) { throw "il video e' troppo corto per misurare la sincronia" }
+  # Dal film, che puo' stare solo su Drive, si legge poco: cinque minuti.
+  $punti = @(0.1, 0.3, 0.5, 0.7, 0.9) | ForEach-Object { [math]::Min($durataFilm - $W - $L, [math]::Max($L, $_ * $durataFilm - $W / 2)) }
+  $pezziFilm = @($punti | ForEach-Object { , (Inviluppo $film 0 $_ $W 1) })
+  # Le velocita' possibili: uguali, una delle due copie in PAL (25 fotogrammi
+  # contro 24 o 23,976), o 24 contro 23,976. Si provano in ordine di quanto
+  # spiegano la differenza di durata.
+  $rapporto = $durataFonte / $durataFilm
+  $candidati = @(1.0, (23.976 / 25), (24 / 25), (25 / 23.976), (25 / 24), (23.976 / 24), (24 / 23.976)) | Sort-Object { [math]::Abs($_ - $rapporto) }
+  foreach ($tempo in $candidati) {
+    $scarti = @()
+    for ($i = 0; $i -lt $punti.Count; $i++) {
+      $inizio = $punti[$i] - $L
+      $pezzo = Inviluppo $fonte $tracciaFonte ($inizio * $tempo) (($W + 2 * $L) * $tempo) $tempo
+      $esito = [CiakSincronia]::Allinea($pezziFilm[$i], $pezzo)
+      # Le voci sono diverse (e' un'altra lingua): la somiglianza resta bassa
+      # anche quando e' giusta. Conta che spicchi sul resto.
+      if ($esito[0] -lt 0 -or $esito[1] -lt 0.06 -or $esito[1] -lt 1.3 * $esito[2]) { continue }
+      $scarti += $esito[0] / 100 - $L
+    }
+    if ($scarti.Count -lt 3) { continue }
+    $minimo = ($scarti | Measure-Object -Minimum).Minimum
+    $massimo = ($scarti | Measure-Object -Maximum).Maximum
+    if ($massimo - $minimo -le 0.1) {
+      return @{ tempo = $tempo; scarto = [math]::Round(($scarti | Measure-Object -Average).Average, 3) }
+    }
+    # Punti chiari ma in disaccordo: con questa velocita' il film e' montato
+    # diversamente. Si prova la prossima; nessuna va bene -> $null.
+  }
+  return $null
+}
+
+# Le lingue gia' nel film, dal suo elenco o, senza, dal file.
+function LingueDelFilm([string]$film) {
+  $elenco = Join-Path (Split-Path $film -Parent) "$([IO.Path]::GetFileNameWithoutExtension($film)).audio.json"
+  if (Test-Path -LiteralPath $elenco) {
+    return @((Get-Content -LiteralPath $elenco -Raw -Encoding UTF8 | ConvertFrom-Json).tracce | ForEach-Object { Lingua "$($_.lingua)" })
+  }
+  $info = (& ffprobe -v error -select_streams a -show_entries 'stream_tags=language' -of json -- $film | Out-String) | ConvertFrom-Json
+  return @($info.streams | ForEach-Object { Lingua "$($_.tags.language)" })
+}
+
+# La lingua dal nome della release ("Film.2010.ITA.mkv", "FRENCH"), quando
+# il file non la dichiara. Con due lingue nel nome non si sa quale sia.
+function LinguaDalNome([string]$nome) {
+  $parole = @{ ita = 'it'; italian = 'it'; italiano = 'it'; eng = 'en'; english = 'en'; french = 'fr'; fre = 'fr'; vff = 'fr'; german = 'de'; ger = 'de'; deu = 'de'; spanish = 'es'; spa = 'es'; esp = 'es'; castellano = 'es'; japanese = 'ja'; jap = 'ja'; jpn = 'ja' }
+  $trovate = @($nome.ToLower() -split '[^a-z]+' | Where-Object { $parole.ContainsKey($_) } | ForEach-Object { $parole[$_] } | Select-Object -Unique)
+  if ($trovate.Count -eq 1) { return $trovate[0] }
+  return $null
+}
+
+# Aggiunge al film su Drive le lingue di $fonte che gli mancano. Torna le
+# lingue aggiunte (nessuna: c'erano gia' tutte); un errore se le versioni non
+# combaciano.
+function AggiungiLingua([string]$fonte, [string]$film, [string]$linguaForzata) {
+  $ErrorActionPreference = 'Continue'
+  $info = (& ffprobe -v error -select_streams a -show_entries 'stream=index,codec_name,channels:stream_tags=language,title' -of json -- $fonte | Out-String) | ConvertFrom-Json
+  $tracce = @($info.streams)
+  if ($tracce.Count -eq 0) { throw "$(Split-Path $fonte -Leaf) non ha audio" }
+  $presenti = @(LingueDelFilm $film)
+  $nuove = @()
+  for ($i = 0; $i -lt $tracce.Count; $i++) {
+    $lingua = Lingua "$($tracce[$i].tags.language)"
+    if (-not $lingua -and $linguaForzata) { $lingua = Lingua $linguaForzata }
+    if (-not $lingua -and $tracce.Count -eq 1) { $lingua = LinguaDalNome (Split-Path $fonte -Leaf) }
+    if (-not $lingua) { continue }
+    if ($presenti -contains $lingua -or ($nuove | Where-Object { $_.lingua -eq $lingua })) { continue }
+    $nuove += @{ indice = $i; lingua = $lingua; traccia = $tracce[$i] }
+  }
+  if ($nuove.Count -eq 0) {
+    if (-not ($tracce | Where-Object { $_.tags.language -and $_.tags.language -ne 'und' }) -and -not $linguaForzata -and -not (LinguaDalNome (Split-Path $fonte -Leaf))) {
+      throw "non so di che lingua e' l'audio di $(Split-Path $fonte -Leaf): rilancia con aggiungi-lingua.bat, che lo chiede"
+    }
+    return
+  }
+
+  $durataFilm = Durata $film
+  $durataFonte = Durata $fonte
+  if ($durataFilm -le 0 -or $durataFonte -le 0) { throw 'non riesco a leggere la durata dei due video' }
+  Write-Host "   misuro la sincronia con $(Split-Path $film -Leaf)..."
+  $sincro = MisuraSincronia $film $fonte $nuove[0].indice $durataFilm $durataFonte
+  if (-not $sincro) {
+    throw "le due versioni non combaciano (montaggio diverso: director's cut, scene in piu'?): la lingua resterebbe fuori sincrono"
+  }
+  $velocita = if ([math]::Abs($sincro.tempo - 1) -lt 1e-6) { 'stessa velocita''' } else { 'velocita'' corretta (PAL)' }
+  Write-Host "   sincronia trovata: $velocita, $(Num $sincro.scarto) s di scarto" -ForegroundColor DarkGray
+
+  # L'elenco delle lingue del film: se manca lo si crea (e, se il film ha gia'
+  # piu' tracce, si estraggono come per i video nuovi).
+  $cartellaFilm = Split-Path $film -Parent
+  $nomeFilm = [IO.Path]::GetFileNameWithoutExtension($film)
+  $elencoFile = Join-Path $cartellaFilm "$nomeFilm.audio.json"
+  if (-not (Test-Path -LiteralPath $elencoFile)) {
+    foreach ($file in @(TracceAudio $film $Lavoro $nomeFilm)) {
+      Move-Item -LiteralPath $file -Destination (Join-Path $cartellaFilm (Split-Path $file -Leaf)) -Force
+    }
+  }
+  $elenco = @((Get-Content -LiteralPath $elencoFile -Raw -Encoding UTF8 | ConvertFrom-Json).tracce | ForEach-Object {
+      [ordered]@{ indice = [int]$_.indice; lingua = $_.lingua; titolo = "$($_.titolo)"; file = $_.file }
+    })
+  $prossimo = [int]($elenco | ForEach-Object { $_.indice } | Measure-Object -Maximum).Maximum + 1
+
+  # L'audio rimesso a tempo: accelerato o rallentato, poi tagliato all'inizio
+  # (o preceduto da silenzio) dello scarto misurato, e lungo quanto il film.
+  $filtri = @()
+  if ([math]::Abs($sincro.tempo - 1) -gt 1e-6) { $filtri += "atempo=$(Num $sincro.tempo)" }
+  if ($sincro.scarto -gt 0) { $filtri += "atrim=start=$(Num $sincro.scarto)", 'asetpts=PTS-STARTPTS' }
+  elseif ($sincro.scarto -lt 0) { $filtri += "adelay=$([math]::Round(-$sincro.scarto * 1000)):all=1" }
+  $uscite = @(); $creati = @()
+  foreach ($n in $nuove) {
+    $file = "$nomeFilm.audio-$prossimo.m4a"
+    $percorso = Join-Path $Lavoro $file
+    $canali = if ($n.traccia.channels) { [int]$n.traccia.channels } else { 2 }
+    $kbit = [math]::Min(384, [math]::Max(192, 64 * $canali))
+    $uscite += @('-map', "0:a:$($n.indice)")
+    if ($filtri.Count -gt 0) { $uscite += @('-af', ($filtri -join ',')) }
+    $uscite += @('-t', (Num $durataFilm), '-c:a', 'aac', '-b:a', "$($kbit)k", '-vn', '-sn', '-movflags', '+faststart', $percorso)
+    $creati += $percorso
+    $elenco += [ordered]@{ indice = $prossimo; lingua = $n.lingua; titolo = "$($n.traccia.tags.title)"; file = $file }
+    $prossimo++
+  }
+  $esito = Esegui 'ffmpeg' (@('-nostdin', '-hide_banner', '-loglevel', 'error', '-y', '-i', $fonte) + $uscite)
+  if ($esito -ne 0) {
+    $creati | ForEach-Object { Remove-Item -LiteralPath $_ -ErrorAction SilentlyContinue }
+    throw "conversione dell'audio non riuscita"
+  }
+  foreach ($c in $creati) { Move-Item -LiteralPath $c -Destination (Join-Path $cartellaFilm (Split-Path $c -Leaf)) -Force }
+  # L'elenco per ultimo: finche' non c'e', Ciak non offre una lingua a meta'.
+  $json = ConvertTo-Json -InputObject ([ordered]@{ versione = 1; tracce = $elenco }) -Depth 4
+  [IO.File]::WriteAllText($elencoFile, $json, (New-Object Text.UTF8Encoding $false))
+  return $nuove | ForEach-Object { $_.lingua }
+}
+
+# Il nome di una lingua per i messaggi.
+function NomeLingua([string]$codice) {
+  $nomi = @{ it = 'italiano'; en = 'inglese'; ja = 'giapponese'; fr = 'francese'; de = 'tedesco'; es = 'spagnolo'; pt = 'portoghese'; ru = 'russo'; zh = 'cinese'; ko = 'coreano' }
+  if ($nomi.ContainsKey($codice)) { return $nomi[$codice] }
+  return $codice
+}
+
 $Lavoro = Join-Path ([IO.Path]::GetTempPath()) 'ciak-conversione'
 New-Item -ItemType Directory -Force -Path $Lavoro | Out-Null
 
@@ -469,17 +776,100 @@ if ($SoloTracceAudio) {
   exit 0
 }
 
+if ($AggiungiLingua) {
+  # Niente "Premi Invio" qui: aggiungi-lingua.bat si ferma da solo alla fine,
+  # una volta per tutti i video trascinati.
+  if (-not (Test-Path -LiteralPath $AggiungiLingua -PathType Leaf)) {
+    Write-Host "Non trovo il video $AggiungiLingua" -ForegroundColor Red
+    exit 1
+  }
+  $fonte = (Resolve-Path -LiteralPath $AggiungiLingua).Path
+  $nomeFonte = Split-Path $fonte -Leaf
+  Write-Host "Aggiungo la lingua di $nomeFonte"
+  $scelto = $Film
+  if (-not $scelto) {
+    # I film su Drive che le somigliano: parole del titolo in comune, e lo
+    # stesso anno conta da solo ("Il Padrino 1972" e "The Godfather 1972").
+    $chiave = ChiaveVideo $nomeFonte
+    $parole = if ($chiave) { @($chiave.titolo -split ' ') } else { @() }
+    $candidati = @(VideoSuDrive | ForEach-Object {
+        $k = $_.chiave
+        $punti = 0
+        if ($k -and $chiave) {
+          $suoi = @($k.titolo -split ' ')
+          $punti = @($parole | Where-Object { $suoi -contains $_ }).Count / [math]::Max($parole.Count, $suoi.Count)
+          if ($chiave.anno -and $k.anno -eq $chiave.anno) { $punti += 0.5 }
+          if ($chiave.episodio -and $k.episodio -ne $chiave.episodio) { $punti = 0 }
+        }
+        @{ file = $_.file; punti = $punti }
+      } | Where-Object { $_.punti -gt 0 } | Sort-Object { - $_.punti } | Select-Object -First 9)
+    while (-not $scelto) {
+      if ($candidati.Count -eq 0) {
+        Write-Host 'Non trovo film che gli somiglino.' -ForegroundColor DarkYellow
+      } else {
+        Write-Host 'A quale film aggiungo la lingua?'
+        for ($i = 0; $i -lt $candidati.Count; $i++) {
+          Write-Host "  $($i + 1)) $($candidati[$i].file.Substring($Destinazione.Length).TrimStart('\', '/'))"
+        }
+      }
+      $risposta = Read-Host 'Numero del film, o una parola del titolo per cercarlo (Invio per lasciar stare)'
+      if (-not $risposta) { Write-Host 'Lasciato stare.'; exit 0 }
+      $numero = 0
+      if ([int]::TryParse($risposta, [ref]$numero) -and $numero -ge 1 -and $numero -le $candidati.Count) {
+        $scelto = $candidati[$numero - 1].file
+      } else {
+        $candidati = @(VideoSuDrive | Where-Object { (Split-Path $_.file -Leaf) -like "*$risposta*" } | Select-Object -First 9 | ForEach-Object { @{ file = $_.file } })
+      }
+    }
+  }
+  if (-not (Test-Path -LiteralPath $scelto -PathType Leaf)) {
+    Write-Host "Non trovo il film $scelto" -ForegroundColor Red
+    exit 1
+  }
+  # Una traccia senza lingua dichiarata: la si chiede, se il nome non la dice.
+  $lingua = $LinguaNuova
+  $senza = @(((& ffprobe -v error -select_streams a -show_entries 'stream_tags=language' -of json -- $fonte | Out-String) | ConvertFrom-Json).streams |
+      Where-Object { -not (Lingua "$($_.tags.language)") })
+  if (-not $lingua -and $senza.Count -gt 0 -and -not (LinguaDalNome $nomeFonte) -and -not $env:CIAK_SENZA_PAUSA) {
+    $lingua = Read-Host "Il file non dice di che lingua e' l'audio. Che lingua e'? (it, en, ja, fr, de, es...)"
+  }
+  try {
+    $aggiunte = @(AggiungiLingua $fonte $scelto $lingua)
+  } catch {
+    Write-Host "ERRORE: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+  }
+  if ($aggiunte.Count -eq 0) {
+    Write-Host "Il film ha gia' tutte le lingue di $nomeFonte." -ForegroundColor DarkYellow
+  } else {
+    Write-Host "Fatto: $(($aggiunte | ForEach-Object { NomeLingua $_ }) -join ', ') nel menu Audio di Ciak." -ForegroundColor Green
+  }
+  if (-not $TieniOriginali -and -not $env:CIAK_SENZA_PAUSA) {
+    if ((Read-Host "Cancello $nomeFonte, che ora non serve piu'? (s/N)") -match '^s') {
+      try { Remove-Item -LiteralPath $fonte -Force; Write-Host 'Cancellato.' } catch { Write-Host "Non riesco: $($_.Exception.Message)" -ForegroundColor DarkYellow }
+    }
+  }
+  exit 0
+}
+
 Write-Host 'Cerco i video...'
 $tutti = Get-ChildItem -LiteralPath $Origine -Recurse -File |
   Where-Object { $EstensioniVideo -contains $_.Extension.ToLower() } |
   Sort-Object FullName
 $video = @($tutti | Where-Object { -not (Scarto $_) })
+# Due versioni dello stesso film nello stesso giro: la piu' grande (di solito
+# la qualita' migliore) va su Drive come video, l'altra ne diventa una lingua.
+$video = @($video | Sort-Object @{ Expression = {
+      $k = ChiaveVideo $_.Name
+      if ($k -and ($k.anno -or $k.episodio)) { "$($k.titolo)|$($k.anno)|$($k.episodio)" } else { $_.FullName.ToLower() }
+    }
+  }, @{ Expression = { $_.Length }; Descending = $true })
 $scarti = @($tutti | Where-Object { Scarto $_ })
 if ($scarti.Count -gt 0) {
   Write-Host "Salto $($scarti.Count) scarti delle release (anteprime, promo, extra): su Drive va solo il film." -ForegroundColor DarkGray
 }
 
-$fatti = 0; $saltati = 0; $errori = 0; $ricodificati = 0; $inDownload = 0
+$fatti = 0; $saltati = 0; $errori = 0; $ricodificati = 0; $inDownload = 0; $lingueAggiunte = 0
 $elencoErrori = @()
 $calma = (Get-Date).AddMinutes(-$MinutiDiCalma)
 $n = 0
@@ -522,6 +912,21 @@ foreach ($f in $video) {
     $buco = PrimoBuco $f.FullName
     if ($buco -ge 0) {
       throw "mancano dei dati a $([math]::Round($buco / 1MB)) MB dall'inizio (solo zeri): il download non e' finito o il file e' rovinato. In qBittorrent: tasto destro sul torrent > Forza ricontrollo, aspetta che arrivi al 100% e rilancia. L'originale resta dov'e'"
+    }
+    # Lo stesso film gia' su Drive, in un'altra lingua: se ne prende l'audio.
+    $gemello = Gemello $f.Name
+    if ($gemello) {
+      Write-Host "   e' lo stesso video di $($gemello.file.Substring($Destinazione.Length).TrimStart('\', '/')): ne aggiungo solo la lingua"
+      $aggiunte = @(AggiungiLingua $f.FullName $gemello.file '')
+      if ($aggiunte.Count -gt 0) {
+        $lingueAggiunte++
+        Write-Host "   aggiunto l'audio in $(($aggiunte | ForEach-Object { NomeLingua $_ }) -join ', ')" -ForegroundColor Green
+      } else {
+        $saltati++
+        Write-Host "   le sue lingue il film le ha gia'" -ForegroundColor DarkGray
+      }
+      if (-not $TieniOriginali) { CancellaOriginale $f $nome (Split-Path $gemello.file -Parent) $relativo }
+      continue
     }
     $json = & ffprobe -v error -show_entries 'format=duration:stream=index,codec_type,codec_name,pix_fmt,channels,color_transfer:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags:stream_side_data=dv_profile' -of json -- $f.FullName | Out-String
     if ($LASTEXITCODE -ne 0) { throw 'ffprobe non riesce a leggere il file' }
@@ -624,10 +1029,12 @@ foreach ($f in $video) {
 
     # Le lingue dell'audio oltre la prima, accanto al video (vedi TracceAudio).
     $audioExtra = @(TracceAudio $tmp $Lavoro $nome)
-    if ($audioExtra.Count -gt 1) { Write-Host "   $(TracceInPiu ($audioExtra.Count - 1)) salvate a parte, per il menu Audio di Ciak" -ForegroundColor DarkGray }
+    if ($audioExtra.Count -gt 1) { Write-Host "   $(TracceInPiu ($audioExtra.Count - 1)), a parte per il menu Audio di Ciak" -ForegroundColor DarkGray }
 
     New-Item -ItemType Directory -Force -Path $cartellaDest | Out-Null
     Move-Item -LiteralPath $tmp -Destination $dest -Force
+    # Un'altra versione dello stesso film, piu' avanti in questo giro, lo trova.
+    if ($null -ne $script:SuDrive) { [void]$script:SuDrive.Add(@{ file = $dest; chiave = (ChiaveVideo "$nome.mp4") }) }
     foreach ($file in @($srt) + $audioExtra) {
       $finale = Join-Path $cartellaDest (Split-Path $file -Leaf)
       if (Test-Path -LiteralPath $finale) { Remove-Item -LiteralPath $file } else { Move-Item -LiteralPath $file -Destination $finale }
@@ -708,5 +1115,6 @@ if ($nonCancellati.Count -gt 0) {
 $inDownloadTesto = if ($inDownload) { ", $inDownload forse ancora in download (rilancia piu' tardi)" } else { '' }
 $cancellatiTesto = if ($cancellati) { ", $cancellati originali cancellati" } else { '' }
 if ($scartiCancellati) { $cancellatiTesto += ", $scartiCancellati scarti cancellati" }
-Write-Host "Finito: $fatti pronti per Ciak ($ricodificati ricodificati), $saltati gia' presenti, $errori errori$inDownloadTesto$cancellatiTesto."
+$lingueTesto = if ($lingueAggiunte) { ", $lingueAggiunte aggiunti come lingua a un film gia' su Drive" } else { '' }
+Write-Host "Finito: $fatti pronti per Ciak ($ricodificati ricodificati)$lingueTesto, $saltati gia' presenti, $errori errori$inDownloadTesto$cancellatiTesto."
 if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
