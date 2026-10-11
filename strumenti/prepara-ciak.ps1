@@ -69,8 +69,17 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Il disco esterno al posto di Drive: se un disco (non C:, non Google Drive)
+# ha la cartella Ciak in radice, i video vanno li', dove li legge Jellyfin.
+# Una destinazione scritta a mano vince sempre.
+if (-not $PSBoundParameters.ContainsKey('Destinazione')) {
+  $disco = @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+      Where-Object { $_.Root -match '^[A-Z]:\\$' -and $_.Root -notmatch '^[CG]:' -and (Test-Path -LiteralPath (Join-Path $_.Root 'Ciak')) } |
+      Select-Object -First 1)
+  if ($disco.Count -gt 0) { $Destinazione = Join-Path $disco[0].Root 'Ciak' }
+}
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-10a'
+$Versione = '2026-10-11a'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 # Gli scarti: un video sotto questa misura e' il promo di una release, non un
 # film ne' un episodio; le cartelle degli extra dei film (gli "Extras" e gli

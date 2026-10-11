@@ -148,3 +148,71 @@ Per cartelle diverse, o per forzare un encoder (`-Encoder libx264` per la CPU):
 ```
 powershell -ExecutionPolicy Bypass -File prepara-ciak.ps1 -Origine "D:\Video" -Destinazione "G:\Il mio Drive\Ciak"
 ```
+
+## Il server di casa: i film su un disco esterno, senza Drive
+
+Al posto di Google Drive i film possono stare su un disco attaccato al PC:
+**Jellyfin** (gratuito) li manda a Ciak, e **Tailscale** (gratuito) li fa
+arrivare anche fuori casa, in modo sicuro, senza aprire niente su internet.
+In Ciak non cambia niente: videoteca, saghe, diario, «riprendi da dove eri»,
+sottotitoli e menu Audio restano gli stessi. In più Jellyfin converte da sé i
+formati che il browser non legge (MKV, HEVC, Dolby): `prepara-ciak` diventa
+facoltativo, ma con gli MP4 H.264 il PC lavora meno e il film parte subito.
+
+Il PC deve essere acceso (e Jellyfin aperto) mentre guardi: in *Impostazioni
+→ Sistema → Alimentazione* metti «Sospensione: mai» quando è collegato alla
+corrente.
+
+**1. Il disco**
+
+Formattalo in NTFS (tasto destro → Formatta), poi copia la videoteca da Drive
+con `sposta-su-disco.bat`: chiede la lettera del disco e copia
+`G:\Il mio Drive\Ciak` in `F:\Ciak` (con la tua lettera), sottocartelle
+comprese. Drive per desktop scarica ogni file per copiarlo, quindi ci vuole
+tempo: si può interrompere e rilanciare, riparte da dove era. Da Drive non
+cancella niente: quando hai controllato che i film ci sono, li cancelli tu.
+
+Da quel momento `prepara-ciak.bat` mette i video nuovi sul disco da solo:
+trova la cartella `Ciak` in radice e all'avvio lo scrive («A: F:\Ciak»).
+
+**2. Jellyfin sul PC**
+
+1. Scarica *Jellyfin Server* per Windows da jellyfin.org (Downloads →
+   Windows) e installalo.
+2. Si apre la configurazione nel browser: lingua italiana, un utente e una
+   password (quelli che scriverai in Ciak).
+3. Aggiungi una **libreria per cartella** del disco: «Film» → `F:\Ciak\FILM`
+   (tipo *Film*), «Serie TV» → `F:\Ciak\SERIE TV` (tipo *Programmi TV*), e così
+   `ANIME` e `CARTONI`. Il nome della cartella diventa la scheda della
+   videoteca di Ciak, come con Drive.
+4. Facoltativo, per i sottotitoli che mancano: *Pannello di controllo →
+   Plugin → Catalogo → Open Subtitles*, poi nelle librerie spunta italiano e
+   inglese fra le lingue da scaricare.
+
+**3. Tailscale (per collegarsi in HTTPS, anche fuori casa)**
+
+Ciak è un sito in HTTPS e il browser non lo lascia parlare con un server in
+HTTP: Tailscale dà a Jellyfin un indirizzo HTTPS valido.
+
+1. Installa Tailscale (tailscale.com/download) sul PC **e** sul tablet (e sul
+   telefono), entrando con lo stesso account.
+2. Nella console di Tailscale (login.tailscale.com → *DNS*) attiva *MagicDNS* e
+   *HTTPS Certificates*.
+3. Sul PC apri il *Prompt dei comandi* e scrivi:
+   `tailscale serve --bg 8096`
+   Risponde con l'indirizzo, qualcosa come `https://pc-di-casa.tail1234.ts.net`.
+
+**4. In Ciak**
+
+*Streaming* → «🏠 Collega il server di casa»: l'indirizzo di Tailscale, utente
+e password di Jellyfin. Si fa una volta per dispositivo; Ciak tiene solo un
+token, che dal Pannello di controllo di Jellyfin (*Dispositivi*) si toglie
+quando vuoi. Se Chrome chiede di consentire l'accesso ai dispositivi della
+rete locale, rispondi «Consenti».
+
+Finché Drive resta collegato, la videoteca mostra i film di tutti e due: lo
+stesso file nei due posti compare una volta, quello del disco. Quando hai
+spostato tutto, in *Streaming* premi «Scollega Drive».
+
+Dal server di casa, per ora, non ci sono «Scarica per l'offline» e «Cancella»:
+i film si cancellano dal PC (Esplora file), poi «🔄 Aggiorna».

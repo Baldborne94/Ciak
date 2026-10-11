@@ -126,6 +126,11 @@ describe('soloRiproducibili', () => {
     expect(esito.visibili.map((x) => x.name)).toEqual(['Song.of.the.Sea.mp4', 'Clip.webm', 'Telefono.M4V'])
     expect(esito.nascosti).toBe(2)
   })
+
+  it('gli MKV del server di casa restano: li converte Jellyfin', () => {
+    const esito = soloRiproducibili([{ ...v('The.Secret.of.Kells.mkv', 'video/mkv'), id: 'jf-06006283103f8493628d6b5b9a95da9d' }])
+    expect(esito.nascosti).toBe(0)
+  })
 })
 
 describe('schede della videoteca', () => {
