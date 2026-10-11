@@ -95,7 +95,9 @@ import { useSottotitoli } from '../lib/useSottotitoli'
 import { useTracceAudio } from '../lib/useTracceAudio'
 import { useElementoVideo } from '../lib/useElementoVideo'
 import { collegaAudio } from '../lib/sincroniaAudio'
-import { indiceAudio, leggiLinguaAudio, nomiTracceAudio, salvaLinguaAudio, siglaTracciaAudio } from '../lib/tracceAudio'
+import { indiceAudio, leggiLinguaAudio, nomiTracceAudio, salvaLinguaAudio, siglaTracciaAudio, type TracciaAudio } from '../lib/tracceAudio'
+import { eJellyfin, fermaConversione, flussoDiretto, flussoHls, riproducibileDirettamente, tracciaPredefinita } from '../lib/jellyfin'
+import { useHls, useInfoCasa, useSottotitoliCasa } from '../lib/useLettoreCasa'
 
 // Due lettori per lo stesso film:
 //  - quello di Ciak, un <video> che legge il file originale da Drive (tramite
@@ -142,6 +144,10 @@ function LettoreStreaming() {
   const { fileId = '' } = useParams()
   const stato = useLocation().state as { titolo?: string; file?: string } | null
   const valido = idDriveValido(fileId)
+  // Un video del server di casa (Jellyfin): niente Drive, niente service
+  // worker; il file arriva dal server, così com'è o convertito al volo.
+  const casa = eJellyfin(fileId)
+  const { info: infoCasa, errore: erroreCasa } = useInfoCasa(fileId, casa && valido)
 
   // Il film sul dispositivo: undefined finché non si è guardato in cache.
   const [locale, setLocale] = useState<FilmOffline | null | undefined>(undefined)
@@ -156,7 +162,7 @@ function LettoreStreaming() {
   const [connesso, setConnesso] = useState(driveConnesso)
   const [ciakPronto, setCiakPronto] = useState(lettoreCiakDisponibile)
   const [lettore, setLettore] = useState<'ciak' | 'drive'>(() =>
-    lettoreCiakDisponibile() && driveConnesso() ? 'ciak' : 'drive',
+    casa || (lettoreCiakDisponibile() && driveConnesso()) ? 'ciak' : 'drive',
   )
   // I sottotitoli si cercano su Drive solo quando serve davvero il lettore di
   // Ciak e il film non è già sul dispositivo coi suoi: nel lettore di Drive
@@ -295,10 +301,13 @@ function LettoreStreaming() {
     const v = videoRef.current
     return () => rilasciaVideo(v, logFailure('Rilascio del video precedente'))
   }, [lettore, chiaveVideo])
+  // Dal server di casa si aspetta di sapere quale flusso chiedere: prima non
+  // c'è niente da far partire.
+  const casaPronta = !casa || infoCasa !== null
   useEffect(() => {
-    if (lettore !== 'ciak') return vigilanzaAvvio.current.fine()
+    if (lettore !== 'ciak' || !casaPronta) return vigilanzaAvvio.current.fine()
     vigilanzaAvvio.current.inizio()
-  }, [lettore, chiaveVideo])
+  }, [lettore, chiaveVideo, casaPronta])
 
   // Il film scaricato si guarda col lettore di Ciak anche senza Drive: è il
   // caso in cui serve di più (in giro, senza rete).
@@ -361,7 +370,9 @@ function LettoreStreaming() {
   // Coi sottotitoli già salvati insieme al film, Drive non serve: si usano
   // quelli. Altrimenti (o se si vuole cambiarli) li si cerca come sempre.
   const usaSalvati = scaricato && !connesso && (locale?.sottotitoli?.length ?? 0) > 0
-  const sub = useSottotitoli(fileId, valido && connesso && sottotitoliAttivi && !usaSalvati)
+  const subDrive = useSottotitoli(fileId, !casa && valido && connesso && sottotitoliAttivi && !usaSalvati)
+  const subCasa = useSottotitoliCasa(fileId, infoCasa)
+  const sub = casa ? subCasa : subDrive
 
   const tracceSalvate = useMemo(() => {
     if (!usaSalvati || !locale?.sottotitoli) return []
@@ -504,7 +515,13 @@ function LettoreStreaming() {
   // La lingua dell'audio (vedi lib/tracceAudio): il menu c'è solo per i video
   // con più lingue, preparate da prepara-ciak accanto al film su Drive. Le
   // altre lingue arrivano da Drive: senza collegamento resta quella del video.
-  const tracceAudio = useTracceAudio(fileId, valido && connesso && lettore === 'ciak')
+  const tracceDrive = useTracceAudio(fileId, !casa && valido && connesso && lettore === 'ciak')
+  // Dal server di casa le lingue le conosce Jellyfin, dentro e accanto al file.
+  const tracceCasa = useMemo<TracciaAudio[]>(
+    () => (infoCasa ? infoCasa.audio.map((a, i) => ({ indice: i + 1, lingua: a.lingua, titolo: a.titolo, fileId: null })) : []),
+    [infoCasa],
+  )
+  const tracceAudio = casa ? tracceCasa : tracceDrive
   const voceAudio = archivio.voce
   // Ricordata per serie (un anime doppiato, un altro in originale); per i film
   // una scelta sola.
@@ -519,14 +536,39 @@ function LettoreStreaming() {
   const tracciaAudio = tracceAudio[sceltaAudio]
   const scegliAudio = useCallback(
     (indice: number) => {
+      // Dal server di casa un'altra lingua è un altro flusso, e il <video> si
+      // rifà: riparte da dove si era.
+      if (casa) daRiprendere.current = posizione.current
       setAudioToccato({ fileId, indice })
       salvaLinguaAudio(ambitoAudio, tracceAudio[indice]?.lingua ?? null)
     },
-    [fileId, ambitoAudio, tracceAudio],
+    [casa, fileId, ambitoAudio, tracceAudio],
   )
   // L'<audio> della lingua scelta, quando non è quella dentro il video: lo
   // segue in tutto, e il video tace (vedi lib/sincroniaAudio).
-  const srcAudio = tracciaAudio?.fileId ? flussoVideoUrl(tracciaAudio.fileId) : null
+  const srcAudio = !casa && tracciaAudio?.fileId ? flussoVideoUrl(tracciaAudio.fileId) : null
+
+  // Il flusso del server di casa: il file così com'è quando il browser lo
+  // legge e si sente la prima lingua; altrimenti convertito da Jellyfin (HLS),
+  // con la lingua scelta. Un file diretto che non parte passa da solo alla
+  // conversione (vedi suErrore e segnala).
+  const [hlsForzato, setHlsForzato] = useState(false)
+  const idSessione = useMemo(() => Math.random().toString(36).slice(2), [])
+  const audioCasa = casa && infoCasa ? infoCasa.audio[sceltaAudio] : undefined
+  const direttoCasa =
+    !!infoCasa && !hlsForzato && riproducibileDirettamente(infoCasa) && (!audioCasa || audioCasa === tracciaPredefinita(infoCasa))
+  // Una sessione per lingua: Jellyfin ne converte una sola per sessione.
+  const sessioneCasa = `ciak-${idSessione}-${audioCasa?.indice ?? 'p'}`
+  const hlsCasa = casa && infoCasa && !direttoCasa ? flussoHls(fileId, infoCasa, audioCasa?.indice ?? null, sessioneCasa) : null
+  const srcVideo = !casa ? flussoVideoUrl(fileId) : direttoCasa ? flussoDiretto(fileId) : undefined
+  // Letto dagli avvisi, che possono essere stati creati a un disegno di prima.
+  const direttoCasaRef = useRef(direttoCasa)
+  direttoCasaRef.current = direttoCasa
+  useHls(videoRef, lettore === 'ciak' ? hlsCasa : null, chiaveVideo, (m) => setErrore(m))
+  useEffect(() => {
+    if (!hlsCasa) return
+    return () => fermaConversione(sessioneCasa)
+  }, [hlsCasa, sessioneCasa])
   const [elementoAudio, setElementoAudio] = useState<HTMLAudioElement | null>(null)
   const videoCorrente = useElementoVideo(videoRef)
   useEffect(() => {
@@ -629,6 +671,21 @@ function LettoreStreaming() {
 
   // Un avviso dentro la pagina non si vede in schermo intero: prima si esce.
   function segnala(p: Problema) {
+    if (casa) {
+      // Il file diretto che non parte (o parte muto) lo converte Jellyfin.
+      if (direttoCasaRef.current && (p === 'avvio' || p === 'muto' || p === 'formato')) {
+        daRiprendere.current = posizione.current
+        setHlsForzato(true)
+        return
+      }
+      setErrore(
+        p === 'salto'
+          ? 'Il salto non è riuscito: il server di casa non ha mandato quel pezzo di film. Riprova.'
+          : 'Il server di casa non riesce a mandare questo video: il PC è acceso, con Jellyfin aperto? Fuori casa serve Tailscale acceso anche qui.',
+      )
+      if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
+      return
+    }
     setProblema(p)
     if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
   }
@@ -702,6 +759,18 @@ function LettoreStreaming() {
   }
 
   function suErrore(v: HTMLVideoElement) {
+    if (casa) {
+      const codice = v.error?.code
+      void registraErrore('lettore: errore video dal server di casa', { codice, messaggio: v.error?.message, posizione: posizione.current, diretto: direttoCasaRef.current })
+      // Rete: si riprova qualche volta dallo stesso punto, come con Drive.
+      if (codice === MediaError.MEDIA_ERR_NETWORK && tentativi.current < 3) {
+        tentativi.current++
+        daRiprendere.current = posizione.current
+        v.load()
+        return
+      }
+      return segnala(codice === MediaError.MEDIA_ERR_NETWORK ? 'rete' : 'formato')
+    }
     const decisione = decidiErrore({
       codice: v.error?.code,
       posizione: posizione.current,
@@ -839,9 +908,12 @@ function LettoreStreaming() {
       >
         {lettore === 'ciak' ? (
           <video
-            key={chiaveVideo}
+            // Dal server di casa un flusso nuovo (un'altra lingua, la
+            // conversione) è un elemento nuovo: hls.js e il file diretto non
+            // si contendono lo stesso <video>.
+            key={`${chiaveVideo}-${hlsCasa ?? 'diretto'}`}
             ref={videoRef}
-            src={flussoVideoUrl(fileId)}
+            src={srcVideo}
             // Senza i comandi del browser: ci sono quelli di Ciak (BarraLettore),
             // con lo schermo intero della pagina, che passa indenne
             // all'episodio dopo, e il CC coi sottotitoli disegnati da Ciak.
@@ -905,7 +977,7 @@ function LettoreStreaming() {
                 scelte.fine && !!prossimo && (codaEsatta ? t >= codaEsatta.da : codaSiglaRaggiunta(t, durataVideo, punti.coda))
               if (nellaCoda !== codaAutomatica) setCodaAutomatica(nellaCoda)
               if (tentativi.current > 0 && v.currentTime > ripresoDa.current + 30) tentativi.current = 0
-              const scade = !scaricato && sessioneInScadenza(scadenzaDrive(), Date.now())
+              const scade = !casa && !scaricato && sessioneInScadenza(scadenzaDrive(), Date.now())
               if (scade !== inScadenza) setInScadenza(scade)
               if (!audioControllato.current && v.currentTime >= 3) {
                 audioControllato.current = true
@@ -1107,7 +1179,7 @@ function LettoreStreaming() {
           </button>
         </div>
       )}
-      {errore && <p className="text-sm text-red-400">{errore}</p>}
+      {(errore ?? erroreCasa) && <p className="text-sm text-red-400">{errore ?? erroreCasa}</p>}
 
       {archivio.caricata && (
         <PannelloArchivio
@@ -1127,8 +1199,9 @@ function LettoreStreaming() {
         />
       )}
 
-      {/* Sul dispositivo: scaricare, avanzamento, eliminare. */}
-      {offlineDisponibile() && locale !== undefined && (
+      {/* Sul dispositivo: scaricare, avanzamento, eliminare. Dal server di
+          casa non ancora: il download passa da Drive. */}
+      {!casa && offlineDisponibile() && locale !== undefined && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900/40 p-3 text-sm">
           {scaricato ? (
             <>
@@ -1173,7 +1246,7 @@ function LettoreStreaming() {
       )}
 
       {/* Cancellare da Ciak: il file va nel cestino di Drive, non si perde. */}
-      {connesso && !scaricato && (
+      {!casa && connesso && !scaricato && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900/40 p-3 text-sm">
           <p className="flex-1 text-zinc-400">
             {erroreCestino === 'permesso'
@@ -1232,7 +1305,7 @@ function LettoreStreaming() {
           </>
         )}
         <span className="flex-1" />
-        {lettore === 'ciak' ? (
+        {casa ? null : lettore === 'ciak' ? (
           <button type="button" onClick={usaDrive} className="btn-ghost px-3 py-1.5">
             Usa il lettore di Drive
           </button>
@@ -1256,7 +1329,7 @@ function LettoreStreaming() {
         )}
       </div>
 
-      {lettore === 'ciak' && (
+      {lettore === 'ciak' && !casa && (
         <details className="rounded-xl border border-theatre-800 bg-theatre-900/40 px-4 py-2 text-xs text-zinc-400">
           <summary className="cursor-pointer text-zinc-300">Dettagli tecnici (cosa risponde Drive)</summary>
           <ul className="mt-2 space-y-1 font-mono">
@@ -1276,7 +1349,26 @@ function LettoreStreaming() {
       )}
 
       <div className="grid gap-3 text-sm text-zinc-400 sm:grid-cols-2">
-        {lettore === 'ciak' ? (
+        {casa ? (
+          <>
+            <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
+              <p className="mb-1 font-medium text-zinc-200">🏠 Dal server di casa</p>
+              <p>
+                {direttoCasa
+                  ? 'Il file arriva dal disco del PC così com’è, alla sua qualità piena.'
+                  : 'Jellyfin converte il video al volo per il browser (formato o lingua): il PC lavora mentre guardi.'}{' '}
+                Le altre lingue dell’audio si scelgono dal pulsante 🗣, i sottotitoli dal CC.
+              </p>
+            </div>
+            <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
+              <p className="mb-1 font-medium text-zinc-200">💬 Da dove arrivano i sottotitoli</p>
+              <p>
+                Quelli che Jellyfin conosce: i file <code>.srt</code> accanto al video e quelli dentro il
+                file. Il plugin OpenSubtitles di Jellyfin li scarica da sé per quelli che mancano.
+              </p>
+            </div>
+          </>
+        ) : lettore === 'ciak' ? (
           <>
             <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
               <p className="mb-1 font-medium text-zinc-200">📺 Il lettore di Ciak</p>

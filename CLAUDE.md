@@ -104,6 +104,12 @@ Due guardie automatiche, oltre ai test veri e propri:
   per secondi. Chi serve una copia lo dichiara (`segnalaCopia`) e `OfflineBanner`
   lo scrive in cima alla pagina: dati vecchi mostrati senza avvisare rendono
   l'archivio inaffidabile, perché non si può nemmeno sospettare.
+- La videoteca ha due sorgenti: Google Drive e il **server di casa**
+  (Jellyfin, `src/lib/jellyfin.ts`). Un video di Jellyfin è un «file» con id
+  `jf-<id>`: tutto ciò che è legato all'id del file (`user_streaming`, punto
+  di ripresa, episodio dopo) vale per entrambe senza tabelle nuove. Le parti
+  solo di Drive (service worker, cestino, download offline) si saltano con
+  `eJellyfin(fileId)`.
 - Le chiavi Anthropic e TMDB vivono **solo** lato server (`api/`), mai con
   prefisso `VITE_`: con quel prefisso finiscono nel bundle, dove chiunque le
   copia. Il catalogo passa da `/api/tmdb`, che tiene una **lista dei percorsi

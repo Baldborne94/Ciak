@@ -358,7 +358,9 @@ export function queryInCartelle(idCartelle: string[], condizione: string, blocco
 const RIPRODUCIBILI = /\.(mp4|m4v|webm)$/i
 
 export function soloRiproducibili(video: DriveVideo[]): { visibili: DriveVideo[]; nascosti: number } {
-  const visibili = video.filter((v) => RIPRODUCIBILI.test(v.name))
+  // Quelli del server di casa (id «jf-») li converte Jellyfin al volo: si
+  // vedono tutti, MKV compresi.
+  const visibili = video.filter((v) => v.id.startsWith('jf-') || RIPRODUCIBILI.test(v.name))
   return { visibili, nascosti: video.length - visibili.length }
 }
 

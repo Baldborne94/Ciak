@@ -54,6 +54,17 @@ import {
   type DriveVideo,
 } from '../lib/googleDrive'
 import { chiaveVideotecaArchivio, chiaveVideotecaDrive, etichettaCopia, leggiCopia, salvaCopia } from '../lib/offlineCache'
+import {
+  eJellyfin,
+  elencaVideoJellyfin,
+  ErroreJellyfin,
+  EVENTO_JELLYFIN,
+  jellyfinCollegato,
+  leggiJellyfin,
+  scollegaJellyfin,
+  unisciFonti,
+} from '../lib/jellyfin'
+import CollegaJellyfin from '../components/CollegaJellyfin'
 
 export default function StreamingPage() {
   const navigate = useNavigate()
@@ -68,6 +79,10 @@ export default function StreamingPage() {
   // Il legame di ogni file col suo titolo (locandina, «visto», punto di ripresa).
   const [archivio, setArchivio] = useState<Map<string, VoceStreaming>>(new Map())
   const [connesso, setConnesso] = useState(driveConnesso())
+  // Il server di casa (Jellyfin), accanto o al posto di Drive.
+  const [casaCollegata, setCasaCollegata] = useState(jellyfinCollegato())
+  const [moduloCasa, setModuloCasa] = useState(false)
+  const collegato = connesso || casaCollegata
   const [video, setVideo] = useState<DriveVideo[]>([])
   const [nascosti, setNascosti] = useState(0)
   const [extra, setExtra] = useState(0)
@@ -151,7 +166,7 @@ export default function StreamingPage() {
   // Drive ha già risposto: la copia arriverebbe tardi, e sarebbe più vecchia.
   const freschi = useRef(false)
   useEffect(() => {
-    if (!user || daCopia.current || freschi.current || !driveConfigurato() || !driveConnesso()) return
+    if (!user || daCopia.current || freschi.current || (!(driveConfigurato() && driveConnesso()) && !jellyfinCollegato())) return
     daCopia.current = true
     const drive = leggiCopia<DriveVideo>(chiaveVideotecaDrive(user.id))
     if (!drive || drive.dati.length === 0) return
@@ -170,7 +185,32 @@ export default function StreamingPage() {
     setErrore(null)
     setCaricando(true)
     try {
-      const esito = await elencaVideo()
+      // Drive e il server di casa insieme: uno che non risponde (il PC spento)
+      // non deve nascondere l'altro.
+      const daDrive = driveConfigurato() && driveConnesso()
+      const daCasa = jellyfinCollegato()
+      const [suDrive, aCasa] = await Promise.allSettled([
+        daDrive ? elencaVideo() : Promise.resolve({ cartellaTrovata: false, video: [] as DriveVideo[] }),
+        daCasa ? elencaVideoJellyfin() : Promise.resolve([] as DriveVideo[]),
+      ])
+      if (aCasa.status === 'rejected') {
+        // Un token che il server non riconosce più va ricollegato, non riprovato.
+        if (aCasa.reason instanceof ErroreJellyfin && aCasa.reason.sessione) {
+          scollegaJellyfin()
+          setCasaCollegata(false)
+        }
+        logFailure('Elenco del server di casa')(aCasa.reason)
+        if (suDrive.status === 'rejected' || !daDrive) throw aCasa.reason
+      }
+      if (suDrive.status === 'rejected') {
+        if (aCasa.status === 'rejected' || !daCasa) throw suDrive.reason
+        logFailure('Elenco di Google Drive')(suDrive.reason)
+      }
+      const casa = aCasa.status === 'fulfilled' ? aCasa.value : []
+      const drive = suDrive.status === 'fulfilled' ? suDrive.value : { cartellaTrovata: false, video: [] }
+      const problema = aCasa.status === 'rejected' ? aCasa.reason : suDrive.status === 'rejected' ? suDrive.reason : null
+      if (problema) setErrore((problema as Error).message)
+      const esito = { cartellaTrovata: drive.cartellaTrovata || (daCasa && aCasa.status === 'fulfilled'), video: unisciFonti(drive.video, casa) }
       // Per i pulsanti «Guarda» del resto dell'app: un file cancellato da
       // Drive non deve più portare al lettore.
       salvaPresenti(esito.video.map((v) => v.id))
@@ -256,8 +296,26 @@ export default function StreamingPage() {
   // Già collegati (token ancora valido in questa scheda): elenco subito, senza
   // chiedere di nuovo il permesso.
   useEffect(() => {
-    if (driveConfigurato() && driveConnesso() && navigator.onLine) void carica()
+    if (((driveConfigurato() && driveConnesso()) || jellyfinCollegato()) && navigator.onLine) void carica()
   }, [carica])
+  // Il server di casa collegato o tolto (anche da un'altra pagina).
+  useEffect(() => {
+    const cambiato = () => setCasaCollegata(jellyfinCollegato())
+    window.addEventListener(EVENTO_JELLYFIN, cambiato)
+    return () => window.removeEventListener(EVENTO_JELLYFIN, cambiato)
+  }, [])
+
+  async function casaCollegataOra() {
+    setCasaCollegata(true)
+    setModuloCasa(false)
+    await carica()
+  }
+
+  function scollegaCasa() {
+    scollegaJellyfin()
+    setCasaCollegata(false)
+    setVideo((attuali) => attuali.filter((v) => !eJellyfin(v.id)))
+  }
   // Il permesso rinnovato in sottofondo (dal server di Ciak): la pagina se ne
   // accorge e carica, senza un pulsante da premere. Non mentre sta già
   // caricando (il collegamento a mano salva il token a metà del suo giro):
@@ -311,7 +369,13 @@ export default function StreamingPage() {
   // Una serie o una saga intera nel cestino di Drive, coi sottotitoli e le
   // cartelle rimaste vuote: dal cestino Google la recupera per trenta giorni,
   // quindi basta una conferma. Le copie sul dispositivo vanno con lei.
-  async function cancellaGruppo(chiave: string, nome: string, video: DriveVideo[]) {
+  async function cancellaGruppo(chiave: string, nome: string, tutti: DriveVideo[]) {
+    // Sul disco di casa i file si cancellano dal PC: Ciak li legge soltanto.
+    const video = tutti.filter((v) => !eJellyfin(v.id))
+    if (video.length === 0) {
+      setErrore(`«${nome}» sta sul disco del server di casa: si cancella dal PC (Esplora file), poi premi «Aggiorna».`)
+      return
+    }
     const quanti = video.length === 1 ? '1 file' : `${video.length} file`
     if (!window.confirm(`Vuoi cancellare «${nome}» da Google Drive?\nSono ${quanti}, coi loro sottotitoli: finiscono nel cestino di Drive, da dove si recuperano per 30 giorni.`)) return
     setErrore(null)
@@ -405,8 +469,8 @@ export default function StreamingPage() {
   function scollega() {
     driveDisconnetti(true)
     setConnesso(false)
-    setVideo([])
-    setCaricato(false)
+    setVideo((attuali) => attuali.filter((v) => eJellyfin(v.id)))
+    if (!jellyfinCollegato()) setCaricato(false)
   }
 
   // Le schede della videoteca e i video della scheda scelta. Una scheda che non
@@ -597,7 +661,7 @@ export default function StreamingPage() {
 
   // Senza Client ID configurato la funzione non esiste: lo diciamo invece di
   // mostrare un pulsante che non farebbe nulla.
-  if (!driveConfigurato()) {
+  if (!driveConfigurato() && !casaCollegata && !moduloCasa) {
     return (
       <div>
         <PageHeader
@@ -610,6 +674,11 @@ export default function StreamingPage() {
           message="Manca il collegamento a Google Drive (Client ID OAuth). Una volta configurato, qui compariranno i tuoi video."
           icon="🔌"
         />
+        <p className="mt-4 text-center">
+          <button type="button" onClick={() => setModuloCasa(true)} className="btn-ghost">
+            🏠 Usa il server di casa (Jellyfin)
+          </button>
+        </p>
       </div>
     )
   }
@@ -619,21 +688,40 @@ export default function StreamingPage() {
       <PageHeader
         eyebrow="Streaming"
         title="La mia videoteca"
-        subtitle={`Film, serie, anime e cartoni della cartella «${CARTELLA_CIAK}» del tuo Google Drive, in streaming o scaricati sul dispositivo.`}
+        subtitle={`Film, serie, anime e cartoni della cartella «${CARTELLA_CIAK}» del tuo Google Drive o del server di casa, in streaming o scaricati sul dispositivo.`}
       >
-        {connesso && (
-          <div className="flex gap-2">
+        {collegato && (
+          <div className="flex flex-wrap gap-2">
             <button onClick={carica} disabled={caricando} className="btn-ghost">
               🔄 Aggiorna
             </button>
-            <button onClick={scollega} className="btn-ghost">
-              Scollega
-            </button>
+            {!casaCollegata && !moduloCasa && (
+              <button onClick={() => setModuloCasa(true)} className="btn-ghost">
+                🏠 Server di casa
+              </button>
+            )}
+            {casaCollegata && (
+              <button onClick={scollegaCasa} className="btn-ghost" title={leggiJellyfin()?.url}>
+                Scollega il server di casa
+              </button>
+            )}
+            {connesso && (
+              <button onClick={scollega} className="btn-ghost">
+                {casaCollegata ? 'Scollega Drive' : 'Scollega'}
+              </button>
+            )}
           </div>
         )}
       </PageHeader>
 
       {errore && <ErrorState title="Qualcosa è andato storto" message={errore} />}
+      {moduloCasa && collegato && (
+        <section className="mb-6 rounded-2xl border border-theatre-800 bg-theatre-900/40 p-6">
+          <h2 className="mb-1 text-center text-lg font-semibold text-zinc-100">Il server di casa</h2>
+          <p className="mb-4 text-center text-sm text-zinc-400">I film del disco attaccato al PC, attraverso Jellyfin: compaiono qui insieme a quelli di Drive.</p>
+          <CollegaJellyfin onCollegato={() => void casaCollegataOra()} onAnnulla={() => setModuloCasa(false)} />
+        </section>
+      )}
       {cestinato && (
         <p role="status" className="mb-6 rounded-xl border border-theatre-800 bg-theatre-900/40 px-4 py-3 text-sm text-zinc-300">
           🗑 «{cestinato}» è nel cestino di Google Drive: da lì lo recuperi per 30 giorni.
@@ -685,20 +773,37 @@ export default function StreamingPage() {
           }
           icon="📴"
         />
-      ) : !connesso ? (
-        <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
-          <p className="mb-4 text-zinc-400">
-            Collega il tuo Google Drive per vedere qui i video della cartella «{CARTELLA_CIAK}» e
-            riprodurli in streaming. I file restano su Drive: Ciak li legge, e sposta nel cestino
-            solo quelli che gli dici di cancellare.
-          </p>
-          <button onClick={collega} disabled={caricando} className="btn-primary">
-            {caricando ? 'Collego…' : '📁 Collega Google Drive'}
-          </button>
+      ) : !collegato ? (
+        <div className="space-y-4">
+          {driveConfigurato() && (
+            <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
+              <p className="mb-4 text-zinc-400">
+                Collega il tuo Google Drive per vedere qui i video della cartella «{CARTELLA_CIAK}» e
+                riprodurli in streaming. I file restano su Drive: Ciak li legge, e sposta nel cestino
+                solo quelli che gli dici di cancellare.
+              </p>
+              <button onClick={collega} disabled={caricando} className="btn-primary">
+                {caricando ? 'Collego…' : '📁 Collega Google Drive'}
+              </button>
+            </div>
+          )}
+          <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
+            <p className="mb-4 text-zinc-400">
+              Oppure i film del disco di casa: con Jellyfin acceso sul PC a cui è attaccato, Ciak li
+              legge da lì, in casa e fuori (con Tailscale).
+            </p>
+            {moduloCasa ? (
+              <CollegaJellyfin onCollegato={() => void casaCollegataOra()} onAnnulla={() => setModuloCasa(false)} />
+            ) : (
+              <button onClick={() => setModuloCasa(true)} className="btn-ghost">
+                🏠 Collega il server di casa
+              </button>
+            )}
+          </div>
         </div>
       ) : caricando && !caricato && copiaDel === null ? (
         <Loader />
-      ) : !cartellaTrovata ? (
+      ) : !cartellaTrovata && !casaCollegata ? (
         <EmptyState
           title={`Nessuna cartella «${CARTELLA_CIAK}» su Drive`}
           message={`Crea una cartella chiamata «${CARTELLA_CIAK}» in «Il mio Drive», con dentro le cartelle FILM, SERIE TV, ANIME, CARTONI (o quelle che vuoi: diventano le schede) e premi «Aggiorna».`}
