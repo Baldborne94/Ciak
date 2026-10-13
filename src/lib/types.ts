@@ -24,6 +24,8 @@ export interface MediaItem {
   backdropPath: string | null
   releaseDate: string | null
   voteAverage: number
+  // Quanti hanno votato: con pochi voti la media è un caso (vedi votiFreschi).
+  voteCount?: number
   genreIds: number[]
   originalLanguage: string | null
   // Il titolo inglese, quando la ricerca l'ha visto (chiede in italiano e in

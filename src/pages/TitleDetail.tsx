@@ -1,3 +1,4 @@
+import { POCHI_VOTI } from '../lib/votiFreschi'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ErrorState, Loader } from '../components/States'
@@ -210,8 +211,12 @@ export default function TitleDetail() {
             )}
 
             <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
-              <span className="rounded-md bg-projector/15 px-2 py-1 font-semibold text-projector">
+              <span
+                className="rounded-md bg-projector/15 px-2 py-1 font-semibold text-projector"
+                title={detail.voteCount ? `${detail.voteCount} voti su TMDB` : undefined}
+              >
                 ★ {detail.voteAverage.toFixed(1)}
+                {(detail.voteCount ?? 0) < POCHI_VOTI && <span className="ml-1 font-normal text-zinc-400">· pochi voti</span>}
               </span>
               {detail.runtime && (
                 <span className="text-zinc-400">⏱️ {detail.runtime} min</span>

@@ -92,6 +92,7 @@ export function movieDetail(id: number, title: string, over: Record<string, unkn
     backdrop_path: `/backdrop-${id}.jpg`,
     release_date: '2020-05-01',
     vote_average: 7.5,
+    vote_count: 1000,
     runtime: 118,
     tagline: 'Una tagline',
     status: 'Released',

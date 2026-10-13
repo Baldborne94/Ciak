@@ -1,3 +1,4 @@
+import { ricordaVoto } from '../votiFreschi'
 import { tmdbFetch } from './client'
 import { normalise, countryName, type RawMedia, type RawDetail, type RawEpisode, type RawVideo, type RawProvider, type RawPerson } from './raw'
 import { patchReadableTitles, fallbackReadableTitle, isReadableTitle, readablePersonName } from './titles'
@@ -159,6 +160,8 @@ export async function getDetail(
   if (raw.similar?.results) patchReadableTitles(raw.similar.results, enRecPool)
 
   const base = normalise(raw, type)
+  // Il voto aggiornato vale anche per le locandine di questo titolo.
+  ricordaVoto(type, id, base.voteAverage, base.voteCount ?? 0)
 
   // Ripiego sull'inglese quando il titolo/trama in italiano non esistono e
   // l'originale è in uno script non leggibile (cirillico, CJK, …): meglio «The

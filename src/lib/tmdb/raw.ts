@@ -185,6 +185,7 @@ export function normalise(raw: RawMedia, fallbackType?: TmdbType): MediaItem {
     backdropPath: raw.backdrop_path ?? null,
     releaseDate: raw.release_date ?? raw.first_air_date ?? null,
     voteAverage: raw.vote_average ?? 0,
+    voteCount: raw.vote_count ?? 0,
     genreIds: raw.genre_ids ?? [],
     originalLanguage: raw.original_language ?? null,
   }
