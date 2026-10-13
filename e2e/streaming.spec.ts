@@ -60,7 +60,7 @@ const FILE: Record<string, unknown> = {
 // contenuto) cestinato non compare più negli elenchi, come su Drive.
 async function mockDrive(
   page: Page,
-  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false, conFilmAnime = false, conLingueAudio = false } = {},
+  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false, conFilmAnime = false, conLingueAudio = false, conWebisodes = false } = {},
 ) {
   const scritture: { metodo: string; url: string; corpo: string }[] = []
   const cestinati = new Set<string>()
@@ -140,7 +140,11 @@ async function mockDrive(
         ...(conExtra && { 'cartella-song': [{ id: 'cartella-song-extra', name: 'Featurettes', parents: ['cartella-song'] }] }),
         ...(conSerie && {
           'cartella-serie': [{ id: 'cartella-southpark', name: 'South Park', parents: ['cartella-serie'] }],
-          'cartella-southpark': [{ id: 'cartella-sp-s03', name: 'Season 03', parents: ['cartella-southpark'] }],
+          'cartella-southpark': [
+            { id: 'cartella-sp-s03', name: 'Season 03', parents: ['cartella-southpark'] },
+            // SERIE TV/South Park/Webisodes/: i mini-episodi web, gli speciali.
+            ...(conWebisodes ? [{ id: 'cartella-sp-web', name: 'Webisodes', parents: ['cartella-southpark'] }] : []),
+          ],
         }),
         // SERIE TV/South Park/South Park Season 1 to 26 Mp4 1080p/Season 03: la
         // raccolta scaricata così com'è, un livello in più.
@@ -194,6 +198,7 @@ async function mockDrive(
                 mimeType: 'video/mp4',
                 parents: ['cartella-sp-s03'],
               },
+              ...(conWebisodes ? [{ id: 'video-sp-web-01', name: 'The Accountants.mp4', size: '120000000', mimeType: 'video/mp4', parents: ['cartella-sp-web'] }] : []),
             ]
           : []),
         ...(conPacchetto
@@ -2234,6 +2239,63 @@ test('un film finito sotto una serie di un altro anno torna il suo film', async 
     .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001'))
     .toMatchObject({ tmdb_id: 110416, media_type: 'movie', stagione: null, episodio: null })
   await expect(page.getByText('Gap Dong')).toHaveCount(0)
+})
+
+test('i webisodes di una serie sono i suoi speciali, anche quelli già presi per film', async ({ page }) => {
+  // SERIE TV/The Office/Webisodes/The Accountants.mp4 compariva come film a
+  // sé, e qualcuno era stato abbinato al film sbagliato («The Accountant»).
+  const riga = (id: string, nome: string, campi: Record<string, unknown>) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: id,
+    nome_file: nome,
+    abbinato_a_mano: false,
+    posizione: 0,
+    durata: null,
+    secondi_visti: 0,
+    visto_il: null,
+    ...campi,
+  })
+  const db = await mockSupabase(page, {
+    user_streaming: [
+      riga('video-sp-000301', '01 Rainforest Shmainforest.mp4', { tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', poster_path: '/sp.jpg', stagione: 3, episodio: 1 }),
+      riga('video-sp-000302', '02 Spontaneous Combustion.mp4', { tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', poster_path: '/sp.jpg', stagione: 3, episodio: 2 }),
+      riga('video-sp-web-01', 'The Accountants.mp4', { tmdb_id: 302946, media_type: 'movie', titolo: 'The Accountant', poster_path: '/acc.jpg', stagione: null, episodio: null }),
+    ],
+  })
+  await mockDrive(page, { conSerie: true, conWebisodes: true })
+  await cercaTmdb(page, [SONG])
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+
+  // Prende la serie dai fratelli già riconosciuti, come speciale (stagione 0),
+  // senza cercare niente.
+  await expect
+    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-web-01'))
+    .toMatchObject({ tmdb_id: 2190, media_type: 'tv', stagione: 0 })
+  await expect(page.getByText('The Accountant', { exact: true })).toHaveCount(0)
+  // Nella serie (col titolo che il controllo dei titoli le dà dal TMDB finto),
+  // fra gli speciali.
+  await page.getByRole('button', { name: /^(South Park|Titolo 2190)/ }).click()
+  await expect(page.getByRole('list', { name: /Speciali/ }).getByText('The Accountants')).toBeVisible()
+})
+
+test('un webisode preso per film, in una serie non ancora riconosciuta, si ricerca come episodio', async ({ page }) => {
+  const db = await mockSupabase(page, {
+    user_streaming: [
+      { user_id: E2E_USER.id, drive_file_id: 'video-sp-web-01', nome_file: 'The Accountants.mp4', tmdb_id: 302946, media_type: 'movie', titolo: 'The Accountant', poster_path: '/acc.jpg', stagione: null, episodio: null, abbinato_a_mano: false, posizione: 0, secondi_visti: 0 },
+    ],
+  })
+  await mockDrive(page, { conSerie: true, conWebisodes: true })
+  await cercaTmdb(page, [
+    SONG,
+    { id: 2190, media_type: 'tv', name: 'South Park', original_name: 'South Park', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] },
+  ])
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await expect
+    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-web-01'))
+    .toMatchObject({ tmdb_id: 2190, media_type: 'tv', stagione: 0 })
 })
 
 test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli altri nomi del titolo', async ({ page }) => {

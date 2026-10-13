@@ -258,7 +258,9 @@ export function stagioneDaCartella(nome: string | null | undefined): number | nu
   if (!nome) return null
   const m = /^\s*(?:season|stagione|series|serie|s)\s*[._-]?\s*(\d{1,2})(?!\d)/i.exec(nome)
   if (m) return Number(m[1])
-  if (/^\s*(?:OADs?|OVAs?|ONAs?|Specials?|Speciali|Extras?)\s*$/i.test(nome)) return 0
+  // Anche i mini-episodi web («Webisodes» di The Office): sono gli speciali
+  // della serie, non film a sé.
+  if (/^\s*(?:OADs?|OVAs?|ONAs?|Specials?|Speciali|Extras?|Webisodes?|Minisodes?)\s*$/i.test(nome)) return 0
   return specialeScrittoMale(nome) ? 0 : null
 }
 

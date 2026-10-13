@@ -61,7 +61,9 @@ function segnaControllato(fileId: string): void {
 // _-_(Dual Audio_10bit…)»), che finiva nel titolo cercato.
 // v12: i film rimasti abbinati a una serie omonima («Aladdin», il film del
 // 1992, sotto la serie del 1994): si riprovano con le regole di oggi.
-const VERSIONE_RICONOSCIMENTO = 12
+// v13: gli episodi presi per film perché la loro cartella non si leggeva
+// («Webisodes»): si cercano di nuovo come episodi.
+const VERSIONE_RICONOSCIMENTO = 13
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {
@@ -121,10 +123,15 @@ export async function riconosciNuovi(
     if (r?.media_type === 'tv' && r.tmdb_id && !serieNote.has(chiaveSerie(v))) serieNote.set(chiaveSerie(v), r)
   }
   const ereditati = new Set<string>()
+  // Anche un episodio preso per film quando Ciak non leggeva la sua cartella
+  // («Webisodes»): «The Accountants» era diventato il film «The Accountant».
+  // Una scelta fatta a mano resta.
+  const episodioPresoPerFilm = (v: DriveVideo, r: VoceStreaming | undefined) =>
+    r?.media_type === 'movie' && filmDaCercare(v.name, v.cartella, v.serie ?? null).stagione !== undefined
   await mapLimit(
     video.filter((v) => {
       const r = noti.get(v.id)
-      return !r?.tmdb_id && !r?.abbinato_a_mano && serieNote.has(chiaveSerie(v))
+      return (!r?.tmdb_id || episodioPresoPerFilm(v, r)) && !r?.abbinato_a_mano && serieNote.has(chiaveSerie(v))
     }),
     3,
     async (v) => {
@@ -165,7 +172,13 @@ export async function riconosciNuovi(
     if (r?.media_type !== 'tv' || !r.tmdb_id || r.abbinato_a_mano || giaRiprovato(v.id)) return false
     return filmDaCercare(v.name, v.cartella, v.serie ?? null).stagione === undefined
   }
-  const daFare = video.filter((v) => !ereditati.has(v.id) && (!noti.has(v.id) || senzaTitolo(v) || filmSottoSerie(v)))
+  const episodioDaRicercare = (v: DriveVideo) => {
+    const r = noti.get(v.id)
+    return !!r?.tmdb_id && !r.abbinato_a_mano && episodioPresoPerFilm(v, r) && !giaRiprovato(v.id)
+  }
+  const daFare = video.filter(
+    (v) => !ereditati.has(v.id) && (!noti.has(v.id) || senzaTitolo(v) || filmSottoSerie(v) || episodioDaRicercare(v)),
+  )
   // Gli episodi di una serie cercano tutti la stessa cosa («South Park»): una
   // ricerca e un titolo originale per serie, non uno per file. Con 264
   // episodi erano 264 ricerche identiche, e il riconoscimento non finiva mai.

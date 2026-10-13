@@ -472,6 +472,9 @@ describe('stagioneDaCartella', () => {
     expect(stagioneDaCartella('Specials')).toBe(0)
     expect(stagioneDaCartella('Extras')).toBe(0)
     expect(stagioneDaCartella('Speciali')).toBe(0)
+    // The Office/Webisodes/… : i mini-episodi web comparivano come film a sé.
+    expect(stagioneDaCartella('Webisodes')).toBe(0)
+    expect(stagioneDaCartella('Minisodes')).toBe(0)
   })
 
   it('anche con le lettere scambiate per sbaglio («Speicals»)', () => {
