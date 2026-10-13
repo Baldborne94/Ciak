@@ -9,6 +9,7 @@ import { quickRate } from '../lib/diary'
 import { useToast } from '../lib/toastCtx'
 import StarRating from './StarRating'
 import LibraryBadge from './LibraryBadge'
+import { useVotoDaMostrare } from '../lib/votiFreschi'
 
 // Quick actions to file a title straight from a card, without opening its page.
 function QuickActions({ item }: { item: MediaItem }) {
@@ -144,6 +145,7 @@ export default function MediaCard({
   const year = item.releaseDate ? item.releaseDate.slice(0, 4) : '—'
   // Original title when readable; localized (IT/EN) for Japanese etc.
   const display = displayTitle(item)
+  const voto = useVotoDaMostrare(item)
 
   // Outer wrapper is NOT overflow-hidden so the quick-actions popover can spill
   // over the card; the poster keeps its own clipped, rounded container.
@@ -170,9 +172,11 @@ export default function MediaCard({
           )}
         </div>
 
-        <span className="absolute right-2 top-2 rounded-md bg-theatre-950/80 px-1.5 py-0.5 text-xs font-semibold text-projector backdrop-blur">
-          ★ {item.voteAverage.toFixed(1)}
-        </span>
+        {voto.affidabile && (
+          <span className="absolute right-2 top-2 rounded-md bg-theatre-950/80 px-1.5 py-0.5 text-xs font-semibold text-projector backdrop-blur">
+            ★ {voto.voto.toFixed(1)}
+          </span>
+        )}
 
         {/* Already-in-collection badge (status + optional favorite heart) */}
         {lib && <LibraryBadge status={lib.status} isFavorite={lib.isFavorite} />}
