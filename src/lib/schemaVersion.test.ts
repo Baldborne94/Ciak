@@ -78,3 +78,17 @@ describe('SCHEMA_RICHIESTO', () => {
     }
   })
 })
+
+describe('Google Drive, tolto dall’app', () => {
+  it('non lascia nel database il permesso permanente sul Drive dell’utente', () => {
+    // drive_tokens (v19) teneva il «refresh token» di Google: chi lo ha legge
+    // tutto il Drive, e Google lo considera valido finché non lo si revoca.
+    // Senza più codice che lo usi è solo un rischio: l'ultimo file che nomina
+    // la tabella deve essere quello che la cancella.
+    const dir = new URL('../../supabase/', import.meta.url)
+    const conTabella = readdirSync(dir)
+      .filter((n) => /^schema_v\d+_/.test(n) && readFileSync(new URL(n, dir), 'utf8').includes('drive_tokens'))
+      .sort((a, b) => Number(/\d+/.exec(a)![0]) - Number(/\d+/.exec(b)![0]))
+    expect(readFileSync(new URL(conTabella.at(-1)!, dir), 'utf8')).toMatch(/drop table if exists public\.drive_tokens/)
+  })
+})
