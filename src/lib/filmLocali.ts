@@ -1,5 +1,5 @@
 import type { DriveVideo } from './googleDrive'
-import { linguaDaNome, srtAVtt } from './sottotitoli'
+import { decodificaTesto, linguaDaNome, srtAVtt } from './sottotitoli'
 import type { SottotitoloOffline } from './filmOffline'
 
 // I film aperti dal dispositivo: un file scelto dal disco del PC (F:) o dalla
@@ -47,6 +47,13 @@ export function filmAperto(id: string): FilmAperto | undefined {
   return aperti.get(id)
 }
 
+// Un film trovato nella cartella collegata (vedi cartellaLocale), a portata
+// del lettore come quelli scelti a mano.
+export function registraFilmAperto(film: FilmAperto): FilmAperto {
+  aperti.set(film.id, film)
+  return film
+}
+
 // Dai file scelti (un video, ed eventualmente i suoi .srt) il film da aprire.
 // I sottotitoli si leggono subito: sono piccoli, e così il lettore li ha già.
 export async function apriFile(scelti: File[]): Promise<FilmAperto> {
@@ -61,7 +68,8 @@ export async function apriFile(scelti: File[]): Promise<FilmAperto> {
           chiave: lingua ?? `altro-${i}`,
           lingua,
           etichetta: `${lingua === 'it' ? 'Italiano' : lingua === 'en' ? 'Inglese' : 'Sottotitoli'} · dal file scelto`,
-          vtt: srtAVtt(await f.text()),
+          // I .srt italiani sono spesso in Windows-1252: `text()` storpierebbe gli accenti.
+          vtt: srtAVtt(decodificaTesto(await f.arrayBuffer())),
         }
       }),
   )

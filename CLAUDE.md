@@ -117,6 +117,11 @@ Due guardie automatiche, oltre ai test veri e propri:
   diario e punto di ripresa. Il browser non lascia riaprire un file da solo:
   o lo si sceglie di nuovo, o se ne tiene una copia con «Salva in Ciak»
   (`salvaFileSulDispositivo`, nella stessa cache dei film scaricati).
+  Una **cartella intera** (E:\Ciak) si collega con File System Access
+  (`src/lib/cartellaLocale.ts`, Chrome ed Edge sul computer): la maniglia sta
+  in IndexedDB, i video diventano una sorgente della videoteca come Drive e
+  Jellyfin, con gli stessi id `loc-`. Riaprendo il browser il permesso va
+  ridato con un clic («Riapri la cartella»): si dice, non si mostra un vuoto.
 - Le chiavi Anthropic e TMDB vivono **solo** lato server (`api/`), mai con
   prefisso `VITE_`: con quel prefisso finiscono nel bundle, dove chiunque le
   copia. Il catalogo passa da `/api/tmdb`, che tiene una **lista dei percorsi

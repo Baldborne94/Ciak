@@ -66,6 +66,17 @@ import {
 } from '../lib/jellyfin'
 import CollegaJellyfin from '../components/CollegaJellyfin'
 import ApriFilmLocale from '../components/ApriFilmLocale'
+import { eLocale } from '../lib/filmLocali'
+import {
+  cartellaCollegata,
+  cartellaDisponibile,
+  collegaCartella,
+  elencaVideoCartella,
+  ErroreCartella,
+  EVENTO_CARTELLA,
+  permessoCartella,
+  scollegaCartella,
+} from '../lib/cartellaLocale'
 
 export default function StreamingPage() {
   const navigate = useNavigate()
@@ -83,7 +94,11 @@ export default function StreamingPage() {
   // Il server di casa (Jellyfin), accanto o al posto di Drive.
   const [casaCollegata, setCasaCollegata] = useState(jellyfinCollegato())
   const [moduloCasa, setModuloCasa] = useState(false)
-  const collegato = connesso || casaCollegata
+  // La cartella del PC collegata (E:\Ciak), al posto di Drive. Riaprendo il
+  // browser ne va ridato il permesso con un clic (`cartellaDaRiaprire`).
+  const [cartella, setCartella] = useState(cartellaCollegata())
+  const [cartellaDaRiaprire, setCartellaDaRiaprire] = useState(false)
+  const collegato = connesso || casaCollegata || cartella !== null
   const [video, setVideo] = useState<DriveVideo[]>([])
   const [nascosti, setNascosti] = useState(0)
   const [extra, setExtra] = useState(0)
@@ -167,7 +182,7 @@ export default function StreamingPage() {
   // Drive ha già risposto: la copia arriverebbe tardi, e sarebbe più vecchia.
   const freschi = useRef(false)
   useEffect(() => {
-    if (!user || daCopia.current || freschi.current || (!(driveConfigurato() && driveConnesso()) && !jellyfinCollegato())) return
+    if (!user || daCopia.current || freschi.current || (!(driveConfigurato() && driveConnesso()) && !jellyfinCollegato() && !cartellaCollegata())) return
     daCopia.current = true
     const drive = leggiCopia<DriveVideo>(chiaveVideotecaDrive(user.id))
     if (!drive || drive.dati.length === 0) return
@@ -186,13 +201,15 @@ export default function StreamingPage() {
     setErrore(null)
     setCaricando(true)
     try {
-      // Drive e il server di casa insieme: uno che non risponde (il PC spento)
-      // non deve nascondere l'altro.
+      // Drive, il server di casa e la cartella del PC insieme: uno che non
+      // risponde (il PC spento) non deve nascondere gli altri.
       const daDrive = driveConfigurato() && driveConnesso()
       const daCasa = jellyfinCollegato()
-      const [suDrive, aCasa] = await Promise.allSettled([
+      const daCartella = cartellaCollegata() !== null
+      const [suDrive, aCasa, inCartella] = await Promise.allSettled([
         daDrive ? elencaVideo() : Promise.resolve({ cartellaTrovata: false, video: [] as DriveVideo[] }),
         daCasa ? elencaVideoJellyfin() : Promise.resolve([] as DriveVideo[]),
+        daCartella ? elencaVideoCartella() : Promise.resolve([] as DriveVideo[]),
       ])
       if (aCasa.status === 'rejected') {
         // Un token che il server non riconosce più va ricollegato, non riprovato.
@@ -201,17 +218,34 @@ export default function StreamingPage() {
           setCasaCollegata(false)
         }
         logFailure('Elenco del server di casa')(aCasa.reason)
-        if (suDrive.status === 'rejected' || !daDrive) throw aCasa.reason
       }
-      if (suDrive.status === 'rejected') {
-        if (aCasa.status === 'rejected' || !daCasa) throw suDrive.reason
-        logFailure('Elenco di Google Drive')(suDrive.reason)
-      }
-      const casa = aCasa.status === 'fulfilled' ? aCasa.value : []
-      const drive = suDrive.status === 'fulfilled' ? suDrive.value : { cartellaTrovata: false, video: [] }
-      const problema = aCasa.status === 'rejected' ? aCasa.reason : suDrive.status === 'rejected' ? suDrive.reason : null
+      if (suDrive.status === 'rejected') logFailure('Elenco di Google Drive')(suDrive.reason)
+      // Il permesso della cartella da ridare non è un guasto: serve un clic.
+      const permessoCartella = inCartella.status === 'rejected' && inCartella.reason instanceof ErroreCartella && inCartella.reason.permesso
+      setCartellaDaRiaprire(permessoCartella)
+      if (inCartella.status === 'rejected' && !permessoCartella) logFailure('Elenco della cartella collegata')(inCartella.reason)
+      const riuscite =
+        (daDrive && suDrive.status === 'fulfilled') || (daCasa && aCasa.status === 'fulfilled') || (daCartella && inCartella.status === 'fulfilled')
+      const problema =
+        aCasa.status === 'rejected'
+          ? aCasa.reason
+          : suDrive.status === 'rejected'
+            ? suDrive.reason
+            : inCartella.status === 'rejected' && !permessoCartella
+              ? inCartella.reason
+              : null
+      if (!riuscite && problema) throw problema
+      // Solo la cartella, in attesa del permesso: resta l'elenco dell'ultima
+      // volta, che si guarda appena lo si ridà.
+      if (!riuscite) return
       if (problema) setErrore((problema as Error).message)
-      const esito = { cartellaTrovata: drive.cartellaTrovata || (daCasa && aCasa.status === 'fulfilled'), video: unisciFonti(drive.video, casa) }
+      const casa = aCasa.status === 'fulfilled' ? aCasa.value : []
+      const sulPc = inCartella.status === 'fulfilled' ? inCartella.value : []
+      const drive = suDrive.status === 'fulfilled' ? suDrive.value : { cartellaTrovata: false, video: [] }
+      const esito = {
+        cartellaTrovata: drive.cartellaTrovata || (daCasa && aCasa.status === 'fulfilled') || (daCartella && inCartella.status === 'fulfilled'),
+        video: unisciFonti(drive.video, [...casa, ...sulPc]),
+      }
       // Per i pulsanti «Guarda» del resto dell'app: un file cancellato da
       // Drive non deve più portare al lettore.
       salvaPresenti(esito.video.map((v) => v.id))
@@ -297,8 +331,43 @@ export default function StreamingPage() {
   // Già collegati (token ancora valido in questa scheda): elenco subito, senza
   // chiedere di nuovo il permesso.
   useEffect(() => {
-    if (((driveConfigurato() && driveConnesso()) || jellyfinCollegato()) && navigator.onLine) void carica()
+    if (((driveConfigurato() && driveConnesso()) || jellyfinCollegato() || cartellaCollegata()) && navigator.onLine) void carica()
   }, [carica])
+  // La cartella collegata o tolta (anche da un'altra scheda).
+  useEffect(() => {
+    const cambiato = () => setCartella(cartellaCollegata())
+    window.addEventListener(EVENTO_CARTELLA, cambiato)
+    return () => window.removeEventListener(EVENTO_CARTELLA, cambiato)
+  }, [])
+
+  async function collegaLaCartella() {
+    setErrore(null)
+    try {
+      setCartella(await collegaCartella())
+      await carica()
+    } catch (e) {
+      // Finestra chiusa senza scegliere: niente da dire.
+      if (e instanceof DOMException && e.name === 'AbortError') return
+      setErrore(e instanceof Error ? e.message : 'Cartella non collegata.')
+      logFailure('Collegamento della cartella dei film')(e)
+    }
+  }
+
+  async function riapriCartella() {
+    try {
+      if (await permessoCartella(true)) await carica()
+    } catch (e) {
+      setErrore(e instanceof Error ? e.message : 'Permesso non concesso.')
+      logFailure('Permesso della cartella dei film')(e)
+    }
+  }
+
+  async function scollegaLaCartella() {
+    await scollegaCartella().catch(logFailure('Scollegamento della cartella dei film'))
+    setCartella(null)
+    setCartellaDaRiaprire(false)
+    setVideo((attuali) => attuali.filter((v) => !eLocale(v.id)))
+  }
   // Il server di casa collegato o tolto (anche da un'altra pagina).
   useEffect(() => {
     const cambiato = () => setCasaCollegata(jellyfinCollegato())
@@ -371,10 +440,11 @@ export default function StreamingPage() {
   // cartelle rimaste vuote: dal cestino Google la recupera per trenta giorni,
   // quindi basta una conferma. Le copie sul dispositivo vanno con lei.
   async function cancellaGruppo(chiave: string, nome: string, tutti: DriveVideo[]) {
-    // Sul disco di casa i file si cancellano dal PC: Ciak li legge soltanto.
-    const video = tutti.filter((v) => !eJellyfin(v.id))
+    // Sul disco di casa e nella cartella del PC i file si cancellano dal PC:
+    // Ciak li legge soltanto.
+    const video = tutti.filter((v) => !eJellyfin(v.id) && !eLocale(v.id))
     if (video.length === 0) {
-      setErrore(`«${nome}» sta sul disco del server di casa: si cancella dal PC (Esplora file), poi premi «Aggiorna».`)
+      setErrore(`«${nome}» sta sul disco del PC: si cancella da lì (Esplora file), poi premi «Aggiorna».`)
       return
     }
     const quanti = video.length === 1 ? '1 file' : `${video.length} file`
@@ -470,8 +540,8 @@ export default function StreamingPage() {
   function scollega() {
     driveDisconnetti(true)
     setConnesso(false)
-    setVideo((attuali) => attuali.filter((v) => eJellyfin(v.id)))
-    if (!jellyfinCollegato()) setCaricato(false)
+    setVideo((attuali) => attuali.filter((v) => eJellyfin(v.id) || eLocale(v.id)))
+    if (!jellyfinCollegato() && !cartellaCollegata()) setCaricato(false)
   }
 
   // Le schede della videoteca e i video della scheda scelta. Una scheda che non
@@ -668,15 +738,31 @@ export default function StreamingPage() {
         subtitle={
           driveConfigurato()
             ? `Film, serie, anime e cartoni della cartella «${CARTELLA_CIAK}» del tuo Google Drive o del server di casa, in streaming o scaricati sul dispositivo.`
-            : 'I film che apri dal dispositivo (il disco del PC, la memoria del tablet) e quelli salvati in Ciak, col lettore di Ciak.'
+            : 'I film della cartella collegata del PC, quelli che apri dal dispositivo e quelli salvati in Ciak, col lettore di Ciak.'
         }
       >
         {collegato && (
           <div className="flex flex-wrap items-start gap-2">
+            {cartellaDaRiaprire && (
+              <button onClick={() => void riapriCartella()} className="btn-primary">
+                📂 Riapri la cartella «{cartella}»
+              </button>
+            )}
             <ApriFilmLocale />
             <button onClick={carica} disabled={caricando} className="btn-ghost">
               🔄 Aggiorna
             </button>
+            {cartella ? (
+              <button onClick={() => void scollegaLaCartella()} className="btn-ghost">
+                Scollega la cartella
+              </button>
+            ) : (
+              cartellaDisponibile() && (
+                <button onClick={() => void collegaLaCartella()} className="btn-ghost">
+                  📂 Collega una cartella
+                </button>
+              )
+            )}
             {!casaCollegata && !moduloCasa && (
               <button onClick={() => setModuloCasa(true)} className="btn-ghost">
                 🏠 Server di casa
@@ -757,11 +843,23 @@ export default function StreamingPage() {
         />
       ) : !collegato ? (
         <div className="space-y-4">
+          {cartellaDisponibile() && (
+            <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
+              <p className="mb-4 text-zinc-400">
+                Collega la cartella dei film del PC (per esempio <code>E:\Ciak</code>, con dentro FILM,
+                SERIE TV, ANIME…): Ciak la legge come una videoteca, con le serie divise in stagioni,
+                l’episodio dopo e i sottotitoli accanto ai video. I file restano dove sono.
+              </p>
+              <button onClick={() => void collegaLaCartella()} className="btn-primary">
+                📂 Collega la cartella dei film
+              </button>
+            </div>
+          )}
           <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
             <p className="mb-4 text-zinc-400">
-              Scegli un film dal disco del PC o dalla memoria del tablet (con i suoi sottotitoli
-              .srt, se li hai): parte nel lettore di Ciak, senza caricarlo da nessuna parte. Sul
-              tablet puoi salvarlo in Ciak per vederlo anche offline.
+              {cartellaDisponibile() ? 'Oppure un film alla volta: scegline uno' : 'Scegli un film'} dal disco del PC o dalla
+              memoria del tablet (con i suoi sottotitoli .srt, se li hai): parte nel lettore di Ciak,
+              senza caricarlo da nessuna parte. Sul tablet puoi salvarlo in Ciak per vederlo anche offline.
             </p>
             <ApriFilmLocale grande />
           </div>
