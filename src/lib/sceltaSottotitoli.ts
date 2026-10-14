@@ -7,6 +7,8 @@
 // l'italiano è la prima traccia, nel successivo (italiano mancante) la prima
 // sarebbe l'inglese.
 
+import { nomeLingua } from './sottotitoli'
+
 const CHIAVE = 'ciak:sottotitoli'
 const SENZA_LINGUA = 'und'
 
@@ -75,4 +77,34 @@ export function salvaDimensioneSottotitoli(indice: number): void {
   } catch {
     /* storage negato: alla prossima apertura tornano medi */
   }
+}
+
+// I nomi nel menu CC: la lingua, e il numero quando due tracce ne hanno una
+// sola (due italiani: «Italiano 1», «Italiano 2»).
+export function nomiSottotitoli(tracce: TracciaConLingua[]): string[] {
+  return tracce.map((t, i) => {
+    const nome = nomeLingua(t.lingua)
+    return tracce.filter((x) => nomeLingua(x.lingua) === nome).length > 1 ? `${nome} ${i + 1}` : nome
+  })
+}
+
+// La sigla sul pulsante CC: «off», la lingua in due lettere o il numero.
+export function siglaSottotitolo(tracce: TracciaConLingua[], scelto: number): string {
+  return scelto < 0 ? 'off' : (tracce[scelto]?.lingua?.toUpperCase().slice(0, 2) ?? String(scelto + 1))
+}
+
+// La riga sotto il lettore che dice quali sottotitoli ci sono, e se no perché.
+export function testoSottotitoli(p: {
+  salvati: boolean
+  etichette: string[]
+  stato: 'cerco' | 'pronti' | 'nessuno' | 'errore'
+  messaggio: string | null
+}): string {
+  if (p.salvati && p.etichette.length === 0) return 'Nessun sottotitolo salvato con il film.'
+  if (p.stato === 'cerco' && !p.salvati) return 'Cerco i sottotitoli…'
+  // Le tracce trovate e, se una lingua manca, anche questo: altrimenti chi
+  // cerca l'inglese non capisce perché non c'è.
+  if (p.etichette.length > 0) return [p.etichette.join(' · '), !p.salvati && p.messaggio].filter(Boolean).join(' · ')
+  if (p.stato === 'errore') return `Sottotitoli non disponibili: ${p.messaggio ?? 'errore sconosciuto'}`
+  return p.messaggio ?? 'Nessun sottotitolo, né accanto al video né su OpenSubtitles.'
 }
