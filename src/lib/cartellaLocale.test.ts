@@ -43,7 +43,7 @@ describe('videoDaPercorsi', () => {
     const video = videoDaPercorsi([
       { percorso: ['FILM', 'Film.mp4'], dimensione: 1 },
       { percorso: ['FILM', 'Film.it.srt'], dimensione: 1 },
-      { percorso: ['sposta-su-disco.bat'], dimensione: 1 },
+      { percorso: ['prepara-ciak.bat'], dimensione: 1 },
     ])
     expect(video.map((v) => v.name)).toEqual(['Film.mp4'])
   })

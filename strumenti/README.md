@@ -2,30 +2,44 @@
 
 ## Preparare i video per Ciak
 
-`prepara-ciak.ps1` prende i video da una cartella del PC e li mette nella
-cartella Ciak di Google Drive già pronti per il lettore di Ciak: MP4 con video
-H.264, audio AAC (il Dolby il browser non lo sente; le tracce già AAC si
-copiano) e i sottotitoli interni italiani e inglesi estratti in `.srt` accanto
-al video — le altre lingue il lettore non le offre. Quando per una lingua ci
-sono più tracce, vince quella con i dialoghi: le «forced» e quelle che si
-chiamano «Signs & Songs» (solo cartelli e canzoni) si scartano, e fra le altre
-si preferisce quella con più battute. La conversione avviene sul disco del PC e
-su Drive va solo il risultato, una volta.
+La videoteca sta sul disco esterno, in `E:\Ciak`: è la cartella che colleghi
+in Ciak (*Streaming* → «📂 Collega la cartella dei film») e che legge Jellyfin. I video
+nuovi non si mettono lì direttamente: vanno in **`E:\Da preparare`**, e
+`prepara-ciak` li converte e li sposta in `E:\Ciak` già pronti per il lettore
+di Ciak.
+
+Pronti vuol dire: MP4 con video H.264, audio AAC (il Dolby il browser non lo
+sente; le tracce già AAC si copiano) e i sottotitoli interni italiani e
+inglesi estratti in `.srt` accanto al video — le altre lingue il lettore non
+le offre. Quando per una lingua ci sono più tracce, vince quella con i
+dialoghi: le «forced» e quelle che si chiamano «Signs & Songs» (solo cartelli
+e canzoni) si scartano, e fra le altre si preferisce quella con più battute.
+Il video si scrive prima nella cartella temporanea del PC e in `E:\Ciak`
+arriva solo finito: un file a metà Ciak lo vedrebbe come un film rotto.
 
 **Una volta sola**
 
 1. Installa ffmpeg: `winget install --id Gyan.FFmpeg -e`, poi chiudi e riapri
    le finestre del prompt.
 2. Scarica `prepara-ciak.ps1` e `prepara-ciak.bat` nella **stessa cartella**,
-   fuori da Google Drive (per esempio `E:\Intrattenimento`).
+   per esempio in `E:\Ciak` accanto alle schede (Ciak mostra solo i video, gli
+   script non li vede).
+3. Doppio clic su `prepara-ciak.bat`: la prima volta crea `E:\Da preparare`
+   con le stesse cartelle di Ciak (`FILM`, `SERIE TV`, `ANIME`…) e si ferma.
 
 **Ogni volta**
 
-1. Metti i video in `E:\Intrattenimento`, con le stesse sottocartelle di Ciak:
-   `FILM\`, `SERIE TV\South Park\Season 01\`, `ANIME\`, `CARTONI\`…
-2. Doppio clic su `prepara-ciak.bat`.
+1. Metti i video in `E:\Da preparare`, già al loro posto: `FILM\`,
+   `SERIE TV\South Park\Season 01\`, `ANIME\`, `CARTONI\`… La cartella
+   diventa la scheda e la serie in Ciak, uguale in `E:\Ciak`.
+2. Doppio clic su `prepara-ciak.bat`. All'avvio scrive da dove a dove lavora
+   («Da: E:\Da preparare», «A: E:\Ciak»).
+3. In Ciak, *Streaming* → «🔄 Aggiorna».
 
-I video già presenti su Drive si saltano: si può rilanciare quando si vuole.
+Lo script trova da solo la cartella `Ciak` in radice del disco esterno (se ce
+l'hanno due dischi, vince quello da cui lo lanci). Se non la trova, il disco
+non è attaccato: lo dice e si ferma. I video già presenti in Ciak si saltano:
+si può rilanciare quando si vuole.
 
 ### Le lingue dell'audio
 
@@ -34,25 +48,25 @@ italiano di un anime giapponese, o l'originale inglese di un film doppiato,
 resterebbero muti. Per questo lo script salva ogni traccia oltre la prima in un
 file a parte accanto al video (`Film.audio-2.m4a`), più un elenco delle lingue
 (`Film.audio.json`), e il lettore di Ciak le offre nel menu **Audio**. Le
-tracce si copiano così come sono: un film con due lingue occupa su Drive quanto
-prima, più la seconda lingua.
+tracce si copiano così come sono: un film con due lingue occupa sul disco
+quanto prima, più la seconda lingua.
 
-Per i video **già su Drive** c'è `tracce-audio.bat`: scaricalo nella stessa
+Per i video **già in Ciak** c'è `tracce-audio.bat`: scaricalo nella stessa
 cartella di `prepara-ciak.ps1` e fai doppio clic. Guarda uno per uno i video di
-`G:\Il mio Drive\Ciak` che non hanno ancora l'elenco e prepara le lingue in
-più; quelli con una lingua sola li segna come guardati e basta. Drive per
-desktop deve scaricare ogni video per leggerlo, quindi la prima volta ci vuole
-un po': si può chiudere quando si vuole e rilanciare, riparte da dove era.
+`E:\Ciak` che non hanno ancora l'elenco e prepara le lingue in più; quelli con
+una lingua sola li segna come guardati e basta. Per leggere un video lo legge
+tutto, quindi la prima volta ci vuole un po': si può chiudere quando si vuole e
+rilanciare, riparte da dove era.
 
 ### Lo stesso film in un'altra lingua
 
-Un film scaricato anche in italiano (o in inglese) non va su Drive due volte:
+Un film scaricato anche in italiano (o in inglese) non entra in Ciak due volte:
 lo script se ne accorge, ne prende solo l'audio e lo aggiunge come lingua al
 film che c'è già, nel menu **Audio** di Ciak. Basta metterlo in
-`E:\Intrattenimento` come ogni altro video. Riconosce lo stesso film dal
+`E:\Da preparare` come ogni altro video. Riconosce lo stesso film dal
 titolo e dall'anno nel nome del file (`Inception.2010.1080p.mkv` e
 `Inception (2010) ITA.mkv`), lo stesso episodio da serie e sigla
-(`S03E01`). Se le due versioni arrivano insieme, va su Drive come video la più
+(`S03E01`). Se le due versioni arrivano insieme, entra in Ciak come video la più
 grande (di solito la qualità migliore) e l'altra ne diventa una lingua.
 
 Le due versioni quasi mai combaciano al secondo: loghi diversi all'inizio, e
@@ -66,7 +80,7 @@ fuori sincrono, e lo script lo dice.
 Quando i nomi non si somigliano (`Il.Padrino.1972.mkv` e
 `The.Godfather.1972.mp4`) c'è `aggiungi-lingua.bat`: scaricalo nella stessa
 cartella di `prepara-ciak.ps1` e **trascinaci sopra** il video con la lingua
-da aggiungere. Propone i film su Drive che gli somigliano (anche solo per
+da aggiungere. Propone i film di Ciak che gli somigliano (anche solo per
 anno), o si cerca scrivendo una parola del titolo; alla fine chiede se
 cancellare il file, che ormai non serve più. Se il file non dice di che lingua
 è l'audio e non lo dice nemmeno il nome, lo chiede.
@@ -79,33 +93,29 @@ Lo script lo dice, lascia l'originale dov'è e passa al successivo: in
 qBittorrent, tasto destro sul torrent → **Forza ricontrollo**, e quando è al
 100% si rilancia.
 
-Su Drive va solo il film: gli scarti delle release si saltano. Sono le
+In Ciak va solo il film: gli scarti delle release si saltano. Sono le
 anteprime (`….Sample.mp4`), i promo di pochi MB del gruppo che ha fatto la
 release (`ETRG.mp4`, sotto i 5 MB) e le cartelle degli extra (`Featurettes`,
 `Trailers`, `Samples`…). Gli `Extras` e gli speciali delle serie restano: sono
 la stagione 0. Quando il film della stessa cartella è fatto, gli scarti si
-cancellano con l'originale. Quelli già finiti su Drive Ciak li nasconde.
+cancellano con l'originale. Quelli già finiti in `E:\Ciak` l'app li nasconde.
 
 **Gli originali si cancellano definitivamente** (niente Cestino) appena la
-copia su Drive è controllata: deve durare quanto l'originale. Con loro se ne
-vanno i `.srt` che su Drive ci sono già e le sottocartelle rimaste vuote
+copia in Ciak è controllata: deve durare quanto l'originale. Con loro se ne
+vanno i `.srt` che in Ciak ci sono già e le sottocartelle rimaste vuote
 (`Season 01`, la serie); quelle di primo livello (`FILM`, `SERIE TV`…) restano.
 Al primo lancio vale anche per i video caricati nei giri precedenti. Non si
 cancella:
 
-- un originale la cui copia su Drive è più corta o illeggibile (di prima dei
-  controlli sulla durata): lo script lo dice alla fine; cancella la copia su
-  Drive e rilancia per rifarla;
+- un originale la cui copia in Ciak è più corta o illeggibile (di prima dei
+  controlli sulla durata): lo script lo dice alla fine; cancella la copia in
+  `E:\Ciak` e rilancia per rifarla;
 - un file aperto da un altro programma, per esempio qBittorrent che lo sta
   ancora condividendo: si riprova al lancio successivo;
 - un file scritto negli ultimi minuti.
 
 Per tenere gli originali:
 `powershell -ExecutionPolicy Bypass -File prepara-ciak.ps1 -TieniOriginali`.
-
-Il file finisce in `G:\Il mio Drive`, cioè nella copia locale di Google Drive
-per desktop, che lo carica da sé: lascia Drive aperto finché l'icona non dice
-che è tutto sincronizzato, prima di spegnere il PC.
 
 Un video che non è già H.264 a 8 bit (HEVC, 10 bit…) va ricodificato: con la
 scheda video (NVIDIA, Intel o AMD, scelta da sola all'avvio) ci vuole una
@@ -123,7 +133,7 @@ Potendo scegliere cosa scaricare, conviene **x264 / H.264 a 1080p, senza HDR**:
 il video si copia in pochi secondi invece di essere ricodificato, e non perde
 qualità.
 
-I controlli, perché su Drive non finisca un video rotto (che poi lo script
+I controlli, perché in Ciak non finisca un video rotto (che poi lo script
 salterebbe per sempre, credendolo già fatto):
 
 - un file scritto negli ultimi 5 minuti è probabilmente ancora in download: si
@@ -143,15 +153,18 @@ finisca (o *Forza ricontrollo* nel client torrent) e rilancia. Se il download è
 completo e VLC lo apre, di solito basta rifarne il contenitore:
 `ffmpeg -i "file" -map 0 -c copy riparato.mkv`.
 
+Le due cartelle devono essere separate, una non dentro l'altra: lo script si
+rifiuta, perché un video già in Ciak sembrerebbe un originale da cancellare.
 Per cartelle diverse, o per forzare un encoder (`-Encoder libx264` per la CPU):
 
 ```
-powershell -ExecutionPolicy Bypass -File prepara-ciak.ps1 -Origine "D:\Video" -Destinazione "G:\Il mio Drive\Ciak"
+powershell -ExecutionPolicy Bypass -File prepara-ciak.ps1 -Origine "D:\Video" -Destinazione "F:\Ciak"
 ```
 
-## Il server di casa: i film su un disco esterno, senza Drive
+## Il server di casa: i film del disco anche sul tablet
 
-Al posto di Google Drive i film possono stare su un disco attaccato al PC:
+La cartella collegata funziona sul PC a cui è attaccato il disco. Per vedere
+gli stessi film dal tablet o dal telefono, anche fuori casa, serve un server:
 **Jellyfin** (gratuito) li manda a Ciak, e **Tailscale** (gratuito) li fa
 arrivare anche fuori casa, in modo sicuro, senza aprire niente su internet.
 In Ciak non cambia niente: videoteca, saghe, diario, «riprendi da dove eri»,
@@ -163,33 +176,21 @@ Il PC deve essere acceso (e Jellyfin aperto) mentre guardi: in *Impostazioni
 → Sistema → Alimentazione* metti «Sospensione: mai» quando è collegato alla
 corrente.
 
-**1. Il disco**
-
-Formattalo in NTFS (tasto destro → Formatta), poi copia la videoteca da Drive
-con `sposta-su-disco.bat`: chiede la lettera del disco e copia
-`G:\Il mio Drive\Ciak` in `F:\Ciak` (con la tua lettera), sottocartelle
-comprese. Drive per desktop scarica ogni file per copiarlo, quindi ci vuole
-tempo: si può interrompere e rilanciare, riparte da dove era. Da Drive non
-cancella niente: quando hai controllato che i film ci sono, li cancelli tu.
-
-Da quel momento `prepara-ciak.bat` mette i video nuovi sul disco da solo:
-trova la cartella `Ciak` in radice e all'avvio lo scrive («A: F:\Ciak»).
-
-**2. Jellyfin sul PC**
+**1. Jellyfin sul PC**
 
 1. Scarica *Jellyfin Server* per Windows da jellyfin.org (Downloads →
    Windows) e installalo.
 2. Si apre la configurazione nel browser: lingua italiana, un utente e una
    password (quelli che scriverai in Ciak).
-3. Aggiungi una **libreria per cartella** del disco: «Film» → `F:\Ciak\FILM`
-   (tipo *Film*), «Serie TV» → `F:\Ciak\SERIE TV` (tipo *Programmi TV*), e così
+3. Aggiungi una **libreria per cartella** del disco: «Film» → `E:\Ciak\FILM`
+   (tipo *Film*), «Serie TV» → `E:\Ciak\SERIE TV` (tipo *Programmi TV*), e così
    `ANIME` e `CARTONI`. Il nome della cartella diventa la scheda della
-   videoteca di Ciak, come con Drive.
+   videoteca di Ciak, come con la cartella collegata.
 4. Facoltativo, per i sottotitoli che mancano: *Pannello di controllo →
    Plugin → Catalogo → Open Subtitles*, poi nelle librerie spunta italiano e
    inglese fra le lingue da scaricare.
 
-**3. Tailscale (per collegarsi in HTTPS, anche fuori casa)**
+**2. Tailscale (per collegarsi in HTTPS, anche fuori casa)**
 
 Ciak è un sito in HTTPS e il browser non lo lascia parlare con un server in
 HTTP: Tailscale dà a Jellyfin un indirizzo HTTPS valido.
@@ -202,7 +203,7 @@ HTTP: Tailscale dà a Jellyfin un indirizzo HTTPS valido.
    `tailscale serve --bg 8096`
    Risponde con l'indirizzo, qualcosa come `https://pc-di-casa.tail1234.ts.net`.
 
-**4. In Ciak**
+**3. In Ciak**
 
 *Streaming* → «🏠 Collega il server di casa»: l'indirizzo di Tailscale, utente
 e password di Jellyfin. Si fa una volta per dispositivo; Ciak tiene solo un
@@ -210,9 +211,10 @@ token, che dal Pannello di controllo di Jellyfin (*Dispositivi*) si toglie
 quando vuoi. Se Chrome chiede di consentire l'accesso ai dispositivi della
 rete locale, rispondi «Consenti».
 
-Finché Drive resta collegato, la videoteca mostra i film di tutti e due: lo
-stesso file nei due posti compare una volta, quello del disco. Quando hai
-spostato tutto, in *Streaming* premi «Scollega Drive».
+Con la cartella collegata e il server di casa insieme, la videoteca mostra i
+film di tutti e due: lo stesso file nei due posti compare una volta, quello
+del server.
 
-Dal server di casa, per ora, non ci sono «Scarica per l'offline» e «Cancella»:
-i film si cancellano dal PC (Esplora file), poi «🔄 Aggiorna».
+Dal server di casa, per ora, non c'è «Cancella dal disco»: i film si
+cancellano dal PC (Esplora file, o Ciak con solo la cartella collegata), poi
+«🔄 Aggiorna».

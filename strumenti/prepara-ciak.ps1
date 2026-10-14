@@ -1,7 +1,8 @@
 # Prepara i video per Ciak.
 #
-# Prende i video da una cartella del PC (di solito E:\Intrattenimento) e li
-# mette nella cartella Ciak di Google Drive gia' pronti per il lettore di Ciak:
+# Prende i video nuovi da E:\Da preparare e li mette nella videoteca, E:\Ciak
+# (la cartella che Ciak collega e che Jellyfin legge), gia' pronti per il
+# lettore di Ciak:
 #   - MP4 con l'indice all'inizio (+faststart), cosi' parte subito e si salta;
 #   - video H.264 a 8 bit, l'unico che ogni browser e ogni tablet legge: se lo
 #     e' gia' si copia (pochi secondi), altrimenti si ricodifica (lento);
@@ -12,23 +13,23 @@
 #     Film.en.srt), dove Ciak li trova;
 #   - i .srt gia' accanto al video originale, copiati.
 # Un video che non si legge, o che esce molto piu' corto dell'originale (ancora
-# in download, danneggiato), non va su Drive: finisce nell'elenco degli errori
-# che lo script stampa alla fine e salva in prepara-ciak-errori.txt.
-# La conversione si fa sul disco del PC e solo il risultato va su Drive: un
-# file letto e riscritto direttamente su Drive va scaricato e ricaricato
-# intero, ed e' quello che rendeva tutto lentissimo.
+# in download, danneggiato), non entra in Ciak: finisce nell'elenco degli
+# errori che lo script stampa alla fine e salva in prepara-ciak-errori.txt.
+# Il video si scrive prima nella cartella temporanea del PC e solo a lavoro
+# finito si sposta in Ciak: un MP4 a meta' nella videoteca, Ciak lo vedrebbe
+# come un film rotto.
 #
-# Gli scarti delle release non vanno su Drive: le anteprime ("...Sample.mp4"),
+# Gli scarti delle release non entrano in Ciak: le anteprime ("...Sample.mp4"),
 # i video promozionali di pochi MB del gruppo che ha fatto la release
-# ("ETRG.mp4") e gli extra dei film (Featurettes, Trailers, Samples...). Su
-# Drive va solo il film. Quando il film della stessa cartella e' fatto, gli
+# ("ETRG.mp4") e gli extra dei film (Featurettes, Trailers, Samples...). In
+# Ciak va solo il film. Quando il film della stessa cartella e' fatto, gli
 # scarti si cancellano con l'originale (non con -TieniOriginali).
 #
 # Le sottocartelle si ricopiano uguali (FILM, SERIE TV\South Park\Season 01...):
-# sono le schede e le serie di Ciak. I video gia' presenti su Drive si saltano,
+# sono le schede e le serie di Ciak. I video gia' presenti in Ciak si saltano,
 # quindi si puo' rilanciare quando si vuole: fa solo quelli nuovi.
 #
-# Gli originali, una volta che la copia su Drive e' intera (dura quanto
+# Gli originali, una volta che la copia in Ciak e' intera (dura quanto
 # l'originale), si cancellano definitivamente insieme ai loro .srt, cosi' il
 # disco non si riempie. -TieniOriginali li lascia dove sono.
 #
@@ -36,11 +37,11 @@
 # non lascia passare alle altre. Le altre si salvano accanto al video, una per
 # file (Film.audio-2.m4a, ...), con l'elenco di tutte in Film.audio.json: il
 # lettore di Ciak le offre nel menu Audio. -SoloTracceAudio le prepara per i
-# video gia' su Drive (lancialo con tracce-audio.bat).
+# video gia' in Ciak (lancialo con tracce-audio.bat).
 #
-# Lo stesso film scaricato in due lingue non va su Drive due volte: se un
+# Lo stesso film scaricato in due lingue non entra in Ciak due volte: se un
 # video ha lo stesso titolo e anno (o la stessa serie ed episodio) di uno gia'
-# su Drive, se ne prende solo l'audio, rimesso a tempo, e diventa una lingua
+# in Ciak, se ne prende solo l'audio, rimesso a tempo, e diventa una lingua
 # in piu' del primo. Per i nomi che non si somigliano ("Il Padrino" e "The
 # Godfather") c'e' aggiungi-lingua.bat: ci si trascina sopra il video e si
 # sceglie il film.
@@ -49,8 +50,10 @@
 # gli script senza BOM come ANSI, e una "e'" accentata diventerebbe illeggibile.
 
 param(
-  [string]$Origine = 'E:\Intrattenimento',
-  [string]$Destinazione = 'G:\Il mio Drive\Ciak',
+  # Senza: la videoteca e' la cartella Ciak in radice del disco esterno, e i
+  # video nuovi stanno in "Da preparare" accanto a lei (E:\Ciak, E:\Da preparare).
+  [string]$Origine,
+  [string]$Destinazione,
   # 'auto' prova la scheda video (NVIDIA, Intel, AMD) e ripiega sulla CPU;
   # si puo' forzare un encoder, per esempio -Encoder libx264.
   [string]$Encoder = 'auto',
@@ -58,10 +61,10 @@ param(
   [int]$MinutiDiCalma = 5,
   # Lascia gli originali dove sono invece di cancellarli.
   [switch]$TieniOriginali,
-  # Non converte niente: prepara le tracce audio dei video gia' su Drive.
+  # Non converte niente: prepara le tracce audio dei video gia' in Ciak.
   [switch]$SoloTracceAudio,
   # Non converte niente: aggiunge l'audio di questo video, come lingua in piu',
-  # al film gia' su Drive (lancialo con aggiungi-lingua.bat). -Film dice quale
+  # al film gia' in Ciak (lancialo con aggiungi-lingua.bat). -Film dice quale
   # film senza chiederlo; -LinguaNuova la lingua, se il file non la dice.
   [string]$AggiungiLingua,
   [string]$Film,
@@ -69,17 +72,31 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-# Il disco esterno al posto di Drive: se un disco (non C:, non Google Drive)
-# ha la cartella Ciak in radice, i video vanno li', dove li legge Jellyfin.
+# La videoteca: la cartella Ciak in radice di un disco che non sia C: (il disco
+# esterno). Prima quello da cui parte lo script, che di solito sta in E:\Ciak:
+# con due dischi che hanno una cartella Ciak vince quello giusto.
 # Una destinazione scritta a mano vince sempre.
-if (-not $PSBoundParameters.ContainsKey('Destinazione')) {
+if (-not $Destinazione) {
+  $discoScript = if ($PSScriptRoot) { [IO.Path]::GetPathRoot($PSScriptRoot) } else { '' }
   $disco = @(Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
-      Where-Object { $_.Root -match '^[A-Z]:\\$' -and $_.Root -notmatch '^[CG]:' -and (Test-Path -LiteralPath (Join-Path $_.Root 'Ciak')) } |
+      Where-Object { $_.Root -match '^[A-Z]:\\$' -and $_.Root -notmatch '^C:' -and (Test-Path -LiteralPath (Join-Path $_.Root 'Ciak')) } |
+      Sort-Object { $_.Root -ne $discoScript }, Root |
       Select-Object -First 1)
   if ($disco.Count -gt 0) { $Destinazione = Join-Path $disco[0].Root 'Ciak' }
 }
+if (-not $Destinazione -or -not (Test-Path -LiteralPath $Destinazione -PathType Container)) {
+  $quale = if ($Destinazione) { $Destinazione } else { 'la cartella Ciak su un disco' }
+  Write-Host "Non trovo $quale`: il disco esterno e' attaccato?" -ForegroundColor Red
+  Write-Host 'Se la videoteca e'' altrove:  prepara-ciak.ps1 -Destinazione "X:\Ciak"'
+  if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
+  exit 1
+}
+$Destinazione = (Resolve-Path -LiteralPath $Destinazione).Path.TrimEnd('\', '/')
+# I video nuovi: "Da preparare" accanto alla videoteca, sullo stesso disco.
+# Non dentro Ciak, dove si vedrebbero gli MKV ancora da convertire.
+if (-not $Origine) { $Origine = Join-Path (Split-Path $Destinazione -Parent) 'Da preparare' }
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-11a'
+$Versione = '2026-10-14a'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 # Gli scarti: un video sotto questa misura e' il promo di una release, non un
 # film ne' un episodio; le cartelle degli extra dei film (gli "Extras" e gli
@@ -90,7 +107,7 @@ $SottotitoliTesto = @('subrip', 'ass', 'ssa', 'mov_text', 'webvtt', 'text')
 
 # Le lingue dei sottotitoli che servono: il lettore di Ciak offre solo italiano
 # e inglese, il resto finirebbe in un'unica traccia "altra lingua" (il cinese,
-# per ordine alfabetico, prima di tutti) e ingombrerebbe Drive.
+# per ordine alfabetico, prima di tutti) e ingombrerebbe il disco.
 $LingueVolute = @('it', 'en')
 
 function Lingua([string]$codice) {
@@ -120,6 +137,37 @@ function Esegui([string]$programma, [string[]]$argomenti) {
   return $LASTEXITCODE
 }
 
+# Per le sole tracce audio la cartella dei video nuovi non serve.
+$SoloCiak = $SoloTracceAudio -or $AggiungiLingua
+if (-not $SoloCiak -and -not (Test-Path -LiteralPath $Origine)) {
+  # La prima volta la si crea, con le stesse schede della videoteca (FILM,
+  # SERIE TV, ANIME...): i video vanno messi gia' al loro posto, perche' la
+  # cartella diventa la scheda e la serie in Ciak.
+  New-Item -ItemType Directory -Force -Path $Origine | Out-Null
+  $schede = @(Get-ChildItem -LiteralPath $Destinazione -Directory -ErrorAction SilentlyContinue | Where-Object { -not $_.Name.StartsWith('.') })
+  foreach ($s in $schede) { New-Item -ItemType Directory -Force -Path (Join-Path $Origine $s.Name) | Out-Null }
+  Write-Host "Ho creato $Origine" -ForegroundColor Green
+  if ($schede.Count -gt 0) { Write-Host "con le stesse cartelle di Ciak: $(($schede | ForEach-Object { $_.Name }) -join ', ')." }
+  Write-Host 'Mettici i video nuovi (una serie in SERIE TV\Nome della serie\Season 01) e rilancia.'
+  if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
+  exit 0
+}
+
+if (Test-Path -LiteralPath $Origine) { $Origine = (Resolve-Path -LiteralPath $Origine).Path.TrimEnd('\', '/') }
+# Le due cartelle non possono essere la stessa ne' una dentro l'altra: un video
+# gia' in Ciak sembrerebbe un originale con la sua copia pronta, e si
+# cancellerebbe il film stesso; o lo script ripescherebbe i video appena fatti.
+if (-not $SoloCiak) {
+  $o = $Origine.ToLower() + [IO.Path]::DirectorySeparatorChar
+  $d = $Destinazione.ToLower() + [IO.Path]::DirectorySeparatorChar
+  if ($o.StartsWith($d) -or $d.StartsWith($o)) {
+    Write-Host "I video nuovi ($Origine) e la videoteca ($Destinazione) devono stare in due cartelle separate, una non dentro l'altra." -ForegroundColor Red
+    Write-Host "Metti i video da preparare in una cartella fuori da Ciak, per esempio $(Join-Path (Split-Path $Destinazione -Parent) 'Da preparare')."
+    if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
+    exit 1
+  }
+}
+
 foreach ($p in 'ffmpeg', 'ffprobe') {
   if (-not (Get-Command $p -ErrorAction SilentlyContinue)) {
     Write-Host "Non trovo $p. Installalo con:  winget install --id Gyan.FFmpeg -e" -ForegroundColor Red
@@ -128,14 +176,6 @@ foreach ($p in 'ffmpeg', 'ffprobe') {
     exit 1
   }
 }
-# Per le sole tracce audio la cartella dei download non serve.
-if (-not $SoloTracceAudio -and -not $AggiungiLingua -and -not (Test-Path -LiteralPath $Origine)) {
-  Write-Host "La cartella $Origine non esiste." -ForegroundColor Red
-  Read-Host 'Premi Invio per chiudere'
-  exit 1
-}
-
-if (Test-Path -LiteralPath $Origine) { $Origine = (Resolve-Path -LiteralPath $Origine).Path.TrimEnd('\', '/') }
 
 # Ricodificare con la CPU va a circa 3 volte il tempo reale: una serie in
 # HEVC a 10 bit sono ore. La scheda video (NVENC, Quick Sync, AMF) fa lo
@@ -208,7 +248,7 @@ function ErroriVeri([string[]]$righe) {
 
 # Un video rotto (download interrotto, contenitore rifatto male) ffmpeg non lo
 # rifiuta: scarta un pacchetto dopo l'altro riempiendo lo schermo di errori e
-# alla fine esce con 0, lasciando su Drive un MP4 vuoto che poi si salterebbe
+# alla fine esce con 0, lasciando in Ciak un MP4 vuoto che poi si salterebbe
 # per sempre. Decodificare i primi secondi lo scopre prima di cominciare.
 # Qualche errore isolato all'inizio e' normale (i .ts partono a meta' di un
 # fotogramma): se ne tollerano pochi. Come sopra, gli errori qui sono attesi.
@@ -291,7 +331,7 @@ function Durata([string]$file) {
 
 # Le tracce audio di un MP4 oltre la prima, ognuna in un .m4a accanto (in
 # $cartella), e l'elenco di tutte in nome.audio.json. Una lettura sola del
-# video per tutte le tracce: su Drive il file si scarica, e due letture
+# video per tutte le tracce: un film sono gigabyte, e due letture
 # costerebbero il doppio. Le tracce sono gia' AAC: si copiano, niente
 # ricodifica. Torna i file creati, elenco compreso: si scrive anche per un
 # video con una traccia sola, perche' dice che il video e' gia' stato guardato.
@@ -413,7 +453,7 @@ $nonCancellati = @()
 $cartelleToccate = @{}
 
 # L'originale e i suoi .srt (Film.srt, Film.it.srt), per sempre: si arriva qui
-# solo con la copia su Drive gia' controllata. Un .srt che su Drive non c'e'
+# solo con la copia in Ciak gia' controllata. Un .srt che in Ciak non c'e'
 # resta dov'e'.
 function CancellaOriginale($f, [string]$nome, [string]$cartellaDest, [string]$relativo) {
   if (InUso $f.FullName) {
@@ -446,7 +486,7 @@ function Scarto($f) {
 }
 
 # ---- Lo stesso film in un'altra lingua ---------------------------------------
-# Un film scaricato anche in italiano (o in inglese) non va su Drive una
+# Un film scaricato anche in italiano (o in inglese) non entra in Ciak una
 # seconda volta: si prende solo il suo audio e lo si aggiunge come lingua al
 # film che c'e' gia', nel menu Audio di Ciak. Le due versioni pero' non
 # combaciano quasi mai al secondo: loghi diversi all'inizio, e le copie
@@ -482,24 +522,24 @@ function StessoVideo($a, $b) {
   return $a.anno -and $a.anno -eq $b.anno
 }
 
-# I video gia' su Drive con la loro chiave, letti una volta sola.
-$script:SuDrive = $null
-function VideoSuDrive {
-  if ($null -eq $script:SuDrive) {
-    $script:SuDrive = [Collections.ArrayList]@()
+# I video gia' in Ciak con la loro chiave, letti una volta sola.
+$script:InCiak = $null
+function VideoInCiak {
+  if ($null -eq $script:InCiak) {
+    $script:InCiak = [Collections.ArrayList]@()
     if (Test-Path -LiteralPath $Destinazione) {
       foreach ($v in @(Get-ChildItem -LiteralPath $Destinazione -Recurse -File -Filter '*.mp4' -ErrorAction SilentlyContinue)) {
-        [void]$script:SuDrive.Add(@{ file = $v.FullName; chiave = (ChiaveVideo $v.Name) })
+        [void]$script:InCiak.Add(@{ file = $v.FullName; chiave = (ChiaveVideo $v.Name) })
       }
     }
   }
-  return $script:SuDrive
+  return $script:InCiak
 }
 
 function Gemello([string]$nome) {
   $chiave = ChiaveVideo $nome
   if (-not $chiave) { return $null }
-  return (VideoSuDrive | Where-Object { StessoVideo $chiave $_.chiave } | Select-Object -First 1)
+  return (VideoInCiak | Where-Object { StessoVideo $chiave $_.chiave } | Select-Object -First 1)
 }
 
 function Num([double]$x) { return $x.ToString('0.######', [Globalization.CultureInfo]::InvariantCulture) }
@@ -590,7 +630,8 @@ function MisuraSincronia([string]$film, [string]$fonte, [int]$tracciaFonte, [dou
   if (-not ('CiakSincronia' -as [type])) { Add-Type -TypeDefinition $CodiceSincronia }
   $W = 60; $L = 45
   if ($durataFilm -lt 5 * $W + 2 * $L) { throw "il video e' troppo corto per misurare la sincronia" }
-  # Dal film, che puo' stare solo su Drive, si legge poco: cinque minuti.
+  # Dal film si legge poco, cinque minuti: sta sul disco esterno, che e'
+  # lento, e la fonte si legge comunque per intero piu' avanti.
   $punti = @(0.1, 0.3, 0.5, 0.7, 0.9) | ForEach-Object { [math]::Min($durataFilm - $W - $L, [math]::Max($L, $_ * $durataFilm - $W / 2)) }
   $pezziFilm = @($punti | ForEach-Object { , (Inviluppo $film 0 $_ $W 1) })
   # Le velocita' possibili: uguali, una delle due copie in PAL (25 fotogrammi
@@ -640,7 +681,7 @@ function LinguaDalNome([string]$nome) {
   return $null
 }
 
-# Aggiunge al film su Drive le lingue di $fonte che gli mancano. Torna le
+# Aggiunge al film in Ciak le lingue di $fonte che gli mancano. Torna le
 # lingue aggiunte (nessuna: c'erano gia' tutte); un errore se le versioni non
 # combaciano.
 function AggiungiLingua([string]$fonte, [string]$film, [string]$linguaForzata) {
@@ -735,29 +776,24 @@ New-Item -ItemType Directory -Force -Path $Lavoro | Out-Null
 Write-Host "prepara-ciak, versione $Versione"
 Write-Host "Da:  $Origine"
 Write-Host "A:   $Destinazione"
-if ($TieniOriginali) { Write-Host 'Originali: restano dove sono' } else { Write-Host "Originali: cancellati quando la copia su Drive e' intera" }
+if ($TieniOriginali) { Write-Host 'Originali: restano dove sono' } else { Write-Host "Originali: cancellati quando la copia in Ciak e' intera" }
 if ($Encoder -eq 'libx264') { Write-Host 'Ricodifica: con la CPU (nessuna scheda video utilizzabile trovata)' } else { Write-Host "Ricodifica: con la scheda video ($Encoder)" }
 Write-Host ''
 
 if ($SoloTracceAudio) {
-  # I video gia' su Drive senza elenco delle tracce: uno alla volta, e solo
-  # quelli con piu' di una traccia si leggono per intero (Drive per desktop li
-  # scarica). Si puo' interrompere e rilanciare: riparte da dove era.
-  if (-not (Test-Path -LiteralPath $Destinazione)) {
-    Write-Host "La cartella $Destinazione non esiste: Google Drive per desktop e' aperto?" -ForegroundColor Red
-    if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
-    exit 1
-  }
-  Write-Host 'Preparo le tracce audio dei video gia'' su Drive...'
-  $suDrive = @(Get-ChildItem -LiteralPath $Destinazione -Recurse -File -Filter '*.mp4' |
+  # I video gia' in Ciak senza elenco delle tracce: uno alla volta, e solo
+  # quelli con piu' di una traccia si leggono per intero. Si puo'
+  # interrompere e rilanciare: riparte da dove era.
+  Write-Host 'Preparo le tracce audio dei video gia'' in Ciak...'
+  $daGuardare = @(Get-ChildItem -LiteralPath $Destinazione -Recurse -File -Filter '*.mp4' |
       Where-Object { -not (Test-Path -LiteralPath (Join-Path $_.DirectoryName "$([IO.Path]::GetFileNameWithoutExtension($_.Name)).audio.json")) } |
       Sort-Object FullName)
   $conTracce = 0; $erroriAudio = @(); $k = 0
-  foreach ($f in $suDrive) {
+  foreach ($f in $daGuardare) {
     $k++
     $nome = [IO.Path]::GetFileNameWithoutExtension($f.Name)
     $relativo = $f.DirectoryName.Substring($Destinazione.Length).TrimStart('\', '/')
-    Write-Host "[$k/$($suDrive.Count)] $relativo\$($f.Name)"
+    Write-Host "[$k/$($daGuardare.Count)] $relativo\$($f.Name)"
     try {
       $fatti = @(TracceAudio $f.FullName $Lavoro $nome)
       foreach ($file in $fatti) {
@@ -780,7 +816,7 @@ if ($SoloTracceAudio) {
     $erroriAudio | ForEach-Object { Write-Host "  $_" }
   }
   Write-Host ''
-  Write-Host "Finito: $($suDrive.Count) video controllati, $conTracce con lingue in piu' pronte per Ciak."
+  Write-Host "Finito: $($daGuardare.Count) video controllati, $conTracce con lingue in piu' pronte per Ciak."
   if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }
   exit 0
 }
@@ -797,11 +833,11 @@ if ($AggiungiLingua) {
   Write-Host "Aggiungo la lingua di $nomeFonte"
   $scelto = $Film
   if (-not $scelto) {
-    # I film su Drive che le somigliano: parole del titolo in comune, e lo
+    # I film in Ciak che le somigliano: parole del titolo in comune, e lo
     # stesso anno conta da solo ("Il Padrino 1972" e "The Godfather 1972").
     $chiave = ChiaveVideo $nomeFonte
     $parole = if ($chiave) { @($chiave.titolo -split ' ') } else { @() }
-    $candidati = @(VideoSuDrive | ForEach-Object {
+    $candidati = @(VideoInCiak | ForEach-Object {
         $k = $_.chiave
         $punti = 0
         if ($k -and $chiave) {
@@ -827,7 +863,7 @@ if ($AggiungiLingua) {
       if ([int]::TryParse($risposta, [ref]$numero) -and $numero -ge 1 -and $numero -le $candidati.Count) {
         $scelto = $candidati[$numero - 1].file
       } else {
-        $candidati = @(VideoSuDrive | Where-Object { (Split-Path $_.file -Leaf) -like "*$risposta*" } | Select-Object -First 9 | ForEach-Object { @{ file = $_.file } })
+        $candidati = @(VideoInCiak | Where-Object { (Split-Path $_.file -Leaf) -like "*$risposta*" } | Select-Object -First 9 | ForEach-Object { @{ file = $_.file } })
       }
     }
   }
@@ -867,7 +903,7 @@ $tutti = Get-ChildItem -LiteralPath $Origine -Recurse -File |
   Sort-Object FullName
 $video = @($tutti | Where-Object { -not (Scarto $_) })
 # Due versioni dello stesso film nello stesso giro: la piu' grande (di solito
-# la qualita' migliore) va su Drive come video, l'altra ne diventa una lingua.
+# la qualita' migliore) entra in Ciak come video, l'altra ne diventa una lingua.
 $video = @($video | Sort-Object @{ Expression = {
       $k = ChiaveVideo $_.Name
       if ($k -and ($k.anno -or $k.episodio)) { "$($k.titolo)|$($k.anno)|$($k.episodio)" } else { $_.FullName.ToLower() }
@@ -875,7 +911,7 @@ $video = @($video | Sort-Object @{ Expression = {
   }, @{ Expression = { $_.Length }; Descending = $true })
 $scarti = @($tutti | Where-Object { Scarto $_ })
 if ($scarti.Count -gt 0) {
-  Write-Host "Salto $($scarti.Count) scarti delle release (anteprime, promo, extra): su Drive va solo il film." -ForegroundColor DarkGray
+  Write-Host "Salto $($scarti.Count) scarti delle release (anteprime, promo, extra): in Ciak va solo il film." -ForegroundColor DarkGray
 }
 
 $fatti = 0; $saltati = 0; $errori = 0; $ricodificati = 0; $inDownload = 0; $lingueAggiunte = 0
@@ -891,21 +927,20 @@ foreach ($f in $video) {
   $recente = $f.LastWriteTime -gt $calma
   if (Test-Path -LiteralPath $dest) {
     $saltati++
-    # Gia' su Drive da un giro precedente: l'originale si cancella solo se la
+    # Gia' in Ciak da un giro precedente: l'originale si cancella solo se la
     # copia dura quanto lui. Una copia corta o illeggibile (di prima dei
     # controlli sulla durata) e' proprio il motivo per tenerlo.
-    # Si scrive a schermo: la copia su Drive va riletta (e Drive per desktop,
-    # se e' solo online, la scarica almeno in parte), e centinaia di controlli
-    # muti sembravano uno script bloccato.
+    # Si scrive a schermo: la copia va riletta dal disco, e centinaia di
+    # controlli muti sembravano uno script bloccato.
     if (-not $TieniOriginali -and -not $recente) {
-      Write-Host "[$n/$($video.Count)] $relativo\$($f.Name): gia' su Drive, controllo la copia..."
-      $durataDrive = Durata $dest
+      Write-Host "[$n/$($video.Count)] $relativo\$($f.Name): gia' in Ciak, controllo la copia..."
+      $durataCopia = Durata $dest
       $durataOrig = Durata $f.FullName
-      if ($durataDrive -gt 0 -and ($durataOrig -le 0 -or $durataDrive -ge $durataOrig * 0.95)) {
+      if ($durataCopia -gt 0 -and ($durataOrig -le 0 -or $durataCopia -ge $durataOrig * 0.95)) {
         CancellaOriginale $f $nome $cartellaDest $relativo
       } else {
-        $nonCancellati += "$relativo\$($f.Name): la copia su Drive dura $(Tempo $durataDrive), l'originale $(Tempo $durataOrig). Lo tengo: cancella la copia su Drive e rilancia per rifarla"
-        Write-Host "   originale tenuto: la copia su Drive dura $(Tempo $durataDrive), l'originale $(Tempo $durataOrig)" -ForegroundColor DarkYellow
+        $nonCancellati += "$relativo\$($f.Name): la copia in Ciak dura $(Tempo $durataCopia), l'originale $(Tempo $durataOrig). Lo tengo: cancella la copia in Ciak e rilancia per rifarla"
+        Write-Host "   originale tenuto: la copia in Ciak dura $(Tempo $durataCopia), l'originale $(Tempo $durataOrig)" -ForegroundColor DarkYellow
       }
     }
     continue
@@ -922,7 +957,7 @@ foreach ($f in $video) {
     if ($buco -ge 0) {
       throw "mancano dei dati a $([math]::Round($buco / 1MB)) MB dall'inizio (solo zeri): il download non e' finito o il file e' rovinato. In qBittorrent: tasto destro sul torrent > Forza ricontrollo, aspetta che arrivi al 100% e rilancia. L'originale resta dov'e'"
     }
-    # Lo stesso film gia' su Drive, in un'altra lingua: se ne prende l'audio.
+    # Lo stesso film gia' in Ciak, in un'altra lingua: se ne prende l'audio.
     $gemello = Gemello $f.Name
     if ($gemello) {
       Write-Host "   e' lo stesso video di $($gemello.file.Substring($Destinazione.Length).TrimStart('\', '/')): ne aggiungo solo la lingua"
@@ -1043,7 +1078,7 @@ foreach ($f in $video) {
     New-Item -ItemType Directory -Force -Path $cartellaDest | Out-Null
     Move-Item -LiteralPath $tmp -Destination $dest -Force
     # Un'altra versione dello stesso film, piu' avanti in questo giro, lo trova.
-    if ($null -ne $script:SuDrive) { [void]$script:SuDrive.Add(@{ file = $dest; chiave = (ChiaveVideo "$nome.mp4") }) }
+    if ($null -ne $script:InCiak) { [void]$script:InCiak.Add(@{ file = $dest; chiave = (ChiaveVideo "$nome.mp4") }) }
     foreach ($file in @($srt) + $audioExtra) {
       $finale = Join-Path $cartellaDest (Split-Path $file -Leaf)
       if (Test-Path -LiteralPath $finale) { Remove-Item -LiteralPath $file } else { Move-Item -LiteralPath $file -Destination $finale }
@@ -1062,7 +1097,7 @@ foreach ($f in $video) {
   } catch {
     $errori++
     $elencoErrori += "$relativo\$($f.Name)`r`n   $($_.Exception.Message)"
-    Write-Host "   ERRORE: $($_.Exception.Message). Il file su Drive non e' stato creato." -ForegroundColor Red
+    Write-Host "   ERRORE: $($_.Exception.Message). Il video non e' entrato in Ciak." -ForegroundColor Red
     Get-ChildItem -LiteralPath $Lavoro -File -Filter "$nome.*" -ErrorAction SilentlyContinue | Remove-Item -ErrorAction SilentlyContinue
   }
 }
@@ -1124,6 +1159,6 @@ if ($nonCancellati.Count -gt 0) {
 $inDownloadTesto = if ($inDownload) { ", $inDownload forse ancora in download (rilancia piu' tardi)" } else { '' }
 $cancellatiTesto = if ($cancellati) { ", $cancellati originali cancellati" } else { '' }
 if ($scartiCancellati) { $cancellatiTesto += ", $scartiCancellati scarti cancellati" }
-$lingueTesto = if ($lingueAggiunte) { ", $lingueAggiunte aggiunti come lingua a un film gia' su Drive" } else { '' }
+$lingueTesto = if ($lingueAggiunte) { ", $lingueAggiunte aggiunti come lingua a un film gia' in Ciak" } else { '' }
 Write-Host "Finito: $fatti pronti per Ciak ($ricodificati ricodificati)$lingueTesto, $saltati gia' presenti, $errori errori$inDownloadTesto$cancellatiTesto."
 if (-not $env:CIAK_SENZA_PAUSA) { Read-Host 'Premi Invio per chiudere' }

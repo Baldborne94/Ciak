@@ -1,5 +1,5 @@
 @echo off
-rem Aggiunge a un film gia' su Drive la lingua di un'altra versione dello stesso film.
+rem Aggiunge a un film gia' in Ciak la lingua di un'altra versione dello stesso film.
 rem Trascina su questo file il video (o piu' video) con la lingua da aggiungere.
 rem Sta nella stessa cartella di prepara-ciak.ps1.
 if "%~1"=="" (
