@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { tmdbConfigurato } from '../lib/tmdb'
+import { driveAttivo, driveDisponibile, impostaDriveAttivo } from '../lib/googleDrive'
 import { useAuth } from '../lib/auth'
 import {
   disablePush,
@@ -272,6 +273,37 @@ function StatusRow({ label, ok }: { label: string; ok: boolean | null }) {
   )
 }
 
+// Google Drive nella videoteca: acceso, Ciak legge la cartella «Ciak» del
+// Drive; spento, la videoteca vive dei film aperti dal dispositivo e Ciak non
+// chiede più niente a Google. Si sceglie per dispositivo.
+function DriveSettings() {
+  const [acceso, setAcceso] = useState(driveAttivo)
+  if (!driveDisponibile()) return null
+  return (
+    <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
+      <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">🎬 Videoteca</h2>
+      <label className="flex items-start gap-3 text-sm text-zinc-300">
+        <input
+          type="checkbox"
+          checked={acceso}
+          onChange={(e) => {
+            impostaDriveAttivo(e.target.checked)
+            setAcceso(e.target.checked)
+          }}
+          className="mt-1"
+        />
+        <span>
+          Usa Google Drive per lo streaming
+          <span className="block text-xs text-zinc-500">
+            Spento, la videoteca mostra solo i film che apri dal dispositivo (il disco del PC, la
+            memoria del tablet) e quelli salvati in Ciak; il diario e i titoli visti restano.
+          </span>
+        </span>
+      </label>
+    </section>
+  )
+}
+
 function IntegrationsSettings() {
   const [tmdbOk, setTmdbOk] = useState<boolean | null>(null)
 
@@ -384,6 +416,7 @@ export default function Settings() {
       />
 
       <div className="grid gap-6 md:grid-cols-2">
+        <DriveSettings />
         <IntegrationsSettings />
 
         <PushSettings />
