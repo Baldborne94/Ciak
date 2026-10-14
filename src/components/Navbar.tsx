@@ -7,9 +7,9 @@ import { useIdentityCtx } from '../lib/identityCtx'
 const primary = [
   { to: '/', label: 'Sala', end: true },
   { to: '/search', label: 'Cerca' },
-  // Lo streaming dei film su Google Drive ha una voce sua, non dentro «Le mie
+  // Lo streaming dei film della videoteca ha una voce sua, non dentro «Le mie
   // liste». Solo se il collegamento è configurato: senza Client ID sparisce.
-  // Sempre: anche senza Drive ci sono i film aperti dal dispositivo.
+  // Sempre: anche senza cartella collegata ci sono i film aperti dal dispositivo.
   { to: '/streaming', label: '🎬 Streaming' },
 ]
 

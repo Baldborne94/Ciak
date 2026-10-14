@@ -1,5 +1,5 @@
 // Sottotitoli da OpenSubtitles per il lettore di Ciak, quando nella cartella del
-// film su Drive non ce ne sono. Lato server perché la chiave API (e le
+// film non ce ne sono. Lato server perché la chiave API (e le
 // credenziali dell'account, che alzano il tetto di download) non devono finire
 // nel bundle del browser.
 //

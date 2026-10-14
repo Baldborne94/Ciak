@@ -1,45 +1,43 @@
 import { sottotitoliPerVideo, type FileCartella } from './sottotitoli'
 import { fileAudioDelVideo } from './tracceAudio'
 
-// Cosa spostare nel cestino di Drive quando si cancella un video da Ciak.
-// Logica pura, separata da googleDrive.ts per provarla senza rete.
+// Cosa cancellare dal disco quando si cancella un video da Ciak. Logica pura,
+// separata da cartellaLocale.ts per provarla senza file veri.
 //
 // Col video vanno i suoi sottotitoli (gli stessi che il lettore gli
 // attribuisce: vedi sottotitoliPerVideo), altrimenti restano .srt orfani
 // che Ciak attribuirebbe al prossimo video della cartella, e le sue lingue
-// dell'audio (vedi tracceAudio.ts), che occuperebbero Drive per niente. Se la cartella
-// resta vuota ed è una cartella dedicata (quella del film, o una stagione),
-// nel cestino va la cartella intera, e Drive porta con sé il contenuto: una
-// cartella vuota non serve a nessuno. «Ciak» e le categorie subito sotto
-// (FILM, SERIE TV…) restano sempre, perché le usa lo script e le aspetta
-// l'elenco.
+// dell'audio (vedi tracceAudio.ts), che occuperebbero il disco per niente. Se
+// la cartella resta vuota ed è una cartella dedicata (quella del film, o una
+// stagione), va via la cartella intera: una cartella vuota non serve a
+// nessuno. La cartella collegata («Ciak») e le schede subito sotto (FILM,
+// SERIE TV…) restano sempre, perché le usa lo script e le aspetta l'elenco.
 
-export interface CartellaDrive {
+export interface CartellaPiano {
   id: string
   name: string
 }
 
-export interface PianoCestino {
-  // I file da cestinare uno per uno (il video e i suoi sottotitoli)…
+export interface PianoCancellazione {
+  // I file da cancellare uno per uno (il video e i suoi sottotitoli)…
   file: string[]
   // …oppure la cartella intera, che li contiene e non contiene altro.
   cartella: string | null
 }
 
-export function pianoCestino(args: {
+export function pianoCancellazione(args: {
   // Il video da cancellare, o più video della stessa cartella (una stagione
   // intera, i film di una saga): allora la cartella si guarda una volta sola.
   video: { id: string; name: string } | { id: string; name: string }[]
-  cartella: CartellaDrive | null
+  cartella: CartellaPiano | null
   // I file (non le cartelle) nella cartella del video, video compreso.
   vicini: FileCartella[]
   sottocartelle: number
   // Il nome della cartella sopra a quella del video; null se non si sa.
   nomeCartellaSopra: string | null
-  // Il nome della cartella radice («Ciak»): si passa per non importare
-  // googleDrive.ts da qui, che a sua volta importa questo modulo.
+  // Il nome della cartella collegata («Ciak»), sopra le schede.
   radice: string
-}): PianoCestino {
+}): PianoCancellazione {
   const { cartella, vicini, sottocartelle, nomeCartellaSopra, radice } = args
   const video = Array.isArray(args.video) ? args.video : [args.video]
   const file = [
@@ -61,7 +59,7 @@ export function pianoCestino(args: {
   return { file, cartella: null }
 }
 
-// Dopo aver cestinato le stagioni, la cartella della serie sopra di loro può
+// Dopo aver cancellato le stagioni, la cartella della serie sopra di loro può
 // restare vuota: allora va anche lei, come la cartella di un film. Mai «Ciak»
 // né una categoria (FILM, SERIE TV…), che lo script e l'elenco si aspettano.
 export function cartellaDaChiudere(args: {

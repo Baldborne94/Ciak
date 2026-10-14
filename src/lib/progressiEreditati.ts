@@ -1,11 +1,11 @@
 import type { VoceStreaming } from './streaming'
 
-// Un file sostituito su Drive (lo script che ricodifica in H.264 carica il
+// Un file sostituito nella cartella (lo script che ricodifica in H.264 carica il
 // nuovo e cancella l'originale) ha un id nuovo, e i progressi stanno nella
 // riga dell'id vecchio: gli episodi di South Park già visti tornavano «da
 // vedere» uno sì e uno no, secondo quali erano stati ricodificati. Il file
 // nuovo prende «visto» e posizione da quello che ha sostituito: stesso titolo
-// di TMDB, stesso episodio, e il vecchio non più su Drive.
+// di TMDB, stesso episodio, e il vecchio non più nella cartella.
 
 type Progressi = Pick<VoceStreaming, 'visto_il' | 'posizione' | 'durata' | 'secondi_visti'>
 
@@ -24,7 +24,7 @@ export function progressiDaEreditare(
   if (scomparse.length === 0) return []
   const esito: { fileId: string; campi: Progressi }[] = []
   for (const r of righe) {
-    // Solo un file ancora su Drive, riconosciuto, e senza progressi suoi: ciò
+    // Solo un file ancora nella cartella, riconosciuto, e senza progressi suoi: ciò
     // che si guarda col file nuovo non viene mai sovrascritto.
     if (!presenti.has(r.drive_file_id) || !r.tmdb_id || !r.media_type || haProgressi(r)) continue
     if (r.media_type === 'tv' && (r.stagione == null || r.episodio == null)) continue

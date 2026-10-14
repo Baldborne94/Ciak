@@ -2,7 +2,7 @@ import { getDetail } from './tmdb'
 import type { EpisodioVideoteca } from './videoteca'
 
 // Quanti episodi ha davvero ogni stagione di una serie, da TMDB: la videoteca
-// elenca solo i file che ci sono su Drive, e un episodio mancante (download
+// elenca solo i file che ci sono nella cartella, e un episodio mancante (download
 // saltato, file scartato da prepara-ciak) non si vedeva. Con i conti di TMDB
 // i buchi si mostrano in grigio, al loro posto.
 
@@ -65,11 +65,11 @@ export async function stagioniSerie(tvId: number): Promise<StagioneTmdb[]> {
 export interface BucoStagione {
   stagione: number
   totale: number
-  suDrive: number
-  mancanti: number[] // i numeri degli episodi che su Drive non ci sono
+  nellaCartella: number
+  mancanti: number[] // i numeri degli episodi che nella cartella non ci sono
 }
 
-// Per ogni stagione che TMDB conosce, quali episodi mancano su Drive. Le
+// Per ogni stagione che TMDB conosce, quali episodi mancano nella cartella. Le
 // stagioni di cui non c'è nessun file compaiono lo stesso, con tutti gli
 // episodi mancanti: è così che si vede che una stagione intera non c'è.
 export function episodiMancanti(
@@ -82,7 +82,7 @@ export function episodiMancanti(
       const presenti = new Set(episodi.filter((e) => e.stagione === s.stagione && e.episodio !== null).map((e) => e.episodio as number))
       const mancanti: number[] = []
       for (let n = 1; n <= s.episodi; n++) if (!presenti.has(n)) mancanti.push(n)
-      return { stagione: s.stagione, totale: s.episodi, suDrive: presenti.size, mancanti }
+      return { stagione: s.stagione, totale: s.episodi, nellaCartella: presenti.size, mancanti }
     })
     .sort((a, b) => a.stagione - b.stagione)
 }

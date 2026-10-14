@@ -38,7 +38,7 @@ const elenco = JSON.stringify({
 describe('leggiElencoAudio', () => {
   const vicini = [f('v1', 'Ep 1.mp4', 'video/mp4'), f('a2', 'Ep 1.audio-2.m4a', 'audio/mp4'), f('j', 'Ep 1.audio.json')]
 
-  it('risolve i file delle tracce negli id di Drive', () => {
+  it('risolve i file delle tracce fra quelli accanto al video', () => {
     expect(leggiElencoAudio(elenco, vicini)).toEqual([
       { indice: 1, lingua: 'jpn', titolo: '', fileId: null },
       { indice: 2, lingua: 'it', titolo: '', fileId: 'a2' },
@@ -49,7 +49,7 @@ describe('leggiElencoAudio', () => {
     expect(leggiElencoAudio('\uFEFF' + elenco, vicini)).toHaveLength(2)
   })
 
-  it('non offre una traccia il cui file su Drive manca', () => {
+  it('non offre una traccia il cui file manca', () => {
     // Rimasta la sola traccia del video: niente da scegliere.
     expect(leggiElencoAudio(elenco, [f('v1', 'Ep 1.mp4')])).toEqual([])
   })

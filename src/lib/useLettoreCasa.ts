@@ -3,10 +3,10 @@ import { logFailure } from './logFailure'
 import { infoVideoJellyfin, sottotitoloJellyfin, type InfoJellyfin } from './jellyfin'
 import { nomeLingua } from './sottotitoli'
 import type { StatoSottotitoli, Traccia } from './useSottotitoli'
-import type { InfoFile } from './googleDrive'
+import type { InfoFile } from './fileVideo'
 
 // I pezzi del lettore per i video del server di casa (Jellyfin). Il lettore è
-// lo stesso dei video di Drive; cambia da dove arrivano il file, i
+// lo stesso dei video della cartella; cambia da dove arrivano il file, i
 // sottotitoli e le altre lingue.
 
 export function useInfoCasa(fileId: string, attivo: boolean): { info: InfoJellyfin | null; errore: string | null } {

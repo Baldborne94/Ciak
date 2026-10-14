@@ -4,12 +4,12 @@ import { useAuth } from '../lib/auth'
 import { apriFile, comeVideo } from '../lib/filmLocali'
 import { riconosciNuovi } from '../lib/riconoscimento'
 import { titoloDaMostrare, voceStreaming } from '../lib/streaming'
-import { titoloVideo } from '../lib/googleDrive'
+import { titoloVideo } from '../lib/fileVideo'
 import { logFailure } from '../lib/logFailure'
 
 // «Apri un film dal dispositivo»: si sceglie un video (e, se ci sono, i suoi
 // .srt) dal disco del PC o dalla memoria del tablet, e parte nel lettore di
-// Ciak. Prima se ne riconosce il titolo, come per i film di Drive: così il
+// Ciak. Prima se ne riconosce il titolo, come per quelli della cartella: così il
 // diario, il voto e il punto di ripresa sono già quelli giusti.
 
 export default function ApriFilmLocale({ grande = false }: { grande?: boolean }) {

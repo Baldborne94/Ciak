@@ -19,11 +19,11 @@ export const ORDINI_VIDEOTECA: { value: OrdineVideoteca; label: string }[] = [
 export interface RigaVideoteca {
   id: string
   nome: string // il titolo mostrato
-  file: string // il nome del file su Drive, anche lui ricercabile
+  file: string // il nome del file, anche lui ricercabile
   anno: string | null
   generi: number[]
   titoli: string[] // originale e inglese, per la ricerca
-  aggiunto: string | null // quando è arrivato su Drive (ISO)
+  aggiunto: string | null // quando è arrivato nella cartella (ISO)
   guardato: string | null // l'ultima volta che lo si è guardato (ISO)
   // Senza titolo, senza copertina o con episodi senza numero: da sistemare a
   // mano con «Scegli il titolo».

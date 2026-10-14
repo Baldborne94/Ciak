@@ -3,7 +3,7 @@ import { leggiPresenti, salvaPresenti, soloPresenti } from './videoPresenti'
 
 const riga = (id: string) => ({ drive_file_id: id })
 
-describe('i video ancora su Drive', () => {
+describe('i video ancora nella videoteca', () => {
   let memoria: Map<string, string>
   beforeEach(() => {
     memoria = new Map()
@@ -14,12 +14,12 @@ describe('i video ancora su Drive', () => {
   })
   afterEach(() => vi.unstubAllGlobals())
 
-  it('senza un elenco di Drive non si toglie niente: meglio un pulsante in più che uno sparito', () => {
+  it('senza un elenco della videoteca non si toglie niente: meglio un pulsante in più che uno sparito', () => {
     expect(leggiPresenti()).toBeNull()
     expect(soloPresenti([riga('a'), riga('b')], null, new Set()).map((r) => r.drive_file_id)).toEqual(['a', 'b'])
   })
 
-  it('tolto da Drive, il file non porta più al lettore; ma se è scaricato sul dispositivo sì', () => {
+  it('tolto dalla cartella, il file non porta più al lettore; ma se è salvato in Ciak sì', () => {
     salvaPresenti(['a'])
     const presenti = leggiPresenti()
     expect(soloPresenti([riga('a'), riga('b'), riga('c')], presenti, new Set(['c'])).map((r) => r.drive_file_id)).toEqual(['a', 'c'])

@@ -1,12 +1,12 @@
 import { test, expect, type Page } from '@playwright/test'
 import { mockTmdb, mockSupabase, signIn, E2E_USER } from './support/mocks'
 import { movieDetail } from './support/fixtures'
+import { idLocale } from '../src/lib/filmLocali'
 
-// «Streaming»: i film nella cartella «Ciak» di Google Drive, riprodotti col
-// lettore di Drive. Ermetico — Google Identity Services, l'API Drive e il
-// lettore sono tutti mockati: niente rete, niente vero login Google.
-
-const CARTELLA = 'application/vnd.google-apps.folder'
+// «Streaming»: la videoteca dalla cartella dei film del PC (E:\Ciak), col
+// lettore di Ciak. Ermetico: la cartella è una cartella vera del browser
+// (l'Origin Private File System) al posto di quella scelta dal disco — le
+// stesse «maniglie» di File System Access —, TMDB e Supabase sono finti.
 
 const SRT = '1\n00:00:01,000 --> 00:00:03,000\nC\'era una volta\n'
 // L'elenco delle lingue come lo scrive prepara-ciak (Windows PowerShell).
@@ -18,263 +18,144 @@ const ELENCO_AUDIO = JSON.stringify({
   ],
 })
 
-// I singoli file, come li restituisce files.get.
-const FILE: Record<string, unknown> = {
-  'video-song-0001': {
-    id: 'video-song-0001',
-    name: 'Song.of.the.Sea.2014.1080p.mp4',
-    size: '2147483648',
-    mimeType: 'video/mp4',
-    parents: ['cartella-song'],
-    createdTime: '2026-09-01T10:00:00Z',
-  },
-  // Le cartelle sopra al film: il lettore ne legge il nome, e cancellando il
-  // film serve sapere se la cartella è dedicata (non è «Ciak» né una categoria).
-  'cartella-film': { id: 'cartella-film', name: 'FILM', mimeType: CARTELLA, parents: ['cartella-ciak'] },
-  // Un episodio di South Park (con `conSerie`), nella sua cartella di stagione.
-  'video-sp-000301': { id: 'video-sp-000301', name: '01 Rainforest Shmainforest.mp4', size: '173015040', mimeType: 'video/mp4', parents: ['cartella-sp-s03'] },
-  'video-sp-000302': { id: 'video-sp-000302', name: '02 Spontaneous Combustion.mp4', size: '171015040', mimeType: 'video/mp4', parents: ['cartella-sp-s03'] },
-  'cartella-sp-s03': { id: 'cartella-sp-s03', name: 'Season 03', mimeType: CARTELLA, parents: ['cartella-southpark'] },
-  'cartella-southpark': { id: 'cartella-southpark', name: 'South Park', mimeType: CARTELLA, parents: ['cartella-serie'] },
-  'cartella-serie': { id: 'cartella-serie', name: 'SERIE TV', mimeType: CARTELLA, parents: ['cartella-ciak'] },
-  // Due episodi già riconosciuti (vedi `apriShogun`): un file vero di Drive ha
-  // sempre un nome, e il lettore lo usa finché l'archivio non risponde.
-  'video-shogun-01': { id: 'video-shogun-01', name: 'Shogun.S01E01.mp4', size: '1000000000', mimeType: 'video/mp4', parents: ['cartella-serie'] },
-  'video-shogun-02': { id: 'video-shogun-02', name: 'Shogun.S01E02.mp4', size: '1000000000', mimeType: 'video/mp4', parents: ['cartella-serie'] },
-  'video-shogun-03': { id: 'video-shogun-03', name: 'Shogun.S01E03.mp4', size: '1000000000', mimeType: 'video/mp4', parents: ['cartella-serie'] },
-  'cartella-song': {
-    id: 'cartella-song',
-    name: 'Song of the Sea (2014) [1080p]',
-    mimeType: CARTELLA,
-    parents: ['cartella-film'],
-  },
+// I video della cartella finta: dove stanno e quanto pesano. La chiave è il
+// nome breve con cui i test li chiamano; l'id vero (`loc-…`) viene dal nome e
+// dalla dimensione del file, come nell'app. Pesi piccoli ma sopra i 5 MB:
+// sotto, la videoteca li scarta come promo della release.
+const VIDEO: Record<string, string> = {
+  'video-song-0001': 'FILM/Song of the Sea (2014) [1080p]/Song.of.the.Sea.2014.1080p.mp4',
+  'video-b99-00001': 'SERIE TV/B99 S7E2.mp4',
+  'video-kells-0001': 'FILM/The.Secret.of.Kells.2009.mkv',
+  'video-shogun-01': 'SERIE TV/Shogun.S01E01.mp4',
+  'video-shogun-02': 'SERIE TV/Shogun.S01E02.mp4',
+  'video-shogun-03': 'SERIE TV/Shogun.S01E03.mp4',
+  'video-snk-s01e04': 'ANIME/Shingeki no Kyojin [10bits x265]/Shingeki no Kyojin - S01E04 - Night of the Graduation Ceremony.mp4',
+  'video-snk-oad01': "ANIME/Shingeki no Kyojin [10bits x265]/OADs/Shingeki no Kyojin - OADE01 - Ilse's Notebook.mp4",
+  'video-snk-s01e135': 'ANIME/Shingeki no Kyojin [10bits x265]/Shingeki no Kyojin - S01E13.5 - Since That Day.mp4',
+  'video-snk-film': 'ANIME/Shingeki no Kyojin [10bits x265]/Shingeki no Kyojin Crimson Bow and Arrow (Dual Audio_10bit_BD1080p_x265).mp4',
+  'video-sp-000301': 'SERIE TV/South Park/Season 03/01 Rainforest Shmainforest.mp4',
+  'video-sp-000302': 'SERIE TV/South Park/Season 03/02 Spontaneous Combustion.mp4',
+  'video-sp-web-01': 'SERIE TV/South Park/Webisodes/The Accountants.mp4',
+  'video-tf-01': 'FILM/Transformers Complete Movie Collection/01 Transformers - Action 2007 Eng Rus Multi-Subs 1080p [H264-mp4].mp4',
+  'video-tf-06': 'FILM/Transformers Complete Movie Collection/06 Transformers Bumblebee - Action 2018 Eng Rus Multi-Subs 1080p [H264-mp4].mp4',
+  'video-alien-1979': 'FILM/Alien.1979.mp4',
+  'video-aliens-1986': 'FILM/Aliens.1986.mp4',
+  'video-song-extra1': 'FILM/Song of the Sea (2014) [1080p]/Featurettes/Making of Song of the Sea.mp4',
+  'video-sp-r-0306': 'SERIE TV/South Park/South Park Season 1 to 26 Mp4 1080p/Season 03/South Park S03E06.mp4',
 }
+const peso = (chiave: string) => 6_000_000 + Object.keys(VIDEO).indexOf(chiave) * 1000
+const nome = (percorso: string) => percorso.split('/').pop()!
+// Gli id dei video della cartella, e di qualche riga d'archivio senza file.
+const ID: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(VIDEO).map(([k, p]) => [k, idLocale({ name: nome(p), size: peso(k) })])),
+  'video-kells-gone1': 'loc-kells-cancellato',
+  'video-altro-0001': 'loc-un-altro-video',
+}
+// L'indirizzo del lettore di un video, per toHaveURL.
+const alLettore = (chiave: string) => new RegExp(`/streaming/${ID[chiave]}$`)
 
-// Risponde alle richieste a Drive come farebbe un Drive con:
+// Monta la cartella «Ciak» del browser coi video e i file accanto, come una
+// cartella del disco con:
 //   Ciak/SERIE TV/B99 S7E2.mp4
 //   Ciak/FILM/Song of the Sea (2014) [1080p]/Song.of.the.Sea.2014.1080p.mp4
 //   Ciak/FILM/The.Secret.of.Kells.2009.mkv (nascosto: Ciak riproduce gli MP4)
-//   (e, se richiesto, …/Song.of.the.Sea.it.srt)
-// Le scritture (salvataggio e cestino di sottotitoli e video) finiscono in
-// `scritture`, e il cestino ha memoria: un file (o una cartella, col suo
-// contenuto) cestinato non compare più negli elenchi, come su Drive.
-async function mockDrive(
+//   (e, se richiesto, …/Song.of.the.Sea.it.srt e le altre opzioni)
+// «📂 Collega la cartella dei film» la sceglie (vedi `collega`).
+async function mockCartella(
   page: Page,
-  { conCartellaCiak = true, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false, conFilmAnime = false, conLingueAudio = false, conWebisodes = false } = {},
+  { vuota = false, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false, conFilmAnime = false, conLingueAudio = false, conWebisodes = false } = {},
 ) {
-  const scritture: { metodo: string; url: string; corpo: string }[] = []
-  const cestinati = new Set<string>()
-  const nelCestino = (f: unknown) => {
-    const { id, parents = [] } = f as { id: string; parents?: string[] }
-    return cestinati.has(id) || parents.some((p) => cestinati.has(p))
+  const scelti = vuota
+    ? []
+    : [
+        'video-song-0001',
+        'video-b99-00001',
+        'video-kells-0001',
+        ...(conShogun ? ['video-shogun-02', 'video-shogun-03'] : []),
+        ...(conShogunPrimo ? ['video-shogun-01'] : []),
+        ...(conAnime ? ['video-snk-s01e04', 'video-snk-oad01', 'video-snk-s01e135'] : []),
+        ...(conFilmAnime ? ['video-snk-film'] : []),
+        ...(conSerie ? ['video-sp-000301', 'video-sp-000302'] : []),
+        ...(conSerie && conWebisodes ? ['video-sp-web-01'] : []),
+        ...(conPacchetto ? ['video-tf-01', 'video-tf-06'] : []),
+        ...(conSaga ? ['video-alien-1979', 'video-aliens-1986'] : []),
+        ...(conExtra ? ['video-song-extra1'] : []),
+        ...(conRaccolta ? ['video-sp-r-0306'] : []),
+      ]
+  // I video sono zeri: nessun contenuto, solo il peso.
+  const file: [string, string, number][] = scelti.map((k) => [VIDEO[k], '', peso(k)])
+  const accanto = 'FILM/Song of the Sea (2014) [1080p]/'
+  if (sottotitoliNellaCartella) file.push([`${accanto}Song.of.the.Sea.it.srt`, SRT, 0])
+  if (conLingueAudio) {
+    file.push([`${accanto}Song.of.the.Sea.2014.1080p.audio.json`, ELENCO_AUDIO, 0])
+    file.push([`${accanto}Song.of.the.Sea.2014.1080p.audio-2.m4a`, 'audio', 0])
   }
-  // L'account del permesso, per rinnovarlo da soli senza chiedere quale.
-  await page.route('https://www.googleapis.com/drive/v3/about**', (route) =>
-    route.fulfill({ json: { user: { emailAddress: 'spettatore@example.com' } } }),
+  // Le cartelle ci sono anche vuote: la scheda SERIE TV esiste sempre.
+  const cartelle = ['FILM', 'SERIE TV', ...(conAnime ? ['ANIME'] : [])]
+  await page.addInitScript(
+    ({ file, cartelle }) => {
+      ;(window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker = async () => {
+        const ciak = await (await navigator.storage.getDirectory()).getDirectoryHandle('Ciak', { create: true })
+        for (const c of cartelle) await ciak.getDirectoryHandle(c, { create: true })
+        for (const [percorso, contenuto, dimensione] of file) {
+          const parti = percorso.split('/')
+          let dir = ciak
+          for (const p of parti.slice(0, -1)) dir = await dir.getDirectoryHandle(p, { create: true })
+          const scrivi = await (await dir.getFileHandle(parti[parti.length - 1], { create: true })).createWritable()
+          await scrivi.write(contenuto)
+          // Il peso del video: zeri, che costano poco.
+          if (dimensione) await scrivi.truncate(dimensione)
+          await scrivi.close()
+        }
+        return ciak
+      }
+    },
+    { file, cartelle },
   )
-  await page.route(/^https:\/\/www\.googleapis\.com\/(upload\/)?drive\/v3\/files/, (route) => {
-    const req = route.request()
-    const url = new URL(req.url())
-    if (req.method() !== 'GET') {
-      scritture.push({ metodo: req.method(), url: req.url(), corpo: req.postData() ?? '' })
-      const id = url.pathname.split('/files/')[1]
-      if (req.method() === 'PATCH' && id && (req.postData() ?? '').includes('"trashed":true')) cestinati.add(id)
-      return route.fulfill({ json: { id: 'sottotitolo-salvato-01' } })
-    }
-
-    const id = url.pathname.split('/files/')[1]
-    if (id) {
-      if (url.searchParams.get('alt') === 'media') {
-        if (id === 'sub-song-it-0001') return route.fulfill({ contentType: 'application/x-subrip', body: SRT })
-        if (id === 'audio-song-elenco-01') return route.fulfill({ contentType: 'application/json', body: ELENCO_AUDIO })
-        // I due pezzi da 64 KB per l'hash di OpenSubtitles: zeri.
-        return route.fulfill({ status: 206, body: Buffer.alloc(65536) })
-      }
-      return route.fulfill({ json: FILE[id] ?? {} })
-    }
-
-    const q = url.searchParams.get('q') ?? ''
-    let files: unknown[] = []
-    if (q.includes('mimeType != ') && (q.includes("'cartella-sp-s03' in parents") || q.includes("'cartella-southpark' in parents"))) {
-      // Gli episodi di South Park nella loro stagione; nella cartella della
-      // serie solo le stagioni, nessun file.
-      files = q.includes("'cartella-sp-s03' in parents") ? [FILE['video-sp-000301'], FILE['video-sp-000302']] : []
-    } else if (q.includes('mimeType != ')) {
-      // I file accanto al film.
-      files = [
-        FILE['video-song-0001'],
-        ...(sottotitoliNellaCartella
-          ? [{ id: 'sub-song-it-0001', name: 'Song.of.the.Sea.it.srt', mimeType: 'application/x-subrip' }]
-          : []),
-        // Le lingue dell'audio preparate da prepara-ciak: l'inglese sta nel
-        // video, l'italiano accanto.
-        ...(conLingueAudio
-          ? [
-              { id: 'audio-song-elenco-01', name: 'Song.of.the.Sea.2014.1080p.audio.json', mimeType: 'application/json' },
-              { id: 'audio-song-it-0002', name: 'Song.of.the.Sea.2014.1080p.audio-2.m4a', mimeType: 'audio/mp4' },
-            ]
-          : []),
-      ]
-    } else if (q.includes("name = 'Ciak'")) {
-      files = conCartellaCiak ? [{ id: 'cartella-ciak', name: 'Ciak' }] : []
-    } else if (q.includes(CARTELLA)) {
-      // Ciak/FILM e Ciak/SERIE TV, le categorie; in FILM la cartella del film.
-      // Le sottocartelle di ciascuna cartella chiesta (Ciak le chiede a blocchi).
-      const sotto: Record<string, unknown[]> = {
-        'cartella-ciak': [
-          { id: 'cartella-film', name: 'FILM', parents: ['cartella-ciak'] },
-          { id: 'cartella-serie', name: 'SERIE TV', parents: ['cartella-ciak'] },
-          ...(conAnime ? [{ id: 'cartella-anime', name: 'ANIME', parents: ['cartella-ciak'] }] : []),
-        ],
-        // ANIME/Shingeki no Kyojin [10bits x265]/{S01E04, OADs/OADE01}
-        ...(conAnime && {
-          'cartella-anime': [{ id: 'cartella-snk', name: 'Shingeki no Kyojin [10bits x265]', parents: ['cartella-anime'] }],
-          'cartella-snk': [{ id: 'cartella-snk-oad', name: 'OADs', parents: ['cartella-snk'] }],
-        }),
-        'cartella-film': [
-          { id: 'cartella-song', name: 'Song of the Sea (2014) [1080p]', parents: ['cartella-film'] },
-          // FILM/Transformers Complete Movie Collection/: un pacchetto di film.
-          ...(conPacchetto ? [{ id: 'cartella-transformers', name: 'Transformers Complete Movie Collection', parents: ['cartella-film'] }] : []),
-        ],
-        // FILM/Song of the Sea (2014) [1080p]/Featurettes/Making of Song of the Sea.mp4
-        ...(conExtra && { 'cartella-song': [{ id: 'cartella-song-extra', name: 'Featurettes', parents: ['cartella-song'] }] }),
-        ...(conSerie && {
-          'cartella-serie': [{ id: 'cartella-southpark', name: 'South Park', parents: ['cartella-serie'] }],
-          'cartella-southpark': [
-            { id: 'cartella-sp-s03', name: 'Season 03', parents: ['cartella-southpark'] },
-            // SERIE TV/South Park/Webisodes/: i mini-episodi web, gli speciali.
-            ...(conWebisodes ? [{ id: 'cartella-sp-web', name: 'Webisodes', parents: ['cartella-southpark'] }] : []),
-          ],
-        }),
-        // SERIE TV/South Park/South Park Season 1 to 26 Mp4 1080p/Season 03: la
-        // raccolta scaricata così com'è, un livello in più.
-        ...(conRaccolta && {
-          'cartella-serie': [{ id: 'cartella-southpark', name: 'South Park', parents: ['cartella-serie'] }],
-          'cartella-southpark': [{ id: 'cartella-sp-raccolta', name: 'South Park Season 1 to 26 Mp4 1080p', parents: ['cartella-southpark'] }],
-          'cartella-sp-raccolta': [{ id: 'cartella-sp-r-s03', name: 'Season 03', parents: ['cartella-sp-raccolta'] }],
-        }),
-      }
-      files = Object.entries(sotto).flatMap(([id, figli]) => (q.includes(`'${id}' in parents`) ? figli : []))
-    } else if (q.includes("mimeType contains 'video/'")) {
-      files = [
-        FILE['video-song-0001'],
-        {
-          id: 'video-b99-00001',
-          name: 'B99 S7E2.mp4',
-          size: '325058560',
-          mimeType: 'video/mp4',
-          parents: ['cartella-serie'],
-          createdTime: '2026-09-20T10:00:00Z',
-        },
-        // Gli episodi 2 e 3 di Shōgun (l'1 è il file di Song of the Sea, scelto
-        // a mano): il lettore propone come prossimo solo un file che su Drive c'è.
-        ...(conShogun ? [FILE['video-shogun-02'], FILE['video-shogun-03']] : []),
-        // E il primo, per tornarci con «episodio precedente».
-        ...(conShogunPrimo ? [FILE['video-shogun-01']] : []),
-        ...(conAnime
-          ? [
-              { id: 'video-snk-s01e04', name: 'Shingeki no Kyojin - S01E04 - Night of the Graduation Ceremony.mp4', size: '758000000', mimeType: 'video/mp4', parents: ['cartella-snk'] },
-              { id: 'video-snk-oad01', name: "Shingeki no Kyojin - OADE01 - Ilse's Notebook.mp4", size: '566000000', mimeType: 'video/mp4', parents: ['cartella-snk-oad'] },
-              { id: 'video-snk-s01e135', name: 'Shingeki no Kyojin - S01E13.5 - Since That Day.mp4', size: '700000000', mimeType: 'video/mp4', parents: ['cartella-snk'] },
-            ]
-          : []),
-        // Il film dell'anime, nella cartella della serie accanto agli episodi.
-        ...(conFilmAnime
-          ? [{ id: 'video-snk-film', name: 'Shingeki no Kyojin Crimson Bow and Arrow (Dual Audio_10bit_BD1080p_x265).mp4', size: '3000000000', mimeType: 'video/mp4', parents: ['cartella-snk'] }]
-          : []),
-        ...(conSerie
-          ? [
-              {
-                id: 'video-sp-000301',
-                name: '01 Rainforest Shmainforest.mp4',
-                size: '173015040',
-                mimeType: 'video/mp4',
-                parents: ['cartella-sp-s03'],
-              },
-              {
-                id: 'video-sp-000302',
-                name: '02 Spontaneous Combustion.mp4',
-                size: '171015040',
-                mimeType: 'video/mp4',
-                parents: ['cartella-sp-s03'],
-              },
-              ...(conWebisodes ? [{ id: 'video-sp-web-01', name: 'The Accountants.mp4', size: '120000000', mimeType: 'video/mp4', parents: ['cartella-sp-web'] }] : []),
-            ]
-          : []),
-        ...(conPacchetto
-          ? [
-              { id: 'video-tf-01', name: '01 Transformers - Action 2007 Eng Rus Multi-Subs 1080p [H264-mp4].mp4', size: '4900000000', mimeType: 'video/mp4', parents: ['cartella-transformers'] },
-              { id: 'video-tf-06', name: '06 Transformers Bumblebee - Action 2018 Eng Rus Multi-Subs 1080p [H264-mp4].mp4', size: '3600000000', mimeType: 'video/mp4', parents: ['cartella-transformers'] },
-            ]
-          : []),
-        // FILM/Alien.1979.mp4 e FILM/Aliens.1986.mp4: due film della stessa saga.
-        ...(conSaga
-          ? [
-              { id: 'video-alien-1979', name: 'Alien.1979.mp4', size: '1600000000', mimeType: 'video/mp4', parents: ['cartella-film'] },
-              { id: 'video-aliens-1986', name: 'Aliens.1986.mp4', size: '1700000000', mimeType: 'video/mp4', parents: ['cartella-film'] },
-            ]
-          : []),
-        ...(conExtra
-          ? [{ id: 'video-song-extra1', name: 'Making of Song of the Sea.mp4', size: '400000000', mimeType: 'video/mp4', parents: ['cartella-song-extra'] }]
-          : []),
-        ...(conRaccolta
-          ? [{ id: 'video-sp-r-0306', name: 'South Park S03E06.mp4', size: '170000000', mimeType: 'video/mp4', parents: ['cartella-sp-r-s03'] }]
-          : []),
-        {
-          id: 'video-kells-0001',
-          name: 'The.Secret.of.Kells.2009.mkv',
-          size: '2901526000',
-          mimeType: 'video/x-matroska',
-          parents: ['cartella-film'],
-        },
-      ]
-    }
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ files: files.filter((f) => !nelCestino(f)) }) })
-  })
-  return { scritture }
 }
 
-// Il lettore di Ciak passa dal service worker, che nel dev server dei test non
-// c'è: si finge che controlli la pagina e si risponde noi a /drive-video/.
-// `video: 'fermo'` lascia la richiesta in sospeso (il film «sta caricando»),
-// `'illeggibile'` risponde con un errore, come un formato che il browser non legge,
-// `'rifiutato'` è Drive che respinge il token: il worker vero prima racconta
-// la risposta alla pagina (diagnostica), poi risponde vuoto con lo stesso status.
-async function conLettoreCiak(page: Page, video: 'fermo' | 'illeggibile' | 'rifiutato' = 'fermo') {
-  await page.addInitScript(() => {
-    // Il finto worker sa dire la sua versione, come quello vero.
-    const controller = {
-      postMessage: (m: { tipo?: string }, transfer?: MessagePort[]) => {
-        if (m?.tipo === 'ciak:versione' && transfer?.[0]) transfer[0].postMessage({ versione: 'e2e-test' })
-      },
+async function collega(page: Page) {
+  await page.getByRole('button', { name: '📂 Collega la cartella dei film' }).click()
+}
+
+// I file della cartella finta, come percorsi («SERIE TV/South Park/…»).
+async function fileSulDisco(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const tutti: string[] = []
+    const visita = async (dir: FileSystemDirectoryHandle, sopra: string) => {
+      for await (const voce of (dir as unknown as { values(): AsyncIterable<FileSystemHandle> }).values()) {
+        const qui = sopra ? `${sopra}/${voce.name}` : voce.name
+        if (voce.kind === 'directory') await visita(voce as FileSystemDirectoryHandle, qui)
+        else tutti.push(qui)
+      }
     }
-    Object.defineProperty(ServiceWorkerContainer.prototype, 'controller', {
-      get: () => controller,
-      configurable: true,
-    })
+    await visita(await (await navigator.storage.getDirectory()).getDirectoryHandle('Ciak'), '')
+    return tutti.sort()
   })
-  await page.route('**/drive-video/**', async (route) => {
+}
+
+// Il lettore legge il file dal disco con un indirizzo blob:. Qui i video sono
+// zeri, che il browser rifiuterebbe subito: il loro indirizzo diventa una
+// richiesta che resta in sospeso (`'fermo'`, il film «sta caricando») o che
+// risponde con un errore (`'illeggibile'`, un formato che il browser non legge).
+async function conVideoFermo(page: Page, video: 'fermo' | 'illeggibile' = 'fermo') {
+  await page.addInitScript(() => {
+    const crea = URL.createObjectURL.bind(URL)
+    URL.createObjectURL = (o: Blob | MediaSource) =>
+      o instanceof File && /\.(mp4|mkv|webm|m4v)$/i.test(o.name) ? `${location.origin}/video-fermo/${encodeURIComponent(o.name)}` : crea(o)
+  })
+  await page.route('**/video-fermo/**', async (route) => {
     if (video === 'illeggibile') return route.fulfill({ status: 415, body: '' })
-    if (video === 'rifiutato') {
-      await page.evaluate(() =>
-        navigator.serviceWorker.dispatchEvent(
-          new MessageEvent('message', {
-            data: { tipo: 'ciak:diagnostica', quando: Date.now(), ms: 40, range: 'bytes=0-', status: 401, redirect: null, contentLength: null, totale: null, esito: 'errore' },
-          }),
-        ),
-      )
-      return route.fulfill({ status: 401, body: '' })
-    }
     // In sospeso: il film resta «in caricamento» per tutto il test.
   })
 }
 
 async function apriSongOfTheSea(page: Page) {
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   // Per nome del file: il titolo mostrato cambia quando Ciak lo riconosce.
   await page.getByRole('button', { name: /Song\.of\.the\.Sea\.2014/ }).click()
-  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
+  await expect(page).toHaveURL(alLettore('video-song-0001'))
 }
 
 test.beforeEach(async ({ page }) => {
@@ -286,6 +167,8 @@ test.beforeEach(async ({ page }) => {
   // la riserva /api/sigle non ha niente. Il test delle sigle esatte li cambia.
   await page.route('https://api.theintrodb.org/**', (route) => route.abort())
   await page.route('**/api/sigle*', (route) => route.fulfill({ json: { inizio: null, finale: null } }))
+  // OpenSubtitles non ha niente, se un test non dice altro.
+  await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
   // Le schede dei titoli di prova, col loro titolo originale.
   await page.route('**/api/tmdb*', (route) => {
     const path = new URL(route.request().url()).searchParams.get('path') ?? ''
@@ -294,80 +177,40 @@ test.beforeEach(async ({ page }) => {
     }
     return route.fallback()
   })
-
-  // Stub di Google Identity Services: niente popup, token finto immediato.
-  await page.addInitScript(() => {
-    const w = window as unknown as {
-      google?: {
-        accounts?: {
-          oauth2?: {
-            initTokenClient: (c: {
-              callback: (r: { access_token: string; expires_in: number }) => void
-            }) => { requestAccessToken: () => void }
-          }
-        }
-      }
-    }
-    w.google = {
-      accounts: {
-        oauth2: {
-          initTokenClient: (config) => ({
-            requestAccessToken: () =>
-              config.callback({ access_token: 'fake-token', expires_in: 3600 }),
-          }),
-        },
-      },
-    }
-  })
-
-  // Il lettore di Drive: stub, così l'iframe non fa una richiesta vera.
-  await page.route('https://drive.google.com/**', (route) =>
-    route.fulfill({ contentType: 'text/html', body: '<html><body>lettore</body></html>' }),
-  )
 })
 
 test('«Streaming» elenca i film della cartella Ciak e li apre nel player', async ({ page }) => {
-  await mockDrive(page)
+  await mockCartella(page)
   await page.goto('/streaming')
 
   await expect(page.getByRole('heading', { name: 'La mia videoteca' })).toBeVisible()
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   // Il film in una sottocartella prende il nome della cartella; l'altro quello
   // del file senza estensione.
   await expect(page.getByText('Song of the Sea (2014) [1080p]')).toBeVisible()
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await expect(page.getByText(/MP4 · 2,0 GB · Song\.of\.the\.Sea/)).toBeVisible()
+  await expect(page.getByText(/MP4 · 6 MB · Song\.of\.the\.Sea/)).toBeVisible()
   // L'MKV non compare, ma la pagina dice che c'è e come renderlo visibile.
   await expect(page.getByText('The.Secret.of.Kells.2009', { exact: false })).toHaveCount(0)
   await expect(page.getByText(/1 video in un altro formato \(MKV, AVI…\) è nascosto/)).toBeVisible()
 
-  // Aprendo il film si va alla pagina del player, grande. Senza service worker
-  // (qui non c'è) il lettore di Ciak non può partire: si usa quello di Drive.
+  // Aprendo il film si va alla pagina del player, grande: il lettore di Ciak,
+  // col file letto dal disco.
   await page.getByRole('button', { name: /Song of the Sea/ }).click()
-  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
+  await expect(page).toHaveURL(alLettore('video-song-0001'))
   await expect(page.getByRole('heading', { name: 'Song of the Sea (2014) [1080p]' })).toBeVisible()
-  await expect(page.locator('iframe')).toHaveAttribute(
-    'src',
-    'https://drive.google.com/file/d/video-song-0001/preview',
-  )
-  // E lo dice, invece di lasciare il lettore di Drive senza un perché.
-  await expect(page.getByText('Il lettore di Ciak, quello con i sottotitoli, non è ancora attivo')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Ricarica la pagina' })).toBeVisible()
-  // Le istruzioni per i sottotitoli portano al file su Drive.
-  await expect(page.getByRole('link', { name: /Apri su Drive/ })).toHaveAttribute(
-    'href',
-    'https://drive.google.com/file/d/video-song-0001/view',
-  )
+  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+  await expect(page.locator('iframe')).toHaveCount(0)
 
   // Tornando indietro l'elenco si ricarica da solo, senza ricollegarsi.
   await page.getByRole('link', { name: /Torna ai film/ }).click()
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '📂 Collega la cartella dei film' })).toHaveCount(0)
 })
 
 test('i film della stessa saga stanno in una cartella con la locandina della saga', async ({ page }) => {
-  await mockDrive(page, { conSaga: true })
+  await mockCartella(page, { conSaga: true })
   const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
     id: `s-${drive_file_id}`,
     user_id: E2E_USER.id,
@@ -385,7 +228,7 @@ test('i film della stessa saga stanno in una cartella con la locandina della sag
     secondi_visti: 0,
     visto_il: tmdb_id === 348 ? '2026-09-01T20:00:00Z' : null,
   })
-  await mockSupabase(page, { user_streaming: [film('video-alien-1979', 348, 'Alien'), film('video-aliens-1986', 679, 'Aliens')] })
+  await mockSupabase(page, { user_streaming: [film(ID['video-alien-1979'], 348, 'Alien'), film(ID['video-aliens-1986'], 679, 'Aliens')] })
   // Il dettaglio di ogni film dice a quale saga appartiene, come su TMDB.
   const saga = { id: 8091, name: 'Alien Collection', poster_path: '/alien-saga.jpg' }
   await page.route('**/api/tmdb*', (route) => {
@@ -396,7 +239,7 @@ test('i film della stessa saga stanno in una cartella con la locandina della sag
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   const cartella = page.getByRole('button', { name: /^Alien ▸/ })
   await expect(cartella).toContainText('Saga · 2 film · 1979–1986 · 1 visti')
@@ -408,7 +251,7 @@ test('i film della stessa saga stanno in una cartella con la locandina della sag
   const filmDellaSaga = page.getByRole('list', { name: 'Film di Alien' })
   await expect(filmDellaSaga.getByRole('button', { name: /Alien\.1979\.mp4/ })).toBeVisible()
   await filmDellaSaga.getByRole('button', { name: /Aliens\.1986\.mp4/ }).click()
-  await expect(page).toHaveURL(/\/streaming\/video-aliens-1986$/)
+  await expect(page).toHaveURL(alLettore('video-aliens-1986'))
 
   // Cercando un film della saga, la cartella si apre da sola.
   await page.getByRole('link', { name: /Torna ai film/ }).click()
@@ -420,7 +263,7 @@ test('i film di un pacchetto si riconoscono uno per uno e finiscono nella cartel
   // «Transformers Complete Movie Collection/06 Transformers Bumblebee - Action
   // 2018…»: si cercava il nome del pacchetto, o il titolo con numero e genere
   // attaccati, e i film restavano tutti «Transformers Complete Movie Collection».
-  await mockDrive(page, { conPacchetto: true })
+  await mockCartella(page, { conPacchetto: true })
   const db = await mockSupabase(page, { user_streaming: [] })
   const saga = { id: 8650, name: 'Transformers Collection', poster_path: '/transformers-saga.jpg' }
   const cercati: string[] = []
@@ -440,10 +283,10 @@ test('i film di un pacchetto si riconoscono uno per uno e finiscono nella cartel
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
-  await expect.poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-tf-06')?.tmdb_id).toBe(424783)
-  expect(db.tables.user_streaming.find((r) => r.drive_file_id === 'video-tf-01')?.tmdb_id).toBe(1858)
+  await expect.poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === ID['video-tf-06'])?.tmdb_id).toBe(424783)
+  expect(db.tables.user_streaming.find((r) => r.drive_file_id === ID['video-tf-01'])?.tmdb_id).toBe(1858)
   expect(cercati).not.toContain('Transformers Complete Movie Collection')
 
   const cartella = page.getByRole('button', { name: /^Transformers ▸/ })
@@ -454,13 +297,13 @@ test('i film di un pacchetto si riconoscono uno per uno e finiscono nella cartel
 
 test('una saga di TMDB si modifica: diventa tua, e i film tolti tornano sciolti', async ({ page }) => {
   // Transformers senza Bumblebee: niente seconda cartella «Transformers».
-  await mockDrive(page, { conPacchetto: true })
+  await mockCartella(page, { conPacchetto: true })
   const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
     id: `s-${drive_file_id}`, user_id: E2E_USER.id, drive_file_id, nome_file: null, tmdb_id, media_type: 'movie', titolo,
     poster_path: `/poster-${tmdb_id}.jpg`, stagione: null, episodio: null, abbinato_a_mano: false, posizione: 0, durata: 7000, secondi_visti: 0, visto_il: null,
   })
   const db = await mockSupabase(page, {
-    user_streaming: [film('video-tf-01', 1858, 'Transformers'), film('video-tf-06', 424783, 'Bumblebee')],
+    user_streaming: [film(ID['video-tf-01'], 1858, 'Transformers'), film(ID['video-tf-06'], 424783, 'Bumblebee')],
     user_lists: [],
     user_list_items: [],
   })
@@ -473,7 +316,7 @@ test('una saga di TMDB si modifica: diventa tua, e i film tolti tornano sciolti'
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   const cartella = page.getByRole('button', { name: /^Transformers ▸/ })
   await expect(cartella).toContainText('Saga · 2 film')
 
@@ -502,11 +345,11 @@ test('una saga di TMDB si modifica: diventa tua, e i film tolti tornano sciolti'
 })
 
 test('le «Mie liste» non compaiono nella videoteca; una saga fatta a mano si sceglie la copertina', async ({ page }) => {
-  await mockDrive(page)
+  await mockCartella(page)
   const db = await mockSupabase(page, {
     user_streaming: [
       {
-        id: 's-song', user_id: E2E_USER.id, drive_file_id: 'video-song-0001', nome_file: 'Song.of.the.Sea.2014.1080p.mp4', tmdb_id: 110416,
+        id: 's-song', user_id: E2E_USER.id, drive_file_id: ID['video-song-0001'], nome_file: 'Song.of.the.Sea.2014.1080p.mp4', tmdb_id: 110416,
         media_type: 'movie', titolo: 'Song of the Sea', poster_path: '/song.jpg', stagione: null, episodio: null, abbinato_a_mano: false,
         posizione: 0, durata: 5640, secondi_visti: 0, visto_il: null,
       },
@@ -531,7 +374,7 @@ test('le «Mie liste» non compaiono nella videoteca; una saga fatta a mano si s
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   const saga = page.getByRole('button', { name: /^Cartoon Saloon ▸/ })
   await expect(saga).toContainText('Saga · 1 film')
@@ -548,7 +391,7 @@ test('le «Mie liste» non compaiono nella videoteca; una saga fatta a mano si s
 
 test('una saga fatta a mano raccoglie film che su TMDB una saga non ce l’hanno', async ({ page }) => {
   // Alien e Aliens, qui senza saga su TMDB: li si mette insieme a mano.
-  await mockDrive(page, { conSaga: true })
+  await mockCartella(page, { conSaga: true })
   const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
     id: `s-${drive_file_id}`,
     user_id: E2E_USER.id,
@@ -567,7 +410,7 @@ test('una saga fatta a mano raccoglie film che su TMDB una saga non ce l’hanno
     visto_il: null,
   })
   const db = await mockSupabase(page, {
-    user_streaming: [film('video-alien-1979', 348, 'Alien'), film('video-aliens-1986', 679, 'Aliens')],
+    user_streaming: [film(ID['video-alien-1979'], 348, 'Alien'), film(ID['video-aliens-1986'], 679, 'Aliens')],
     user_lists: [],
     user_list_items: [],
   })
@@ -580,7 +423,7 @@ test('una saga fatta a mano raccoglie film che su TMDB una saga non ce l’hanno
   page.on('dialog', (d) => void d.accept())
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await expect(page.getByRole('button', { name: /Alien\.1979\.mp4/ })).toBeVisible()
 
   await page.getByRole('button', { name: '＋ Crea una saga' }).click()
@@ -616,14 +459,14 @@ test('una saga fatta a mano raccoglie film che su TMDB una saga non ce l’hanno
   expect(db.tables.user_lists.some((l) => l.name === 'Xenomorfi')).toBe(false)
 })
 
-test('una saga si riempie coi film di uno studio, quelli che sono su Drive', async ({ page }) => {
-  await mockDrive(page, { conSaga: true })
+test('una saga si riempie coi film di uno studio, quelli che sono nella videoteca', async ({ page }) => {
+  await mockCartella(page, { conSaga: true })
   const film = (drive_file_id: string, tmdb_id: number, titolo: string) => ({
     id: `s-${drive_file_id}`, user_id: E2E_USER.id, drive_file_id, nome_file: null, tmdb_id, media_type: 'movie', titolo,
     poster_path: `/poster-${tmdb_id}.jpg`, stagione: null, episodio: null, abbinato_a_mano: false, posizione: 0, durata: 7000, secondi_visti: 0, visto_il: null,
   })
   const db = await mockSupabase(page, {
-    user_streaming: [film('video-alien-1979', 348, 'Alien'), film('video-aliens-1986', 679, 'Aliens')],
+    user_streaming: [film(ID['video-alien-1979'], 348, 'Alien'), film(ID['video-aliens-1986'], 679, 'Aliens')],
     user_lists: [],
     user_list_items: [],
   })
@@ -631,7 +474,7 @@ test('una saga si riempie coi film di uno studio, quelli che sono su Drive', asy
     const u = new URL(route.request().url())
     const path = u.searchParams.get('path') ?? ''
     if (path === '/search/company') return route.fulfill({ json: { results: [{ id: 401, name: 'Brandywine Productions', logo_path: null }] } })
-    // Dello studio c'è Alien, non Aliens; e un film che su Drive non c'è.
+    // Dello studio c'è Alien, non Aliens; e un film che nella cartella non c'è.
     if (path === '/discover/movie' && u.searchParams.get('with_companies') === '401') {
       return route.fulfill({ json: { results: [{ id: 348, title: 'Alien' }, { id: 8077, title: 'Alien³' }], total_pages: 1 } })
     }
@@ -641,7 +484,7 @@ test('una saga si riempie coi film di uno studio, quelli che sono su Drive', asy
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await page.getByRole('button', { name: '＋ Crea una saga' }).click()
   const finestra = page.getByRole('dialog')
   await finestra.getByLabel('Aggiungi i film di uno studio').fill('brandywine')
@@ -657,9 +500,9 @@ test('una saga si riempie coi film di uno studio, quelli che sono su Drive', asy
 
 test('gli extra dei film (le featurette) non compaiono come titoli, ma si contano', async ({ page }) => {
   // «Paprika (2006)/Featurettes/Restoring Paprika.mp4» compariva come un film, «Featurettes».
-  await mockDrive(page, { conExtra: true })
+  await mockCartella(page, { conExtra: true })
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
   await expect(page.getByText('1 extra (featurette, trailer, anteprime…) non è in elenco', { exact: false })).toBeVisible()
@@ -667,311 +510,49 @@ test('gli extra dei film (le featurette) non compaiono come titoli, ma si contan
   await expect(page.getByText(/Making of Song of the Sea/)).toHaveCount(0)
 })
 
-test('riaprendo la videoteca l\u2019elenco dell\u2019ultima volta compare subito, e si aggiorna da Drive', async ({ page }) => {
-  await mockDrive(page)
-  await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await expect(page.getByRole('status').filter({ hasText: /Copia dell’elenco/ })).toHaveCount(0)
-
-  // Drive ora tarda a rispondere: l'elenco dei video resta in sospeso.
-  let rispondi!: () => void
-  const risposta = new Promise<void>((r) => (rispondi = r))
-  await page.route(/^https:\/\/www\.googleapis\.com\/drive\/v3\/files\?/, async (route) => {
-    if ((new URL(route.request().url()).searchParams.get('q') ?? '').includes("mimeType contains 'video/'")) await risposta
-    return route.fallback()
-  })
-  await page.reload()
-
-  // Niente pagina vuota: i film di prima, e la pagina dice che sta aggiornando.
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await expect(page.getByRole('status').filter({ hasText: /Copia dell’elenco salvata oggi alle .*: la aggiorno da Drive/ })).toBeVisible()
-
-  rispondi()
-  await expect(page.getByRole('status').filter({ hasText: /Copia dell’elenco/ })).toHaveCount(0)
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-})
-
-test('ricaricando la pagina il collegamento a Drive resta', async ({ page }) => {
-  await mockDrive(page)
-  await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-
-  await page.reload()
-
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
-})
-
-// Nell'app installata su Android il popup di Google non torna all'app: si
-// sceglie l'account e poi niente. Lì si va su Google con un redirect vero.
-async function comeAppInstallata(page: Page) {
+test('riaprendo la videoteca l\u2019elenco dell\u2019ultima volta compare subito, e si aggiorna dalla cartella', async ({ page }) => {
+  await mockCartella(page)
+  // Come Chrome: riaperta la pagina, il permesso della cartella va ridato.
   await page.addInitScript(() => {
-    const originale = window.matchMedia.bind(window)
-    window.matchMedia = (q: string) =>
-      q === '(display-mode: standalone)' ? ({ ...originale(q), matches: true } as MediaQueryList) : originale(q)
-  })
-}
-
-// Google: risponde al consenso rimandando all'app, come farebbe davvero.
-async function googleRimanda(page: Page, risposta: (state: string) => string) {
-  const consensi: URL[] = []
-  await page.route('https://accounts.google.com/o/oauth2/v2/auth**', (route) => {
-    const url = new URL(route.request().url())
-    consensi.push(url)
-    const ritorno = url.searchParams.get('redirect_uri') ?? ''
-    return route.fulfill({ status: 302, headers: { location: `${ritorno}#${risposta(url.searchParams.get('state') ?? '')}` } })
-  })
-  return consensi
-}
-
-test('nell app installata il collegamento a Drive passa da un redirect e torna alla videoteca', async ({ page }) => {
-  await comeAppInstallata(page)
-  await mockDrive(page)
-  const autorizzazioni: string[] = []
-  page.on('request', (r) => {
-    if (r.url().startsWith('https://www.googleapis.com/drive/')) autorizzazioni.push(r.headers()['authorization'] ?? '')
-  })
-  const consensi = await googleRimanda(page, (state) => `access_token=token-dal-redirect&token_type=Bearer&expires_in=3599&state=${state}`)
-
-  await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-
-  // Si torna alla videoteca, collegati, col token che Google ha mandato.
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  expect(consensi).toHaveLength(1)
-  expect(consensi[0].searchParams.get('response_type')).toBe('token')
-  expect(new URL(consensi[0].searchParams.get('redirect_uri') ?? '').pathname).toBe('/streaming')
-  expect(autorizzazioni).toContain('Bearer token-dal-redirect')
-  // Il token non resta nell'indirizzo, e l'account di Ciak non si perde per
-  // strada (Supabase non l'ha scambiato per un suo login).
-  await expect(page).toHaveURL(/\/streaming$/)
-  await expect(page.getByRole('heading', { name: 'La mia videoteca' })).toBeVisible()
-
-  // Come col popup, ricaricando si resta collegati.
-  await page.reload()
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-})
-
-// Il permesso di Google dura un'ora: scaduto, lo si fa scadere qui a mano.
-const scadeIlPermesso = (page: Page) =>
-  page.evaluate(() => {
-    const t = JSON.parse(localStorage.getItem('ciak:drive-token') ?? '{}')
-    localStorage.setItem('ciak:drive-token', JSON.stringify({ ...t, e: Date.now() - 1000 }))
-  })
-
-// Un dispositivo dove Drive non è mai stato collegato: `signIn` segna il primo
-// tentativo come già fatto, qui lo si toglie una volta sola (non a ogni pagina).
-const dispositivoNuovo = (page: Page) =>
-  page.addInitScript(() => {
-    if (localStorage.getItem('e2e:dispositivo-nuovo')) return
-    localStorage.setItem('e2e:dispositivo-nuovo', '1')
-    localStorage.removeItem('ciak:drive-provato')
-  })
-
-test('scaduto il permesso, Drive si ricollega da solo senza chiedere niente', async ({ page }) => {
-  await comeAppInstallata(page)
-  await mockDrive(page)
-  let rinnovi = 0
-  const consensi = await googleRimanda(page, (state) => `access_token=token-${++rinnovi}&token_type=Bearer&expires_in=3599&state=${state}`)
-
-  await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  // Ciak si annota l'account, per dirlo a Google la volta dopo.
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('ciak:drive-ricorda'))).toContain('spettatore@example.com')
-
-  // Un'ora dopo, riaprendo l'app: nessun pulsante da premere.
-  await scadeIlPermesso(page)
-  await page.goto('/streaming/video-song-0001')
-  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
-  await expect.poll(() => consensi.length).toBe(2)
-  expect(consensi[1].searchParams.get('prompt')).toBe('none')
-  expect(consensi[1].searchParams.get('login_hint')).toBe('spettatore@example.com')
-  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ciak:drive-token') ?? '{}').t)).toBe('token-2')
-})
-
-test('la prima volta Drive prova a collegarsi da solo, e ci riesce se il permesso c era già', async ({ page }) => {
-  // Nessun segno sul dispositivo (come dopo l'aggiornamento): il primo
-  // tentativo si fa, una volta sola.
-  await dispositivoNuovo(page)
-  await mockDrive(page)
-  const consensi = await googleRimanda(page, (state) => `access_token=token-silenzioso&token_type=Bearer&expires_in=3599&state=${state}`)
-
-  await page.goto('/streaming')
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  expect(consensi).toHaveLength(1)
-  expect(consensi[0].searchParams.get('prompt')).toBe('none')
-  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
-})
-
-test('chi aveva Drive collegato prima dell aggiornamento resta collegato', async ({ page }) => {
-  await page.addInitScript(() => {
-    if (!localStorage.getItem('ciak:drive-ricorda')) {
-      sessionStorage.setItem('ciak:drive-token', JSON.stringify({ t: 'token-della-scheda', e: Date.now() + 3_000_000 }))
+    let concesso = false
+    const w = window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }
+    const scegli = w.showDirectoryPicker
+    w.showDirectoryPicker = async () => {
+      concesso = true
+      return scegli()
+    }
+    const h = FileSystemHandle.prototype as unknown as Record<string, unknown>
+    h.queryPermission = async () => (concesso ? 'granted' : 'prompt')
+    h.requestPermission = async () => {
+      concesso = true
+      return 'granted'
     }
   })
-  await mockDrive(page)
   await page.goto('/streaming')
+  await collega(page)
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('ciak:drive-ricorda'))).not.toBeNull()
-})
+  await expect(page.getByRole('status').filter({ hasText: /Copia dell’elenco/ })).toHaveCount(0)
+  await page.reload()
 
-// Il server di Ciak (api/drive.ts) tiene il refresh token di Google e
-// rinnova il permesso senza che si veda niente: qui risponde come farebbe.
-async function serverConIlPermesso(page: Page) {
-  const rinnovi: string[] = []
-  await page.route(/\/api\/drive\?azione=token$/, (route) => {
-    rinnovi.push(route.request().method())
-    if (route.request().method() === 'DELETE') return route.fulfill({ json: { ok: true } })
-    return route.fulfill({ json: { access_token: `token-dal-server-${rinnovi.length}`, expires_in: 3599 } })
-  })
-  return rinnovi
-}
-
-test('col server che tiene il permesso, Drive si rinnova da solo senza passare da Google', async ({ page }) => {
-  await mockDrive(page)
-  const rinnovi = await serverConIlPermesso(page)
-  const consensi = await googleRimanda(page, (state) => `error=interaction_required&state=${state}`)
-  // Collegato in passato, col permesso scaduto da un pezzo.
-  await page.addInitScript(() => {
-    if (localStorage.getItem('e2e:scaduto')) return
-    localStorage.setItem('e2e:scaduto', '1')
-    localStorage.setItem('ciak:drive-token', JSON.stringify({ t: 'token-vecchio', e: Date.now() - 60_000 }))
-    localStorage.setItem('ciak:drive-ricorda', JSON.stringify({ account: 'spettatore@example.com' }))
-  })
-
-  await page.goto('/streaming')
-  // Nessun pulsante, nessun giro da Google: il server ha dato il token nuovo.
+  // Niente pagina vuota: i film di prima, e la pagina dice che è una copia.
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toHaveCount(0)
-  expect(consensi).toHaveLength(0)
-  expect(rinnovi).toContain('POST')
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ciak:drive-token') ?? '{}').t)).toBe('token-dal-server-1')
+  await expect(page.getByRole('status').filter({ hasText: /Copia dell’elenco salvata oggi alle .*: premi «Aggiorna» per rileggere la cartella/ })).toBeVisible()
 
-  // «Scollega» toglie il permesso anche dal server, se no ricollegherebbe da solo.
-  await page.getByRole('button', { name: /Scollega/ }).click()
-  await expect.poll(() => rinnovi.filter((m) => m === 'DELETE').length).toBe(1)
-})
-
-test('collegare Drive passa dal server, che da lì in poi tiene il permesso', async ({ page }) => {
-  await mockDrive(page)
-  // Il server c'è ma per questo utente non ha ancora il permesso.
-  await page.route(/\/api\/drive\?azione=token$/, (route) => route.fulfill({ status: 404, json: { error: 'non collegato' } }))
-  let statoCliente = ''
-  await page.route(/\/api\/drive\?azione=auth$/, (route) => {
-    const corpo = route.request().postDataJSON() as { stato: string; ritorno: string }
-    statoCliente = corpo.stato
-    const u = new URL('https://accounts.google.com/o/oauth2/v2/auth')
-    u.searchParams.set('response_type', 'code')
-    u.searchParams.set('redirect_uri', new URL(route.request().url()).origin + '/api/drive-callback')
-    u.searchParams.set('state', `firmato.${corpo.stato}`)
-    return route.fulfill({ json: { url: u.toString() } })
-  })
-  // Google manda il codice ad api/drive-callback, che lo scambia e rimanda
-  // alla videoteca col primo token: qui i due passi sono uno solo, perché
-  // Playwright non intercetta la richiesta nata da un redirect finto. Il
-  // server si prova da solo (driveStato.test.ts, drive-token.test.ts).
-  const consensi: URL[] = []
-  await page.route('https://accounts.google.com/o/oauth2/v2/auth**', (route) => {
-    const url = new URL(route.request().url())
-    consensi.push(url)
-    const origine = new URL(url.searchParams.get('redirect_uri') ?? '').origin
-    return route.fulfill({
-      status: 302,
-      headers: { location: `${origine}/streaming#access_token=token-dal-server&token_type=Bearer&expires_in=3599&state=${statoCliente}` },
-    })
-  })
-
-  await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await page.getByRole('button', { name: '📂 Riapri la cartella «Ciak»' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /Copia dell’elenco/ })).toHaveCount(0)
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  expect(consensi).toHaveLength(1)
-  expect(consensi[0].searchParams.get('response_type')).toBe('code')
-  expect(new URL(consensi[0].searchParams.get('redirect_uri') ?? '').pathname).toBe('/api/drive-callback')
-  expect(statoCliente).toMatch(/^ciak-drive-[0-9a-f]{32}$/)
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ciak:drive-token') ?? '{}').t)).toBe('token-dal-server')
-  await expect(page).toHaveURL(/\/streaming$/)
 })
 
-test('se Google non rinnova da solo resta il pulsante, senza errori e senza rimbalzi', async ({ page }) => {
-  await comeAppInstallata(page)
-  await mockDrive(page)
-  let primo = true
-  const consensi = await googleRimanda(page, (state) => {
-    if (primo) {
-      primo = false
-      return `access_token=token-1&token_type=Bearer&expires_in=3599&state=${state}`
-    }
-    return `error=interaction_required&state=${state}`
-  })
-
+test('una cartella vuota spiega come riempirla', async ({ page }) => {
+  await mockCartella(page, { vuota: true })
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
+  await collega(page)
 
-  await scadeIlPermesso(page)
-  await page.goto('/streaming')
-  await expect.poll(() => consensi.length).toBe(2)
-  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toBeVisible()
-  await expect(page.getByText(/interaction_required/)).toHaveCount(0)
-  // Cambiando pagina non ci si riprova.
-  await page.getByRole('link', { name: '🎬 Streaming' }).first().click()
-  await page.waitForTimeout(500)
-  expect(consensi).toHaveLength(2)
-})
-
-test('scollegato a mano, Drive non si ricollega da solo', async ({ page }) => {
-  // Un dispositivo nuovo: la prima volta si collega da solo.
-  await dispositivoNuovo(page)
-  await mockDrive(page)
-  const consensi = await googleRimanda(page, (state) => `access_token=x&expires_in=3599&state=${state}`)
-  await page.goto('/streaming')
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  expect(consensi).toHaveLength(1)
-
-  // Scollegato a mano, anche in una sessione nuova resta scollegato.
-  await page.getByRole('button', { name: /Scollega/ }).click()
-  await page.evaluate(() => sessionStorage.clear())
-  await page.goto('/streaming')
-  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toBeVisible()
-  await page.waitForTimeout(500)
-  expect(consensi).toHaveLength(1)
-})
-
-test('nell app installata un consenso negato lo dice', async ({ page }) => {
-  await comeAppInstallata(page)
-  await mockDrive(page)
-  await googleRimanda(page, (state) => `error=access_denied&state=${state}`)
-
-  await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-
-  await expect(page.getByText('Accesso a Google Drive negato.')).toBeVisible()
-  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toBeVisible()
-})
-
-test('un token con uno state che non è partito da qui non si usa', async ({ page }) => {
-  await mockDrive(page)
-  await page.goto('/streaming#access_token=rubato&expires_in=3599&state=ciak-drive-forgiato')
-
-  await expect(page.getByText(/Risposta di Google non riconosciuta/)).toBeVisible()
-  await expect(page.getByRole('button', { name: /Collega Google Drive/ })).toBeVisible()
-  await expect(page).toHaveURL(/\/streaming$/)
-})
-
-test('senza la cartella «Ciak» spiega come crearla', async ({ page }) => {
-  await mockDrive(page, { conCartellaCiak: false })
-  await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-
-  await expect(page.getByText('Nessuna cartella «Ciak» su Drive')).toBeVisible()
+  await expect(page.getByText(/Non ho trovato video nella cartella «Ciak»/)).toBeVisible()
 })
 
 test('lo streaming ha una voce sua nel menu', async ({ page }) => {
-  await mockDrive(page)
+  await mockCartella(page)
   await page.goto('/')
 
   await page.getByRole('link', { name: '🎬 Streaming' }).first().click()
@@ -994,11 +575,11 @@ test('i sottotitoli partono spenti e si scelgono dal menu CC, dalla tendina e co
   // toccando «Inglese», si chiudeva invece di sceglierlo, e sul telefono
   // finiva sotto i pulsanti di Ciak. Il <video> resta senza tracce, così quel
   // menu non c'è proprio: le battute le disegna Ciak (SottotitoliVideo).
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
   await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
   await apriSongOfTheSea(page)
-  await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
+  await expect(page.getByText(/Italiano · dalla cartella/)).toBeVisible()
   expect(await page.evaluate(() => document.querySelector('video')?.textTracks.length)).toBe(0)
   // I comandi sono quelli di Ciak, non del browser: il CC sta nella barra.
   await expect(page.locator('video')).not.toHaveAttribute('controls')
@@ -1040,8 +621,8 @@ test('i sottotitoli partono spenti e si scelgono dal menu CC, dalla tendina e co
 })
 
 test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
   let ricercheOnline = 0
   await page.route('**/api/sottotitoli', (route) => {
     ricercheOnline++
@@ -1050,44 +631,21 @@ test('il lettore di Ciak usa il sottotitolo che sta nella cartella del film', as
 
   await apriSongOfTheSea(page)
 
-  // Il video arriva dal service worker, non dall'iframe di Drive.
-  await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
+  // Il video arriva dal disco (qui, un file che resta in caricamento).
+  await expect(page.locator('video')).toHaveAttribute('src', /\/video-fermo\/Song\.of\.the\.Sea/)
   await expect(page.locator('iframe')).toHaveCount(0)
-  await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
+  await expect(page.getByText(/Italiano · dalla cartella/)).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Mostra' })).toHaveValue('-1')
   await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
   // L'italiano c'era già; per l'inglese, che manca, si è cercato online (senza esito).
   await expect.poll(() => ricercheOnline).toBe(1)
   await expect(page.getByText(/Nessun sottotitolo in inglese/)).toBeVisible()
 
-  // Il service worker racconta cosa risponde Drive: la pagina lo mostra nei
-  // dettagli tecnici, così un salto che non funziona si spiega da uno screenshot.
-  await page.evaluate(() => {
-    navigator.serviceWorker.dispatchEvent(
-      new MessageEvent('message', {
-        data: {
-          tipo: 'ciak:diagnostica',
-          quando: Date.now(),
-          ms: 380,
-          range: 'bytes=1048576-',
-          status: 200,
-          redirect: null,
-          contentLength: '2147483648',
-          totale: 2147483648,
-          esito: 'range-ignorato',
-        },
-      }),
-    )
-  })
-  await page.getByText('Dettagli tecnici (cosa risponde Drive)').click()
-  // La versione del worker dice se il browser ha preso davvero l'ultimo.
-  await expect(page.getByText('Service worker: e2e-test')).toBeVisible()
-  await expect(page.getByText(/chiesto bytes=1048576- → Drive ha ignorato il Range/)).toBeVisible()
 })
 
 test('la lingua dell’audio si sceglie dal menu Audio, e resta per il film dopo', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { conLingueAudio: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { conLingueAudio: true })
   await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
   await apriSongOfTheSea(page)
 
@@ -1100,8 +658,8 @@ test('la lingua dell’audio si sceglie dal menu Audio, e resta per il film dopo
 
   await menu.click()
   await page.getByRole('group', { name: "Lingua dell'audio" }).getByRole('button', { name: 'Italiano' }).click()
-  // L'italiano arriva dal suo file su Drive; il video tace.
-  await expect(audio).toHaveAttribute('src', '/drive-video/audio-song-it-0002')
+  // L'italiano arriva dal suo file accanto al video; il video tace.
+  await expect(audio).toHaveAttribute('src', /^blob:/)
   await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.muted)).toBe(true)
   await expect(page.getByRole('button', { name: 'Audio: Italiano. Cambia lingua' })).toBeVisible()
 
@@ -1114,7 +672,7 @@ test('la lingua dell’audio si sceglie dal menu Audio, e resta per il film dopo
   // Riaprendo il film l'italiano è già scelto.
   await page.reload()
   await expect(page.getByRole('button', { name: 'Audio: Italiano. Cambia lingua' })).toBeVisible()
-  await expect(audio).toHaveAttribute('src', '/drive-video/audio-song-it-0002')
+  await expect(audio).toHaveAttribute('src', /^blob:/)
 
   // Tornando all'inglese il video riprende la voce.
   await page.getByRole('button', { name: 'Audio: Italiano. Cambia lingua' }).click()
@@ -1124,8 +682,8 @@ test('la lingua dell’audio si sceglie dal menu Audio, e resta per il film dopo
 })
 
 test('un film con una lingua sola non ha il menu Audio', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
   await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
   await apriSongOfTheSea(page)
   // La cartella è stata letta: il sottotitolo che sta lì è già nel menu CC.
@@ -1134,8 +692,8 @@ test('un film con una lingua sola non ha il menu Audio', async ({ page }) => {
 })
 
 test('senza sottotitoli nella cartella li cerca online, in italiano e in inglese, e li salva accanto al film', async ({ page }) => {
-  await conLettoreCiak(page)
-  const { scritture } = await mockDrive(page)
+  await conVideoFermo(page)
+  await mockCartella(page)
   const richieste: Record<string, unknown>[] = []
   await page.route('**/api/sottotitoli', (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>
@@ -1167,238 +725,42 @@ test('senza sottotitoli nella cartella li cerca online, in italiano e in inglese
     azione: 'cerca',
     query: 'Song of the Sea',
     anno: 2014,
-    hash: '0000000080000000',
+    hash: peso('video-song-0001').toString(16).padStart(16, '0'),
   })
   expect(richieste.filter((r) => r.azione === 'scarica').map((r) => r.fileId)).toEqual([111, 222])
   // Salvati nella cartella del film, col nome del video e la lingua: la volta dopo ci sono già.
-  expect(scritture.filter((s) => s.metodo === 'POST').map((s) => /"name":"([^"]+)"/.exec(s.corpo)?.[1])).toEqual([
-    'Song.of.the.Sea.2014.1080p.it.srt',
-    'Song.of.the.Sea.2014.1080p.en.srt',
-  ])
-  expect(scritture[0].corpo).toContain('"parents":["cartella-song"]')
+  const cartella = 'FILM/Song of the Sea (2014) [1080p]/'
+  await expect.poll(() => fileSulDisco(page)).toEqual(
+    expect.arrayContaining([`${cartella}Song.of.the.Sea.2014.1080p.it.srt`, `${cartella}Song.of.the.Sea.2014.1080p.en.srt`]),
+  )
 
-  // L'italiano fuori sincrono: si passa al candidato dopo della stessa lingua e
-  // quello scartato va nel cestino. L'inglese non ha alternative: nessun pulsante.
+  // L'italiano fuori sincrono: si passa al candidato dopo della stessa lingua,
+  // che prende il posto di quello scartato. L'inglese non ha alternative:
+  // nessun pulsante.
   await page.getByRole('button', { name: 'Italiano fuori sincrono? Prova un altro' }).click()
   await expect(page.getByRole('button', { name: /Inglese fuori sincrono/ })).toHaveCount(0)
   await expect.poll(() => richieste.filter((r) => r.azione === 'scarica').map((r) => r.fileId)).toEqual([111, 222, 333])
-  const cestino = scritture.find((s) => s.metodo === 'PATCH')
-  expect(cestino?.url).toContain('/files/sottotitolo-salvato-01')
-  expect(JSON.parse(cestino?.corpo ?? '{}')).toEqual({ trashed: true })
+  await expect.poll(() => fileSulDisco(page)).toContain(`${cartella}Song.of.the.Sea.2014.1080p.it.srt`)
+
+  // Riaprendo il film non si cerca più niente: i due .srt sono accanto al video.
+  const ricerchePrima = richieste.length
+  await page.reload()
+  await expect(page.getByText(/Italiano · dalla cartella/)).toBeVisible()
+  await expect(page.getByText(/Inglese · dalla cartella/)).toBeVisible()
+  expect(richieste.length).toBe(ricerchePrima)
 })
 
-test('cancellare un film dal lettore lo mette nel cestino di Drive, con la sua cartella, e sparisce dall’elenco', async ({ page }) => {
-  await conLettoreCiak(page)
-  const { scritture } = await mockDrive(page, { sottotitoliNellaCartella: true })
-  page.on('dialog', (d) => d.accept())
-
-  await apriSongOfTheSea(page)
-  await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
-  await page.getByRole('button', { name: 'Cancella da Drive' }).click()
-
-  // La cartella del film conteneva solo il video e il suo sottotitolo: nel
-  // cestino va lei intera, e Drive si porta dietro il contenuto.
-  await expect(page).toHaveURL(/\/streaming$/)
-  const cestino = scritture.filter((s) => s.metodo === 'PATCH')
-  expect(cestino.map((s) => s.url.split('/files/')[1])).toEqual(['cartella-song'])
-  expect(JSON.parse(cestino[0].corpo)).toEqual({ trashed: true })
-  await expect(page.getByText(/«Song of the Sea[^»]*» è nel cestino di Google Drive/)).toBeVisible()
-  await expect(page.getByRole('button', { name: /Song of the Sea/ })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /B99 S7E2/ })).toBeVisible()
-})
-
-test('col permesso vecchio (sola lettura) cancellare chiede di ricollegare Drive', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page)
-  // Drive risponde 403 a chi ha solo il permesso di lettura.
-  await page.route(/^https:\/\/www\.googleapis\.com\/drive\/v3\/files\//, (route) =>
-    route.request().method() === 'PATCH' ? route.fulfill({ status: 403, json: { error: { code: 403 } } }) : route.fallback(),
-  )
-  page.on('dialog', (d) => d.accept())
-
-  await apriSongOfTheSea(page)
-  await page.getByRole('button', { name: 'Cancella da Drive' }).click()
-
-  await expect(page.getByText(/serve un permesso che Ciak non ha ancora chiesto a Google/)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Ricollega Google Drive' })).toBeVisible()
-  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
-})
-
-test('un episodio si cancella da solo, coi suoi sottotitoli, e la stagione resta', async ({ page }) => {
-  await conLettoreCiak(page)
-  const { scritture } = await mockDrive(page, { conSerie: true })
-  page.on('dialog', (d) => d.accept())
-
-  await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  await page.goto('/streaming/video-sp-000301')
-  await page.getByRole('button', { name: 'Cancella da Drive' }).click()
-
-  // Nella stagione c'è ancora un altro episodio: va nel cestino il file solo,
-  // non la cartella «Season 03».
-  await expect(page).toHaveURL(/\/streaming$/)
-  expect(scritture.filter((s) => s.metodo === 'PATCH').map((s) => s.url.split('/files/')[1])).toEqual(['video-sp-000301'])
-  await expect(page.getByText(/è nel cestino di Google Drive/)).toBeVisible()
-})
-
-test('una serie intera si cancella dalla videoteca: la stagione e poi la cartella della serie, rimaste vuote', async ({ page }) => {
-  const { scritture } = await mockDrive(page, { conSerie: true })
-  const domande: string[] = []
-  page.on('dialog', (d) => {
-    domande.push(d.message())
-    void d.accept()
-  })
-
-  await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
-  await page.getByRole('button', { name: /^South Park/, expanded: false }).click()
-  await page.getByRole('button', { name: '🗑 Cancella la serie da Drive' }).click()
-
-  // Una richiesta per la stagione intera, non una per episodio; poi la serie,
-  // rimasta senza niente dentro. «SERIE TV» resta.
-  await expect(page.getByText('«South Park» è nel cestino di Google Drive', { exact: false })).toBeVisible()
-  expect(domande[0]).toContain('Sono 2 file')
-  expect(scritture.filter((s) => s.metodo === 'PATCH').map((s) => s.url.split('/files/')[1])).toEqual([
-    'cartella-sp-s03',
-    'cartella-southpark',
-  ])
-  // E dall'elenco la serie sparisce.
-  await expect(page.getByRole('button', { name: /^South Park/ })).toHaveCount(0)
-  await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-})
-
-test('se Drive rifiuta il token chiede di ricollegare, senza incolpare il formato del file', async ({ page }) => {
-  // Il caso vero: un MP4 fatto da prepara-ciak che sul telefono dava «Il
-  // browser non riesce a leggere questo file» perché Drive rispondeva 401.
-  await conLettoreCiak(page, 'rifiutato')
-  await mockDrive(page)
-
-  await apriSongOfTheSea(page)
-
-  const avviso = page.getByRole('alert')
-  await expect(avviso).toContainText('La sessione Google è scaduta')
-  await expect(avviso).not.toContainText('non riesce a leggere')
-  await expect(avviso.getByRole('button', { name: 'Ricollega Google Drive' })).toBeVisible()
-  await expect(page.getByText('Drive ha risposto 401')).toBeAttached()
-})
-
-test('se il browser non legge il file propone il lettore di Drive', async ({ page }) => {
-  await conLettoreCiak(page, 'illeggibile')
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+test('se il browser non legge il file lo dice, col rimedio', async ({ page }) => {
+  await conVideoFermo(page, 'illeggibile')
+  await mockCartella(page, { sottotitoliNellaCartella: true })
 
   await apriSongOfTheSea(page)
 
   const avviso = page.getByRole('alert')
   await expect(avviso).toContainText('Il browser non riesce a leggere questo file')
-  await avviso.getByRole('button', { name: 'Usa il lettore di Drive' }).click()
-  await expect(page.locator('iframe')).toHaveAttribute(
-    'src',
-    'https://drive.google.com/file/d/video-song-0001/preview',
-  )
-  await expect(page.locator('video')).toHaveCount(0)
-})
-
-test('quando il service worker prende la scheda passa da solo al lettore di Ciak', async ({ page }) => {
-  // La scheda parte senza worker (come dopo un Ctrl+F5); poi il worker la prende.
-  await page.addInitScript(() => {
-    const w = window as unknown as { __controller: unknown }
-    w.__controller = null
-    Object.defineProperty(ServiceWorkerContainer.prototype, 'controller', {
-      get: () => w.__controller,
-      configurable: true,
-    })
-  })
-  await page.route('**/drive-video/**', () => {
-    // In sospeso: il film «sta caricando».
-  })
-  await mockDrive(page, { sottotitoliNellaCartella: true })
-
-  await apriSongOfTheSea(page)
-  await expect(page.locator('iframe')).toBeVisible()
-
-  await page.evaluate(() => {
-    ;(window as unknown as { __controller: unknown }).__controller = {}
-    navigator.serviceWorker.dispatchEvent(new Event('controllerchange'))
-  })
-
-  await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
-  await expect(page.getByText('Italiano · dalla cartella su Drive')).toBeVisible()
-})
-
-test('mentre il film va, il lettore tiene sveglio il service worker', async ({ page }) => {
-  // Chrome ferma un worker fermo da 30 secondi, e con lui la richiesta del
-  // film: era l'«errore di rete» a metà film. Si accelera l'orologio.
-  await page.clock.install()
-  await page.addInitScript(() => {
-    const w = window as unknown as { __messaggi: unknown[] }
-    w.__messaggi = []
-    Object.defineProperty(ServiceWorkerContainer.prototype, 'controller', {
-      get: () => ({ postMessage: (m: unknown) => w.__messaggi.push(m) }),
-      configurable: true,
-    })
-  })
-  await page.route('**/drive-video/**', () => {
-    // In sospeso: il film «sta caricando».
-  })
-  await mockDrive(page, { sottotitoliNellaCartella: true })
-
-  await apriSongOfTheSea(page)
-  await expect(page.locator('video')).toBeVisible()
-  await page.clock.runFor(61_000)
-
-  const messaggi = await page.evaluate(() => (window as unknown as { __messaggi: unknown[] }).__messaggi)
-  expect(messaggi.filter((m) => (m as { tipo?: string }).tipo === 'ciak:tieni-vivo').length).toBeGreaterThanOrEqual(3)
-})
-
-test('un film si scarica sul dispositivo e da lì si guarda anche senza rete', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
-  await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
-  // Il «film»: pochi byte, serviti come farebbe il service worker.
-  await page.unroute('**/drive-video/**')
-  await page.route('**/drive-video/**', (route) =>
-    route.fulfill({ status: 200, contentType: 'video/mp4', body: Buffer.alloc(64, 1) }),
-  )
-
-  await apriSongOfTheSea(page)
-  await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
-  await page.getByRole('button', { name: "Scarica per l'offline" }).click()
-  await expect(page.getByText(/Scaricato sul dispositivo/)).toBeVisible()
-
-  // In cache: il film, e la sua scheda coi sottotitoli trovati.
-  const scheda = await page.evaluate(async () => {
-    const cache = await caches.open('ciak-film-v1')
-    const info = await (await cache.match('/film-offline/video-song-0001/info.json'))?.json()
-    const film = await cache.match('/film-offline/video-song-0001')
-    return { info, byte: (await film?.arrayBuffer())?.byteLength }
-  })
-  expect(scheda.byte).toBe(64)
-  expect(scheda.info).toMatchObject({
-    id: 'video-song-0001',
-    titolo: 'Song of the Sea (2014) [1080p]',
-    stato: 'completo',
-    sottotitoli: [expect.objectContaining({ chiave: 'it', vtt: expect.stringContaining('WEBVTT') })],
-  })
-
-  // Nell'elenco il film è segnato come disponibile offline.
-  await page.getByRole('link', { name: /Torna ai film/ }).click()
-  await expect(page.getByRole('heading', { name: /Sul dispositivo/ })).toBeVisible()
-  await expect(page.getByText('Disponibile offline', { exact: false })).toBeVisible()
-
-  // Senza rete: niente Drive, ma il film scaricato si apre col lettore di Ciak
-  // e i sottotitoli salvati, anche senza il collegamento a Google.
-  await page.evaluate(() => localStorage.removeItem('ciak:drive-token'))
-  await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { get: () => false }))
-  await page.route('https://www.googleapis.com/**', (route) => route.abort())
-  await page.goto('/streaming')
-  await expect(page.getByText('Sei offline')).toBeVisible()
-  await page.getByRole('button', { name: /Song of the Sea/ }).click()
-  await expect(page.locator('video')).toHaveAttribute('src', '/drive-video/video-song-0001')
-  await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
-  await expect(page.getByText(/Italiano · dalla cartella su Drive/)).toBeVisible()
-
-  await page.getByRole('button', { name: 'Elimina dal dispositivo' }).click()
-  await expect(page.getByText(/Scaricalo sul dispositivo/)).toBeVisible()
+  await expect(avviso).toContainText('prepara-ciak')
+  // Nessun lettore di riserva: il rimedio è convertire il file.
+  await expect(page.locator('iframe')).toHaveCount(0)
 })
 
 // ── Il lettore collegato all'archivio ─────────────────────────────────────────
@@ -1448,8 +810,8 @@ async function portaIlVideoA(page: Page, secondi: number, durata: number) {
 }
 
 test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte da solo restando a schermo intero', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { conShogun: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1467,11 +829,11 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
     // riconoscimento lo riporterebbe giustamente al suo film.
     abbinato_a_mano: true,
   })
-  await mockSupabase(page, { user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2)] })
+  await mockSupabase(page, { user_streaming: [riga(ID['video-song-0001'], 1), riga(ID['video-shogun-02'], 2)] })
   await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E1' })).toBeVisible()
 
@@ -1503,7 +865,7 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
   // Finito l'episodio, il conto alla rovescia e poi l'episodio dopo da solo.
   await page.evaluate(() => document.querySelector('video')?.dispatchEvent(new Event('ended')))
   await expect(prossimo.getByText(/S1E2 fra \d+ s/)).toBeVisible()
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/, { timeout: 15_000 })
+  await expect(page).toHaveURL(alLettore('video-shogun-02'), { timeout: 15_000 })
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E2' })).toBeVisible()
   expect(await page.evaluate(() => document.fullscreenElement === document.documentElement)).toBe(true)
 
@@ -1521,10 +883,10 @@ test('maratona: si salta la sigla, poi la sigla finale, e l episodio dopo parte 
 
 test('un episodio ricodificato: il prossimo episodio è il file nuovo, che eredita «visto» dal vecchio', async ({ page }) => {
   // Lo script che ricodifica in H.264 carica il file nuovo e cancella il
-  // vecchio: due righe per lo stesso S1E2, una con un id che su Drive non c'è
+  // vecchio: due righe per lo stesso S1E2, una con un id che nella cartella non c'è
   // più. Il lettore ci portava (404, fermo su 0:00) e la spunta restava là.
-  await conLettoreCiak(page)
-  await mockDrive(page, { conShogun: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { conShogun: true })
   const riga = (id: string, episodio: number, campi: Record<string, unknown> = {}) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1543,32 +905,32 @@ test('un episodio ricodificato: il prossimo episodio è il file nuovo, che eredi
   })
   const db = await mockSupabase(page, {
     user_streaming: [
-      riga('video-song-0001', 1),
+      riga(ID['video-song-0001'], 1),
       // Prima la riga vecchia: senza il filtro era lei la «prossima».
       riga('shogun-02-vecchio', 2, { visto_il: '2026-10-01T20:00:00Z', posizione: 3500, secondi_visti: 3400 }),
-      riga('video-shogun-02', 2),
+      riga(ID['video-shogun-02'], 2),
     ],
   })
   await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   // Il file nuovo prende i progressi di quello che ha sostituito.
   await expect
-    .poll(() => (db.tables.user_streaming.find((r) => r.drive_file_id === 'video-shogun-02') as Record<string, unknown>).visto_il)
+    .poll(() => (db.tables.user_streaming.find((r) => r.drive_file_id === ID['video-shogun-02']) as Record<string, unknown>).visto_il)
     .toBe('2026-10-01T20:00:00Z')
 
   // S1E2 ora risulta visto: si apre l'episodio 1 direttamente.
-  await page.goto('/streaming/video-song-0001')
+  await page.goto(`/streaming/${ID['video-song-0001']}`)
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E1' })).toBeVisible()
   await videoA(page, 3480)
   await page.getByRole('button', { name: '⏭ Prossimo episodio: S1E2' }).click()
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
+  await expect(page).toHaveURL(alLettore('video-shogun-02'))
 })
 
-test('un video tolto da Drive non porta più al lettore: niente «Guarda» nelle liste e nelle schede', async ({ page }) => {
+test('un video tolto dalla cartella non porta più al lettore: niente «Guarda» nelle liste e nelle schede', async ({ page }) => {
   // The Secret of Kells restava con «Riprendi da 7:40» anche dopo averlo
-  // cancellato da Drive: il pulsante portava a un file che non c'era più.
+  // cancellato dalla cartella: il pulsante portava a un file che non c'era più.
   const riga = (id: string, tmdb: number, titolo: string) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1598,22 +960,22 @@ test('un video tolto da Drive non porta più al lettore: niente «Guarda» nelle
   })
   await mockSupabase(page, {
     user_titles: [daVedere('t1', 110416, 'Song of the Sea'), daVedere('t2', 26963, 'The Secret of Kells')],
-    // Song of the Sea è ancora su Drive; il file di Kells no.
-    user_streaming: [riga('video-song-0001', 110416, 'Song of the Sea'), riga('video-kells-gone1', 26963, 'The Secret of Kells')],
+    // Song of the Sea è ancora nella cartella; il file di Kells no.
+    user_streaming: [riga(ID['video-song-0001'], 110416, 'Song of the Sea'), riga(ID['video-kells-gone1'], 26963, 'The Secret of Kells')],
   })
-  await mockDrive(page)
+  await mockCartella(page)
   await cercaTmdb(page, [SONG])
 
-  // La videoteca legge Drive e ricorda quali file ci sono.
+  // La videoteca legge la cartella e ricorda quali file ci sono.
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
 
   await page.goto('/lists/watchlist')
   await expect(page.getByText('The Secret of Kells')).toBeVisible()
   const pulsanti = page.getByRole('link', { name: /▶ (Guarda|Riprendi)/ })
   await expect(pulsanti).toHaveCount(1)
-  await expect(pulsanti).toHaveAttribute('href', '/streaming/video-song-0001')
+  await expect(pulsanti).toHaveAttribute('href', `/streaming/${ID['video-song-0001']}`)
 })
 
 // Il video a un certo punto, ricordando dove lo si fa saltare (in `salto`).
@@ -1648,8 +1010,8 @@ async function trascinaA(page: Page, secondi: number) {
 }
 
 test('dove finisce la sigla Ciak lo impara da chi corregge il salto, e vale per tutti gli episodi', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { conShogun: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1665,11 +1027,11 @@ test('dove finisce la sigla Ciak lo impara da chi corregge il salto, e vale per 
     visto_il: null,
     abbinato_a_mano: true,
   })
-  await mockSupabase(page, { user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2)] })
+  await mockSupabase(page, { user_streaming: [riga(ID['video-song-0001'], 1), riga(ID['video-shogun-02'], 2)] })
   await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
   const sigle = page.getByRole('region', { name: 'Sigle di questa serie' })
   await expect(sigle).toBeVisible()
@@ -1702,10 +1064,10 @@ test('dove finisce la sigla Ciak lo impara da chi corregge il salto, e vale per 
   expect(await saltoDelVideo(page)).toBe(55)
 })
 
-test('nella serie gli episodi che mancano su Drive si vedono in grigio, al loro posto', async ({ page }) => {
-  // Su Drive ci sono S03E01 e S03E02 di South Park: TMDB dice che la
+test('nella serie gli episodi che mancano nella cartella si vedono in grigio, al loro posto', async ({ page }) => {
+  // Nella cartella ci sono S03E01 e S03E02 di South Park: TMDB dice che la
   // stagione 3 ne ha 4, e che c'è una stagione 4 di cui non c'è niente.
-  await mockDrive(page, { conSerie: true })
+  await mockCartella(page, { conSerie: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1722,7 +1084,7 @@ test('nella serie gli episodi che mancano su Drive si vedono in grigio, al loro 
     visto_il: null,
     abbinato_a_mano: true,
   })
-  await mockSupabase(page, { user_streaming: [riga('video-sp-000301', 1), riga('video-sp-000302', 2)] })
+  await mockSupabase(page, { user_streaming: [riga(ID['video-sp-000301'], 1), riga(ID['video-sp-000302'], 2)] })
   await cercaTmdb(page, [], movieDetail(2190, 'South Park', {
     name: 'South Park',
     seasons: [
@@ -1732,23 +1094,23 @@ test('nella serie gli episodi che mancano su Drive si vedono in grigio, al loro 
   }))
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await page.getByRole('button', { name: /^South Park/ }).click()
 
   const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
   await expect(stagione3.getByRole('listitem')).toHaveCount(4)
   await expect(stagione3.getByRole('listitem').nth(2)).toContainText('Ep. 3')
-  await expect(stagione3.getByRole('listitem').nth(2)).toContainText('non su Drive')
+  await expect(stagione3.getByRole('listitem').nth(2)).toContainText('non nella cartella')
   await expect(page.getByText(/mancano gli ep\. 3 e 4/)).toBeVisible()
-  await expect(page.getByText('Stagione 4 · 2 episodi, nessuno su Drive')).toBeVisible()
+  await expect(page.getByText('Stagione 4 · 2 episodi, nessuno nella cartella')).toBeVisible()
   // Chiusa, la riga della serie lo dice: ne mancano 4 (due della 3, due della 4).
   await page.getByRole('button', { name: /^South Park/ }).click()
-  await expect(page.getByText(/4 non su Drive/)).toBeVisible()
+  await expect(page.getByText(/4 non nella cartella/)).toBeVisible()
 })
 
 test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole a mano', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { conShogun: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1767,12 +1129,12 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
     abbinato_a_mano: true,
   })
   await mockSupabase(page, {
-    user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2), riga('video-shogun-03', 3)],
+    user_streaming: [riga(ID['video-song-0001'], 1), riga(ID['video-shogun-02'], 2), riga(ID['video-shogun-03'], 3)],
   })
   await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
   await expect(page.getByRole('heading', { name: 'Shōgun · S1E1' })).toBeVisible()
 
@@ -1788,7 +1150,7 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
   expect(await saltoDelVideo(page)).toBe(185)
   await videoA(page, 3480)
   await page.getByRole('button', { name: '⏭ Prossimo episodio: S1E2' }).click()
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
+  await expect(page).toHaveURL(alLettore('video-shogun-02'))
   expect(await page.evaluate(() => localStorage.getItem('ciak:punti-sigla:tv-126308'))).toBe('{"inizio":95,"fine":null,"coda":120}')
   // I tempi sono di questa serie, e si vedono: ognuna ha i suoi.
   await expect(page.getByText(/In questa serie la sigla iniziale parte a 1:35, la finale negli ultimi 2:00/)).toBeVisible()
@@ -1817,7 +1179,7 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
   await expect(page.getByText(/S1E3 fra \d+ s/)).toHaveCount(0)
   await videoA(page, 3485)
   await expect(page.getByRole('region', { name: 'Prossimo episodio' }).getByText(/S1E3 fra \d+ s/)).toBeVisible()
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-03$/, { timeout: 15_000 })
+  await expect(page).toHaveURL(alLettore('video-shogun-03'), { timeout: 15_000 })
 
   // Punti sbagliati? Si dimenticano e si reimparano saltando di nuovo a mano.
   await page.getByRole('button', { name: 'Reimpara' }).click()
@@ -1826,8 +1188,8 @@ test('con le caselle le sigle si saltano da sole, nel punto imparato saltandole 
 })
 
 test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, episodio per episodio', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { conShogun: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -1845,7 +1207,7 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
     // riconoscimento lo riporterebbe giustamente al suo film.
     abbinato_a_mano: true,
   })
-  await mockSupabase(page, { user_streaming: [riga('video-song-0001', 1), riga('video-shogun-02', 2)] })
+  await mockSupabase(page, { user_streaming: [riga(ID['video-song-0001'], 1), riga(ID['video-shogun-02'], 2)] })
   await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', { name: 'Shōgun' }))
   // Il browser chiede direttamente a TheIntroDB, nel suo formato: da Vercel la
   // protezione anti-bot rispondeva 403.
@@ -1871,7 +1233,7 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
   await expect(page.getByText(/i tempi esatti di TheIntroDB: sigla da 3:20 a 4:50, titoli di coda da 56:40/)).toBeVisible()
   expect(chieste).toEqual(['126308-1-1'])
@@ -1908,17 +1270,17 @@ test('con i tempi esatti di TheIntroDB la sigla si salta proprio dove c’è, ep
   await expect(page.getByText(/S1E2 fra \d+ s/)).toBeVisible()
 })
 
-test('la lista riconosce i film di Drive e li mostra col titolo e la locandina', async ({ page }) => {
+test('la lista riconosce i film della cartella e li mostra col titolo e la locandina', async ({ page }) => {
   const db = await mockSupabase(page)
-  await mockDrive(page)
+  await mockCartella(page)
   await cercaTmdb(page, [SONG])
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   // Il file «Song.of.the.Sea.2014.1080p.mp4» è diventato il film di TMDB.
   await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001')).toMatchObject({
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-song-0001'])).toMatchObject({
     tmdb_id: 110416,
     media_type: 'movie',
     titolo: 'Song of the Sea',
@@ -1928,13 +1290,13 @@ test('la lista riconosce i film di Drive e li mostra col titolo e la locandina',
   // senza titolo evita di ricercarlo a ogni apertura.
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
   await expect
-    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-b99-00001'))
+    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-b99-00001']))
     .toMatchObject({ nome_file: 'B99 S7E2.mp4' })
-  expect(db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-b99-00001')?.tmdb_id).toBeUndefined()
+  expect(db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-b99-00001'])?.tmdb_id).toBeUndefined()
 })
 
 test('la videoteca si cerca, si ordina e si filtra per genere', async ({ page }) => {
-  await mockDrive(page)
+  await mockCartella(page)
   // Song of the Sea riconosciuto: la sua scheda dice anno (2020 nel finto
   // catalogo) e genere (Horror); B99 resta un file senza titolo.
   await cercaTmdb(page, [SONG])
@@ -1951,7 +1313,7 @@ test('la videoteca si cerca, si ordina e si filtra per genere', async ({ page })
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   const righe = () => page.getByRole('list', { name: 'Video della videoteca' }).getByRole('listitem').allTextContents()
 
@@ -1979,7 +1341,7 @@ test('la videoteca si cerca, si ordina e si filtra per genere', async ({ page })
   await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   await genere.selectOption({ label: 'Tutti i generi' })
 
-  // Ordine: per titolo, per anno (chi non ha l'anno in fondo), per arrivo su Drive.
+  // Ordine: per titolo, per anno (chi non ha l'anno in fondo), per arrivo nella cartella.
   const ordina = page.getByRole('combobox', { name: 'Ordina la videoteca' })
   await expect.poll(righe).toEqual([expect.stringContaining('B99 S7E2'), expect.stringContaining('Song of the Sea')])
   await ordina.selectOption({ label: 'Anno: più recenti' })
@@ -1998,9 +1360,9 @@ test('le serie in cartelle di stagione prendono il nome della serie e vengono ri
   // «Season 03» e cercava «01 Rainforest Shmainforest». Il file era già stato
   // provato una volta senza successo: con il nome nuovo si riprova.
   const db = await mockSupabase(page, {
-    user_streaming: [{ user_id: E2E_USER.id, drive_file_id: 'video-sp-000301', nome_file: '01 Rainforest Shmainforest.mp4', abbinato_a_mano: false, posizione: 0, secondi_visti: 0 }],
+    user_streaming: [{ user_id: E2E_USER.id, drive_file_id: ID['video-sp-000301'], nome_file: '01 Rainforest Shmainforest.mp4', abbinato_a_mano: false, posizione: 0, secondi_visti: 0 }],
   })
-  await mockDrive(page, { conSerie: true })
+  await mockCartella(page, { conSerie: true })
   const cercati: string[] = []
   page.on('request', (r) => {
     const u = new URL(r.url())
@@ -2023,7 +1385,7 @@ test('le serie in cartelle di stagione prendono il nome della serie e vengono ri
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   await expect(page.getByText('Season 03', { exact: true })).toHaveCount(0)
   // Ancora da riconoscere, gli episodi stanno già sotto la serie della cartella.
@@ -2038,14 +1400,14 @@ test('le serie in cartelle di stagione prendono il nome della serie e vengono ri
   rispondi()
   await expect(page.locator('img[src*="/sp.jpg"]')).toBeVisible()
   await expect(stagione3.getByText('01 Rainforest Shmainforest')).toBeVisible()
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-000301')).toMatchObject({
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-sp-000301'])).toMatchObject({
     tmdb_id: 2190,
     media_type: 'tv',
     titolo: 'South Park',
     stagione: 3,
     episodio: 1,
   })
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-000302')?.tmdb_id).toBe(2190)
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-sp-000302'])?.tmdb_id).toBe(2190)
   // Due episodi della stessa serie: una ricerca sola, non una per file.
   expect(cercati.filter((q) => q === 'South Park')).toHaveLength(1)
 })
@@ -2056,17 +1418,20 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   const riga = (id: string, extra: Record<string, unknown>) => ({ user_id: E2E_USER.id, drive_file_id: id, abbinato_a_mano: false, posizione: 0, secondi_visti: 0, ...extra })
   const db = await mockSupabase(page, {
     user_streaming: [
-      riga('video-sp-000301', { nome_file: '01 Rainforest Shmainforest.mp4', tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', poster_path: '/sp.jpg', stagione: 3, episodio: 1 }),
-      riga('video-sp-000302', { nome_file: '02 Spontaneous Combustion.mp4' }),
+      riga(ID['video-sp-000301'], { nome_file: '01 Rainforest Shmainforest.mp4', tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', poster_path: '/sp.jpg', stagione: 3, episodio: 1 }),
+      riga(ID['video-sp-000302'], { nome_file: '02 Spontaneous Combustion.mp4' }),
     ],
   })
   // Il secondo è già stato provato senza esito: la ricerca non si ripete
   // (e il titolo del primo è già stato controllato: niente richieste a TMDB).
-  await page.addInitScript(() => {
-    localStorage.setItem('ciak:riconoscimento-v3:video-sp-000302', '1')
-    localStorage.setItem('ciak:titolo-originale-v3:video-sp-000301', '1')
-  })
-  await mockDrive(page, { conSerie: true })
+  await page.addInitScript(
+    ([id1, id2]) => {
+      localStorage.setItem(`ciak:riconoscimento-v3:${id2}`, '1')
+      localStorage.setItem(`ciak:titolo-originale-v3:${id1}`, '1')
+    },
+    [ID['video-sp-000301'], ID['video-sp-000302']],
+  )
+  await mockCartella(page, { conSerie: true })
   await cercaTmdb(page, [SONG])
 
   const cercati: string[] = []
@@ -2076,7 +1441,7 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: /^South Park/ })).toHaveCount(1)
@@ -2087,7 +1452,7 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   // E nell'archivio eredita la serie dal fratello, senza cercarla di nuovo: la
   // scheda della serie proponeva «Guarda S1E2» perché S1E1, provato prima della
   // correzione per «Shingeki no Kyojin», era rimasto senza titolo.
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-000302')).toMatchObject({
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-sp-000302'])).toMatchObject({
     tmdb_id: 2190,
     media_type: 'tv',
     titolo: 'South Park',
@@ -2102,20 +1467,20 @@ test('una serie dentro una raccolta («South Park Season 1 to 26 Mp4 1080p») si
   // episodio dopo, niente «Salta sigla», niente spunta a fine episodio.
   const db = await mockSupabase(page, {
     user_streaming: [
-      { user_id: E2E_USER.id, drive_file_id: 'video-sp-r-0306', nome_file: 'South Park S03E06.mp4', abbinato_a_mano: false, posizione: 0, secondi_visti: 0 },
+      { user_id: E2E_USER.id, drive_file_id: ID['video-sp-r-0306'], nome_file: 'South Park S03E06.mp4', abbinato_a_mano: false, posizione: 0, secondi_visti: 0 },
     ],
   })
   // Già provato senza esito con la lettura vecchia dei nomi: si riprova.
-  await page.addInitScript(() => localStorage.setItem('ciak:riconoscimento-v3:video-sp-r-0306', '1'))
-  await mockDrive(page, { conRaccolta: true })
+  await page.addInitScript((id) => localStorage.setItem(`ciak:riconoscimento-v3:${id}`, '1'), ID['video-sp-r-0306'])
+  await mockCartella(page, { conRaccolta: true })
   const sp = { id: 2190, media_type: 'tv', name: 'South Park', original_name: 'South Park', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] }
   await cercaTmdb(page, [SONG, sp], movieDetail(2190, 'South Park', { name: 'South Park', original_name: 'South Park' }))
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await expect(page.getByRole('button', { name: /^South Park/ })).toBeVisible()
   await expect(page.getByText(/Season 1 to 26/)).toHaveCount(0)
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-r-0306')).toMatchObject({
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-sp-r-0306'])).toMatchObject({
     tmdb_id: 2190,
     media_type: 'tv',
     stagione: 3,
@@ -2130,7 +1495,7 @@ test('un episodio visto fino in fondo prima di essere riconosciuto si spunta, e 
     user_streaming: [
       {
         user_id: E2E_USER.id,
-        drive_file_id: 'video-sp-r-0306',
+        drive_file_id: ID['video-sp-r-0306'],
         nome_file: 'South Park S03E06.mp4',
         abbinato_a_mano: false,
         posizione: 1320,
@@ -2140,8 +1505,8 @@ test('un episodio visto fino in fondo prima di essere riconosciuto si spunta, e 
       },
     ],
   })
-  await page.addInitScript(() => localStorage.setItem('ciak:riconoscimento-v3:video-sp-r-0306', '1'))
-  await mockDrive(page, { conRaccolta: true })
+  await page.addInitScript((id) => localStorage.setItem(`ciak:riconoscimento-v3:${id}`, '1'), ID['video-sp-r-0306'])
+  await mockCartella(page, { conRaccolta: true })
   const sp = { id: 2190, media_type: 'tv', name: 'South Park', original_name: 'South Park', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] }
   await cercaTmdb(page, [SONG, sp], movieDetail(2190, 'South Park', { name: 'South Park', original_name: 'South Park' }))
 
@@ -2152,9 +1517,9 @@ test('un episodio visto fino in fondo prima di essere riconosciuto si spunta, e 
 
   // La videoteca lo riconosce e, visto che era arrivato alla fine, lo spunta.
   await page.getByRole('link', { name: /Streaming/ }).first().click()
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await expect.poll(() => db.tables.user_episodes?.[0]).toMatchObject({ tv_id: 2190, season_number: 3, episode_number: 6 })
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-r-0306')?.visto_il).toBeTruthy()
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-sp-r-0306'])?.visto_il).toBeTruthy()
   await expect(page.getByText(/tutti visti/)).toBeVisible()
 
   // Tornando alla scheda senza ricaricare, il pulsante c'è già.
@@ -2162,18 +1527,18 @@ test('un episodio visto fino in fondo prima di essere riconosciuto si spunta, e 
     history.pushState({}, '', '/title/tv/2190')
     dispatchEvent(new PopStateEvent('popstate'))
   })
-  await expect(page.getByRole('link', { name: /▶ Guarda S3E6/ })).toHaveAttribute('href', '/streaming/video-sp-r-0306')
+  await expect(page.getByRole('link', { name: /▶ Guarda S3E6/ })).toHaveAttribute('href', `/streaming/${ID['video-sp-r-0306']}`)
 })
 
 test('dalla videoteca si sceglie il titolo di una serie intera, e di un film', async ({ page }) => {
   // TMDB la chiama in un altro modo: Ciak da solo non la riconosce.
   const db = await mockSupabase(page)
-  await mockDrive(page, { conSerie: true })
+  await mockCartella(page, { conSerie: true })
   const sp = { id: 2190, media_type: 'tv', name: 'Parco del Sud', original_name: 'Parco del Sud', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] }
   await cercaTmdb(page, [SONG, sp], movieDetail(2190, 'Parco del Sud', { name: 'Parco del Sud', original_name: 'Parco del Sud' }))
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   // «Da sistemare»: solo ciò che Ciak non ha riconosciuto. Song of the Sea sì.
   await expect(page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' })).toBeVisible()
   await page.getByRole('button', { name: /⚠ Da sistemare/ }).click()
@@ -2191,8 +1556,8 @@ test('dalla videoteca si sceglie il titolo di una serie intera, e di un film', a
     .poll(() => db.tables.user_streaming?.filter((r) => r.tmdb_id === 2190).map((r) => [r.drive_file_id, r.stagione, r.episodio, r.abbinato_a_mano]))
     .toEqual(
       expect.arrayContaining([
-        ['video-sp-000301', 3, 1, true],
-        ['video-sp-000302', 3, 2, true],
+        [ID['video-sp-000301'], 3, 1, true],
+        [ID['video-sp-000302'], 3, 2, true],
       ]),
     )
   // Sistemata, esce da «Da sistemare»; tutto il resto c'è ancora.
@@ -2204,7 +1569,7 @@ test('dalla videoteca si sceglie il titolo di una serie intera, e di un film', a
   await page.getByRole('listitem').filter({ hasText: 'Song of the Sea' }).getByRole('button', { name: 'Scegli il titolo' }).click()
   await page.getByRole('dialog').getByRole('button', { name: 'Cerca', exact: true }).click()
   await page.getByRole('dialog').getByRole('button', { name: /La canzone del mare/ }).click()
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001')?.abbinato_a_mano).toBe(true)
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-song-0001'])?.abbinato_a_mano).toBe(true)
 })
 
 test('un film finito sotto una serie di un altro anno torna il suo film', async ({ page }) => {
@@ -2214,7 +1579,7 @@ test('un film finito sotto una serie di un altro anno torna il suo film', async 
     user_streaming: [
       {
         user_id: E2E_USER.id,
-        drive_file_id: 'video-song-0001',
+        drive_file_id: ID['video-song-0001'],
         nome_file: 'Song.of.the.Sea.2014.1080p.mp4',
         tmdb_id: 61375,
         media_type: 'tv',
@@ -2230,13 +1595,13 @@ test('un film finito sotto una serie di un altro anno torna il suo film', async 
       },
     ],
   })
-  await mockDrive(page)
+  await mockCartella(page)
   await cercaTmdb(page, [SONG])
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await expect
-    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001'))
+    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-song-0001']))
     .toMatchObject({ tmdb_id: 110416, media_type: 'movie', stagione: null, episodio: null })
   await expect(page.getByText('Gap Dong')).toHaveCount(0)
 })
@@ -2257,21 +1622,21 @@ test('i webisodes di una serie sono i suoi speciali, anche quelli già presi per
   })
   const db = await mockSupabase(page, {
     user_streaming: [
-      riga('video-sp-000301', '01 Rainforest Shmainforest.mp4', { tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', poster_path: '/sp.jpg', stagione: 3, episodio: 1 }),
-      riga('video-sp-000302', '02 Spontaneous Combustion.mp4', { tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', poster_path: '/sp.jpg', stagione: 3, episodio: 2 }),
-      riga('video-sp-web-01', 'The Accountants.mp4', { tmdb_id: 302946, media_type: 'movie', titolo: 'The Accountant', poster_path: '/acc.jpg', stagione: null, episodio: null }),
+      riga(ID['video-sp-000301'], '01 Rainforest Shmainforest.mp4', { tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', poster_path: '/sp.jpg', stagione: 3, episodio: 1 }),
+      riga(ID['video-sp-000302'], '02 Spontaneous Combustion.mp4', { tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', poster_path: '/sp.jpg', stagione: 3, episodio: 2 }),
+      riga(ID['video-sp-web-01'], 'The Accountants.mp4', { tmdb_id: 302946, media_type: 'movie', titolo: 'The Accountant', poster_path: '/acc.jpg', stagione: null, episodio: null }),
     ],
   })
-  await mockDrive(page, { conSerie: true, conWebisodes: true })
+  await mockCartella(page, { conSerie: true, conWebisodes: true })
   await cercaTmdb(page, [SONG])
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   // Prende la serie dai fratelli già riconosciuti, come speciale (stagione 0),
   // senza cercare niente.
   await expect
-    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-web-01'))
+    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-sp-web-01']))
     .toMatchObject({ tmdb_id: 2190, media_type: 'tv', stagione: 0 })
   await expect(page.getByText('The Accountant', { exact: true })).toHaveCount(0)
   // Nella serie (col titolo che il controllo dei titoli le dà dal TMDB finto),
@@ -2283,18 +1648,18 @@ test('i webisodes di una serie sono i suoi speciali, anche quelli già presi per
 test('un webisode preso per film, in una serie non ancora riconosciuta, si ricerca come episodio', async ({ page }) => {
   const db = await mockSupabase(page, {
     user_streaming: [
-      { user_id: E2E_USER.id, drive_file_id: 'video-sp-web-01', nome_file: 'The Accountants.mp4', tmdb_id: 302946, media_type: 'movie', titolo: 'The Accountant', poster_path: '/acc.jpg', stagione: null, episodio: null, abbinato_a_mano: false, posizione: 0, secondi_visti: 0 },
+      { user_id: E2E_USER.id, drive_file_id: ID['video-sp-web-01'], nome_file: 'The Accountants.mp4', tmdb_id: 302946, media_type: 'movie', titolo: 'The Accountant', poster_path: '/acc.jpg', stagione: null, episodio: null, abbinato_a_mano: false, posizione: 0, secondi_visti: 0 },
     ],
   })
-  await mockDrive(page, { conSerie: true, conWebisodes: true })
+  await mockCartella(page, { conSerie: true, conWebisodes: true })
   await cercaTmdb(page, [
     SONG,
     { id: 2190, media_type: 'tv', name: 'South Park', original_name: 'South Park', first_air_date: '1997-08-13', poster_path: '/sp.jpg', genre_ids: [16, 35] },
   ])
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await expect
-    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-sp-web-01'))
+    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-sp-web-01']))
     .toMatchObject({ tmdb_id: 2190, media_type: 'tv', stagione: 0 })
 })
 
@@ -2303,7 +1668,7 @@ test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli 
   // un video alla volta, e la serie non si trovava: TMDB la chiama «L'attacco
   // dei giganti» / «進撃の巨人», e «Shingeki no Kyojin» sta fra gli altri nomi.
   const db = await mockSupabase(page)
-  await mockDrive(page, { conAnime: true })
+  await mockCartella(page, { conAnime: true })
   const aot = { id: 1429, media_type: 'tv', name: "L'attacco dei giganti", original_name: '進撃の巨人', first_air_date: '2013-04-07', poster_path: '/aot.jpg', genre_ids: [16] }
   await cercaTmdb(page, [SONG, aot], movieDetail(1429, "L'attacco dei giganti", {
     name: "L'attacco dei giganti",
@@ -2322,7 +1687,7 @@ test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli 
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   const serie = page.getByRole('button', { name: /^L'attacco dei giganti/ })
   await expect(serie).toBeVisible()
@@ -2333,13 +1698,13 @@ test('un anime con gli OAD e il nome romaji: una serie sola, riconosciuta dagli 
   // Il riassunto «S01E13.5» non è un secondo episodio 13: sta fra gli speciali.
   await expect(page.getByRole('list', { name: 'Speciali' }).getByText(/S01E13\.5/)).toBeVisible()
   await expect(page.getByRole('list', { name: 'Stagione 1' }).getByText(/S01E13\.5/)).toHaveCount(0)
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-snk-oad01')).toMatchObject({
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-snk-oad01'])).toMatchObject({
     tmdb_id: 1429,
     media_type: 'tv',
     stagione: 0,
     episodio: 1,
   })
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-snk-s01e135')).toMatchObject({
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-snk-s01e135'])).toMatchObject({
     tmdb_id: 1429,
     media_type: 'tv',
     stagione: 0,
@@ -2353,7 +1718,7 @@ test('un film nella cartella di un anime, fra gli «Altri episodi», si sceglie 
   // «Cowboy Bebop/Knockin' on Heaven's Door» stava fra gli «Altri episodi» e la
   // serie restava «da sistemare»: il ✎ c'era solo per la serie intera.
   const db = await mockSupabase(page)
-  await mockDrive(page, { conAnime: true, conFilmAnime: true })
+  await mockCartella(page, { conAnime: true, conFilmAnime: true })
   const aot = { id: 1429, media_type: 'tv', name: "L'attacco dei giganti", original_name: '進撃の巨人', first_air_date: '2013-04-07', poster_path: '/aot.jpg', genre_ids: [16] }
   const film = { id: 297266, media_type: 'movie', title: "L'attacco dei giganti - Il film: L'arco e la freccia cremisi", original_title: '劇場版 進撃の巨人 前編 紅蓮の弓矢', release_date: '2014-11-22', poster_path: '/arco.jpg', genre_ids: [16] }
   await cercaTmdb(page, [aot, film], movieDetail(1429, "L'attacco dei giganti", { name: "L'attacco dei giganti", original_name: '進撃の巨人', original_title: '進撃の巨人' }))
@@ -2366,7 +1731,7 @@ test('un film nella cartella di un anime, fra gli «Altri episodi», si sceglie 
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await expect(page.getByRole('button', { name: /^L'attacco dei giganti/ })).toBeVisible()
   await page.getByRole('button', { name: /⚠ Da sistemare/ }).click()
   await page.getByRole('button', { name: /^L'attacco dei giganti/, expanded: false }).click()
@@ -2378,7 +1743,7 @@ test('un film nella cartella di un anime, fra gli «Altri episodi», si sceglie 
   await finestra.getByRole('button', { name: /L'arco e la freccia cremisi/ }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
 
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-snk-film')).toMatchObject({
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-snk-film'])).toMatchObject({
     tmdb_id: 297266,
     media_type: 'movie',
     abbinato_a_mano: true,
@@ -2397,15 +1762,15 @@ test('un mezzo episodio già salvato come S1E13 passa fra gli speciali, senza ce
   const riga = (id: string, extra: Record<string, unknown>) => ({ user_id: E2E_USER.id, drive_file_id: id, abbinato_a_mano: false, posizione: 0, secondi_visti: 0, tmdb_id: 1429, media_type: 'tv', titolo: "L'attacco dei giganti", poster_path: '/aot.jpg', ...extra })
   const db = await mockSupabase(page, {
     user_streaming: [
-      riga('video-snk-s01e04', { nome_file: 'Shingeki no Kyojin - S01E04 - Night of the Graduation Ceremony.mp4', stagione: 1, episodio: 4 }),
-      riga('video-snk-oad01', { nome_file: "Shingeki no Kyojin - OADE01 - Ilse's Notebook.mp4", stagione: 0, episodio: 1 }),
-      riga('video-snk-s01e135', { nome_file: 'Shingeki no Kyojin - S01E13.5 - Since That Day.mp4', stagione: 1, episodio: 13 }),
+      riga(ID['video-snk-s01e04'], { nome_file: 'Shingeki no Kyojin - S01E04 - Night of the Graduation Ceremony.mp4', stagione: 1, episodio: 4 }),
+      riga(ID['video-snk-oad01'], { nome_file: "Shingeki no Kyojin - OADE01 - Ilse's Notebook.mp4", stagione: 0, episodio: 1 }),
+      riga(ID['video-snk-s01e135'], { nome_file: 'Shingeki no Kyojin - S01E13.5 - Since That Day.mp4', stagione: 1, episodio: 13 }),
     ],
   })
-  await page.addInitScript(() => {
-    for (const id of ['video-snk-s01e04', 'video-snk-oad01', 'video-snk-s01e135']) localStorage.setItem(`ciak:titolo-originale-v3:${id}`, '1')
-  })
-  await mockDrive(page, { conAnime: true })
+  await page.addInitScript((ids) => {
+    for (const id of ids) localStorage.setItem(`ciak:titolo-originale-v3:${id}`, '1')
+  }, [ID['video-snk-s01e04'], ID['video-snk-oad01'], ID['video-snk-s01e135']])
+  await mockCartella(page, { conAnime: true })
   await cercaTmdb(page, [SONG])
   const cercati: string[] = []
   page.on('request', (r) => {
@@ -2414,12 +1779,12 @@ test('un mezzo episodio già salvato come S1E13 passa fra gli speciali, senza ce
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await page.getByRole('button', { name: /^L'attacco dei giganti/ }).click()
   await expect(page.getByRole('list', { name: 'Speciali' }).getByText(/S01E13\.5/)).toBeVisible()
   await expect(page.getByRole('list', { name: 'Stagione 1' }).getByText(/S01E13\.5/)).toHaveCount(0)
 
-  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-snk-s01e135')).toMatchObject({
+  await expect.poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-snk-s01e135'])).toMatchObject({
     tmdb_id: 1429,
     stagione: 0,
     episodio: null,
@@ -2428,8 +1793,8 @@ test('un mezzo episodio già salvato come S1E13 passa fra gli speciali, senza ce
 })
 
 test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede il voto', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
   const db = await mockSupabase(page, {
     user_titles: [
       { id: 't1', user_id: 'e2e-user-0000-0000-000000000000', tmdb_id: 110416, media_type: 'movie', title: 'La canzone del mare', status: 'to_watch', genre_ids: [] },
@@ -2438,7 +1803,7 @@ test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede
       {
         id: 's1',
         user_id: 'e2e-user-0000-0000-000000000000',
-        drive_file_id: 'video-song-0001',
+        drive_file_id: ID['video-song-0001'],
         tmdb_id: 110416,
         media_type: 'movie',
         titolo: 'La canzone del mare',
@@ -2461,7 +1826,7 @@ test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede
   await expect(page.getByText('Segnato come visto nel diario, oggi')).toBeVisible()
   await expect.poll(() => db.tables.user_diary?.[0]).toMatchObject({ tmdb_id: 110416, media_type: 'movie', rating: null })
   await expect.poll(() => db.tables.user_titles.find((r) => r.tmdb_id === 110416)?.status).toBe('watched')
-  await expect.poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-song-0001')?.visto_il).toBeTruthy()
+  await expect.poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === ID['video-song-0001'])?.visto_il).toBeTruthy()
 
   await page.getByRole('button', { name: '4 stelle', exact: true }).click()
   await expect(page.getByText('Voto salvato.')).toBeVisible()
@@ -2469,11 +1834,11 @@ test('a fine film lo segna visto nel diario, lo toglie da «Da vedere» e chiede
 })
 
 test('saltare alla fine senza averlo guardato non lo segna come visto', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
   const db = await mockSupabase(page, {
     user_streaming: [
-      { id: 's1', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: 'video-song-0001', tmdb_id: 110416, media_type: 'movie', titolo: 'La canzone del mare', posizione: 0, durata: 5640, secondi_visti: 0, visto_il: null, abbinato_a_mano: false },
+      { id: 's1', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: ID['video-song-0001'], tmdb_id: 110416, media_type: 'movie', titolo: 'La canzone del mare', posizione: 0, durata: 5640, secondi_visti: 0, visto_il: null, abbinato_a_mano: false },
     ],
   })
 
@@ -2487,11 +1852,11 @@ test('saltare alla fine senza averlo guardato non lo segna come visto', async ({
 })
 
 test('riapre il film dal punto in cui ci si era fermati', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
   await mockSupabase(page, {
     user_streaming: [
-      { id: 's1', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: 'video-song-0001', tmdb_id: 110416, media_type: 'movie', titolo: 'La canzone del mare', posizione: 1345, durata: 5640, secondi_visti: 1300, visto_il: null, abbinato_a_mano: false, updated_at: new Date().toISOString() },
+      { id: 's1', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: ID['video-song-0001'], tmdb_id: 110416, media_type: 'movie', titolo: 'La canzone del mare', posizione: 1345, durata: 5640, secondi_visti: 1300, visto_il: null, abbinato_a_mano: false, updated_at: new Date().toISOString() },
     ],
   })
 
@@ -2535,8 +1900,8 @@ test('sul tablet in orizzontale lo schermo intero del browser diventa quello di 
       document.dispatchEvent(new Event('fullscreenchange'))
     }
   })
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
   await apriSongOfTheSea(page)
   await expect(page.locator('video')).toBeAttached()
 
@@ -2575,8 +1940,8 @@ test('sul telefono un tocco sul video lo ferma e lo fa ripartire', async ({ page
       Object.defineProperty(this, 'paused', { configurable: true, get: () => true })
     }
   })
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
   await apriSongOfTheSea(page)
   await expect(page.locator('video')).toBeAttached()
   const comandi = () => page.evaluate(() => (window as unknown as { comandi: string[] }).comandi.filter(Boolean))
@@ -2592,8 +1957,8 @@ test('sul telefono un tocco sul video lo ferma e lo fa ripartire', async ({ page
 test('il lettore legge solo la riga del file e gli episodi della sua serie, non tutta la videoteca', async ({ page }) => {
   // Centinaia di righe a ogni episodio: sul telefono arrivavano dopo che il
   // film era già partito, e intanto il lettore non sapeva da dove riprendere.
-  await conLettoreCiak(page)
-  await mockDrive(page, { conShogun: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { conShogun: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -2610,10 +1975,10 @@ test('il lettore legge solo la riga del file e gli episodi della sua serie, non 
     abbinato_a_mano: false,
   })
   await mockSupabase(page, {
-    user_streaming: [riga('video-shogun-01', 1), riga('video-shogun-02', 2), { ...riga('video-altro-0001', 1), tmdb_id: 999, titolo: 'Altro' }],
+    user_streaming: [riga(ID['video-shogun-01'], 1), riga(ID['video-shogun-02'], 2), { ...riga(ID['video-altro-0001'], 1), tmdb_id: 999, titolo: 'Altro' }],
   })
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
   // La videoteca ha finito di leggere l'archivio (a pagine: l'ultima richiesta,
   // quella vuota, arriva dopo): la serie ha il suo titolo. Contando prima, la
@@ -2624,23 +1989,23 @@ test('il lettore legge solo la riga del file e gli episodi della sua serie, non 
   page.on('request', (r) => {
     if (r.method() === 'GET' && r.url().includes('/rest/v1/user_streaming')) letture.push(decodeURIComponent(r.url()))
   })
-  await page.goto('/streaming/video-shogun-01')
+  await page.goto(`/streaming/${ID['video-shogun-01']}`)
   // Il prossimo episodio c'è: gli episodi della serie sono arrivati.
   await expect(page.getByRole('button', { name: /Prossimo episodio: S1E2/ })).toBeVisible()
   expect(letture.length).toBeGreaterThan(0)
-  for (const url of letture) expect(url).toMatch(/drive_file_id=eq\.video-shogun-01|tmdb_id=eq\.126308/)
+  for (const url of letture) expect(url).toMatch(new RegExp(`drive_file_id=eq\\.${ID['video-shogun-01']}|tmdb_id=eq\\.126308`))
 })
 
-// Due episodi di Shōgun, già riconosciuti, e Drive già collegato.
+// Due episodi di Shōgun, già riconosciuti, e la cartella già collegata.
 async function apriShogun(page: Page, initScript?: () => void) {
   if (initScript) await page.addInitScript(initScript)
   // Titoli già verificati: altrimenti la videoteca li ricontrolla in sottofondo
   // e il finto TMDB li rinomina a test in corso.
-  await page.addInitScript(() => {
-    for (const id of ['video-shogun-01', 'video-shogun-02']) localStorage.setItem(`ciak:titolo-originale-v3:${id}`, '1')
-  })
-  await conLettoreCiak(page)
-  await mockDrive(page, { conShogun: true, conShogunPrimo: true })
+  await page.addInitScript((ids) => {
+    for (const id of ids) localStorage.setItem(`ciak:titolo-originale-v3:${id}`, '1')
+  }, [ID['video-shogun-01'], ID['video-shogun-02']])
+  await conVideoFermo(page)
+  await mockCartella(page, { conShogun: true, conShogunPrimo: true })
   const riga = (id: string, episodio: number) => ({
     user_id: E2E_USER.id,
     drive_file_id: id,
@@ -2657,11 +2022,11 @@ async function apriShogun(page: Page, initScript?: () => void) {
     visto_il: null,
     abbinato_a_mano: false,
   })
-  await mockSupabase(page, { user_streaming: [riga('video-shogun-01', 1), riga('video-shogun-02', 2)] })
+  await mockSupabase(page, { user_streaming: [riga(ID['video-shogun-01'], 1), riga(ID['video-shogun-02'], 2)] })
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await expect(page.getByText('B99 S7E2', { exact: true })).toBeVisible()
-  await page.goto('/streaming/video-shogun-01')
+  await page.goto(`/streaming/${ID['video-shogun-01']}`)
   await expect(page.getByRole('button', { name: /Prossimo episodio: S1E2/ })).toBeVisible()
 }
 
@@ -2705,17 +2070,17 @@ test('dalla tastiera: pausa, salti, schermo intero, sigla ed episodio dopo', asy
   await page.getByRole('textbox').first().pressSequentially('fn ')
   await expect(page.getByRole('textbox').first()).toHaveValue('fn ')
   expect(await comandi()).toEqual(['play', 'schermo intero'])
-  await expect(page).toHaveURL(/video-shogun-01$/)
+  await expect(page).toHaveURL(alLettore('video-shogun-01'))
 
   // N: l'episodio dopo.
   await page.locator('body').click({ position: { x: 5, y: 5 } })
   await page.keyboard.press('n')
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
+  await expect(page).toHaveURL(alLettore('video-shogun-02'))
 
   // P: di nuovo quello prima.
   await expect(page.getByRole('button', { name: 'Episodio precedente: S1E1', exact: true })).toBeVisible()
   await page.keyboard.press('p')
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-01$/)
+  await expect(page).toHaveURL(alLettore('video-shogun-01'))
 })
 
 test('nel lettore si torna all’episodio prima e si va a quello dopo, coi pulsanti della barra', async ({ page }) => {
@@ -2723,14 +2088,14 @@ test('nel lettore si torna all’episodio prima e si va a quello dopo, coi pulsa
   // Dal primo episodio non c'è niente prima.
   await expect(page.getByRole('button', { name: 'Episodio precedente: S1E1', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Episodio successivo: S1E2' }).click()
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
+  await expect(page).toHaveURL(alLettore('video-shogun-02'))
 
   await page.getByRole('button', { name: 'Episodio precedente: S1E1', exact: true }).click()
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-01$/)
-  // Anche dal pannello sotto il video, che c'è pure col lettore di Drive.
+  await expect(page).toHaveURL(alLettore('video-shogun-01'))
+  // Anche dal pannello sotto il video.
   await page.getByRole('button', { name: 'Episodio successivo: S1E2' }).click()
   await page.getByRole('button', { name: '◀ Episodio precedente: S1E1' }).click()
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-01$/)
+  await expect(page).toHaveURL(alLettore('video-shogun-01'))
 })
 
 test('sulla schermata di blocco del telefono: titolo, locandina, pausa ed episodio dopo', async ({ page }) => {
@@ -2758,24 +2123,24 @@ test('sulla schermata di blocco del telefono: titolo, locandina, pausa ed episod
 
   await expect.poll(() => page.evaluate(() => typeof (window as unknown as { azioni: Record<string, unknown> }).azioni.nexttrack)).toBe('function')
   await page.evaluate(() => (window as unknown as { azioni: Record<string, () => void> }).azioni.nexttrack())
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
+  await expect(page).toHaveURL(alLettore('video-shogun-02'))
   await expect.poll(() => page.evaluate(() => navigator.mediaSession.metadata?.title)).toBe('Shōgun · S1E2')
 
   // «Indietro» dalla schermata di blocco: l'episodio prima.
   await expect.poll(() => page.evaluate(() => typeof (window as unknown as { azioni: Record<string, unknown> }).azioni.previoustrack)).toBe('function')
   await page.evaluate(() => (window as unknown as { azioni: Record<string, () => void> }).azioni.previoustrack())
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-01$/)
+  await expect(page).toHaveURL(alLettore('video-shogun-01'))
 })
 
 test('con l archivio lento riprende lo stesso, senza cancellare il punto salvato', async ({ page }) => {
   // Sul telefono l'archivio rispondeva dopo che il film era già partito: il
   // primo istante (0:00) si salvava subito sopra il punto buono, e dopo cinque
   // secondi di visione la ripresa non si applicava più. Si ricominciava da capo.
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
   const db = await mockSupabase(page, {
     user_streaming: [
-      { id: 's1', user_id: E2E_USER.id, drive_file_id: 'video-song-0001', tmdb_id: 110416, media_type: 'movie', titolo: 'La canzone del mare', posizione: 1345, durata: 5640, secondi_visti: 1300, visto_il: null, abbinato_a_mano: false, updated_at: new Date(Date.now() - 3_600_000).toISOString() },
+      { id: 's1', user_id: E2E_USER.id, drive_file_id: ID['video-song-0001'], tmdb_id: 110416, media_type: 'movie', titolo: 'La canzone del mare', posizione: 1345, durata: 5640, secondi_visti: 1300, visto_il: null, abbinato_a_mano: false, updated_at: new Date(Date.now() - 3_600_000).toISOString() },
     ],
   })
   await page.route('**/rest/v1/user_streaming*', async (route) => {
@@ -2806,8 +2171,8 @@ test('con l archivio lento riprende lo stesso, senza cancellare il punto salvato
 })
 
 test('«Non è questo?» fa scegliere il titolo a mano, e resta scelto', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
   const db = await mockSupabase(page)
   await cercaTmdb(page, [SONG, { ...SONG, id: 42, title: 'Song of the Sea (corto)', original_title: 'Song of the Sea (corto)', release_date: '2012-01-01' }])
 
@@ -2822,13 +2187,13 @@ test('«Non è questo?» fa scegliere il titolo a mano, e resta scelto', async (
 
   await expect(page.getByRole('link', { name: 'Song of the Sea (corto)' })).toHaveAttribute('href', '/title/movie/42')
   await expect
-    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === 'video-song-0001'))
+    .poll(() => db.tables.user_streaming?.find((r) => r.drive_file_id === ID['video-song-0001']))
     .toMatchObject({ tmdb_id: 42, abbinato_a_mano: true })
 })
 
 test('a fine episodio lo spunta, mette la serie in corso e propone il prossimo', async ({ page }) => {
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true, conShogun: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true, conShogun: true })
   const riga = (id: string, episodio: number, extra: Record<string, unknown> = {}) => ({
     id,
     user_id: 'e2e-user-0000-0000-000000000000',
@@ -2850,7 +2215,7 @@ test('a fine episodio lo spunta, mette la serie in corso e propone il prossimo',
   })
   const db = await mockSupabase(page, {
     // Il file aperto è l'episodio 1 (l'id del film di prova), il 2 è un altro file.
-    user_streaming: [riga('video-song-0001', 1, { secondi_visti: 3400 }), riga('video-shogun-02', 2)],
+    user_streaming: [riga(ID['video-song-0001'], 1, { secondi_visti: 3400 }), riga(ID['video-shogun-02'], 2)],
   })
   await cercaTmdb(page, [], movieDetail(126308, 'Shōgun', {
     name: 'Shōgun',
@@ -2859,9 +2224,9 @@ test('a fine episodio lo spunta, mette la serie in corso e propone il prossimo',
 
   // Nella videoteca l'episodio sta sotto la sua serie: si parte da «▶ Inizia».
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
   await page.getByRole('button', { name: '▶ Inizia S1E1' }).click()
-  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
+  await expect(page).toHaveURL(alLettore('video-song-0001'))
   await expect(page.getByRole('link', { name: 'Shōgun · S1E1' })).toHaveAttribute('href', '/title/tv/126308?season=1&episode=1')
   await portaIlVideoA(page, 3500, 3600)
 
@@ -2870,17 +2235,17 @@ test('a fine episodio lo spunta, mette la serie in corso e propone il prossimo',
   await expect.poll(() => db.tables.user_titles?.find((r) => r.tmdb_id === 126308)?.status).toBe('in_progress')
 
   await page.getByRole('button', { name: /Prossimo episodio: S1E2/ }).first().click()
-  await expect(page).toHaveURL(/\/streaming\/video-shogun-02$/)
+  await expect(page).toHaveURL(alLettore('video-shogun-02'))
 })
 
 test('i titoli restano quelli originali del film, tradotti solo se illeggibili', async ({ page }) => {
   const db = await mockSupabase(page, {
     // Riconosciuto prima della correzione: col titolo tradotto.
     user_streaming: [
-      { id: 's0', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: 'video-b99-00001', nome_file: 'B99 S7E2.mp4', tmdb_id: 48891, media_type: 'tv', titolo: 'Brooklyn 99 - Nove-Nove', stagione: 7, episodio: 2, posizione: 0, secondi_visti: 0, abbinato_a_mano: true },
+      { id: 's0', user_id: 'e2e-user-0000-0000-000000000000', drive_file_id: ID['video-b99-00001'], nome_file: 'B99 S7E2.mp4', tmdb_id: 48891, media_type: 'tv', titolo: 'Brooklyn 99 - Nove-Nove', stagione: 7, episodio: 2, posizione: 0, secondi_visti: 0, abbinato_a_mano: true },
     ],
   })
-  await mockDrive(page)
+  await mockCartella(page)
   await page.route('**/api/tmdb*', (route) => {
     const path = new URL(route.request().url()).searchParams.get('path') ?? ''
     // La ricerca in italiano restituisce il titolo tradotto…
@@ -2891,39 +2256,39 @@ test('i titoli restano quelli originali del film, tradotti solo se illeggibili',
   })
 
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
   // L'episodio sta sotto la sua serie, che ha il titolo originale.
   await expect(page.getByRole('button', { name: /^Brooklyn Nine-Nine/ })).toBeVisible()
   await expect
-    .poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-song-0001')?.titolo)
+    .poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === ID['video-song-0001'])?.titolo)
     .toBe('Song of the Sea')
   await expect
-    .poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === 'video-b99-00001')?.titolo)
+    .poll(() => db.tables.user_streaming.find((r) => r.drive_file_id === ID['video-b99-00001'])?.titolo)
     .toBe('Brooklyn Nine-Nine')
 })
 
-test('un film che non parte (un MKV che il browser non apre) lo dice e propone Drive', async ({ page }) => {
+test('un film che non parte (un MKV che il browser non apre) lo dice, col rimedio', async ({ page }) => {
   await page.clock.install()
-  await conLettoreCiak(page)
-  await mockDrive(page, { sottotitoliNellaCartella: true })
+  await conVideoFermo(page)
+  await mockCartella(page, { sottotitoliNellaCartella: true })
 
   await apriSongOfTheSea(page)
-  await expect(page.locator('video')).toBeVisible()
+  // Il file preso dal disco: da qui si aspetta che parta.
+  await expect(page.locator('video')).toHaveAttribute('src', /video-fermo/)
   // Il video resta «in caricamento» senza mai dare errore: dopo 20 s si avvisa.
   await page.clock.runFor(21_000)
 
   const avviso = page.getByRole('alert')
-  await expect(avviso).toContainText('Il browser non riesce ad aprire questo file')
-  await avviso.getByRole('button', { name: 'Usa il lettore di Drive' }).click()
-  await expect(page.locator('iframe')).toBeVisible()
+  await expect(avviso).toContainText('Il film non parte')
+  await expect(avviso).toContainText('Convertilo in MP4 con prepara-ciak')
 })
 
 test('le cartelle dentro Ciak diventano le schede della videoteca', async ({ page }) => {
-  await mockDrive(page)
+  await mockCartella(page)
   await page.goto('/streaming')
-  await page.getByRole('button', { name: /Collega Google Drive/ }).click()
+  await collega(page)
 
   const schede = page.getByRole('tablist', { name: 'Categorie della videoteca' })
   await expect(schede.getByRole('tab')).toHaveText(['Tutto 2', 'Film 1', 'Serie TV 1'])

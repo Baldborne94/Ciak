@@ -104,28 +104,32 @@ Due guardie automatiche, oltre ai test veri e propri:
   per secondi. Chi serve una copia lo dichiara (`segnalaCopia`) e `OfflineBanner`
   lo scrive in cima alla pagina: dati vecchi mostrati senza avvisare rendono
   l'archivio inaffidabile, perché non si può nemmeno sospettare.
-- La videoteca ha due sorgenti: Google Drive e il **server di casa**
-  (Jellyfin, `src/lib/jellyfin.ts`). Un video di Jellyfin è un «file» con id
-  `jf-<id>`: tutto ciò che è legato all'id del file (`user_streaming`, punto
-  di ripresa, episodio dopo) vale per entrambe senza tabelle nuove. Le parti
-  solo di Drive (service worker, cestino, download offline) si saltano con
-  `eJellyfin(fileId)`.
-- Drive è **facoltativo** e spento finché non lo si accende dalle Impostazioni
-  (`driveAttivo`, `driveConfigurato`). Senza, la videoteca vive dei film
-  **aperti dal dispositivo** (`src/lib/filmLocali.ts`): id `loc-<impronta>` dal
-  nome e dalla dimensione del file, così riaprendolo si ritrovano titolo,
-  diario e punto di ripresa. Il browser non lascia riaprire un file da solo:
-  o lo si sceglie di nuovo, o se ne tiene una copia con «Salva in Ciak»
-  (`salvaFileSulDispositivo`, nella stessa cache dei film scaricati).
-  Una **cartella intera** (E:\Ciak) si collega con File System Access
-  (`src/lib/cartellaLocale.ts`, Chrome ed Edge sul computer): la maniglia sta
-  in IndexedDB, i video diventano una sorgente della videoteca come Drive e
-  Jellyfin, con gli stessi id `loc-`. Riaprendo il browser il permesso va
-  ridato con un clic («Riapri la cartella»): si dice, non si mostra un vuoto.
-  Gli altri browser (Firefox, Brave…) non hanno le maniglie: lì la cartella
-  si sceglie con `<input webkitdirectory>` e vale per una visita (modo
-  «scelta»). `ScegliCartella` usa da sé il modo che c'è: non mostrare mai il
-  pulsante solo dove esiste `showDirectoryPicker`.
+- La videoteca vive sul **disco**, non più su Google Drive (tolto del tutto:
+  niente collegamento, niente lettore di Drive, niente cestino). Le sorgenti:
+  - la **cartella collegata** (E:\Ciak, `src/lib/cartellaLocale.ts`): con File
+    System Access (Chrome, Edge sul computer) la maniglia sta in IndexedDB e
+    riaprendo il browser il permesso si ridà con un clic («Riapri la
+    cartella»): si dice, non si mostra un vuoto. Gli altri browser (Firefox,
+    Brave…) non hanno le maniglie: lì la cartella si sceglie con
+    `<input webkitdirectory>` e vale per una visita (modo «scelta»).
+    `ScegliCartella` usa da sé il modo che c'è: non mostrare mai il pulsante
+    solo dove esiste `showDirectoryPicker`;
+  - i **film aperti a mano** (`src/lib/filmLocali.ts`), e la loro copia
+    salvata in Ciak («Salva in Ciak», `filmOffline.ts`);
+  - il **server di casa** (Jellyfin, `src/lib/jellyfin.ts`), id `jf-<id>`.
+  Un video del disco ha id `loc-<impronta>` dal nome e dalla dimensione del
+  file: tutto ciò che è legato all'id (`user_streaming`, punto di ripresa,
+  episodio dopo) lo ritrova riaprendolo, senza tabelle nuove. La colonna si
+  chiama ancora `drive_file_id`, per storia.
+- Il lettore prende i **sottotitoli e le lingue dell'audio dai file accanto al
+  video** (`FilmAperto.vicini`); un sottotitolo trovato online si salva lì
+  accanto se il browser lascia scrivere (`FilmAperto.scrivi`), se no in Ciak
+  (`sottotitoliSalvati.ts`).
+- **Cancellare dal disco** (`cancellaDalDisco`) toglie per davvero, senza
+  Cestino: video, sottotitoli, lingue dell'audio e cartelle rimaste vuote,
+  mai la cartella collegata né le schede (`pianoCancellazione.ts`). Chi lo
+  chiama chiede conferma e dice che non si recupera. Solo con le maniglie: il
+  modo «scelta» lascia solo leggere, e lo si dice.
 - Le chiavi Anthropic e TMDB vivono **solo** lato server (`api/`), mai con
   prefisso `VITE_`: con quel prefisso finiscono nel bundle, dove chiunque le
   copia. Il catalogo passa da `/api/tmdb`, che tiene una **lista dei percorsi
@@ -143,7 +147,7 @@ src/lib/tmdb/    il catalogo, diviso per responsabilità
 api/             funzioni serverless Vercel (AI, proxy TMDB, cron avvisi)
 e2e/             test end-to-end + mock
 supabase/        schema SQL e policy
-strumenti/       script per il PC dell'utente (preparare i video per Drive)
+strumenti/       script per il PC dell'utente (preparare i video per la cartella)
 ```
 
 `src/lib/tmdb.ts` è una **facciata**: ri-esporta e basta. Il codice vero sta in

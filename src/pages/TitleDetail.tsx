@@ -265,7 +265,7 @@ export default function TitleDetail() {
               {detail.overview || 'Nessuna trama disponibile.'}
             </p>
 
-            {/* Il titolo è nella videoteca (un file su Drive): si guarda da qui. */}
+            {/* Il titolo è nella videoteca (un file della cartella): si guarda da qui. */}
             <div className="mt-5">
               <GuardaOra videoteca={videoteca} tmdbId={detail.id} mediaType={detail.mediaType} grande />
             </div>

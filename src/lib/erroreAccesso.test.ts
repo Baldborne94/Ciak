@@ -64,8 +64,4 @@ describe('leggiErroreAccesso', () => {
     expect(leggiErroreAccesso('https://ciak.app/watchlist')).toBeNull()
     expect(leggiErroreAccesso('https://ciak.app/#access_token=x&refresh_token=y')).toBeNull()
   })
-
-  it('un rifiuto del collegamento a Drive non è un login fallito', () => {
-    expect(leggiErroreAccesso('https://ciak.app/streaming#error=access_denied&state=ciak-drive-abc')).toBeNull()
-  })
 })

@@ -21,11 +21,12 @@ export function chiaveCollezione(userId: string): string {
   return `${PREFISSO}collezione:${VERSIONE}:${userId}`
 }
 
-// La videoteca dell'ultima volta: i video di Drive e le loro righe in
-// archivio. Leggere Drive cartella per cartella vuol dire secondi di attesa a
-// ogni apertura; con la copia l'elenco compare subito, e si aggiorna da sé.
-export function chiaveVideotecaDrive(userId: string): string {
-  return `${PREFISSO}videoteca-drive:${VERSIONE}:${userId}`
+// La videoteca dell'ultima volta: i video della cartella e le loro righe in
+// archivio. Rileggere la cartella (o chiedere il permesso di farlo) prende
+// tempo a ogni apertura; con la copia l'elenco compare subito, e si aggiorna
+// da sé. (Un nome nuovo: la copia dei tempi di Drive non va più mostrata.)
+export function chiaveVideoteca(userId: string): string {
+  return `${PREFISSO}videoteca:${VERSIONE}:${userId}`
 }
 export function chiaveVideotecaArchivio(userId: string): string {
   return `${PREFISSO}videoteca-archivio:${VERSIONE}:${userId}`

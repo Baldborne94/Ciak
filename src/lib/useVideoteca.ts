@@ -1,14 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from './auth'
 import { logFailure } from './logFailure'
-import { driveConfigurato } from './googleDrive'
 import { jellyfinCollegato } from './jellyfin'
 import { cartellaCollegata } from './cartellaLocale'
 import { elencaStreaming, type VoceStreaming } from './streaming'
 import { elencaFilmOffline } from './filmOffline'
 import { leggiPresenti, soloPresenti } from './videoPresenti'
 
-// I film della videoteca (i file di Drive già collegati ai titoli), letti una
+// I film della videoteca (i file già collegati ai titoli), letti una
 // volta e condivisi: una lista «Da vedere» con cento card non deve fare cento
 // richieste. La copia vale un minuto — abbastanza per navigare fra le pagine,
 // poco per non mostrare un file appena aggiunto.
@@ -36,10 +35,10 @@ export function useVideoteca(): VoceStreaming[] {
   const { user } = useAuth()
   const [righe, setRighe] = useState<VoceStreaming[]>([])
   useEffect(() => {
-    // Una videoteca c'è con Drive, col server di casa o con la cartella del PC.
-    if (!user || !(driveConfigurato() || jellyfinCollegato() || cartellaCollegata())) return
+    // Una videoteca c'è con la cartella del PC o col server di casa.
+    if (!user || !(cartellaCollegata() || jellyfinCollegato())) return
     let vivo = true
-    // Solo i file ancora su Drive (secondo l'ultimo elenco della videoteca) o
+    // Solo i file ancora nella cartella (secondo l'ultimo elenco della videoteca) o
     // scaricati qui: un pulsante verso un file cancellato porta a un errore.
     void Promise.all([leggi(user.id), elencaFilmOffline()]).then(([r, offline]) => {
       const scaricati = new Set(offline.filter((f) => f.stato === 'completo').map((f) => f.id))

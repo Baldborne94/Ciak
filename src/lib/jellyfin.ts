@@ -1,11 +1,11 @@
-import { CARTELLA_CIAK, titoloVideo, type DriveVideo } from './googleDrive'
+import { CARTELLA_CIAK, titoloVideo, type VideoFile } from './fileVideo'
 import { stagioneDaCartella } from './sottotitoli'
 
 // Il server di casa: Jellyfin, sul PC a cui è attaccato il disco coi film.
-// Ciak gli chiede l'elenco dei video e li riproduce da lì, come fa con Drive:
+// Ciak gli chiede l'elenco dei video e li riproduce da lì, come fa con la cartella:
 // la videoteca, il riconoscimento dei titoli, il diario e il punto di ripresa
 // non cambiano, perché un video di Jellyfin è un «file» con un id suo
-// (`jf-<id di Jellyfin>`) come quelli di Drive.
+// (`jf-<id di Jellyfin>`) come quelli della cartella (`loc-…`).
 //
 // Ciak è servito in HTTPS e il browser non lascia una pagina HTTPS parlare con
 // un server in HTTP: il server va raggiunto in HTTPS, di solito attraverso
@@ -186,13 +186,13 @@ const parti = (percorso: string) => percorso.split(/[\\/]+/).filter(Boolean)
 const uguale = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'accent' }) === 0
 
 // Un video di Jellyfin come un file della videoteca di Ciak. Le cartelle sono
-// quelle del disco, uguali a quelle che c'erano su Drive: la categoria (FILM,
+// quelle del disco, uguali a quelle della cartella collegata: la categoria (FILM,
 // SERIE TV…) è la cartella della libreria, o la prima sotto «Ciak» se la
 // libreria è la cartella Ciak intera; poi la cartella del film o della
 // stagione, e sopra la stagione la serie.
-export function videoDaJellyfin(elementi: ElementoGrezzo[], librerie: LibreriaGrezza[]): DriveVideo[] {
+export function videoDaJellyfin(elementi: ElementoGrezzo[], librerie: LibreriaGrezza[]): VideoFile[] {
   const radici = librerie.flatMap((l) => (l.Locations ?? []).map((p) => parti(p)))
-  const video: DriveVideo[] = []
+  const video: VideoFile[] = []
   for (const e of elementi) {
     if (!e.Path || !/^[0-9a-f]{32}$/i.test(e.Id)) continue
     const tutto = parti(e.Path)
@@ -221,13 +221,12 @@ export function videoDaJellyfin(elementi: ElementoGrezzo[], librerie: LibreriaGr
       serie: cartella && stagioneDaCartella(cartella) !== null ? sopra : null,
       categoria,
       aggiunto: e.DateCreated ?? null,
-      cartellaId: null,
     })
   }
   return video
 }
 
-export async function elencaVideoJellyfin(): Promise<DriveVideo[]> {
+export async function elencaVideoJellyfin(): Promise<VideoFile[]> {
   const config = leggiJellyfin()
   if (!config) return []
   // Le librerie le può leggere solo un amministratore: senza, le cartelle si
@@ -263,7 +262,7 @@ export interface SottotitoloJellyfin {
 
 export interface InfoJellyfin {
   nome: string
-  // Le cartelle del file, come quelle di Drive: per cercare i sottotitoli
+  // Le cartelle del file, come quelle della cartella: per cercare i sottotitoli
   // online e per il titolo quando il video non è ancora riconosciuto.
   cartella: string | null
   serie: string | null
@@ -391,14 +390,15 @@ export function sottotitoloJellyfin(fileId: string, info: InfoJellyfin, indice: 
   return `${config.url}/Videos/${id}/${info.sorgente}/Subtitles/${indice}/0/Stream.vtt?api_key=${encodeURIComponent(config.token)}`
 }
 
-// I video di Drive e quelli del server di casa in un elenco solo. Mentre si
-// sposta la collezione dal Drive al disco lo stesso file sta in tutti e due
-// i posti: vale la copia di casa, e quella di Drive non si ripete.
-export function unisciFonti(drive: DriveVideo[], casa: DriveVideo[]): DriveVideo[] {
-  if (casa.length === 0) return drive
-  const chiave = (v: DriveVideo) => v.name.toLowerCase()
+// I video della cartella e quelli del server di casa in un elenco solo. Lo
+// stesso file può stare in tutti e due i posti (il disco letto da Jellyfin e
+// collegato anche come cartella): vale la copia di casa, e l'altra non si
+// ripete.
+export function unisciFonti(cartella: VideoFile[], casa: VideoFile[]): VideoFile[] {
+  if (casa.length === 0) return cartella
+  const chiave = (v: VideoFile) => v.name.toLowerCase()
   const aCasa = new Set(casa.map(chiave))
-  return [...drive.filter((v) => !aCasa.has(chiave(v))), ...casa].sort((a, b) =>
+  return [...cartella.filter((v) => !aCasa.has(chiave(v))), ...casa].sort((a, b) =>
     titoloVideo(a).localeCompare(titoloVideo(b), 'it', { numeric: true }),
   )
 }

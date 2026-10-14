@@ -41,12 +41,12 @@ describe('SagaVideoteca', () => {
     expect(screen.getByRole('button', { name: /Alien/ })).toHaveTextContent('tutti visti')
   })
 
-  it('aperta si può cancellare tutta da Drive', async () => {
+  it('aperta si può cancellare tutta dal disco', async () => {
     const onCancella = vi.fn()
     saga({ onCancella })
     expect(screen.queryByRole('button', { name: /Cancella la saga/ })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /Alien/ }))
-    await userEvent.click(screen.getByRole('button', { name: '🗑 Cancella la saga da Drive' }))
+    await userEvent.click(screen.getByRole('button', { name: '🗑 Cancella la saga dal disco' }))
     expect(onCancella).toHaveBeenCalledTimes(1)
   })
 

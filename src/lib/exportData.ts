@@ -21,7 +21,7 @@ export const TABELLE_ESPORTATE = [
   'user_alerts',
   'user_trailers',
   'user_preferences',
-  // Quale file di Drive è quale film, e dove ti eri fermato: rifare gli
+  // Quale file della videoteca è quale film, e dove ti eri fermato: rifare gli
   // abbinamenti scelti a mano è lavoro dell'utente, non una cache.
   'user_streaming',
 ] as const

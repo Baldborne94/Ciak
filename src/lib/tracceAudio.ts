@@ -1,6 +1,6 @@
 import type { FileCartella } from './sottotitoli'
 
-// Le lingue dell'audio di un video su Drive. Chrome e Firefox di un MP4 suonano
+// Le lingue dell'audio di un video. Chrome e Firefox di un MP4 suonano
 // solo la prima traccia: le altre, prepara-ciak le salva accanto al video
 // («Film.audio-2.m4a») con l'elenco di tutte («Film.audio.json»), e il lettore
 // le suona da un <audio> tenuto al passo col video (vedi sincroniaAudio.ts).
@@ -10,7 +10,7 @@ export interface TracciaAudio {
   indice: number // 1 è quella dentro il video
   lingua: string | null // 'it', 'en', o il codice del file ('jpn')
   titolo: string
-  fileId: string | null // il .m4a su Drive; null per quella dentro il video
+  fileId: string | null // il .m4a accanto al video (il suo nome); null per quella dentro
 }
 
 const ESTENSIONE_VIDEO = /\.(mkv|mp4|m4v|avi|mov|webm|wmv|ts)$/i
@@ -24,7 +24,7 @@ export function nomeElencoAudio(nomeVideo: string): string {
 }
 
 // I file delle lingue di un video fra quelli della sua cartella: l'elenco e i
-// .m4a. Vanno nel cestino col video, altrimenti restano orfani su Drive.
+// .m4a. Vanno via col video, altrimenti restano orfani sul disco.
 export function fileAudioDelVideo(nomeVideo: string, vicini: FileCartella[]): FileCartella[] {
   const b = base(nomeVideo)
   const suo = new RegExp(`^${b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.audio(-\\d+\\.m4a|\\.json)$`)
@@ -35,7 +35,7 @@ interface ElencoGrezzo {
   tracce?: { indice?: unknown; lingua?: unknown; titolo?: unknown; file?: unknown }[]
 }
 
-// L'elenco scritto dallo script, con i file risolti negli id di Drive. Una
+// L'elenco scritto dallo script, con i file risolti fra quelli accanto al video. Una
 // traccia il cui .m4a manca (caricamento non finito, cancellato a mano) non si
 // offre: sceglierla vorrebbe dire silenzio. Con una lingua sola non c'è niente
 // da scegliere, e torna vuoto.
