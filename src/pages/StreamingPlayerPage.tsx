@@ -100,7 +100,8 @@ import { indiceAudio, leggiLinguaAudio, nomiTracceAudio, salvaLinguaAudio, sigla
 import { eJellyfin, fermaConversione, flussoDiretto, flussoHls, riproducibileDirettamente, tracciaPredefinita } from '../lib/jellyfin'
 import { useHls, useInfoCasa, useSottotitoliCasa } from '../lib/useLettoreCasa'
 import { eLocale, filmAperto, formatoLeggibile, type FilmAperto } from '../lib/filmLocali'
-import { ErroreCartella, cartellaCollegata, fileDallaCartella, permessoCartella } from '../lib/cartellaLocale'
+import { ErroreCartella, cartellaCollegata, cartellaScelta, fileDallaCartella } from '../lib/cartellaLocale'
+import ScegliCartella from '../components/ScegliCartella'
 import ApriFilmLocale from '../components/ApriFilmLocale'
 
 // Due lettori per lo stesso film:
@@ -1121,18 +1122,17 @@ function LettoreStreaming() {
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80 p-6 text-center text-sm text-zinc-300">
             {cartellaDaRiaprire ? (
               <>
-                <p>Il browser chiede di nuovo il permesso di leggere la cartella dei film.</p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    void permessoCartella(true)
-                      .then((ok) => ok && setRiaperta((n) => n + 1))
-                      .catch(logFailure('Permesso della cartella collegata'))
-                  }
+                <p>
+                  {cartellaScelta()
+                    ? 'Questo browser lascia leggere la cartella dei film solo per una visita: sceglila di nuovo.'
+                    : 'Il browser chiede di nuovo il permesso di leggere la cartella dei film.'}
+                </p>
+                <ScegliCartella
+                  riapri
+                  etichetta={`📂 Riapri la cartella «${cartellaCollegata()}»`}
                   className="btn-primary"
-                >
-                  📂 Riapri la cartella «{cartellaCollegata()}»
-                </button>
+                  onFatto={() => setRiaperta((n) => n + 1)}
+                />
               </>
             ) : (
               <>

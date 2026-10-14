@@ -122,6 +122,10 @@ Due guardie automatiche, oltre ai test veri e propri:
   in IndexedDB, i video diventano una sorgente della videoteca come Drive e
   Jellyfin, con gli stessi id `loc-`. Riaprendo il browser il permesso va
   ridato con un clic («Riapri la cartella»): si dice, non si mostra un vuoto.
+  Gli altri browser (Firefox, Brave…) non hanno le maniglie: lì la cartella
+  si sceglie con `<input webkitdirectory>` e vale per una visita (modo
+  «scelta»). `ScegliCartella` usa da sé il modo che c'è: non mostrare mai il
+  pulsante solo dove esiste `showDirectoryPicker`.
 - Le chiavi Anthropic e TMDB vivono **solo** lato server (`api/`), mai con
   prefisso `VITE_`: con quel prefisso finiscono nel bundle, dove chiunque le
   copia. Il catalogo passa da `/api/tmdb`, che tiene una **lista dei percorsi

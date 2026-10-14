@@ -1,4 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
+import { mkdtempSync, mkdirSync, truncateSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { mockTmdb, mockSupabase, signIn } from './support/mocks'
 
 // La videoteca senza Google Drive: un film scelto dal disco del PC (o dalla
@@ -227,4 +230,47 @@ test('riaperto il browser, il permesso della cartella si ridà con un clic', asy
   await expect(page).toHaveURL(/\/streaming\/loc-/)
   await page.getByRole('button', { name: '📂 Riapri la cartella «Ciak»' }).click()
   await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+})
+
+// Firefox, Brave, Opera…: niente maniglie (showDirectoryPicker). La cartella
+// si sceglie col selettore normale, una volta per visita. Era il caso
+// dell'utente: il pulsante della cartella non compariva proprio.
+test('in un browser senza maniglie la cartella si sceglie col selettore, e si risceglie a ogni visita', async ({ page }) => {
+  await senzaDrive(page)
+  await senzaRiconoscimento(page)
+  await mockSupabase(page, { user_streaming: [] })
+  await page.addInitScript(() => Object.defineProperty(window, 'showDirectoryPicker', { value: undefined, configurable: true }))
+  // Una cartella vera sul disco, come E:\Ciak.
+  const ciak = join(mkdtempSync(join(tmpdir(), 'ciak-')), 'Ciak')
+  for (const [percorso, contenuto] of CARTELLA) {
+    const file = join(ciak, ...percorso.split('/'))
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, contenuto)
+    if (percorso.endsWith('.mp4')) truncateSync(file, 6_000_000 + contenuto.length)
+  }
+  const scegli = async (pulsante: string) => {
+    const selettore = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: pulsante }).click()
+    await (await selettore).setFiles(ciak)
+  }
+
+  await page.goto('/streaming')
+  await scegli('📂 Collega la cartella dei film')
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  await page.getByRole('list', { name: 'Stagione 3' }).getByText('01 Rainforest Shmainforest').click()
+  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+  await expect(page.getByText(/Italiano · dalla cartella/)).toBeVisible()
+
+  // Riaperta la pagina il browser ha dimenticato i file: Ciak lo dice, e lo
+  // stesso pulsante li fa riscegliere.
+  await page.reload()
+  await expect(page.getByText(/sceglila di nuovo/)).toBeVisible()
+  await scegli('📂 Riapri la cartella «Ciak»')
+  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+
+  // In videoteca, l'elenco dell'ultima volta col pulsante per riscegliere.
+  await page.goto('/streaming')
+  await expect(page.getByRole('button', { name: /Paprika \(2006\)/ })).toBeVisible()
+  await scegli('📂 Riapri la cartella «Ciak»')
+  await expect(page.getByRole('button', { name: '📂 Riapri la cartella «Ciak»' })).toHaveCount(0)
 })
