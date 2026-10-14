@@ -1,0 +1,38 @@
+import { useCallback, useEffect, useState } from 'react'
+import { ascoltaFilmOffline, elencaFilmOffline, offlineDisponibile, spazio, type FilmOffline } from './filmOffline'
+
+// I film salvati sul dispositivo, per la videoteca: si vedono anche senza
+// rete, ed è il motivo per cui esistono. Si controlla `onLine` prima di
+// tentare la rete: aspettare un timeout offline vuol dire fissare una pagina
+// vuota per secondi.
+export function useSulDispositivo() {
+  const [offline, setOffline] = useState<FilmOffline[]>([])
+  const [senzaRete, setSenzaRete] = useState(typeof navigator !== 'undefined' && !navigator.onLine)
+  const [spazioUsato, setSpazioUsato] = useState<number | null>(null)
+
+  const caricaOffline = useCallback(async () => {
+    if (!offlineDisponibile()) return
+    setOffline(await elencaFilmOffline())
+    setSpazioUsato((await spazio())?.usato ?? null)
+  }, [])
+  useEffect(() => {
+    void caricaOffline()
+    return ascoltaFilmOffline(() => void caricaOffline())
+  }, [caricaOffline])
+  useEffect(() => {
+    const aggiorna = () => setSenzaRete(!navigator.onLine)
+    window.addEventListener('online', aggiorna)
+    window.addEventListener('offline', aggiorna)
+    return () => {
+      window.removeEventListener('online', aggiorna)
+      window.removeEventListener('offline', aggiorna)
+    }
+  }, [])
+  return {
+    offline,
+    senzaRete,
+    spazioUsato,
+    // Gli id dei film già salvati per intero.
+    scaricati: new Set(offline.filter((f) => f.stato === 'completo').map((f) => f.id)),
+  }
+}
