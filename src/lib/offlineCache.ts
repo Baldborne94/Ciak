@@ -62,13 +62,6 @@ export function leggiCopia<T>(chiave: string): Copia<T> | null {
   }
 }
 
-export function scartaCopia(chiave: string): void {
-  try {
-    localStorage.removeItem(chiave)
-  } catch {
-    /* niente da fare, e niente di grave */
-  }
-}
 
 // «salvata oggi alle 14:32» dice più di una data intera; «il 28 agosto» dice
 // più di «2 giorni fa» quando la copia comincia a essere vecchia davvero.

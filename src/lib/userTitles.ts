@@ -379,33 +379,7 @@ export async function backfillGenreIds(
   return { daFare: mancanti.length, aggiornati, falliti }
 }
 
-export interface UserStats {
-  watched: number
-  favorites: number
-  toWatch: number
-  inProgress: number
-}
 
-export async function getStats(userId: string): Promise<UserStats> {
-  const db = client()
-  // Paginata: senza, oltre 1000 titoli le statistiche mostravano totali più
-  // bassi del vero senza dare alcun segnale che mancasse qualcosa.
-  const rows = await fetchAllRows<{ status: TitleStatus; is_favorite: boolean }>((from, to) =>
-    db
-      .from(TABLE)
-      .select('status, is_favorite')
-      .eq('user_id', userId)
-      .order('id', { ascending: true })
-      .range(from, to),
-  )
-
-  return {
-    watched: rows.filter((r) => r.status === 'watched').length,
-    favorites: rows.filter((r) => r.is_favorite).length,
-    toWatch: rows.filter((r) => r.status === 'to_watch').length,
-    inProgress: rows.filter((r) => r.status === 'in_progress').length,
-  }
-}
 
 // ── Condivisione watchlist "Da vedere" ──────────────────────────────────────
 

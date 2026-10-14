@@ -9,9 +9,9 @@ import { arrivatoAllaFine } from './streaming'
 export const DURATA_SIGLA_PREDEFINITA = 90
 // Il pulsante resta nei primi minuti: prima della sigla c'è spesso una scena
 // d'apertura, che cambia lunghezza da un episodio all'altro.
-export const FINESTRA_SIGLA = 6 * 60
+const FINESTRA_SIGLA = 6 * 60
 // Le durate proposte: da 15 secondi a 2 minuti e mezzo, di 5 in 5.
-export const DURATE_SIGLA = Array.from({ length: 28 }, (_, i) => 15 + i * 5)
+const DURATE_SIGLA = Array.from({ length: 28 }, (_, i) => 15 + i * 5)
 // Il conto alla rovescia prima dell'episodio dopo, a fine episodio.
 export const SECONDI_AL_PROSSIMO = 10
 
@@ -200,7 +200,7 @@ export interface Salto {
   quando: number // Date.now()
 }
 
-export const FINESTRA_CORREZIONE_MS = 20_000
+const FINESTRA_CORREZIONE_MS = 20_000
 
 export function fineDaCorrezione(salto: Salto | null, posizione: number, ora: number): number | null {
   if (!salto || ora - salto.quando > FINESTRA_CORREZIONE_MS) return null

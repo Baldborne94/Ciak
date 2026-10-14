@@ -12,7 +12,7 @@ import type { MediaType, TmdbType } from './types'
 // Il segno sul dispositivo che il lavoro è fatto, per persona.
 export const segnoTitoliItaliani = (userId: string) => `ciak:titoli-italiani-v1:${userId}`
 
-export const TABELLE_CON_TITOLO = ['user_titles', 'user_diary', 'user_list_items'] as const
+const TABELLE_CON_TITOLO = ['user_titles', 'user_diary', 'user_list_items'] as const
 
 export interface RigaConTitolo {
   tmdb_id: number

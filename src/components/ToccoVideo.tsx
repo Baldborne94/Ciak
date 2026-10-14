@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 
 // Quanto si aspetta un secondo tocco prima di decidere che era uno solo.
 export const ATTESA_DOPPIO_MS = 250
-export const SALTO_SECONDI = 10
+const SALTO_SECONDI = 10
 
 type Segnale = '▶' | '⏸' | '⏪ 10 s' | '10 s ⏩'
 

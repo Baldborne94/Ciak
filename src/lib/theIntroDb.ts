@@ -2,7 +2,7 @@
 // coda. Le parti pure, condivise dal browser (che lo chiede direttamente) e
 // dalla funzione /api/sigle (che resta come riserva).
 
-export const BASE_THEINTRODB = 'https://api.theintrodb.org/v3/media'
+const BASE_THEINTRODB = 'https://api.theintrodb.org/v3/media'
 
 export interface Episodio {
   tmdbId: number

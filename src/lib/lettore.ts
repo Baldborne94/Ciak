@@ -26,7 +26,7 @@ export function senzaAudio(v: HTMLVideoElement): boolean | null {
 // Un salto che non finisce: il browser chiede il pezzo nuovo e, se non arriva
 // (il server di casa che non risponde), resta in attesa senza mai dare
 // errore. Dopo un po' lo si dice, invece di lasciare la rotellina.
-export const ATTESA_SALTO_MS = 20_000
+const ATTESA_SALTO_MS = 20_000
 // Un film che non parte: alcuni MKV il browser li scarica senza mai riuscire
 // ad aprirli, e senza dare errore. Oltre questa attesa lo si dice.
 export const ATTESA_AVVIO_MS = 20_000
