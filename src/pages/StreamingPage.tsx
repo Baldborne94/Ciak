@@ -65,6 +65,7 @@ import {
   unisciFonti,
 } from '../lib/jellyfin'
 import CollegaJellyfin from '../components/CollegaJellyfin'
+import ApriFilmLocale from '../components/ApriFilmLocale'
 
 export default function StreamingPage() {
   const navigate = useNavigate()
@@ -659,39 +660,20 @@ export default function StreamingPage() {
     />
   )
 
-  // Senza Client ID configurato la funzione non esiste: lo diciamo invece di
-  // mostrare un pulsante che non farebbe nulla.
-  if (!driveConfigurato() && !casaCollegata && !moduloCasa) {
-    return (
-      <div>
-        <PageHeader
-          eyebrow="Streaming"
-          title="La mia videoteca"
-          subtitle="Guarda in streaming i film, le serie, gli anime e i cartoni che tieni su Google Drive."
-        />
-        <EmptyState
-          title="Funzione non ancora configurata"
-          message="Manca il collegamento a Google Drive (Client ID OAuth). Una volta configurato, qui compariranno i tuoi video."
-          icon="🔌"
-        />
-        <p className="mt-4 text-center">
-          <button type="button" onClick={() => setModuloCasa(true)} className="btn-ghost">
-            🏠 Usa il server di casa (Jellyfin)
-          </button>
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div>
       <PageHeader
         eyebrow="Streaming"
         title="La mia videoteca"
-        subtitle={`Film, serie, anime e cartoni della cartella «${CARTELLA_CIAK}» del tuo Google Drive o del server di casa, in streaming o scaricati sul dispositivo.`}
+        subtitle={
+          driveConfigurato()
+            ? `Film, serie, anime e cartoni della cartella «${CARTELLA_CIAK}» del tuo Google Drive o del server di casa, in streaming o scaricati sul dispositivo.`
+            : 'I film che apri dal dispositivo (il disco del PC, la memoria del tablet) e quelli salvati in Ciak, col lettore di Ciak.'
+        }
       >
         {collegato && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-start gap-2">
+            <ApriFilmLocale />
             <button onClick={carica} disabled={caricando} className="btn-ghost">
               🔄 Aggiorna
             </button>
@@ -775,6 +757,14 @@ export default function StreamingPage() {
         />
       ) : !collegato ? (
         <div className="space-y-4">
+          <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
+            <p className="mb-4 text-zinc-400">
+              Scegli un film dal disco del PC o dalla memoria del tablet (con i suoi sottotitoli
+              .srt, se li hai): parte nel lettore di Ciak, senza caricarlo da nessuna parte. Sul
+              tablet puoi salvarlo in Ciak per vederlo anche offline.
+            </p>
+            <ApriFilmLocale grande />
+          </div>
           {driveConfigurato() && (
             <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
               <p className="mb-4 text-zinc-400">

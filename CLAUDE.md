@@ -110,6 +110,13 @@ Due guardie automatiche, oltre ai test veri e propri:
   di ripresa, episodio dopo) vale per entrambe senza tabelle nuove. Le parti
   solo di Drive (service worker, cestino, download offline) si saltano con
   `eJellyfin(fileId)`.
+- Drive è **facoltativo** e spento finché non lo si accende dalle Impostazioni
+  (`driveAttivo`, `driveConfigurato`). Senza, la videoteca vive dei film
+  **aperti dal dispositivo** (`src/lib/filmLocali.ts`): id `loc-<impronta>` dal
+  nome e dalla dimensione del file, così riaprendolo si ritrovano titolo,
+  diario e punto di ripresa. Il browser non lascia riaprire un file da solo:
+  o lo si sceglie di nuovo, o se ne tiene una copia con «Salva in Ciak»
+  (`salvaFileSulDispositivo`, nella stessa cache dei film scaricati).
 - Le chiavi Anthropic e TMDB vivono **solo** lato server (`api/`), mai con
   prefisso `VITE_`: con quel prefisso finiscono nel bundle, dove chiunque le
   copia. Il catalogo passa da `/api/tmdb`, che tiene una **lista dei percorsi

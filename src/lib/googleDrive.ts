@@ -41,10 +41,40 @@ export const EVENTO_DRIVE = 'ciak:drive-token'
 // La cartella, nella radice di «Il mio Drive», da cui si prendono i film.
 export const CARTELLA_CIAK = 'Ciak'
 const MIME_CARTELLA = 'application/vnd.google-apps.folder'
-// La funzione esiste solo se è stato configurato un Client ID: senza, la voce di
-// menu e la pagina restano nascoste, così il resto dell'app non cambia.
-export function driveConfigurato(): boolean {
+// Drive si può usare se c'è un Client ID (`driveDisponibile`) e se chi usa Ciak
+// lo ha acceso nelle Impostazioni (`driveAttivo`): la videoteca può vivere
+// anche solo dei film aperti dal dispositivo, e chi ha lasciato Drive non deve
+// ritrovarsi pulsanti e rinnovi del permesso per un servizio che non usa.
+// Spento, nessuna richiesta a Google parte da Ciak.
+export function driveDisponibile(): boolean {
   return !!CLIENT_ID
+}
+
+const CHIAVE_DRIVE_ATTIVO = 'ciak:drive'
+
+export function driveAttivo(): boolean {
+  try {
+    return localStorage.getItem(CHIAVE_DRIVE_ATTIVO) === 'acceso'
+  } catch {
+    return false
+  }
+}
+
+// Spegnerlo dimentica il permesso solo qui: il server lo tiene, così un altro
+// dispositivo dove Drive è ancora acceso non deve ricollegarsi.
+export function impostaDriveAttivo(acceso: boolean): void {
+  try {
+    if (acceso) localStorage.setItem(CHIAVE_DRIVE_ATTIVO, 'acceso')
+    else localStorage.removeItem(CHIAVE_DRIVE_ATTIVO)
+  } catch {
+    /* storage negato: vale fino a quando la pagina resta aperta */
+  }
+  if (!acceso) driveDisconnetti()
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(EVENTO_DRIVE))
+}
+
+export function driveConfigurato(): boolean {
+  return driveDisponibile() && driveAttivo()
 }
 
 export interface DriveVideo {

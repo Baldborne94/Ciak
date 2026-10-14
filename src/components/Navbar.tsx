@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useIdentityCtx } from '../lib/identityCtx'
-import { driveConfigurato } from '../lib/googleDrive'
 
 // Primary links shown inline. Anime/Cartoni now live inside "Cerca".
 const primary = [
@@ -10,7 +9,8 @@ const primary = [
   { to: '/search', label: 'Cerca' },
   // Lo streaming dei film su Google Drive ha una voce sua, non dentro «Le mie
   // liste». Solo se il collegamento è configurato: senza Client ID sparisce.
-  ...(driveConfigurato() ? [{ to: '/streaming', label: '🎬 Streaming' }] : []),
+  // Sempre: anche senza Drive ci sono i film aperti dal dispositivo.
+  { to: '/streaming', label: '🎬 Streaming' },
 ]
 
 // Personal lists grouped under a dropdown. "Visti" e "Diario" ora sono una sola
