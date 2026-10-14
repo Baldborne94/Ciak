@@ -163,6 +163,14 @@ esponga ancora tutto, l'altro che nessun modulo superi le 400 righe. Se un
 modulo cresce davvero, si divide ancora; quello che non deve succedere è
 tornare alla discarica per inerzia, una funzione alla volta.
 
+Lo stesso vale per le pagine: stanno sotto le 600 righe
+(`src/lib/dimensioniPagine.test.ts`). Il lettore e la videoteca erano arrivati
+a 1222 e 1044; ora la logica sta in hook (`src/lib/use*.ts`: `useFileDelDisco`,
+`useSigleLettore`, `useElencoVideoteca`…), il calcolo puro in `src/lib` coi suoi
+test (`elencoVideoteca.ts`) e i pezzi d'interfaccia in `src/components/`. Le
+tre pagine ancora oltre il tetto sono eccezioni ferme alla lunghezza di oggi:
+possono solo scendere. Una pagina che cresce si divide, non si alza il tetto.
+
 ## Schema del database
 
 I file `supabase/schema_vN_*.sql` si eseguono **a mano** nel SQL Editor di
