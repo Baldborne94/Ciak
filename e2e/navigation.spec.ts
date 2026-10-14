@@ -127,3 +127,22 @@ test('dalla ricerca si apre la scheda di un titolo', async ({ page }) => {
   await expect(page).toHaveURL(/\/title\/movie\/550$/)
   await expect(page.getByRole('heading', { name: /Titolo 550|Fight Club/ }).first()).toBeVisible()
 })
+
+// Un tablet girato in orizzontale (1024-1280 px) prendeva la barra completa,
+// che lì non ci sta: «Esci» finiva oltre il bordo destro, irraggiungibile.
+for (const [larghezza, altezza] of [[1024, 768], [1180, 820], [1280, 800], [1440, 900], [1920, 1080]]) {
+  test(`a ${larghezza}px la barra in alto sta tutta nello schermo`, async ({ page }) => {
+    await page.setViewportSize({ width: larghezza, height: altezza })
+    await mockTmdb(page)
+    await signIn(page)
+    await page.goto('/')
+
+    const esci = page.getByRole('button', { name: 'Esci' })
+    await expect(esci).toBeVisible()
+    const riquadro = await esci.boundingBox()
+    expect(riquadro!.x + riquadro!.width).toBeLessThanOrEqual(larghezza)
+    // Niente che sbordi dalla barra, nemmeno a destra di «Esci».
+    const sborda = await page.locator('header nav').first().evaluate((n) => n.scrollWidth > n.clientWidth)
+    expect(sborda).toBe(false)
+  })
+}
