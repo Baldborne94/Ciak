@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useAuth } from './auth'
 import { logFailure } from './logFailure'
 import { driveConfigurato } from './googleDrive'
+import { jellyfinCollegato } from './jellyfin'
+import { cartellaCollegata } from './cartellaLocale'
 import { elencaStreaming, type VoceStreaming } from './streaming'
 import { elencaFilmOffline } from './filmOffline'
 import { leggiPresenti, soloPresenti } from './videoPresenti'
@@ -34,7 +36,8 @@ export function useVideoteca(): VoceStreaming[] {
   const { user } = useAuth()
   const [righe, setRighe] = useState<VoceStreaming[]>([])
   useEffect(() => {
-    if (!user || !driveConfigurato()) return
+    // Una videoteca c'è con Drive, col server di casa o con la cartella del PC.
+    if (!user || !(driveConfigurato() || jellyfinCollegato() || cartellaCollegata())) return
     let vivo = true
     // Solo i file ancora su Drive (secondo l'ultimo elenco della videoteca) o
     // scaricati qui: un pulsante verso un file cancellato porta a un errore.

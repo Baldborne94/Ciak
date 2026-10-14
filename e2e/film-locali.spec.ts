@@ -120,3 +120,111 @@ test('Drive si spegne e si riaccende dalle Impostazioni', async ({ page }) => {
   await page.getByRole('checkbox', { name: /Usa Google Drive per lo streaming/ }).check()
   expect(await page.evaluate(() => localStorage.getItem('ciak:drive'))).toBe('acceso')
 })
+
+// ── La cartella del PC collegata (E:\Ciak) ──────────────────────────────────
+// Una cartella vera del browser (l'Origin Private File System) al posto di
+// quella scelta dal disco: le stesse «maniglie» di File System Access, che si
+// salvano in IndexedDB e si rileggono dopo il ricaricamento.
+async function cartellaFinta(page: Page, file: [string, string][]) {
+  await page.addInitScript((file) => {
+    ;(window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker = async () => {
+      const ciak = await (await navigator.storage.getDirectory()).getDirectoryHandle('Ciak', { create: true })
+      for (const [percorso, contenuto] of file) {
+        const parti = percorso.split('/')
+        let dir = ciak
+        for (const p of parti.slice(0, -1)) dir = await dir.getDirectoryHandle(p, { create: true })
+        const scrivi = await (await dir.getFileHandle(parti[parti.length - 1], { create: true })).createWritable()
+        await scrivi.write(contenuto)
+        // Un video vero pesa: sotto i 5 MB la videoteca lo scarta come promo
+        // della release. Qualche MB di zeri basta, e costa poco.
+        if (percorso.endsWith('.mp4')) await scrivi.truncate(6_000_000 + contenuto.length)
+        await scrivi.close()
+      }
+      return ciak
+    }
+  }, file)
+}
+
+const CARTELLA: [string, string][] = [
+  ['SERIE TV/South Park/Season 03/01 Rainforest Shmainforest.mp4', 'a'.repeat(64)],
+  ['SERIE TV/South Park/Season 03/01 Rainforest Shmainforest.it.srt', SRT],
+  ['SERIE TV/South Park/Season 03/02 Spontaneous Combustion.mp4', 'b'.repeat(80)],
+  ['FILM/Paprika (2006)/Paprika.2006.mp4', 'c'.repeat(96)],
+  ['sposta-su-disco.bat', '@echo off'],
+]
+
+// Titoli non riconosciuti: i nomi restano quelli delle cartelle, stabili.
+async function senzaRiconoscimento(page: Page) {
+  await page.route('**/api/tmdb*', (route) =>
+    new URL(route.request().url()).searchParams.get('path') === '/search/multi' ? route.fulfill({ json: { results: [] } }) : route.fallback(),
+  )
+}
+
+test('collegata la cartella del PC, la serie compare per stagioni e l’episodio parte dal disco', async ({ page }) => {
+  await senzaDrive(page)
+  await senzaRiconoscimento(page)
+  const db = await mockSupabase(page, { user_streaming: [] })
+  await cartellaFinta(page, CARTELLA)
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: '📂 Collega la cartella dei film' }).click()
+
+  // Come su Drive: la serie con le sue stagioni, il film nella sua cartella.
+  await expect(page.getByRole('button', { name: /Paprika \(2006\)/ })).toBeVisible()
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
+  await expect(stagione3.getByText('02 Spontaneous Combustion')).toBeVisible()
+  await stagione3.getByText('01 Rainforest Shmainforest').click()
+
+  await expect(page).toHaveURL(/\/streaming\/loc-[0-9a-f]{16}$/)
+  const id = new URL(page.url()).pathname.split('/').pop()!
+  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+  // Il sottotitolo accanto al video, nella sua cartella.
+  await expect(page.getByText(/Italiano · dalla cartella/)).toBeVisible()
+  await expect.poll(() => db.writes.some((w) => w.table === 'user_streaming' && JSON.stringify(w.body).includes(id))).toBe(true)
+
+  // Ricaricando, il lettore ritrova il file da solo: niente da scegliere.
+  await page.reload()
+  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+  await expect(page.getByText(/sceglilo di nuovo/)).toHaveCount(0)
+
+  // E la videoteca si rilegge da sola, senza ricollegare niente.
+  await page.goto('/streaming')
+  await expect(page.getByRole('button', { name: /Paprika \(2006\)/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Scollega la cartella' }).click()
+  await expect(page.getByRole('button', { name: '📂 Collega la cartella dei film' })).toBeVisible()
+})
+
+test('riaperto il browser, il permesso della cartella si ridà con un clic', async ({ page }) => {
+  await senzaDrive(page)
+  await senzaRiconoscimento(page)
+  await mockSupabase(page, { user_streaming: [] })
+  await cartellaFinta(page, CARTELLA)
+  // Come Chrome: il permesso c'è dopo la scelta, ma non dopo aver riaperto la pagina.
+  await page.addInitScript(() => {
+    let concesso = false
+    const w = window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }
+    const scegli = w.showDirectoryPicker
+    w.showDirectoryPicker = async () => {
+      concesso = true
+      return scegli()
+    }
+    const h = FileSystemHandle.prototype as unknown as Record<string, unknown>
+    h.queryPermission = async () => (concesso ? 'granted' : 'prompt')
+    h.requestPermission = async () => {
+      concesso = true
+      return 'granted'
+    }
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: '📂 Collega la cartella dei film' }).click()
+  await expect(page.getByRole('button', { name: /Paprika \(2006\)/ })).toBeVisible()
+
+  // Riaperta: l'elenco dell'ultima volta resta, col pulsante per ridare il permesso.
+  await page.reload()
+  await page.getByRole('button', { name: /Paprika \(2006\)/ }).click()
+  await expect(page).toHaveURL(/\/streaming\/loc-/)
+  await page.getByRole('button', { name: '📂 Riapri la cartella «Ciak»' }).click()
+  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+})

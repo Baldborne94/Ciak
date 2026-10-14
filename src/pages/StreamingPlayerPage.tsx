@@ -99,7 +99,8 @@ import { collegaAudio } from '../lib/sincroniaAudio'
 import { indiceAudio, leggiLinguaAudio, nomiTracceAudio, salvaLinguaAudio, siglaTracciaAudio, type TracciaAudio } from '../lib/tracceAudio'
 import { eJellyfin, fermaConversione, flussoDiretto, flussoHls, riproducibileDirettamente, tracciaPredefinita } from '../lib/jellyfin'
 import { useHls, useInfoCasa, useSottotitoliCasa } from '../lib/useLettoreCasa'
-import { eLocale, filmAperto, formatoLeggibile } from '../lib/filmLocali'
+import { eLocale, filmAperto, formatoLeggibile, type FilmAperto } from '../lib/filmLocali'
+import { ErroreCartella, cartellaCollegata, fileDallaCartella, permessoCartella } from '../lib/cartellaLocale'
 import ApriFilmLocale from '../components/ApriFilmLocale'
 
 // Due lettori per lo stesso film:
@@ -152,10 +153,41 @@ function LettoreStreaming() {
   const casa = eJellyfin(fileId)
   const { info: infoCasa, errore: erroreCasa } = useInfoCasa(fileId, casa && valido)
   // Un film aperto dal dispositivo (vedi filmLocali): il file scelto dal disco
-  // in questa visita, oppure la copia salvata in Ciak. Si rilegge quando lo si
-  // sceglie di nuovo dalla pagina stessa (`stato.aperto` cambia).
+  // in questa visita, quello della cartella collegata (cartellaLocale), oppure
+  // la copia salvata in Ciak. Si rilegge quando lo si sceglie di nuovo dalla
+  // pagina stessa (`stato.aperto` cambia) o si riapre la cartella.
   const loc = eLocale(fileId)
-  const aperto = useMemo(() => (loc ? filmAperto(fileId) : undefined), [loc, fileId, stato?.aperto]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [aperto, setAperto] = useState<FilmAperto | undefined>(() => (loc ? filmAperto(fileId) : undefined))
+  // Finché la cartella collegata non ha risposto non si chiede di scegliere il file.
+  const [cercatoInCartella, setCercatoInCartella] = useState(() => !loc || !cartellaCollegata())
+  const [cartellaDaRiaprire, setCartellaDaRiaprire] = useState(false)
+  const [riaperta, setRiaperta] = useState(0)
+  useEffect(() => {
+    if (!loc) return
+    const subito = filmAperto(fileId)
+    if (subito) {
+      setAperto(subito)
+      setCercatoInCartella(true)
+      return
+    }
+    if (!cartellaCollegata()) return setCercatoInCartella(true)
+    let vivo = true
+    fileDallaCartella(fileId)
+      .then((f) => {
+        if (!vivo) return
+        if (f) setAperto(f)
+        setCartellaDaRiaprire(false)
+      })
+      .catch((e: unknown) => {
+        if (!vivo) return
+        if (e instanceof ErroreCartella && e.permesso) setCartellaDaRiaprire(true)
+        else logFailure('Video dalla cartella collegata')(e)
+      })
+      .finally(() => vivo && setCercatoInCartella(true))
+    return () => {
+      vivo = false
+    }
+  }, [loc, fileId, stato?.aperto, riaperta])
   // Né Drive né Jellyfin: tutto ciò che è solo loro (sessione, cestino,
   // diagnostica, lettore di Drive) qui non c'è.
   const daDrive = !casa && !loc
@@ -1082,15 +1114,36 @@ function LettoreStreaming() {
           <audio key={srcAudio} ref={setElementoAudio} src={srcAudio} preload="auto" data-testid="audio-lingua" />
         )}
         {lettore === 'ciak' && <IndicatoreCaricamento videoRef={videoRef} />}
-        {loc && locale !== undefined && !srcLocale && (
+        {loc && locale !== undefined && cercatoInCartella && !srcLocale && (
           // Riaprendo Ciak (o dalla cronologia) il file del disco non c'è più:
-          // il browser non lascia riaprirlo da solo, va scelto di nuovo.
+          // il browser non lascia riaprirlo da solo. Con la cartella collegata
+          // basta ridargli il permesso; senza, il file va scelto di nuovo.
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80 p-6 text-center text-sm text-zinc-300">
-            <p>
-              Questo film è sul tuo dispositivo{nomeFile ? ` (${nomeFile})` : ''}: sceglilo di nuovo per guardarlo, il
-              browser non lascia riaprire un file da solo.
-            </p>
-            <ApriFilmLocale grande />
+            {cartellaDaRiaprire ? (
+              <>
+                <p>Il browser chiede di nuovo il permesso di leggere la cartella dei film.</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void permessoCartella(true)
+                      .then((ok) => ok && setRiaperta((n) => n + 1))
+                      .catch(logFailure('Permesso della cartella collegata'))
+                  }
+                  className="btn-primary"
+                >
+                  📂 Riapri la cartella «{cartellaCollegata()}»
+                </button>
+              </>
+            ) : (
+              <>
+                <p>
+                  {cartellaCollegata()
+                    ? `Questo video${nomeFile ? ` (${nomeFile})` : ''} non è più nella cartella collegata: è stato spostato o cancellato? Puoi sceglierlo a mano.`
+                    : `Questo film è sul tuo dispositivo${nomeFile ? ` (${nomeFile})` : ''}: sceglilo di nuovo per guardarlo, il browser non lascia riaprire un file da solo.`}
+                </p>
+                <ApriFilmLocale grande />
+              </>
+            )}
           </div>
         )}
         {lettore === 'ciak' && (
@@ -1478,8 +1531,9 @@ function LettoreStreaming() {
             <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
               <p className="mb-1 font-medium text-zinc-200">💬 Sottotitoli</p>
               <p>
-                Scegli il file <code>.srt</code> insieme al film (tenendo premuto Ctrl, o selezionandoli
-                tutti e due): un nome che finisce in <code>.it.srt</code> o <code>.en.srt</code> dice la lingua.
+                Quelli accanto al video nella cartella collegata, oppure il file <code>.srt</code> scelto
+                insieme al film (tenendo premuto Ctrl): un nome che finisce in <code>.it.srt</code> o{' '}
+                <code>.en.srt</code> dice la lingua.
               </p>
             </div>
           </>
