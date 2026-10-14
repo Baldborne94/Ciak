@@ -66,15 +66,14 @@ import {
 } from '../lib/jellyfin'
 import CollegaJellyfin from '../components/CollegaJellyfin'
 import ApriFilmLocale from '../components/ApriFilmLocale'
+import ScegliCartella from '../components/ScegliCartella'
 import { eLocale } from '../lib/filmLocali'
 import {
   cartellaCollegata,
   cartellaDisponibile,
-  collegaCartella,
   elencaVideoCartella,
   ErroreCartella,
   EVENTO_CARTELLA,
-  permessoCartella,
   scollegaCartella,
 } from '../lib/cartellaLocale'
 
@@ -340,26 +339,11 @@ export default function StreamingPage() {
     return () => window.removeEventListener(EVENTO_CARTELLA, cambiato)
   }, [])
 
-  async function collegaLaCartella() {
+  // La cartella collegata o riaperta (vedi ScegliCartella): si rilegge.
+  async function cartellaPronta() {
     setErrore(null)
-    try {
-      setCartella(await collegaCartella())
-      await carica()
-    } catch (e) {
-      // Finestra chiusa senza scegliere: niente da dire.
-      if (e instanceof DOMException && e.name === 'AbortError') return
-      setErrore(e instanceof Error ? e.message : 'Cartella non collegata.')
-      logFailure('Collegamento della cartella dei film')(e)
-    }
-  }
-
-  async function riapriCartella() {
-    try {
-      if (await permessoCartella(true)) await carica()
-    } catch (e) {
-      setErrore(e instanceof Error ? e.message : 'Permesso non concesso.')
-      logFailure('Permesso della cartella dei film')(e)
-    }
+    setCartella(cartellaCollegata())
+    await carica()
   }
 
   async function scollegaLaCartella() {
@@ -744,9 +728,13 @@ export default function StreamingPage() {
         {collegato && (
           <div className="flex flex-wrap items-start gap-2">
             {cartellaDaRiaprire && (
-              <button onClick={() => void riapriCartella()} className="btn-primary">
-                📂 Riapri la cartella «{cartella}»
-              </button>
+              <ScegliCartella
+                riapri
+                etichetta={`📂 Riapri la cartella «${cartella}»`}
+                className="btn-primary"
+                onFatto={() => void cartellaPronta()}
+                onErrore={setErrore}
+              />
             )}
             <ApriFilmLocale />
             <button onClick={carica} disabled={caricando} className="btn-ghost">
@@ -757,11 +745,7 @@ export default function StreamingPage() {
                 Scollega la cartella
               </button>
             ) : (
-              cartellaDisponibile() && (
-                <button onClick={() => void collegaLaCartella()} className="btn-ghost">
-                  📂 Collega una cartella
-                </button>
-              )
+              <ScegliCartella etichetta="📂 Collega una cartella" onFatto={() => void cartellaPronta()} onErrore={setErrore} />
             )}
             {!casaCollegata && !moduloCasa && (
               <button onClick={() => setModuloCasa(true)} className="btn-ghost">
@@ -843,21 +827,28 @@ export default function StreamingPage() {
         />
       ) : !collegato ? (
         <div className="space-y-4">
-          {cartellaDisponibile() && (
-            <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
-              <p className="mb-4 text-zinc-400">
-                Collega la cartella dei film del PC (per esempio <code>E:\Ciak</code>, con dentro FILM,
-                SERIE TV, ANIME…): Ciak la legge come una videoteca, con le serie divise in stagioni,
-                l’episodio dopo e i sottotitoli accanto ai video. I file restano dove sono.
-              </p>
-              <button onClick={() => void collegaLaCartella()} className="btn-primary">
-                📂 Collega la cartella dei film
-              </button>
-            </div>
-          )}
           <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
             <p className="mb-4 text-zinc-400">
-              {cartellaDisponibile() ? 'Oppure un film alla volta: scegline uno' : 'Scegli un film'} dal disco del PC o dalla
+              Collega la cartella dei film del PC (per esempio <code>E:\Ciak</code>, con dentro FILM,
+              SERIE TV, ANIME…): Ciak la legge come una videoteca, con le serie divise in stagioni,
+              l’episodio dopo e i sottotitoli accanto ai video. I file restano dove sono.
+            </p>
+            <ScegliCartella
+              etichetta="📂 Collega la cartella dei film"
+              className="btn-primary"
+              onFatto={() => void cartellaPronta()}
+              onErrore={setErrore}
+            />
+            {!cartellaDisponibile() && (
+              <p className="mt-3 text-xs text-zinc-500">
+                In questo browser la cartella va scelta a ogni visita (il browser chiede se «caricare» i
+                file: non si carica niente, Ciak li legge dal disco). Con Chrome o Edge basta sceglierla una volta.
+              </p>
+            )}
+          </div>
+          <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
+            <p className="mb-4 text-zinc-400">
+              Oppure un film alla volta: scegline uno dal disco del PC o dalla
               memoria del tablet (con i suoi sottotitoli .srt, se li hai): parte nel lettore di Ciak,
               senza caricarlo da nessuna parte. Sul tablet puoi salvarlo in Ciak per vederlo anche offline.
             </p>
