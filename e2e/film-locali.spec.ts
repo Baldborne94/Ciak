@@ -139,7 +139,7 @@ const CARTELLA: [string, string][] = [
   ['SERIE TV/South Park/Season 03/01 Rainforest Shmainforest.it.srt', SRT],
   ['SERIE TV/South Park/Season 03/02 Spontaneous Combustion.mp4', 'b'.repeat(80)],
   ['FILM/Paprika (2006)/Paprika.2006.mp4', 'c'.repeat(96)],
-  ['sposta-su-disco.bat', '@echo off'],
+  ['prepara-ciak.bat', '@echo off'],
 ]
 
 // Titoli non riconosciuti: i nomi restano quelli delle cartelle, stabili.
@@ -310,7 +310,7 @@ test('si cancella dal disco: un episodio dal lettore, poi la serie intera dalla 
     'SERIE TV/South Park/Season 03/',
     'SERIE TV/South Park/Season 03/02 Spontaneous Combustion.mp4',
     'SERIE TV/South Park/Season 03/03 Tweek vs Craig.mp4',
-    'sposta-su-disco.bat',
+    'prepara-ciak.bat',
   ])
 
   // Dalla videoteca, la serie intera: la stagione e la cartella della serie,
@@ -319,7 +319,7 @@ test('si cancella dal disco: un episodio dal lettore, poi la serie intera dalla 
   await page.getByRole('button', { name: '🗑 Cancella la serie dal disco' }).click()
   await expect(page.getByRole('button', { name: /^South Park/ })).toHaveCount(0)
   expect(avvisi[1]).toMatch(/Non finiscono nel Cestino/)
-  expect(await fileSulDisco(page)).toEqual(['FILM/', 'FILM/Paprika (2006)/', 'FILM/Paprika (2006)/Paprika.2006.mp4', 'SERIE TV/', 'sposta-su-disco.bat'])
+  expect(await fileSulDisco(page)).toEqual(['FILM/', 'FILM/Paprika (2006)/', 'FILM/Paprika (2006)/Paprika.2006.mp4', 'SERIE TV/', 'prepara-ciak.bat'])
 })
 
 test('chi ci ripensa davanti alla conferma non perde niente', async ({ page }) => {
