@@ -7,7 +7,7 @@ import { eNuova, VERSIONE_APP, versionePubblicata } from '../lib/versione'
 // appena pubblicata sembri non funzionare.
 
 // Ogni quanto si ricontrolla con la scheda aperta.
-export const OGNI_MS = 10 * 60_000
+const OGNI_MS = 10 * 60_000
 
 interface Props {
   versione?: string

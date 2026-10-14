@@ -8,7 +8,7 @@ import { logFailure } from './logFailure'
 // {id}/info.json) con titolo, stato e i sottotitoli già trovati, così offline
 // ci sono anche quelli.
 
-export const CACHE_FILM = 'ciak-film-v1'
+const CACHE_FILM = 'ciak-film-v1'
 
 export type StatoFilmOffline = 'in-corso' | 'completo' | 'errore'
 
@@ -120,7 +120,7 @@ export async function spazio(): Promise<{ usato: number; disponibile: number } |
 
 // Chiede al browser di non buttare via i dati di Ciak quando lo spazio
 // scarseggia: senza, un film da gigabyte è il primo candidato a sparire.
-export async function chiediPersistenza(): Promise<boolean> {
+async function chiediPersistenza(): Promise<boolean> {
   try {
     return (await navigator.storage?.persist?.()) ?? false
   } catch {

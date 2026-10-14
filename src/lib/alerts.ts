@@ -19,15 +19,6 @@ export interface AlertRef {
   releaseDate: string | null
 }
 
-export async function listAlerts(userId: string): Promise<UserAlert[]> {
-  const { data, error } = await client()
-    .from('user_alerts')
-    .select('*')
-    .eq('user_id', userId)
-    .order('release_date', { ascending: true, nullsFirst: false })
-  if (error) throw new Error(error.message)
-  return (data ?? []) as UserAlert[]
-}
 
 export async function alertIds(userId: string): Promise<Set<string>> {
   const { data, error } = await client()

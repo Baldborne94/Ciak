@@ -110,7 +110,7 @@ export function scegliAbbinamento(
 
 // ── Quando un film conta come «visto» ───────────────────────────────────────
 // Le regole stanno in fineVisione.ts; qui restano esportate per chi le usava.
-export { SOGLIA_FINE, QUOTA_GUARDATA, arrivatoAllaFine, contaComeVisto } from './fineVisione'
+export { arrivatoAllaFine, contaComeVisto } from './fineVisione'
 
 // Dopo cinque minuti un film «da vedere» passa «in corso»: compare in «Riprendi
 // a guardare», che è il posto giusto per un film lasciato a metà.

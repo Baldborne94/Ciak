@@ -12,7 +12,7 @@ import { stagioneDaCartella } from './sottotitoli'
 // Tailscale («tailscale serve»), che dà un indirizzo https://…ts.net valido sia
 // in casa sia fuori.
 
-export const PREFISSO_JELLYFIN = 'jf-'
+const PREFISSO_JELLYFIN = 'jf-'
 const CHIAVE = 'ciak:jellyfin'
 const CHIAVE_DISPOSITIVO = 'ciak:jellyfin-dispositivo'
 export const EVENTO_JELLYFIN = 'ciak:jellyfin-cambiato'

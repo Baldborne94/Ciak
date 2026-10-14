@@ -6,7 +6,7 @@ import type { MediaItem, UserTitle } from './types'
 
 // Gli id TMDB sono unici solo dentro un tipo: un film e una serie possono
 // avere lo stesso numero, quindi la chiave è sempre la coppia.
-export function chiave(mediaType: string, tmdbId: number): string {
+function chiave(mediaType: string, tmdbId: number): string {
   return `${mediaType}-${tmdbId}`
 }
 

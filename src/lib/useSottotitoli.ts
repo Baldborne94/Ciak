@@ -30,7 +30,7 @@ import { leggiSottotitoliSalvati, salvaSottotitolo, togliSottotitolo, type Sotto
 // lo si toglie.
 
 // Le lingue che il lettore offre sempre, se si trovano.
-export const LINGUE_VOLUTE = ['it', 'en'] as const
+const LINGUE_VOLUTE = ['it', 'en'] as const
 // La corsia dei sottotitoli della cartella di cui non si capisce la lingua.
 const ALTRO = 'altro'
 

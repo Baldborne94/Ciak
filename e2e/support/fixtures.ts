@@ -73,7 +73,6 @@ export function browsePage(label: string, page: number, perPage = 6): RawMedia[]
   )
 }
 
-export const animePage = (page: number, perPage = 6) => browsePage('Anime', page, perPage)
 
 // Quale catalogo sta chiedendo la pagina, in base ai parametri di discover:
 // i tre BrowseList differiscono per lingua originale e keyword.

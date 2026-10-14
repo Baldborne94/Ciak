@@ -8,7 +8,7 @@ import type { VideoFile } from './fileVideo'
 // stesso film un'altra sera, Ciak ritrova il titolo riconosciuto, il punto in
 // cui ci si era fermati e il diario (tutto legato all'id del file, come per
 // la cartella collegata).
-export const PREFISSO_LOCALE = 'loc-'
+const PREFISSO_LOCALE = 'loc-'
 
 export function eLocale(fileId: string): boolean {
   return fileId.startsWith(PREFISSO_LOCALE)

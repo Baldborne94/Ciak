@@ -68,7 +68,7 @@ export function urlTmdb(
 // senza nemmeno svegliare questa funzione. È ciò che rende il proxy sostenibile
 // — senza, analizzare una collezione intera significherebbe una invocazione per
 // titolo, ogni volta.
-export const CACHE = 'public, s-maxage=3600, stale-while-revalidate=86400'
+const CACHE = 'public, s-maxage=3600, stale-while-revalidate=86400'
 
 interface ApiRequest {
   method?: string

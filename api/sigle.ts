@@ -44,7 +44,7 @@ export function intestazioni(chiave: string | undefined): Record<string, string>
 
 // Una sigla non cambia: un giorno di CDN, e una settimana di copia vecchia
 // se TheIntroDB non risponde.
-export const CACHE = 'public, s-maxage=86400, stale-while-revalidate=604800'
+const CACHE = 'public, s-maxage=86400, stale-while-revalidate=604800'
 
 interface Req {
   method?: string

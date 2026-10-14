@@ -126,12 +126,12 @@ export function ordinaEpisodi(episodi: EpisodioVideoteca[]): EpisodioVideoteca[]
 // un minuto guardato davvero. La sola posizione non basta: aprire l'OAD 8 per
 // provare il lettore, o spostare la barra, lo faceva «da riprendere», e la
 // serie proponeva quello invece del primo episodio.
-export const SECONDI_PER_INIZIATO = 60
+const SECONDI_PER_INIZIATO = 60
 
 // Visto: spuntato, o guardato fino in fondo con la stessa regola del lettore.
 // Un episodio finito prima di essere riconosciuto non era stato spuntato, e
 // la serie proponeva di «riprenderlo» invece di passare al successivo.
-export function episodioConcluso(e: EpisodioVideoteca): boolean {
+function episodioConcluso(e: EpisodioVideoteca): boolean {
   return e.visto || contaComeVisto(e.posizione, e.durata, e.secondiVisti)
 }
 
