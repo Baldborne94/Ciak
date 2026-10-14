@@ -1,69 +1,46 @@
-import { useCallback, useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import { EmptyState, ErrorState, Loader } from '../components/States'
 import { logFailure } from '../lib/logFailure'
 import { useAuth } from '../lib/auth'
 import { usePersistedState } from '../lib/usePersistedState'
-import { getGenres, getReleaseYears, getSearchTitles, getTitleGenres, getTitleSagas, posterUrl } from '../lib/tmdb'
-import { filterSelectClass } from '../components/FilterBar'
-import {
-  filtraVideoteca,
-  generiPresenti,
-  ORDINI_VIDEOTECA,
-  ordinaVideoteca,
-  raggruppaSerie,
-  serieDaSistemare,
-  sigla,
-  type GruppoSerie,
-  type OrdineVideoteca,
-  type RigaVideoteca,
-} from '../lib/videoteca'
+import { posterUrl } from '../lib/tmdb'
+import { filtraVideoteca, generiPresenti, ordinaVideoteca, sigla, type GruppoSerie, type OrdineVideoteca, type RigaVideoteca } from '../lib/videoteca'
 import SerieVideoteca from '../components/SerieVideoteca'
 import SagaVideoteca from '../components/SagaVideoteca'
 import FilmVideoteca from '../components/FilmVideoteca'
-import { raggruppaSaghe, unisciSaghe, type GruppoSaga } from '../lib/saghe'
-import { aggiornaCopertina, creaSaga, deleteList, modificaSaga, raccolteUtente } from '../lib/lists'
-import ModificaSaga from '../components/ModificaSaga'
-import { filmDelloStudio } from '../lib/perStudio'
+import ModaliSaghe, { type SagaInModifica } from '../components/ModaliSaghe'
+import ElencoSulDispositivo from '../components/ElencoSulDispositivo'
+import VideotecaDaCollegare from '../components/VideotecaDaCollegare'
+import SchedeVideoteca from '../components/SchedeVideoteca'
+import FiltriVideoteca from '../components/FiltriVideoteca'
+import { raccolteUtente } from '../lib/lists'
 import { copertinaUrl, type Raccolta } from '../lib/raccolte'
-import SceltaCopertina from '../components/SceltaCopertina'
 import Modal from '../components/Modal'
 import SceltaTitolo from '../components/SceltaTitolo'
-import { abbinaAMano, riconosciNuovi, voceVuota } from '../lib/riconoscimento'
+import { abbinaAMano, voceVuota } from '../lib/riconoscimento'
 import { filmDaCercare } from '../lib/sottotitoli'
-import type { Collection, MediaItem } from '../lib/types'
-import { salvaPresenti } from '../lib/videoPresenti'
+import type { MediaItem } from '../lib/types'
 import { dimenticaVideoteca } from '../lib/useVideoteca'
-import { elencaStreaming, titoloDaMostrare, type VoceStreaming } from '../lib/streaming'
-import { ascoltaFilmOffline, elencaFilmOffline, eliminaFilm, offlineDisponibile, spazio, taglia, type FilmOffline } from '../lib/filmOffline'
-import { CARTELLA_CIAK, schedeCategorie, senzaExtra, soloRiproducibili, titoloVideo, type VideoFile } from '../lib/fileVideo'
-import { chiaveVideotecaArchivio, chiaveVideoteca, etichettaCopia, leggiCopia, salvaCopia } from '../lib/offlineCache'
-import {
-  eJellyfin,
-  elencaVideoJellyfin,
-  ErroreJellyfin,
-  EVENTO_JELLYFIN,
-  jellyfinCollegato,
-  leggiJellyfin,
-  scollegaJellyfin,
-  unisciFonti,
-} from '../lib/jellyfin'
+import { eliminaFilm } from '../lib/filmOffline'
+import { CARTELLA_CIAK, schedeCategorie, type VideoFile } from '../lib/fileVideo'
+import { etichettaCopia } from '../lib/offlineCache'
+import { leggiJellyfin } from '../lib/jellyfin'
 import CollegaJellyfin from '../components/CollegaJellyfin'
 import ApriFilmLocale from '../components/ApriFilmLocale'
 import ScegliCartella from '../components/ScegliCartella'
 import { eLocale } from '../lib/filmLocali'
-import {
-  cancellabileDalDisco,
-  cancellaDalDisco,
-  cartellaCollegata,
-  cartellaDisponibile,
-  elencaVideoCartella,
-  ErroreCartella,
-  EVENTO_CARTELLA,
-  scollegaCartella,
-} from '../lib/cartellaLocale'
+import { cancellabileDalDisco, cancellaDalDisco } from '../lib/cartellaLocale'
+import { componiVideoteca, type FilmDellElenco } from '../lib/elencoVideoteca'
+import { useElencoVideoteca } from '../lib/useElencoVideoteca'
+import { useInfoTitoli } from '../lib/useInfoTitoli'
+import { useSulDispositivo } from '../lib/useSulDispositivo'
 
+// La videoteca: i video della cartella collegata del PC e del server di casa,
+// divisi in schede (le cartelle di primo livello), con le serie raccolte in
+// stagioni e i film della stessa saga insieme. L'elenco lo carica
+// useElencoVideoteca; qui si sceglie cosa mostrare e come.
 export default function StreamingPage() {
   const navigate = useNavigate()
   // Tornando dal lettore dopo una cancellazione: lo si dice, perché l'elenco
@@ -74,25 +51,13 @@ export default function StreamingPage() {
   const cancellato = cancellatoQui ?? cancellatoDalLettore
   const [cancellando, setCancellando] = useState<string | null>(null)
   const { user } = useAuth()
-  // Il legame di ogni file col suo titolo (locandina, «visto», punto di ripresa).
-  const [archivio, setArchivio] = useState<Map<string, VoceStreaming>>(new Map())
-  // Il server di casa (Jellyfin), accanto o al posto della cartella.
-  const [casaCollegata, setCasaCollegata] = useState(jellyfinCollegato())
+  const elenco = useElencoVideoteca(user)
+  const { archivio, setArchivio, video, nascosti, extra, copiaDel, caricato, caricando, errore, setErrore, carica, cartella } = elenco
+  const collegato = elenco.casaCollegata || cartella !== null
   const [moduloCasa, setModuloCasa] = useState(false)
-  // La cartella del PC collegata (E:\Ciak). Riaprendo il
-  // browser ne va ridato il permesso con un clic (`cartellaDaRiaprire`).
-  const [cartella, setCartella] = useState(cartellaCollegata())
-  const [cartellaDaRiaprire, setCartellaDaRiaprire] = useState(false)
-  const collegato = casaCollegata || cartella !== null
-  const [video, setVideo] = useState<VideoFile[]>([])
-  const [nascosti, setNascosti] = useState(0)
-  const [extra, setExtra] = useState(0)
   // La scheda scelta (una cartella di primo livello), ricordata fra un'apertura
   // e l'altra. '*' = tutto.
   const [scheda, setScheda] = usePersistedState<string>('ciak:videoteca-scheda', '*')
-  // L'elenco mostrato è quello salvato l'ultima volta (quando): la cartella si sta
-  // rileggendo in sottofondo. null quando è quello fresco.
-  const [copiaDel, setCopiaDel] = useState<string | null>(null)
   // Ricerca, ordine e genere: l'ordine si ricorda, gli altri due no (riaprendo
   // la videoteca la si vuole vedere tutta).
   const [query, setQuery] = useState('')
@@ -104,144 +69,14 @@ export default function StreamingPage() {
   const [serieAperte, setSerieAperte] = useState<Set<string>>(new Set())
   // «Scegli il titolo» dalla videoteca: per una serie intera o per un film.
   const [scelta, setScelta] = useState<{ nome: string; ricerca: string; video: VideoFile[] } | null>(null)
-  // Anno, generi e titoli originali dei titoli riconosciuti (chiave composta
-  // `${tipo}-${id}`), e i nomi italiani dei generi.
-  const [infoTitoli, setInfoTitoli] = useState<{
-    anni: Map<string, string | null>
-    generi: Map<string, number[]>
-    titoli: Map<string, string[]>
-    saghe: Map<string, Collection | null>
-  }>({ anni: new Map(), generi: new Map(), titoli: new Map(), saghe: new Map() })
-  const [nomiGeneri, setNomiGeneri] = useState<Map<number, string>>(new Map())
+  const { info: infoTitoli, nomiGeneri } = useInfoTitoli(archivio)
   // Le «Mie liste», che qui diventano raccolte: cartelle coi titoli della videoteca.
   const [raccolte, setRaccolte] = useState<Raccolta[]>([])
-  // La saga fatta a mano di cui si sta scegliendo la copertina (il modale aperto).
+  // La saga fatta a mano di cui si sta scegliendo la copertina, e quella che si
+  // sta creando o cambiando (vedi ModaliSaghe).
   const [copertinaDi, setCopertinaDi] = useState<string | null>(null)
-  // La saga fatta a mano che si sta creando (listaId null) o cambiando.
-  // `daTmdb`: una saga di TMDB da cambiare, che diventa una fatta a mano.
-  const [inModifica, setInModifica] = useState<{
-    listaId: string | null
-    daTmdb?: { id: number; nome: string; chiavi: Set<string> }
-  } | null>(null)
-  const [salvandoLista, setSalvandoLista] = useState(false)
-  const [caricato, setCaricato] = useState(false)
-  const [caricando, setCaricando] = useState(false)
-  const [errore, setErrore] = useState<string | null>(null)
-  // I film sul dispositivo: si vedono anche senza rete, ed è il motivo per cui
-  // esistono. Si controlla `onLine` prima di tentare la rete: aspettare un
-  // timeout offline vuol dire fissare una pagina vuota per secondi.
-  const [offline, setOffline] = useState<FilmOffline[]>([])
-  const [senzaRete, setSenzaRete] = useState(typeof navigator !== 'undefined' && !navigator.onLine)
-  const [spazioUsato, setSpazioUsato] = useState<number | null>(null)
-
-  const caricaOffline = useCallback(async () => {
-    if (!offlineDisponibile()) return
-    setOffline(await elencaFilmOffline())
-    setSpazioUsato((await spazio())?.usato ?? null)
-  }, [])
-  useEffect(() => {
-    void caricaOffline()
-    return ascoltaFilmOffline(() => void caricaOffline())
-  }, [caricaOffline])
-  useEffect(() => {
-    const aggiorna = () => setSenzaRete(!navigator.onLine)
-    window.addEventListener('online', aggiorna)
-    window.addEventListener('offline', aggiorna)
-    return () => {
-      window.removeEventListener('online', aggiorna)
-      window.removeEventListener('offline', aggiorna)
-    }
-  }, [])
-  const scaricati = new Set(offline.filter((f) => f.stato === 'completo').map((f) => f.id))
-
-  // Si parte dall'elenco dell'ultima volta, se c'è: compare subito, invece di
-  // una pagina vuota finché la cartella non è stata letta tutta.
-  const daCopia = useRef(false)
-  // La cartella ha già risposto: la copia arriverebbe tardi, e sarebbe più vecchia.
-  const freschi = useRef(false)
-  useEffect(() => {
-    if (!user || daCopia.current || freschi.current || (!jellyfinCollegato() && !cartellaCollegata())) return
-    daCopia.current = true
-    const copia = leggiCopia<VideoFile>(chiaveVideoteca(user.id))
-    if (!copia || copia.dati.length === 0) return
-    const archivioSalvato = leggiCopia<VoceStreaming>(chiaveVideotecaArchivio(user.id))
-    const { visibili: mp4, nascosti: altri } = soloRiproducibili(copia.dati)
-    const { visibili, extra: daParte } = senzaExtra(mp4)
-    setVideo((attuali) => (attuali.length > 0 ? attuali : visibili))
-    setNascosti(altri)
-    setExtra(daParte)
-    if (archivioSalvato) setArchivio((attuale) => (attuale.size > 0 ? attuale : new Map(archivioSalvato.dati.map((v) => [v.drive_file_id, v]))))
-    setCopiaDel(copia.salvatoIl)
-  }, [user])
-
-  const carica = useCallback(async () => {
-    inCorso.current = true
-    setErrore(null)
-    setCaricando(true)
-    try {
-      // La cartella del PC e il server di casa insieme: uno che non risponde
-      // (il PC spento) non deve nascondere l'altro.
-      const daCasa = jellyfinCollegato()
-      const daCartella = cartellaCollegata() !== null
-      const [aCasa, inCartella] = await Promise.allSettled([
-        daCasa ? elencaVideoJellyfin() : Promise.resolve([] as VideoFile[]),
-        daCartella ? elencaVideoCartella() : Promise.resolve([] as VideoFile[]),
-      ])
-      if (aCasa.status === 'rejected') {
-        // Un token che il server non riconosce più va ricollegato, non riprovato.
-        if (aCasa.reason instanceof ErroreJellyfin && aCasa.reason.sessione) {
-          scollegaJellyfin()
-          setCasaCollegata(false)
-        }
-        logFailure('Elenco del server di casa')(aCasa.reason)
-      }
-      // Il permesso della cartella da ridare non è un guasto: serve un clic.
-      const permessoCartella = inCartella.status === 'rejected' && inCartella.reason instanceof ErroreCartella && inCartella.reason.permesso
-      setCartellaDaRiaprire(permessoCartella)
-      if (inCartella.status === 'rejected' && !permessoCartella) logFailure('Elenco della cartella collegata')(inCartella.reason)
-      const riuscite = (daCasa && aCasa.status === 'fulfilled') || (daCartella && inCartella.status === 'fulfilled')
-      const problema = aCasa.status === 'rejected' ? aCasa.reason : inCartella.status === 'rejected' && !permessoCartella ? inCartella.reason : null
-      if (!riuscite && problema) throw problema
-      // Solo la cartella, in attesa del permesso: resta l'elenco dell'ultima
-      // volta, che si guarda appena lo si ridà.
-      if (!riuscite) return
-      if (problema) setErrore((problema as Error).message)
-      const casa = aCasa.status === 'fulfilled' ? aCasa.value : []
-      const sulPc = inCartella.status === 'fulfilled' ? inCartella.value : []
-      const esito = { video: unisciFonti(sulPc, casa) }
-      // Per i pulsanti «Guarda» del resto dell'app: un file cancellato dalla
-      // cartella non deve più portare al lettore.
-      salvaPresenti(esito.video.map((v) => v.id))
-      const { visibili: mp4, nascosti: altri } = soloRiproducibili(esito.video)
-      const { visibili, extra: daParte } = senzaExtra(mp4)
-      setVideo(visibili)
-      setNascosti(altri)
-      setExtra(daParte)
-      freschi.current = true
-      setCaricato(true)
-      setCopiaDel(null)
-      if (user) salvaCopia(chiaveVideoteca(user.id), esito.video)
-      // Locandine e titoli: prima ciò che è già collegato, poi si riconoscono
-      // i file nuovi. Best effort: senza, la lista resta quella dei file.
-      if (user) {
-        try {
-          const noti = new Map((await elencaStreaming(user.id)).map((v) => [v.drive_file_id, v]))
-          setArchivio(noti)
-          const riconosciuti = await riconosciNuovi(user.id, visibili, noti, new Set(esito.video.map((v) => v.id)))
-          setArchivio(riconosciuti)
-          salvaCopia(chiaveVideotecaArchivio(user.id), [...riconosciuti.values()])
-          dimenticaVideoteca()
-        } catch (e) {
-          logFailure('Titoli dei film della videoteca')(e)
-        }
-      }
-    } catch (e) {
-      setErrore((e as Error).message)
-    } finally {
-      inCorso.current = false
-      setCaricando(false)
-    }
-  }, [user])
+  const [inModifica, setInModifica] = useState<SagaInModifica | null>(null)
+  const { offline, senzaRete, spazioUsato, scaricati } = useSulDispositivo()
 
   const caricaRaccolte = useCallback(async () => {
     if (!user) return
@@ -251,88 +86,10 @@ export default function StreamingPage() {
     void caricaRaccolte().catch(logFailure('Raccolte della videoteca (le Mie liste)'))
   }, [caricaRaccolte])
 
-  // Anno, generi e titoli originali per ordinare, filtrare e cercare: una
-  // richiesta per titolo la prima volta, poi dalla cache del dispositivo. Si
-  // ricarica solo quando cambiano i titoli riconosciuti, non a ogni salvataggio.
-  const chiaviTitoli = [...new Set([...archivio.values()].filter((v) => v.tmdb_id && v.media_type).map((v) => `${v.media_type}-${v.tmdb_id}`))]
-    .sort()
-    .join(',')
-  useEffect(() => {
-    if (!chiaviTitoli) return
-    const refs = chiaviTitoli.split(',').map((k) => {
-      const [tipo, id] = k.split('-')
-      return { tmdbId: Number(id), mediaType: tipo === 'tv' ? ('tv' as const) : ('movie' as const) }
-    })
-    let vivo = true
-    Promise.all([
-      getReleaseYears(refs),
-      getTitleGenres(refs),
-      getSearchTitles(refs),
-      // Le saghe ce le hanno solo i film.
-      getTitleSagas(refs.filter((r) => r.mediaType === 'movie')),
-    ])
-      .then(([anni, { generi, falliti: f1 }, { titoli, falliti: f2 }, { saghe, falliti: f3 }]) => {
-        if (vivo) setInfoTitoli({ anni, generi, titoli, saghe })
-        const falliti = Math.max(f1, f2, f3)
-        if (falliti > 0) logFailure('Dettagli dei titoli della videoteca')(new Error(`${falliti} titoli su ${refs.length} senza generi o titoli originali`))
-      })
-      .catch(logFailure('Dettagli dei titoli della videoteca'))
-    return () => {
-      vivo = false
-    }
-  }, [chiaviTitoli])
-  useEffect(() => {
-    if (!navigator.onLine) return
-    Promise.all([getGenres('movie'), getGenres('tv')])
-      .then(([film, serie]) => setNomiGeneri(new Map([...serie, ...film].map((g) => [g.id, g.name]))))
-      .catch(logFailure('Nomi dei generi per la videoteca'))
-  }, [])
-
-  // Già collegati (token ancora valido in questa scheda): elenco subito, senza
-  // chiedere di nuovo il permesso.
-  useEffect(() => {
-    if ((jellyfinCollegato() || cartellaCollegata()) && navigator.onLine) void carica()
-  }, [carica])
-  // La cartella collegata o tolta (anche da un'altra scheda).
-  useEffect(() => {
-    const cambiato = () => setCartella(cartellaCollegata())
-    window.addEventListener(EVENTO_CARTELLA, cambiato)
-    return () => window.removeEventListener(EVENTO_CARTELLA, cambiato)
-  }, [])
-
-  // La cartella collegata o riaperta (vedi ScegliCartella): si rilegge.
-  async function cartellaPronta() {
-    setErrore(null)
-    setCartella(cartellaCollegata())
-    await carica()
-  }
-
-  async function scollegaLaCartella() {
-    await scollegaCartella().catch(logFailure('Scollegamento della cartella dei film'))
-    setCartella(null)
-    setCartellaDaRiaprire(false)
-    setVideo((attuali) => attuali.filter((v) => !eLocale(v.id)))
-  }
-  // Il server di casa collegato o tolto (anche da un'altra pagina).
-  useEffect(() => {
-    const cambiato = () => setCasaCollegata(jellyfinCollegato())
-    window.addEventListener(EVENTO_JELLYFIN, cambiato)
-    return () => window.removeEventListener(EVENTO_JELLYFIN, cambiato)
-  }, [])
-
   async function casaCollegataOra() {
-    setCasaCollegata(true)
     setModuloCasa(false)
-    await carica()
+    await elenco.casaPronta()
   }
-
-  function scollegaCasa() {
-    scollegaJellyfin()
-    setCasaCollegata(false)
-    setVideo((attuali) => attuali.filter((v) => !eJellyfin(v.id)))
-  }
-  // Due caricamenti insieme riconoscevano i titoli due volte.
-  const inCorso = useRef(false)
 
   async function abbina(item: MediaItem) {
     if (!user || !scelta) return
@@ -388,196 +145,13 @@ export default function StreamingPage() {
     }
   }
 
-  // Una saga fatta a mano: una lista segnata come saga, coi film scelti. Si
-  // toccano solo i film che qui si possono scegliere: quelli della lista che
-  // non sono nella videoteca, o che stanno in un'altra scheda, restano dove sono.
-  async function salvaLista(nome: string, chiavi: string[]) {
-    if (!user || !inModifica) return
-    const perChiave = new Map(sceglibili.map((f) => [f.chiave, f]))
-    const ref = (k: string) => {
-      const f = perChiave.get(k)
-      const tv = k.startsWith('tv-')
-      return { tmdbId: Number(k.slice(k.indexOf('-') + 1)), mediaType: tv ? ('tv' as const) : ('movie' as const), title: f?.titolo ?? k, posterPath: posterDi.get(k) ?? null }
-    }
-    setSalvandoLista(true)
-    try {
-      if (!inModifica.listaId) {
-        await creaSaga(user.id, nome, chiavi.map(ref), inModifica.daTmdb?.id ?? null)
-      } else {
-        const lista = raccolte.find((r) => r.id === inModifica.listaId)
-        const prima = lista?.chiavi ?? new Set<string>()
-        const togli = [...prima].filter((k) => perChiave.has(k) && !chiavi.includes(k)).flatMap((k) => lista?.voci.get(k) ?? [])
-        await modificaSaga(user.id, inModifica.listaId, nome, chiavi.filter((k) => !prima.has(k)).map(ref), togli)
-      }
-      await caricaRaccolte()
-      setInModifica(null)
-    } catch (e) {
-      const messaggio = (e as Error).message
-      setErrore(
-        /come_saga/.test(messaggio)
-          ? 'Per le saghe fatte a mano il database va aggiornato: esegui supabase/schema_v21_saghe_manuali.sql nel SQL Editor di Supabase.'
-          : /saga_tmdb/.test(messaggio)
-            ? 'Per modificare le saghe di TMDB il database va aggiornato: esegui supabase/schema_v22_saghe_tmdb_modificate.sql nel SQL Editor di Supabase.'
-          : `Saga non salvata: ${messaggio}`,
-      )
-      setInModifica(null)
-      logFailure('Saga fatta a mano')(e)
-    } finally {
-      setSalvandoLista(false)
-    }
-  }
-
-  // Sciogliere una saga toglie solo la lista: i file restano, e ogni film
-  // torna al suo posto nell'elenco.
-  async function sciogliSaga(listaId: string, nome: string) {
-    if (!window.confirm(`Vuoi sciogliere la saga «${nome}»?\nI film restano nella cartella e tornano al loro posto nell'elenco.`)) return
-    try {
-      await deleteList(listaId)
-      await caricaRaccolte()
-      setInModifica(null)
-    } catch (e) {
-      setErrore(`Saga non sciolta: ${(e as Error).message}`)
-      logFailure('Saga fatta a mano')(e)
-    }
-  }
-
-  async function scegliCopertina(listId: string, copertina: string | null) {
-    try {
-      await aggiornaCopertina(listId, copertina)
-      setRaccolte((prima) => prima.map((r) => (r.id === listId ? { ...r, copertina } : r)))
-      setCopertinaDi(null)
-    } catch (e) {
-      setErrore(`Copertina non salvata: ${(e as Error).message}`)
-      setCopertinaDi(null)
-      logFailure('Copertina della saga')(e)
-    }
-  }
-
   // Le schede della videoteca e i video della scheda scelta. Una scheda che non
   // esiste più (cartella rinominata o svuotata) torna a «Tutto».
   const schede = schedeCategorie(video)
   const schedaValida = scheda === '*' || schede.some((c) => (c.cartella ?? '') === scheda) ? scheda : '*'
   const mostrati = schedaValida === '*' ? video : video.filter((v) => (v.categoria ?? '') === schedaValida)
-
-  // Le righe della scheda, con ciò che serve a cercarle e ordinarle.
-  // Ogni video è un film o l'episodio di una serie: gli episodi si raccolgono
-  // sotto la loro serie (`raggruppaSerie`), i film restano una riga ciascuno.
-  const infoDi = (chiave: string) => ({
-    anno: infoTitoli.anni.get(chiave) ?? null,
-    generi: infoTitoli.generi.get(chiave) ?? [],
-    titoli: infoTitoli.titoli.get(chiave) ?? [],
-  })
-  const videoPerId = new Map(mostrati.map((v) => [v.id, v]))
-  const raggruppati = raggruppaSerie(
-    mostrati.map((v) => ({ id: v.id, name: v.name, cartella: v.cartella, serie: v.serie ?? null, voce: archivio.get(v.id) })),
-  )
-  // Le righe dell'elenco: i film e una per serie.
-  const film: { riga: RigaVideoteca; video: VideoFile }[] = raggruppati.sciolti.map((id) => {
-    const v = videoPerId.get(id) as VideoFile
-    const voce = archivio.get(id)
-    return {
-      video: v,
-      riga: {
-        id,
-        nome: (voce && titoloDaMostrare(voce)) ?? titoloVideo(v),
-        file: v.name,
-        ...infoDi(voce?.tmdb_id && voce.media_type ? `${voce.media_type}-${voce.tmdb_id}` : ''),
-        aggiunto: v.aggiunto ?? null,
-        guardato: voce && voce.posizione > 0 ? (voce.updated_at ?? null) : null,
-        daSistemare: !voce?.tmdb_id || !voce.poster_path,
-      },
-    }
-  })
-  // I film della stessa saga (Alien, Harry Potter…) in una cartella sola.
-  const chiaveTitolo = (id: string) => {
-    const voce = archivio.get(id)
-    return voce?.tmdb_id && voce.media_type === 'movie' ? `movie-${voce.tmdb_id}` : null
-  }
-  const filmPerId = new Map(film.map((f) => [f.riga.id, f]))
-  const perSaghe = raggruppaSaghe(
-    film.map((f) => ({ id: f.riga.id, chiave: chiaveTitolo(f.riga.id), anno: f.riga.anno })),
-    // Le saghe di TMDB e quelle fatte a mano (le liste segnate come saga).
-    unisciSaghe(infoTitoli.saghe, raccolte),
-  )
-  const voci = perSaghe.sciolti.map((id) => filmPerId.get(id) as { riga: RigaVideoteca; video: VideoFile })
-  const saghe = new Map<string, GruppoSaga>(perSaghe.saghe.map((g) => [g.chiave, g]))
-  for (const g of perSaghe.saghe) {
-    const suoi = g.ids.map((id) => (filmPerId.get(id) as { riga: RigaVideoteca }).riga)
-    const anni = suoi.map((r) => r.anno).filter((a): a is string => !!a)
-    voci.push({
-      video: (filmPerId.get(g.ids[0]) as { video: VideoFile }).video,
-      riga: {
-        id: g.chiave,
-        nome: g.saga.name,
-        // Cercando un film della saga si trova la saga, che si apre da sola.
-        file: suoi.map((r) => `${r.nome} ${r.file}`).join('\n'),
-        anno: anni[0] ?? null,
-        generi: [...new Set(suoi.flatMap((r) => r.generi))],
-        titoli: suoi.flatMap((r) => r.titoli),
-        aggiunto: suoi.map((r) => r.aggiunto ?? '').sort().pop() || null,
-        guardato: suoi.map((r) => r.guardato ?? '').sort().pop() || null,
-        daSistemare: suoi.some((r) => r.daSistemare),
-      },
-    })
-  }
-  const serie = new Map(raggruppati.serie.map((g) => [g.chiave, g]))
-  for (const g of raggruppati.serie) {
-    const video = g.ids.map((id) => videoPerId.get(id) as VideoFile)
-    voci.push({
-      video: video[0],
-      riga: {
-        id: g.chiave,
-        nome: g.titolo,
-        // Si trova anche cercando un episodio, per nome del file o per sigla.
-        file: g.episodi.map((e) => `${e.file} ${sigla(e) ?? ''}`).join('\n'),
-        ...infoDi(g.tmdb),
-        aggiunto: video.map((v) => v.aggiunto ?? '').sort().pop() || null,
-        guardato: g.episodi.map((e) => e.guardato ?? '').sort().pop() || null,
-        daSistemare: serieDaSistemare(g),
-      },
-    })
-  }
-  // La copertina di una saga fatta a mano: le immagini sono quelle dei suoi film.
-  const listaCopertina = raccolte.find((r) => r.id === copertinaDi) ?? null
-  const perCopertina = listaCopertina
-    ? {
-        raccolta: listaCopertina,
-        film: film.filter((f) => {
-          const k = chiaveTitolo(f.riga.id)
-          return k !== null && listaCopertina.chiavi.has(k)
-        }),
-        serie: raggruppati.serie.filter((g) => !!g.tmdb && listaCopertina.chiavi.has(g.tmdb)),
-      }
-    : null
-  // I film fra cui comporre una saga: quelli riconosciuti di questa scheda,
-  // uno per titolo (due versioni dello stesso film sono un titolo solo).
-  const filmPerSaga = [
-    ...new Map(
-      film.flatMap((f) => {
-        const k = chiaveTitolo(f.riga.id)
-        const voce = archivio.get(f.video.id)
-        return k
-          ? [[k, { chiave: k, titolo: f.riga.nome, anno: f.riga.anno, poster: voce?.poster_path ? posterUrl(voce.poster_path, 'w185') : null }] as const]
-          : []
-      }),
-    ).values(),
-  ].sort((a, b) => a.titolo.localeCompare(b.titolo, 'it'))
-  // Una saga nuova serve per i film che TMDB non mette già in una saga: quelli
-  // che stanno in una sua cartella non si propongono (quella saga c'è già, e
-  // si cambia con «✎ Modifica la saga»). Cambiando una saga esistente si
-  // sceglie fra tutti.
-  const inSagaTmdb = new Set(perSaghe.saghe.filter((g) => !g.saga.listaId).flatMap((g) => g.ids.map(chiaveTitolo)))
-  const sceglibili =
-    inModifica && !inModifica.listaId && !inModifica.daTmdb ? filmPerSaga.filter((f) => !inSagaTmdb.has(f.chiave)) : filmPerSaga
-  // La locandina da salvare con ogni titolo scelto (percorso TMDB).
-  const posterDi = new Map<string, string | null>([
-    ...film.flatMap((f) => {
-      const k = chiaveTitolo(f.riga.id)
-      return k ? [[k, archivio.get(f.video.id)?.poster_path ?? null] as const] : []
-    }),
-    ...raggruppati.serie.map((g) => [g.tmdb, g.posterPath] as const),
-  ])
-  const listaAperta = inModifica?.listaId ? (raccolte.find((r) => r.id === inModifica.listaId) ?? null) : null
+  const composta = componiVideoteca(mostrati, archivio, infoTitoli, raccolte)
+  const { infoDi, videoPerId, filmPerId, chiaveTitolo, serie, saghe, voci } = composta
   const righe = voci.map((f) => f.riga)
   const videoDi = new Map(voci.map((f) => [f.riga.id, f.video]))
   const generiScheda = generiPresenti(righe, nomiGeneri)
@@ -586,7 +160,7 @@ export default function StreamingPage() {
   const quantiDaSistemare = righe.filter((r) => r.daSistemare).length
   // Sistemato l'ultimo, il filtro si spegne da solo invece di lasciare un elenco vuoto.
   const filtroDaSistemare = soloDaSistemare && quantiDaSistemare > 0
-  const elenco = ordinaVideoteca(filtraVideoteca(righe, { query, genere: genereValido, daSistemare: filtroDaSistemare }), ordine)
+  const elencoMostrato = ordinaVideoteca(filtraVideoteca(righe, { query, genere: genereValido, daSistemare: filtroDaSistemare }), ordine)
 
   const rigaSerie = (gruppo: GruppoSerie) => (
     <SerieVideoteca
@@ -639,6 +213,66 @@ export default function StreamingPage() {
     />
   )
 
+  const rigaSaga = (chiave: string) => {
+    const saga = saghe.get(chiave)
+    if (!saga) return null
+    const suoi = saga.ids.map((id) => filmPerId.get(id) as FilmDellElenco)
+    const anni = suoi.map((f) => f.riga.anno).filter((a): a is string => !!a)
+    const primaLocandina = suoi.map((f) => archivio.get(f.video.id)?.poster_path).find((p): p is string => !!p) ?? null
+    const listaId = saga.saga.listaId
+    return (
+      <SagaVideoteca
+        nome={saga.saga.name}
+        poster={
+          // Fatta a mano: la copertina scelta, se no la locandina del primo film.
+          listaId
+            ? (copertinaUrl(saga.saga.copertina ?? null, 'w780') ?? posterUrl(primaLocandina, 'w185'))
+            : posterUrl(saga.saga.posterPath, 'w185')
+        }
+        azioni={
+          !listaId ? (
+            // Una saga di TMDB: modificandola diventa tua, al suo posto.
+            <button
+              type="button"
+              onClick={() =>
+                setInModifica({
+                  listaId: null,
+                  daTmdb: {
+                    id: Number(saga.chiave.slice('saga-'.length)),
+                    nome: saga.saga.name,
+                    chiavi: new Set(suoi.flatMap((f) => chiaveTitolo(f.riga.id) ?? [])),
+                  },
+                })
+              }
+              className="text-xs text-zinc-400 transition hover:text-projector"
+            >
+              ✎ Modifica la saga
+            </button>
+          ) : (
+            <>
+              <button type="button" onClick={() => setInModifica({ listaId })} className="text-xs text-zinc-400 transition hover:text-projector">
+                ✎ Modifica la saga
+              </button>
+              <button type="button" onClick={() => setCopertinaDi(listaId)} className="text-xs text-zinc-400 transition hover:text-projector">
+                🖼️ Cambia copertina
+              </button>
+            </>
+          )
+        }
+        quanti={suoi.length}
+        visti={suoi.filter((f) => !!archivio.get(f.video.id)?.visto_il).length}
+        anni={anni.length === 0 ? null : anni[0] === anni[anni.length - 1] ? anni[0] : `${anni[0]}–${anni[anni.length - 1]}`}
+        apertaSempre={query.trim() !== ''}
+        onCancella={() => void cancellaGruppo(saga.chiave, saga.saga.name, suoi.map((f) => f.video))}
+        cancellando={cancellando === saga.chiave}
+      >
+        {suoi.map((f) => (
+          <li key={f.video.id}>{rigaFilm(f.video, f.riga)}</li>
+        ))}
+      </SagaVideoteca>
+    )
+  }
+
   return (
     <div>
       <PageHeader
@@ -648,12 +282,12 @@ export default function StreamingPage() {
       >
         {collegato && (
           <div className="flex flex-wrap items-start gap-2">
-            {cartellaDaRiaprire && (
+            {elenco.cartellaDaRiaprire && (
               <ScegliCartella
                 riapri
                 etichetta={`📂 Riapri la cartella «${cartella}»`}
                 className="btn-primary"
-                onFatto={() => void cartellaPronta()}
+                onFatto={() => void elenco.cartellaPronta()}
                 onErrore={setErrore}
               />
             )}
@@ -662,19 +296,19 @@ export default function StreamingPage() {
               🔄 Aggiorna
             </button>
             {cartella ? (
-              <button onClick={() => void scollegaLaCartella()} className="btn-ghost">
+              <button onClick={() => void elenco.scollegaLaCartella()} className="btn-ghost">
                 Scollega la cartella
               </button>
             ) : (
-              <ScegliCartella etichetta="📂 Collega una cartella" onFatto={() => void cartellaPronta()} onErrore={setErrore} />
+              <ScegliCartella etichetta="📂 Collega una cartella" onFatto={() => void elenco.cartellaPronta()} onErrore={setErrore} />
             )}
-            {!casaCollegata && !moduloCasa && (
+            {!elenco.casaCollegata && !moduloCasa && (
               <button onClick={() => setModuloCasa(true)} className="btn-ghost">
                 🏠 Server di casa
               </button>
             )}
-            {casaCollegata && (
-              <button onClick={scollegaCasa} className="btn-ghost" title={leggiJellyfin()?.url}>
+            {elenco.casaCollegata && (
+              <button onClick={elenco.scollegaCasa} className="btn-ghost" title={leggiJellyfin()?.url}>
                 Scollega il server di casa
               </button>
             )}
@@ -697,38 +331,11 @@ export default function StreamingPage() {
       )}
 
       {offline.length > 0 && (
-        <section className="mb-6">
-          <h2 className="mb-2 flex items-baseline gap-2 text-sm font-semibold uppercase tracking-wider text-zinc-500">
-            📱 Sul dispositivo
-            {spazioUsato !== null && (
-              <span className="font-normal normal-case tracking-normal text-zinc-600">· {taglia(spazioUsato)} usati da Ciak</span>
-            )}
-          </h2>
-          <ul className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
-            {offline.map((f) => (
-              <li key={f.id}>
-                <button
-                  onClick={() => navigate(`/streaming/${f.id}`, { state: { titolo: f.titolo, file: f.file } })}
-                  disabled={f.stato !== 'completo'}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-theatre-800/60 disabled:opacity-60"
-                >
-                  <span className="text-xl">{f.stato === 'completo' ? '📱' : f.stato === 'in-corso' ? '⬇️' : '⚠️'}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-zinc-100">{f.titolo}</span>
-                    <span className="block truncate text-xs text-zinc-500">
-                      {f.stato === 'completo'
-                        ? `Disponibile offline${f.dimensione ? ` · ${taglia(f.dimensione)}` : ''}`
-                        : f.stato === 'in-corso'
-                          ? 'Download in corso…'
-                          : `Download non riuscito${f.errore ? ` · ${f.errore}` : ''}`}
-                    </span>
-                  </span>
-                  {f.stato === 'completo' && <span className="shrink-0 text-projector">▶ Guarda</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <ElencoSulDispositivo
+          film={offline}
+          spazioUsato={spazioUsato}
+          onApri={(f) => navigate(`/streaming/${f.id}`, { state: { titolo: f.titolo, file: f.file } })}
+        />
       )}
 
       {senzaRete ? (
@@ -742,48 +349,13 @@ export default function StreamingPage() {
           icon="📴"
         />
       ) : !collegato ? (
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
-            <p className="mb-4 text-zinc-400">
-              Collega la cartella dei film del PC (per esempio <code>E:\Ciak</code>, con dentro FILM,
-              SERIE TV, ANIME…): Ciak la legge come una videoteca, con le serie divise in stagioni,
-              l’episodio dopo e i sottotitoli accanto ai video. I file restano dove sono.
-            </p>
-            <ScegliCartella
-              etichetta="📂 Collega la cartella dei film"
-              className="btn-primary"
-              onFatto={() => void cartellaPronta()}
-              onErrore={setErrore}
-            />
-            {!cartellaDisponibile() && (
-              <p className="mt-3 text-xs text-zinc-500">
-                In questo browser la cartella va scelta a ogni visita (il browser chiede se «caricare» i
-                file: non si carica niente, Ciak li legge dal disco). Con Chrome o Edge basta sceglierla una volta.
-              </p>
-            )}
-          </div>
-          <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
-            <p className="mb-4 text-zinc-400">
-              Oppure un film alla volta: scegline uno dal disco del PC o dalla
-              memoria del tablet (con i suoi sottotitoli .srt, se li hai): parte nel lettore di Ciak,
-              senza caricarlo da nessuna parte. Sul tablet puoi salvarlo in Ciak per vederlo anche offline.
-            </p>
-            <ApriFilmLocale grande />
-          </div>
-          <div className="rounded-2xl border border-dashed border-theatre-700 p-8 text-center">
-            <p className="mb-4 text-zinc-400">
-              Oppure i film del disco di casa: con Jellyfin acceso sul PC a cui è attaccato, Ciak li
-              legge da lì, in casa e fuori (con Tailscale).
-            </p>
-            {moduloCasa ? (
-              <CollegaJellyfin onCollegato={() => void casaCollegataOra()} onAnnulla={() => setModuloCasa(false)} />
-            ) : (
-              <button onClick={() => setModuloCasa(true)} className="btn-ghost">
-                🏠 Collega il server di casa
-              </button>
-            )}
-          </div>
-        </div>
+        <VideotecaDaCollegare
+          onCartellaPronta={() => void elenco.cartellaPronta()}
+          onErrore={setErrore}
+          moduloCasa={moduloCasa}
+          onModuloCasa={setModuloCasa}
+          onCasaCollegata={() => void casaCollegataOra()}
+        />
       ) : caricando && !caricato && copiaDel === null ? (
         <Loader />
       ) : caricato && video.length === 0 ? (
@@ -798,237 +370,76 @@ export default function StreamingPage() {
         />
       ) : (
         <>
-        {schede.length >= 2 && (
-          <div role="tablist" aria-label="Categorie della videoteca" className="mb-3 flex flex-wrap gap-1">
-            {[{ valore: '*', nome: 'Tutto', quanti: video.length }, ...schede.map((c) => ({ valore: c.cartella ?? '', nome: c.nome, quanti: c.quanti }))].map((c) => (
-              <button
-                key={c.valore}
-                type="button"
-                role="tab"
-                aria-selected={schedaValida === c.valore}
-                onClick={() => setScheda(c.valore)}
-                className={`whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition ${
-                  schedaValida === c.valore ? 'bg-theatre-800 text-projector' : 'text-zinc-400 hover:text-zinc-100'
-                }`}
-              >
-                {c.nome} <span className="text-zinc-500">{c.quanti}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        {nascosti > 0 && (
-          <p className="mb-3 text-sm text-zinc-500">
-            {nascosti === 1 ? '1 video in un altro formato (MKV, AVI…) è nascosto' : `${nascosti} video in altri formati (MKV, AVI…) sono nascosti`}
-            : Ciak riproduce gli MP4. Convertili con prepara-ciak e premi «Aggiorna».
-          </p>
-        )}
-        {copiaDel !== null && (
-          // Un elenco vecchio senza dirlo farebbe cercare un film appena caricato.
-          <p role="status" className="mb-3 text-sm text-zinc-500">
-            🔄 Copia dell’elenco {etichettaCopia(copiaDel)}: {caricando ? 'la aggiorno dalla cartella…' : 'premi «Aggiorna» per rileggere la cartella.'}
-          </p>
-        )}
-        {extra > 0 && (
-          <p className="mb-3 text-sm text-zinc-500">
-            {extra === 1 ? '1 extra (featurette, trailer, anteprime…) non è in elenco' : `${extra} extra (featurette, trailer, anteprime…) non sono in elenco`}
-            : sono extra dei film o scarti delle release (anteprime, promo), non titoli da guardare.
-          </p>
-        )}
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <input
-            type="search"
-            aria-label="Cerca nella videoteca"
-            placeholder="🔍 Cerca un titolo…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className={`${filterSelectClass} min-w-0 flex-1 sm:max-w-xs`}
+          {schede.length >= 2 && <SchedeVideoteca schede={schede} totale={video.length} scelta={schedaValida} onScegli={setScheda} />}
+          {nascosti > 0 && (
+            <p className="mb-3 text-sm text-zinc-500">
+              {nascosti === 1 ? '1 video in un altro formato (MKV, AVI…) è nascosto' : `${nascosti} video in altri formati (MKV, AVI…) sono nascosti`}
+              : Ciak riproduce gli MP4. Convertili con prepara-ciak e premi «Aggiorna».
+            </p>
+          )}
+          {copiaDel !== null && (
+            // Un elenco vecchio senza dirlo farebbe cercare un film appena caricato.
+            <p role="status" className="mb-3 text-sm text-zinc-500">
+              🔄 Copia dell’elenco {etichettaCopia(copiaDel)}: {caricando ? 'la aggiorno dalla cartella…' : 'premi «Aggiorna» per rileggere la cartella.'}
+            </p>
+          )}
+          {extra > 0 && (
+            <p className="mb-3 text-sm text-zinc-500">
+              {extra === 1 ? '1 extra (featurette, trailer, anteprime…) non è in elenco' : `${extra} extra (featurette, trailer, anteprime…) non sono in elenco`}
+              : sono extra dei film o scarti delle release (anteprime, promo), non titoli da guardare.
+            </p>
+          )}
+          <FiltriVideoteca
+            query={query}
+            onQuery={setQuery}
+            ordine={ordine}
+            onOrdine={setOrdine}
+            generi={generiScheda}
+            genere={genereValido}
+            onGenere={setGenere}
+            daSistemare={quantiDaSistemare}
+            soloDaSistemare={filtroDaSistemare}
+            onSoloDaSistemare={() => setSoloDaSistemare((s) => !s)}
+            onCreaSaga={composta.filmPerSaga.length > 0 ? () => setInModifica({ listaId: null }) : null}
+            mostrati={elencoMostrato.length}
+            totale={righe.length}
           />
-          <select aria-label="Ordina la videoteca" value={ordine} onChange={(e) => setOrdine(e.target.value as OrdineVideoteca)} className={filterSelectClass}>
-            {ORDINI_VIDEOTECA.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-          {generiScheda.length > 0 && (
-            <select
-              aria-label="Filtra per genere"
-              value={genereValido ?? ''}
-              onChange={(e) => setGenere(e.target.value ? Number(e.target.value) : null)}
-              className={filterSelectClass}
-            >
-              <option value="">Tutti i generi</option>
-              {generiScheda.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.nome} ({g.quanti})
-                </option>
-              ))}
-            </select>
+          {filtroDaSistemare && (
+            <p className="mb-3 text-sm text-zinc-500">
+              Titoli che Ciak non ha riconosciuto, senza copertina o con episodi che non sa dove mettere. Per un film premi ✎ (anche accanto a un file fra gli «Altri episodi»); per
+              una serie aprila e premi «Scegli il titolo».
+            </p>
           )}
-          {quantiDaSistemare > 0 && (
-            <button
-              type="button"
-              aria-pressed={filtroDaSistemare}
-              onClick={() => setSoloDaSistemare((s) => !s)}
-              className={`rounded-lg border px-3 py-1.5 text-sm transition ${
-                filtroDaSistemare ? 'border-projector/60 bg-projector/10 text-projector' : 'border-theatre-700 text-zinc-400 hover:text-zinc-100'
-              }`}
-            >
-              ⚠ Da sistemare {quantiDaSistemare}
-            </button>
+          {elencoMostrato.length === 0 ? (
+            <EmptyState title="Nessun titolo" message="Nessun video corrisponde alla ricerca o al genere scelto." icon="🔍" />
+          ) : (
+            <ul aria-label="Video della videoteca" className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
+              {elencoMostrato.map((riga) => {
+                const gruppo = serie.get(riga.id)
+                return (
+                  <li key={riga.id}>
+                    {gruppo ? rigaSerie(gruppo) : saghe.has(riga.id) ? rigaSaga(riga.id) : rigaFilm(videoDi.get(riga.id) as VideoFile, riga)}
+                  </li>
+                )
+              })}
+            </ul>
           )}
-          {filmPerSaga.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setInModifica({ listaId: null })}
-              className="rounded-lg border border-theatre-700 px-3 py-1.5 text-sm text-zinc-400 transition hover:text-zinc-100"
-            >
-              ＋ Crea una saga
-            </button>
-          )}
-          {elenco.length !== righe.length && (
-            <span className="text-sm text-zinc-500">
-              {elenco.length} di {righe.length}
-            </span>
-          )}
-        </div>
-        {filtroDaSistemare && (
-          <p className="mb-3 text-sm text-zinc-500">
-            Titoli che Ciak non ha riconosciuto, senza copertina o con episodi che non sa dove mettere. Per un film premi ✎ (anche accanto a un file fra gli «Altri episodi»); per
-            una serie aprila e premi «Scegli il titolo».
-          </p>
-        )}
-        {elenco.length === 0 ? (
-          <EmptyState title="Nessun titolo" message="Nessun video corrisponde alla ricerca o al genere scelto." icon="🔍" />
-        ) : (
-        <ul aria-label="Video della videoteca" className="divide-y divide-theatre-800 rounded-2xl border border-theatre-800 bg-theatre-900/40">
-          {elenco.map((riga) => {
-            const gruppo = serie.get(riga.id)
-            if (gruppo) {
-              return (
-                <li key={riga.id}>
-                  {rigaSerie(gruppo)}
-                </li>
-              )
-            }
-            const saga = saghe.get(riga.id)
-            if (saga) {
-              const suoi = saga.ids.map((id) => filmPerId.get(id) as { riga: RigaVideoteca; video: VideoFile })
-              const anni = suoi.map((f) => f.riga.anno).filter((a): a is string => !!a)
-              const primaLocandina = suoi.map((f) => archivio.get(f.video.id)?.poster_path).find((p): p is string => !!p) ?? null
-              return (
-                <li key={riga.id}>
-                  <SagaVideoteca
-                    nome={saga.saga.name}
-                    poster={
-                      // Fatta a mano: la copertina scelta, se no la locandina del primo film.
-                      saga.saga.listaId
-                        ? (copertinaUrl(saga.saga.copertina ?? null, 'w780') ?? posterUrl(primaLocandina, 'w185'))
-                        : posterUrl(saga.saga.posterPath, 'w185')
-                    }
-                    azioni={
-                      !saga.saga.listaId ? (
-                        // Una saga di TMDB: modificandola diventa tua, al suo posto.
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setInModifica({
-                              listaId: null,
-                              daTmdb: {
-                                id: Number(saga.chiave.slice('saga-'.length)),
-                                nome: saga.saga.name,
-                                chiavi: new Set(suoi.flatMap((f) => chiaveTitolo(f.riga.id) ?? [])),
-                              },
-                            })
-                          }
-                          className="text-xs text-zinc-400 transition hover:text-projector"
-                        >
-                          ✎ Modifica la saga
-                        </button>
-                      ) : saga.saga.listaId ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setInModifica({ listaId: saga.saga.listaId as string })}
-                            className="text-xs text-zinc-400 transition hover:text-projector"
-                          >
-                            ✎ Modifica la saga
-                          </button>
-                          <button type="button" onClick={() => setCopertinaDi(saga.saga.listaId as string)} className="text-xs text-zinc-400 transition hover:text-projector">
-                            🖼️ Cambia copertina
-                          </button>
-                        </>
-                      ) : undefined
-                    }
-                    quanti={suoi.length}
-                    visti={suoi.filter((f) => !!archivio.get(f.video.id)?.visto_il).length}
-                    anni={anni.length === 0 ? null : anni[0] === anni[anni.length - 1] ? anni[0] : `${anni[0]}–${anni[anni.length - 1]}`}
-                    apertaSempre={query.trim() !== ''}
-                    onCancella={() => void cancellaGruppo(saga.chiave, saga.saga.name, suoi.map((f) => f.video))}
-                    cancellando={cancellando === saga.chiave}
-                  >
-                    {suoi.map((f) => (
-                      <li key={f.video.id}>{rigaFilm(f.video, f.riga)}</li>
-                    ))}
-                  </SagaVideoteca>
-                </li>
-              )
-            }
-            return (
-              <li key={riga.id}>{rigaFilm(videoDi.get(riga.id) as VideoFile, riga)}</li>
-            )
-          })}
-        </ul>
-        )}
         </>
       )}
 
-      {inModifica && (
-        <Modal
-          title={listaAperta ? `Saga «${listaAperta.nome}»` : inModifica.daTmdb ? `Saga «${inModifica.daTmdb.nome}»` : 'Crea una saga'}
-          onClose={() => setInModifica(null)}
-        >
-          {!listaAperta && !inModifica.daTmdb && inSagaTmdb.size > 0 && (
-            <p className="mb-3 text-sm text-zinc-400">
-              I film che TMDB mette già in una saga (Alien, Harry Potter…) non compaiono: quella saga c’è già nell’elenco, e si cambia con «✎
-              Modifica la saga».
-            </p>
-          )}
-          <ModificaSaga
-            film={sceglibili}
-            // Scelti in partenza solo i titoli che qui si vedono: gli altri della
-            // lista non si toccano, e non vanno contati.
-            iniziale={
-              listaAperta
-                ? { nome: listaAperta.nome, chiavi: new Set(sceglibili.map((f) => f.chiave).filter((k) => listaAperta.chiavi.has(k))) }
-                : inModifica.daTmdb
-                  ? { nome: inModifica.daTmdb.nome, chiavi: inModifica.daTmdb.chiavi }
-                  : undefined
-            }
-            onSalva={(nome, chiavi) => void salvaLista(nome, chiavi)}
-            onCercaStudio={(nome) => filmDelloStudio(nome)}
-            onSciogli={listaAperta ? () => void sciogliSaga(listaAperta.id, listaAperta.nome) : undefined}
-            salvando={salvandoLista}
-          />
-        </Modal>
-      )}
-      {perCopertina && (
-        <Modal title={`Copertina di «${perCopertina.raccolta.nome}»`} onClose={() => setCopertinaDi(null)}>
-          <SceltaCopertina
-            titoli={[
-              ...perCopertina.film.flatMap((f) => {
-                const voce = archivio.get(f.video.id)
-                return voce?.tmdb_id ? [{ tmdbId: voce.tmdb_id, mediaType: 'movie' as const, titolo: f.riga.nome }] : []
-              }),
-              ...perCopertina.serie.flatMap((g) =>
-                g.tmdb.startsWith('tv-') ? [{ tmdbId: Number(g.tmdb.slice(3)), mediaType: 'tv' as const, titolo: g.titolo }] : [],
-              ),
-            ]}
-            attuale={perCopertina.raccolta.copertina}
-            onScegli={(c) => void scegliCopertina(perCopertina.raccolta.id, c)}
-          />
-        </Modal>
-      )}
+      <ModaliSaghe
+        userId={user?.id ?? null}
+        inModifica={inModifica}
+        onChiudiModifica={() => setInModifica(null)}
+        copertinaDi={copertinaDi}
+        onChiudiCopertina={() => setCopertinaDi(null)}
+        raccolte={raccolte}
+        onCopertina={(listId, copertina) => setRaccolte((prima) => prima.map((r) => (r.id === listId ? { ...r, copertina } : r)))}
+        ricaricaRaccolte={caricaRaccolte}
+        composta={composta}
+        archivio={archivio}
+        onErrore={setErrore}
+      />
       {scelta && (
         <Modal title={`Che titolo è «${scelta.nome}»?`} onClose={() => setScelta(null)}>
           <p className="mb-3 text-sm text-zinc-400">
