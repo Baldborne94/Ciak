@@ -22,47 +22,17 @@ import { useComandiVisibili } from '../lib/useComandiVisibili'
 import ProssimoEpisodio from '../components/ProssimoEpisodio'
 import ToccoVideo from '../components/ToccoVideo'
 import { azioneTasto, metadatiSessione, SALTO_TASTIERA, type AzioneTasto } from '../lib/comandiLettore'
+import { idFileValido, titoloVideo } from '../lib/fileVideo'
+import { ATTESA_AVVIO_MS, rilasciaVideo, senzaAudio, TENTATIVI_MAX, vigilanzaSalto, type Problema } from '../lib/lettore'
 import {
-  anteprimaUrl,
-  apriSuDriveUrl,
-  ascoltaDiagnostica,
-  attendiLettoreCiak,
-  cestinaVideo,
-  collegaDrive,
-  driveDisconnetti,
-  erroreRitornoDrive,
-  driveConnesso,
-  flussoVideoUrl,
-  idDriveValido,
-  lettoreCiakDisponibile,
-  scadenzaDrive,
-  tieniSveglioIlLettore,
-  titoloVideo,
-  versioneWorker,
-} from '../lib/googleDrive'
-import {
-  ATTESA_AVVIO_MS,
-  decidiErrore,
-  descriviDiagnostica,
-  rilasciaVideo,
-  senzaAudio,
-  sessioneInScadenza,
-  vigilanzaSalto,
-  type DiagnosticaVideo,
-  type Problema,
-} from '../lib/lettore'
-import {
-  annullaDownload,
   ascoltaFilmOffline,
-  downloadInCorso,
   eliminaFilm,
   filmOffline,
   offlineDisponibile,
   salvaFileSulDispositivo,
   salvaSottotitoliOffline,
-  scaricaFilm,
   taglia,
-  type Avanzamento,
+  urlFilmSalvato,
   type FilmOffline,
 } from '../lib/filmOffline'
 import { registraErrore } from '../lib/errorLog'
@@ -100,30 +70,22 @@ import { indiceAudio, leggiLinguaAudio, nomiTracceAudio, salvaLinguaAudio, sigla
 import { eJellyfin, fermaConversione, flussoDiretto, flussoHls, riproducibileDirettamente, tracciaPredefinita } from '../lib/jellyfin'
 import { useHls, useInfoCasa, useSottotitoliCasa } from '../lib/useLettoreCasa'
 import { eLocale, filmAperto, formatoLeggibile, type FilmAperto } from '../lib/filmLocali'
-import { ErroreCartella, cartellaCollegata, cartellaScelta, fileDallaCartella } from '../lib/cartellaLocale'
+import { ErroreCartella, cancellaDalDisco, cancellabileDalDisco, cartellaCollegata, cartellaScelta, fileDallaCartella } from '../lib/cartellaLocale'
 import ScegliCartella from '../components/ScegliCartella'
 import ApriFilmLocale from '../components/ApriFilmLocale'
 
-// Due lettori per lo stesso film:
-//  - quello di Ciak, un <video> che legge il file originale da Drive (tramite
-//    il service worker) o, se il film è stato scaricato, dal dispositivo — e
-//    mostra i sottotitoli che Ciak trova da sé, in italiano e in inglese;
-//  - quello di Google Drive, in un iframe, che converte al volo ogni formato
-//    ma non accetta sottotitoli dall'esterno.
-// Si parte da quello di Ciak; se il browser non legge il file o l'audio resta
-// muto (tipico del Dolby E-AC3 negli MKV) lo si dice e si passa a Drive.
+// Il lettore di Ciak: un <video> che legge il file dal disco (la cartella
+// collegata, un file scelto a mano o la copia salvata in Ciak) o dal server di
+// casa, coi sottotitoli che Ciak trova da sé e le lingue dell'audio. Se il
+// browser non legge il file, o l'audio resta muto (il Dolby E-AC3 degli MKV),
+// lo si dice col rimedio: convertirlo con prepara-ciak.
 
 const MESSAGGI: Record<Problema, string> = {
-  formato: 'Il browser non riesce a leggere questo file. Il lettore di Drive lo converte da sé.',
-  muto: 'Il video parte ma senza audio: probabilmente è in un formato (come il Dolby E-AC3) che il browser non legge. Il lettore di Drive lo converte da sé.',
-  sessione: 'La sessione Google è scaduta: ricollega Google Drive per continuare da dove eri.',
-  negato:
-    'Drive non lascia leggere questo file (403): il permesso dato a Ciak non basta più, oppure la quota di download di oggi è finita. Ricollega Google Drive; se non cambia, riprova domani.',
-  assente: 'Drive non trova più questo file (404): forse è stato spostato o cancellato. Torna all’elenco e ricarica i video.',
-  rete: 'La connessione con Drive si è interrotta più volte di fila. Riprova tra poco, o usa il lettore di Drive.',
-  avvio:
-    "Il browser non riesce ad aprire questo file: capita spesso con gli MKV, che Chrome legge solo in parte. Il lettore di Drive lo converte da sé (ma senza i sottotitoli di Ciak).",
-  salto: 'Il salto non è riuscito: Drive non ha mandato il pezzo di film richiesto. Riprova, o usa il lettore di Drive (i dettagli tecnici qui sotto dicono cosa ha risposto).',
+  formato: 'Il browser non riesce a leggere questo file: potrebbe essere rovinato, o in un formato che non conosce. Convertilo in MP4 con prepara-ciak.',
+  muto: 'Il video parte ma senza audio: è in un formato (come il Dolby E-AC3) che il browser non legge. Convertilo con prepara-ciak, che rifà l’audio in AAC.',
+  rete: 'Il video si è interrotto più volte di fila. Riprova tra poco.',
+  avvio: 'Il film non parte: il browser forse non ne legge il formato. Convertilo in MP4 con prepara-ciak e riaprilo.',
+  salto: 'Il salto non è riuscito: riprova.',
 }
 
 // Un lettore per file: passando all'episodio dopo (stessa pagina, altro file)
@@ -148,9 +110,9 @@ export default function StreamingPlayerPage() {
 function LettoreStreaming() {
   const { fileId = '' } = useParams()
   const stato = useLocation().state as { titolo?: string; file?: string; aperto?: number } | null
-  const valido = idDriveValido(fileId)
-  // Un video del server di casa (Jellyfin): niente Drive, niente service
-  // worker; il file arriva dal server, così com'è o convertito al volo.
+  const valido = idFileValido(fileId)
+  // Un video del server di casa (Jellyfin): il file arriva dal server, così
+  // com'è o convertito al volo.
   const casa = eJellyfin(fileId)
   const { info: infoCasa, errore: erroreCasa } = useInfoCasa(fileId, casa && valido)
   // Un film aperto dal dispositivo (vedi filmLocali): il file scelto dal disco
@@ -189,8 +151,8 @@ function LettoreStreaming() {
       vivo = false
     }
   }, [loc, fileId, stato?.aperto, riaperta])
-  // Né Drive né Jellyfin: tutto ciò che è solo loro (sessione, cestino,
-  // diagnostica, lettore di Drive) qui non c'è.
+  // Né dal disco né dal server di casa: un vecchio video di Google Drive, che
+  // Ciak non usa più (dalla cronologia, da un link salvato).
   const daDrive = !casa && !loc
   // L'indirizzo del file scelto, creato in un effetto e non durante il
   // disegno: così si rilascia quando non serve più, senza sprecare memoria.
@@ -204,34 +166,30 @@ function LettoreStreaming() {
   const [salvando, setSalvando] = useState(false)
   const [erroreSalva, setErroreSalva] = useState<string | null>(null)
 
-  // Il film sul dispositivo: undefined finché non si è guardato in cache.
+  // Il film salvato in Ciak: undefined finché non si è guardato in cache.
   const [locale, setLocale] = useState<FilmOffline | null | undefined>(undefined)
-  const [avanzamento, setAvanzamento] = useState<Avanzamento | null>(null)
-  const [scaricando, setScaricando] = useState(false)
-  const [erroreDownload, setErroreDownload] = useState<string | null>(null)
-  const [cestinando, setCestinando] = useState(false)
-  // 'permesso': Drive ha detto 403, serve ricollegare con lo scope nuovo.
-  const [erroreCestino, setErroreCestino] = useState<string | null>(null)
   const scaricato = locale?.stato === 'completo'
-
-  const [connesso, setConnesso] = useState(driveConnesso)
-  const [ciakPronto, setCiakPronto] = useState(lettoreCiakDisponibile)
-  const [lettore, setLettore] = useState<'ciak' | 'drive'>(() =>
-    !daDrive || (lettoreCiakDisponibile() && driveConnesso()) ? 'ciak' : 'drive',
-  )
-  // I sottotitoli si cercano su Drive solo quando serve davvero il lettore di
-  // Ciak e il film non è già sul dispositivo coi suoi: nel lettore di Drive
-  // non si vedrebbero, e un download online ha un tetto.
-  const [sottotitoliAttivi, setSottotitoliAttivi] = useState(lettore === 'ciak')
-  const [problema, setProblema] = useState<Problema | null>(null)
-  const [chiaveVideo, setChiaveVideo] = useState(0)
-  const [errore, setErrore] = useState<string | null>(null)
-  // Un consenso a Drive andato male nell'app installata torna qui da Google:
-  // lo si dice invece di riproporre il pulsante come se niente fosse.
+  // Il suo file, quando non c'è quello del disco: dalla cache, rilasciato
+  // uscendo come quello scelto.
+  const [urlSalvato, setUrlSalvato] = useState<string | null>(null)
   useEffect(() => {
-    const e = erroreRitornoDrive()
-    if (e) setErrore(e)
-  }, [])
+    if (!scaricato || aperto) return setUrlSalvato(null)
+    let vivo = true
+    let fatto: string | null = null
+    urlFilmSalvato(fileId)
+      .then((u) => {
+        fatto = u
+        if (vivo) setUrlSalvato(u)
+        else if (u) URL.revokeObjectURL(u)
+      })
+      .catch(logFailure('Film salvato in Ciak'))
+    return () => {
+      vivo = false
+      if (fatto) URL.revokeObjectURL(fatto)
+    }
+  }, [fileId, scaricato, aperto])
+  const [cancellando, setCancellando] = useState(false)
+  const [errore, setErrore] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const navigate = useNavigate()
   // Lo schermo intero di Ciak è quello della pagina, non del <video>: passando
@@ -319,9 +277,6 @@ function LettoreStreaming() {
     [],
   )
   const audioControllato = useRef(false)
-  // Chi ha scelto a mano il lettore di Drive ci resta, anche se quello di Ciak
-  // diventa pronto dopo.
-  const sceltaDrive = useRef(false)
   // Riprese automatiche dopo un errore di rete, e da che punto è partita l'ultima:
   // il conto si azzera quando il film torna a scorrere per un po'.
   const tentativi = useRef(0)
@@ -330,14 +285,6 @@ function LettoreStreaming() {
   // può leggere `posizione` in quel momento: `load()` azzera il tempo e manda
   // un timeupdate a 0 prima di loadedmetadata, e il film ripartiva da capo.
   const daRiprendere = useRef(0)
-  // Cosa ha risposto Drive agli ultimi pezzi di film, dal service worker.
-  const [diagnostica, setDiagnostica] = useState<DiagnosticaVideo[]>([])
-  // L'ultima risposta di Drive, letta al momento dell'errore: lo stato di React
-  // potrebbe non essere ancora aggiornato quando il <video> si lamenta.
-  const ultimaRispostaDrive = useRef<DiagnosticaVideo | null>(null)
-  // undefined: non ancora chiesta; null: il worker non risponde (vecchio o assente).
-  const [versione, setVersione] = useState<string | null | undefined>(undefined)
-  const [inScadenza, setInScadenza] = useState(false)
   const vigilanza = useRef(vigilanzaSalto(() => segnala('salto')))
   // Lo stesso guardiano per l'avvio: se i metadati non arrivano, il film non
   // partirà — e il browser non lo dice.
@@ -350,32 +297,26 @@ function LettoreStreaming() {
     [],
   )
   // Il <video> di questo giro, preso ora: quando l'effetto si chiude il ref
-  // è già vuoto. Si rilascia cambiando episodio, a ogni nuovo tentativo
-  // (`chiaveVideo`) e passando al lettore di Drive.
+  // è già vuoto. Si rilascia cambiando episodio.
   useEffect(() => {
     const v = videoRef.current
     return () => rilasciaVideo(v, logFailure('Rilascio del video precedente'))
-  }, [lettore, chiaveVideo])
+  }, [])
   // Dal server di casa si aspetta di sapere quale flusso chiedere: prima non
-  // c'è niente da far partire.
-  // Dal dispositivo, lo stesso: senza il file né una copia in Ciak non parte.
-  const srcLocale = urlAperto ?? (scaricato ? flussoVideoUrl(fileId) : null)
-  const casaPronta = casa ? infoCasa !== null : loc ? srcLocale !== null : true
+  // c'è niente da far partire. Dal disco, lo stesso: senza il file né una
+  // copia in Ciak non parte.
+  const srcLocale = urlAperto ?? urlSalvato
+  const pronto = casa ? infoCasa !== null : srcLocale !== null
   useEffect(() => {
-    if (lettore !== 'ciak' || !casaPronta) return vigilanzaAvvio.current.fine()
+    if (!pronto) return vigilanzaAvvio.current.fine()
     vigilanzaAvvio.current.inizio()
-  }, [lettore, chiaveVideo, casaPronta])
+  }, [pronto])
 
-  // Il film scaricato si guarda col lettore di Ciak anche senza Drive: è il
-  // caso in cui serve di più (in giro, senza rete).
+  // Il film salvato in Ciak: si guarda anche senza il disco, in giro, offline.
   useEffect(() => {
     if (!valido) return
     let attivo = true
-    void filmOffline(fileId).then((f) => {
-      if (!attivo) return
-      setLocale(f)
-      if (f?.stato === 'completo' && lettoreCiakDisponibile() && !sceltaDrive.current) setLettore('ciak')
-    })
+    void filmOffline(fileId).then((f) => attivo && setLocale(f))
     return () => {
       attivo = false
     }
@@ -384,55 +325,21 @@ function LettoreStreaming() {
   useEffect(
     () =>
       ascoltaFilmOffline((evento) => {
-        if (evento.id !== fileId) return
-        if (evento.avanzamento) setAvanzamento(evento.avanzamento)
-        if (evento.stato !== 'in-corso') {
-          setAvanzamento(null)
-          void filmOffline(fileId).then(setLocale)
-        }
+        if (evento.id !== fileId || evento.stato === 'in-corso') return
+        void filmOffline(fileId).then(setLocale)
       }),
     [fileId],
   )
 
-  useEffect(
-    () =>
-      attendiLettoreCiak(() => {
-        setCiakPronto(true)
-        if (!sceltaDrive.current && (driveConnesso() || scaricato)) {
-          setLettore('ciak')
-          setSottotitoliAttivi(true)
-        }
-      }),
-    [scaricato],
-  )
-
-  useEffect(() => (lettore === 'ciak' ? tieniSveglioIlLettore() : undefined), [lettore])
-  useEffect(
-    () =>
-      ascoltaDiagnostica((d) => {
-        ultimaRispostaDrive.current = d
-        setDiagnostica((prima) => [...prima.slice(-7), d])
-      }),
-    [],
-  )
-  useEffect(() => {
-    if (lettore !== 'ciak') return
-    let attivo = true
-    void versioneWorker().then((v) => attivo && setVersione(v))
-    return () => {
-      attivo = false
-    }
-  }, [lettore, ciakPronto])
-
-  // Coi sottotitoli già salvati insieme al film, Drive non serve: si usano
-  // quelli. Altrimenti (o se si vuole cambiarli) li si cerca come sempre.
-  // Dal dispositivo valgono solo quelli scelti col film (o salvati con lui).
-  const usaSalvati = loc || (scaricato && !connesso && (locale?.sottotitoli?.length ?? 0) > 0)
-  const subDrive = useSottotitoli(fileId, daDrive && valido && connesso && sottotitoliAttivi && !usaSalvati)
+  // I sottotitoli: dal server di casa quelli che conosce Jellyfin; dal disco
+  // quelli accanto al video, o trovati online (vedi useSottotitoli). Senza il
+  // file a portata (la copia salvata in Ciak) quelli salvati insieme a lui.
+  const subDisco = useSottotitoli(aperto)
   const subCasa = useSottotitoliCasa(fileId, infoCasa)
-  const sub = casa ? subCasa : subDrive
+  const sub = casa ? subCasa : subDisco
+  const usaSalvati = loc && !aperto
 
-  const salvati = loc ? (aperto?.sottotitoli ?? locale?.sottotitoli) : usaSalvati ? locale?.sottotitoli : undefined
+  const salvati = usaSalvati ? locale?.sottotitoli : undefined
   const tracceSalvate = useMemo(
     () =>
       (salvati ?? []).map((s) => ({
@@ -511,7 +418,7 @@ function LettoreStreaming() {
   useEffect(() => {
     const v = videoRef.current
     if (archivioCaricato && v && v.readyState >= 1) applicaRipresa(v)
-  }, [archivioCaricato, applicaRipresa, chiaveVideo])
+  }, [archivioCaricato, applicaRipresa])
 
   // Pausa, ripresa e salti: dal tocco, dalla tastiera, dalla schermata di blocco.
   const alternaRiproduzione = useCallback((): boolean => {
@@ -573,15 +480,14 @@ function LettoreStreaming() {
   const comandiVisibili = useComandiVisibili(riquadroVideo, videoRef, menuSottotitoliAperto || menuAudioAperto)
 
   // La lingua dell'audio (vedi lib/tracceAudio): il menu c'è solo per i video
-  // con più lingue, preparate da prepara-ciak accanto al film su Drive. Le
-  // altre lingue arrivano da Drive: senza collegamento resta quella del video.
-  const tracceDrive = useTracceAudio(fileId, daDrive && valido && connesso && lettore === 'ciak')
+  // con più lingue, preparate da prepara-ciak accanto al film sul disco.
+  const audioDisco = useTracceAudio(aperto)
   // Dal server di casa le lingue le conosce Jellyfin, dentro e accanto al file.
   const tracceCasa = useMemo<TracciaAudio[]>(
     () => (infoCasa ? infoCasa.audio.map((a, i) => ({ indice: i + 1, lingua: a.lingua, titolo: a.titolo, fileId: null })) : []),
     [infoCasa],
   )
-  const tracceAudio = casa ? tracceCasa : tracceDrive
+  const tracceAudio = casa ? tracceCasa : audioDisco.tracce
   const voceAudio = archivio.voce
   // Ricordata per serie (un anime doppiato, un altro in originale); per i film
   // una scelta sola.
@@ -606,7 +512,7 @@ function LettoreStreaming() {
   )
   // L'<audio> della lingua scelta, quando non è quella dentro il video: lo
   // segue in tutto, e il video tace (vedi lib/sincroniaAudio).
-  const srcAudio = daDrive && tracciaAudio?.fileId ? flussoVideoUrl(tracciaAudio.fileId) : null
+  const srcAudio = !casa && tracciaAudio?.fileId ? audioDisco.url(tracciaAudio.fileId) : null
 
   // Il flusso del server di casa: il file così com'è quando il browser lo
   // legge e si sente la prima lingua; altrimenti convertito da Jellyfin (HLS),
@@ -620,11 +526,11 @@ function LettoreStreaming() {
   // Una sessione per lingua: Jellyfin ne converte una sola per sessione.
   const sessioneCasa = `ciak-${idSessione}-${audioCasa?.indice ?? 'p'}`
   const hlsCasa = casa && infoCasa && !direttoCasa ? flussoHls(fileId, infoCasa, audioCasa?.indice ?? null, sessioneCasa) : null
-  const srcVideo = loc ? (srcLocale ?? undefined) : !casa ? flussoVideoUrl(fileId) : direttoCasa ? flussoDiretto(fileId) : undefined
+  const srcVideo = casa ? (direttoCasa ? flussoDiretto(fileId) : undefined) : (srcLocale ?? undefined)
   // Letto dagli avvisi, che possono essere stati creati a un disegno di prima.
   const direttoCasaRef = useRef(direttoCasa)
   direttoCasaRef.current = direttoCasa
-  useHls(videoRef, lettore === 'ciak' ? hlsCasa : null, chiaveVideo, (m) => setErrore(m))
+  useHls(videoRef, hlsCasa, 0, (m) => setErrore(m))
   useEffect(() => {
     if (!hlsCasa) return
     return () => fermaConversione(sessioneCasa)
@@ -650,7 +556,6 @@ function LettoreStreaming() {
   // disegno (vedi `suTasto.current`, più sotto).
   const suTasto = useRef<(azione: AzioneTasto) => void>(() => {})
   useEffect(() => {
-    if (lettore !== 'ciak') return
     const premuto = (e: KeyboardEvent) => {
       const azione = azioneTasto(e, e.target instanceof HTMLElement ? e.target : null)
       if (!azione) return
@@ -662,14 +567,14 @@ function LettoreStreaming() {
     }
     window.addEventListener('keydown', premuto, true)
     return () => window.removeEventListener('keydown', premuto, true)
-  }, [lettore])
+  }, [])
 
   // La schermata di blocco e le notifiche del telefono: titolo, locandina,
   // pausa, salti e l'episodio dopo, anche a schermo spento o da un'altra app.
   const posterSessione = archivio.voce?.poster_path ?? null
   useEffect(() => {
     const sessione = typeof navigator !== 'undefined' && 'mediaSession' in navigator ? navigator.mediaSession : null
-    if (!sessione || lettore !== 'ciak') return
+    if (!sessione) return
     if (typeof MediaMetadata !== 'undefined') sessione.metadata = new MediaMetadata(metadatiSessione(titolo, posterSessione))
     const azioni: [MediaSessionAction, MediaSessionActionHandler | null][] = [
       ['play', () => videoRef.current?.play().catch(logFailure('Ripresa dalla schermata di blocco'))],
@@ -697,7 +602,7 @@ function LettoreStreaming() {
       sessione.metadata = null
       for (const [azione] of azioni) imposta(azione, null)
     }
-  }, [lettore, titolo, posterSessione, prossimo, vaiAlProssimo, precedente, vaiAlPrecedente, salta])
+  }, [titolo, posterSessione, prossimo, vaiAlProssimo, precedente, vaiAlPrecedente, salta])
 
   const indietro = (
     <Link to="/streaming" className="text-sm text-zinc-400 transition hover:text-projector">
@@ -713,37 +618,20 @@ function LettoreStreaming() {
       </div>
     )
   }
-
-  function usaDrive() {
-    sceltaDrive.current = true
-    vigilanza.current.fine()
-    setLettore('drive')
-    setProblema(null)
-  }
-
-  function usaCiak() {
-    sceltaDrive.current = false
-    audioControllato.current = false
-    setLettore('ciak')
-    setSottotitoliAttivi(true)
-    setProblema(null)
+  if (daDrive) {
+    return (
+      <div className="space-y-4">
+        {indietro}
+        <ErrorState
+          title="Questo video era su Google Drive"
+          message="Ciak non usa più Google Drive: i film si guardano dalla cartella del PC. Torna all’elenco e aprilo da lì."
+        />
+      </div>
+    )
   }
 
   // Un avviso dentro la pagina non si vede in schermo intero: prima si esce.
   function segnala(p: Problema) {
-    if (loc) {
-      // I rimedi di Drive (riprova, il suo lettore) qui non servono: il file è
-      // sul disco, e se non parte è il formato.
-      setErrore(
-        p === 'muto'
-          ? 'Il video parte ma senza audio: è in un formato (come il Dolby E-AC3) che il browser non legge. Convertilo con prepara-ciak, che rifà l’audio in AAC.'
-          : p === 'salto'
-            ? 'Il salto non è riuscito: riprova.'
-            : 'Il film non parte: il browser forse non ne legge il formato. Convertilo in MP4 con prepara-ciak e riaprilo.',
-      )
-      if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
-      return
-    }
     if (casa) {
       // Il file diretto che non parte (o parte muto) lo converte Jellyfin.
       if (direttoCasaRef.current && (p === 'avvio' || p === 'muto' || p === 'formato')) {
@@ -759,8 +647,11 @@ function LettoreStreaming() {
       if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
       return
     }
-    setProblema(p)
-    if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
+    // Dal disco: il file è lì, e se non parte è il formato. Un film muto
+    // però va avanti: lo si dice sotto il video, senza strappare chi guarda
+    // dallo schermo intero (se ne accorge da sé, e uscendo trova il perché).
+    setErrore(MESSAGGI[p])
+    if (p !== 'muto' && document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
   }
 
   function alternaSchermoIntero() {
@@ -832,98 +723,27 @@ function LettoreStreaming() {
   }
 
   function suErrore(v: HTMLVideoElement) {
-    if (loc) {
-      const nome = aperto?.file.name ?? locale?.file ?? ''
-      void registraErrore('lettore: errore video dal dispositivo', { codice: v.error?.code, messaggio: v.error?.message, nome })
-      setErrore(
-        nome && !formatoLeggibile(nome)
-          ? 'Il browser non sa leggere questo formato (succede spesso con MKV e AVI). Convertilo in MP4 con prepara-ciak e riaprilo.'
-          : 'Il browser non riesce a leggere questo file: potrebbe essere rovinato, o in un formato che non conosce. Prova a convertirlo in MP4 con prepara-ciak.',
-      )
-      if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
-      return
-    }
     if (casa) {
       const codice = v.error?.code
       void registraErrore('lettore: errore video dal server di casa', { codice, messaggio: v.error?.message, posizione: posizione.current, diretto: direttoCasaRef.current })
-      // Rete: si riprova qualche volta dallo stesso punto, come con Drive.
-      if (codice === MediaError.MEDIA_ERR_NETWORK && tentativi.current < 3) {
+      // Rete: si riprova qualche volta dallo stesso punto.
+      if (codice === MediaError.MEDIA_ERR_NETWORK && tentativi.current < TENTATIVI_MAX) {
         tentativi.current++
+        ripresoDa.current = posizione.current
         daRiprendere.current = posizione.current
         v.load()
         return
       }
       return segnala(codice === MediaError.MEDIA_ERR_NETWORK ? 'rete' : 'formato')
     }
-    const decisione = decidiErrore({
-      codice: v.error?.code,
-      posizione: posizione.current,
-      tentativi: tentativi.current,
-      connesso: driveConnesso() || scaricato,
-      drive: ultimaRispostaDrive.current?.status,
-    })
-    // Nel diario, con le ultime risposte di Drive: un errore del lettore che
-    // resta solo a schermo non si può più indagare.
-    void registraErrore('lettore: errore video', {
-      codice: v.error?.code,
-      messaggio: v.error?.message,
-      posizione: posizione.current,
-      decisione,
-      scaricato,
-      drive: diagnostica.slice(-3),
-    })
-    if (decisione !== 'riprova') return segnala(decisione)
-    // Stesso elemento, nuova richiesta: si riprende da dove si era (vedi
-    // onLoadedMetadata) senza uscire dallo schermo intero.
-    tentativi.current++
-    ripresoDa.current = posizione.current
-    daRiprendere.current = posizione.current
-    v.load()
-  }
-
-  function riprova() {
-    tentativi.current = 0
-    daRiprendere.current = posizione.current
-    setProblema(null)
-    videoRef.current?.load()
-  }
-
-  async function ricollega() {
-    setErrore(null)
-    try {
-      await collegaDrive()
-      setConnesso(true)
-      // Un rinnovo a film in corso non deve interromperlo: il service worker
-      // chiede il token a ogni richiesta e prende da sé quello nuovo. Solo un
-      // video già fermo per la sessione scaduta va ricaricato.
-      if (problema) {
-        daRiprendere.current = posizione.current
-        setChiaveVideo((k) => k + 1)
-      }
-      setProblema(null)
-      setInScadenza(false)
-      tentativi.current = 0
-      if (ciakPronto || lettoreCiakDisponibile()) usaCiak()
-    } catch (e) {
-      setErrore(e instanceof Error ? e.message : 'Collegamento non riuscito.')
+    const nome = aperto?.file.name ?? locale?.file ?? ''
+    void registraErrore('lettore: errore video dal dispositivo', { codice: v.error?.code, messaggio: v.error?.message, nome })
+    if (nome && !formatoLeggibile(nome)) {
+      setErrore('Il browser non sa leggere questo formato (succede spesso con MKV e AVI). Convertilo in MP4 con prepara-ciak e riaprilo.')
+      if (document.fullscreenElement) document.exitFullscreen().catch(logFailure('Uscita dallo schermo intero'))
+      return
     }
-  }
-
-  async function scarica() {
-    setErroreDownload(null)
-    setScaricando(true)
-    try {
-      const esito = await scaricaFilm(
-        { id: fileId, titolo, file: nomeFile ?? titolo, dimensione: sub.info?.size ?? null },
-        sub.tracce.map(({ chiave, lingua, etichetta, vtt }) => ({ chiave, lingua, etichetta, vtt })),
-      )
-      if (esito === 'sottofondo') setLocale(await filmOffline(fileId))
-    } catch (e) {
-      setErroreDownload(e instanceof Error ? e.message : 'Download non riuscito.')
-      logFailure('Download del film per l’offline')(e)
-    } finally {
-      setScaricando(false)
-    }
+    segnala('formato')
   }
 
   // Il film aperto dal disco, copiato in Ciak: sul tablet si guarda poi anche
@@ -933,7 +753,11 @@ function LettoreStreaming() {
     setErroreSalva(null)
     setSalvando(true)
     try {
-      await salvaFileSulDispositivo({ id: fileId, titolo, file: aperto.file.name }, aperto.file, aperto.sottotitoli)
+      await salvaFileSulDispositivo(
+        { id: fileId, titolo, file: aperto.file.name },
+        aperto.file,
+        sub.tracce.map(({ chiave, lingua, etichetta, vtt }) => ({ chiave, lingua, etichetta, vtt })),
+      )
       setLocale(await filmOffline(fileId))
     } catch (e) {
       setErroreSalva(e instanceof Error ? e.message : 'Salvataggio non riuscito.')
@@ -948,37 +772,28 @@ function LettoreStreaming() {
     setLocale(null)
   }
 
-  // Cancellare il video da Ciak vuol dire cestinarlo su Drive (coi sottotitoli
-  // e, se la cartella resta vuota, con la cartella): dal cestino Google lo
-  // recupera per trenta giorni, quindi basta una conferma. Un 403 è il
-  // permesso vecchio, di sola lettura: si ricollega con quello nuovo.
-  async function cestina() {
-    if (!window.confirm(`Vuoi cancellare «${titolo}» da Google Drive?\nFinisce nel cestino di Drive, coi suoi sottotitoli: da lì si recupera per 30 giorni.`)) return
-    setErroreCestino(null)
-    setCestinando(true)
+  // Cancellare il video da Ciak vuol dire cancellarlo dal disco, coi suoi
+  // sottotitoli e le sue lingue (e, se la cartella resta vuota, con la
+  // cartella). Non passa dal Cestino di Windows: la conferma lo dice.
+  async function cancellaDalPc() {
+    if (!window.confirm(`Vuoi cancellare «${titolo}» dal disco?\nVa via il file, coi suoi sottotitoli, dalla cartella «${cartellaCollegata()}». Non finisce nel Cestino: non si recupera.`)) return
+    setErrore(null)
+    setCancellando(true)
     try {
-      await cestinaVideo(fileId)
-      if (scaricato) await eliminaFilm(fileId).catch(logFailure('Eliminazione del film offline'))
-      navigate('/streaming', { replace: true, state: { cestinato: titolo } })
+      await cancellaDalDisco([fileId])
+      if (scaricato) await eliminaFilm(fileId).catch(logFailure('Eliminazione del film salvato in Ciak'))
+      navigate('/streaming', { replace: true, state: { cancellato: titolo } })
     } catch (e) {
-      const messaggio = e instanceof Error ? e.message : 'Cancellazione non riuscita.'
-      setErroreCestino(messaggio.includes('403') ? 'permesso' : messaggio)
-      logFailure('Cancellazione del video da Drive')(e)
+      setErrore(e instanceof Error ? e.message : 'Cancellazione non riuscita.')
+      logFailure('Cancellazione del video dal disco')(e)
     } finally {
-      setCestinando(false)
+      setCancellando(false)
     }
   }
 
-  // Il permesso nuovo (tutto il Drive) si ottiene solo chiedendolo da capo:
-  // scollegati, anche dal server, e si ripassa da Google.
-  async function ricollegaConPermessoNuovo() {
-    driveDisconnetti(true)
-    await ricollega()
-  }
-
   const testoSottotitoli =
-    loc && tracce.length === 0
-      ? 'Nessun sottotitolo: per averli, scegli il file .srt insieme al film.'
+    usaSalvati && tracce.length === 0
+      ? 'Nessun sottotitolo salvato con il film.'
       : sub.stato === 'cerco' && !usaSalvati
       ? 'Cerco i sottotitoli…'
       : tracce.length > 0
@@ -987,9 +802,7 @@ function LettoreStreaming() {
           [tracce.map((t) => t.etichetta).join(' · '), !usaSalvati && sub.messaggio].filter(Boolean).join(' · ')
         : sub.stato === 'errore'
           ? `Sottotitoli non disponibili: ${sub.messaggio ?? 'errore sconosciuto'}`
-          : (sub.messaggio ?? 'Nessun sottotitolo, né nella cartella né su OpenSubtitles.')
-
-  const inCorso = scaricando || locale?.stato === 'in-corso' || downloadInCorso(fileId)
+          : (sub.messaggio ?? 'Nessun sottotitolo, né accanto al video né su OpenSubtitles.')
 
   return (
     <div className="space-y-4">
@@ -1002,119 +815,102 @@ function LettoreStreaming() {
       <div
         ref={riquadroVideo}
         className={
-          lettore === 'ciak' && cinema
+          cinema
             ? // Senza !mt-0 il margine fra i blocchi della pagina (space-y-4) lo
               // spostava in basso di 16 px, e i comandi finivano fuori schermo.
               'fixed inset-0 z-[100] !mt-0 bg-black'
             : 'relative aspect-video w-full overflow-hidden rounded-xl bg-black shadow-reel'
         }
       >
-        {lettore === 'ciak' ? (
-          <video
-            // Dal server di casa un flusso nuovo (un'altra lingua, la
-            // conversione) è un elemento nuovo: hls.js e il file diretto non
-            // si contendono lo stesso <video>.
-            key={`${chiaveVideo}-${hlsCasa ?? 'diretto'}`}
-            ref={videoRef}
-            src={srcVideo}
-            // Senza i comandi del browser: ci sono quelli di Ciak (BarraLettore),
-            // con lo schermo intero della pagina, che passa indenne
-            // all'episodio dopo, e il CC coi sottotitoli disegnati da Ciak.
-            // Niente <track>: i sottotitoli li disegna Ciak (SottotitoliVideo),
-            // così il browser non mostra il suo CC in basso, scomodo sul
-            // telefono. Si scelgono dal menu «CC» in alto a destra.
-            autoPlay
-            playsInline
-            aria-label={titolo}
-            className="h-full w-full"
-            onError={(e) => suErrore(e.currentTarget)}
-            onLoadedMetadata={(e) => {
-              vigilanzaAvvio.current.fine()
-              // Dopo un'interruzione o un ricollegamento si riparte da dove si era.
-              const v = e.currentTarget
-              if (daRiprendere.current > 0) {
-                v.currentTime = daRiprendere.current
-                daRiprendere.current = 0
-                v.play().catch(logFailure('Ripresa del film'))
-              } else {
-                // Prima apertura: dal punto in cui ci si era fermati l'ultima volta.
-                archivio.applicaRipresa(v)
-              }
-            }}
-            onPause={() => archivio.suPausa()}
-            onEnded={() => setFinito(true)}
-            onPlay={() => setFinito(false)}
-            // Un salto fallito riprende dal punto scelto, non da quello di prima;
-            // uno che non finisce mai viene segnalato.
-            onSeeking={(e) => {
-              posizione.current = e.currentTarget.currentTime
-              vigilanza.current.inizio()
-            }}
-            onSeeked={(e) => {
-              vigilanza.current.fine()
-              const fine = fineDaCorrezione(ultimoSalto.current, e.currentTarget.currentTime, Date.now())
-              if (fine !== null) {
-                ultimoSalto.current = null
-                imparaPunti({ fine })
-              }
-            }}
-            onPlaying={() => vigilanza.current.fine()}
-            onTimeUpdate={(e) => {
-              const v = e.currentTarget
-              posizione.current = v.currentTime
-              archivio.suTempo(v)
-              const t = v.currentTime
-              // Con i tempi esatti dell'episodio il pulsante è fisso durante
-              // la sigla e la coda parte coi titoli; senza, il punto imparato
-              // per la serie e i primi minuti.
-              const ora = pulsanteSigla(t, { esatta: siglaEsatta, punti, durata: durataSigla ?? DURATA_SIGLA_PREDEFINITA })
-              if (ora !== pulsante) setPulsante(ora)
-              const durataVideo = Number.isFinite(v.duration) ? v.duration : null
-              const coda = codaEsatta ? t >= codaEsatta.da : inSiglaFinale(t, durataVideo)
-              if (coda !== inCoda) setInCoda(coda)
-              const partenzaSigla = siglaEsatta ? siglaEsatta.da : punti.inizio
-              if (scelte.inizio && !siglaSaltata && inizioSiglaRaggiunto(t, partenzaSigla)) saltaSigla(true)
-              // Dalla sigla finale parte il conto alla rovescia; tornando
-              // indietro si ferma, invece di cambiare episodio a metà scena.
-              const nellaCoda =
-                scelte.fine && !!prossimo && (codaEsatta ? t >= codaEsatta.da : codaSiglaRaggiunta(t, durataVideo, punti.coda))
-              if (nellaCoda !== codaAutomatica) setCodaAutomatica(nellaCoda)
-              if (tentativi.current > 0 && v.currentTime > ripresoDa.current + 30) tentativi.current = 0
-              const scade = daDrive && !scaricato && sessioneInScadenza(scadenzaDrive(), Date.now())
-              if (scade !== inScadenza) setInScadenza(scade)
-              if (!audioControllato.current && v.currentTime >= 3) {
-                audioControllato.current = true
-                if (senzaAudio(v)) {
-                  if (loc) segnala('muto')
-                  else setProblema('muto')
-                }
-              }
-            }}
-          />
-        ) : (
-          <iframe
-            title={titolo}
-            src={anteprimaUrl(fileId)}
-            allow="autoplay; fullscreen"
-            allowFullScreen
-            className="h-full w-full border-0"
-          />
-        )}
-        {lettore === 'ciak' && (
-          <SottotitoliVideo
-            videoRef={videoRef}
-            contenitore={riquadroVideo}
-            vtt={sottotitolo < 0 ? null : (tracce[sottotitolo]?.vtt ?? null)}
-            chiaveVideo={String(chiaveVideo)}
-            scala={DIMENSIONI_SOTTOTITOLI[dimensioneSottotitoli].scala}
-            sollevate={comandiVisibili}
-          />
-        )}
-        {lettore === 'ciak' && srcAudio && (
+        <video
+          // Dal server di casa un flusso nuovo (un'altra lingua, la
+          // conversione) è un elemento nuovo: hls.js e il file diretto non
+          // si contendono lo stesso <video>.
+          key={hlsCasa ?? 'diretto'}
+          ref={videoRef}
+          src={srcVideo}
+          // Senza i comandi del browser: ci sono quelli di Ciak (BarraLettore),
+          // con lo schermo intero della pagina, che passa indenne
+          // all'episodio dopo, e il CC coi sottotitoli disegnati da Ciak.
+          // Niente <track>: i sottotitoli li disegna Ciak (SottotitoliVideo),
+          // così il browser non mostra il suo CC in basso, scomodo sul
+          // telefono. Si scelgono dal menu «CC» in alto a destra.
+          autoPlay
+          playsInline
+          aria-label={titolo}
+          className="h-full w-full"
+          onError={(e) => suErrore(e.currentTarget)}
+          onLoadedMetadata={(e) => {
+            vigilanzaAvvio.current.fine()
+            // Dopo un'interruzione o un ricollegamento si riparte da dove si era.
+            const v = e.currentTarget
+            if (daRiprendere.current > 0) {
+              v.currentTime = daRiprendere.current
+              daRiprendere.current = 0
+              v.play().catch(logFailure('Ripresa del film'))
+            } else {
+              // Prima apertura: dal punto in cui ci si era fermati l'ultima volta.
+              archivio.applicaRipresa(v)
+            }
+          }}
+          onPause={() => archivio.suPausa()}
+          onEnded={() => setFinito(true)}
+          onPlay={() => setFinito(false)}
+          // Un salto fallito riprende dal punto scelto, non da quello di prima;
+          // uno che non finisce mai viene segnalato.
+          onSeeking={(e) => {
+            posizione.current = e.currentTarget.currentTime
+            vigilanza.current.inizio()
+          }}
+          onSeeked={(e) => {
+            vigilanza.current.fine()
+            const fine = fineDaCorrezione(ultimoSalto.current, e.currentTarget.currentTime, Date.now())
+            if (fine !== null) {
+              ultimoSalto.current = null
+              imparaPunti({ fine })
+            }
+          }}
+          onPlaying={() => vigilanza.current.fine()}
+          onTimeUpdate={(e) => {
+            const v = e.currentTarget
+            posizione.current = v.currentTime
+            archivio.suTempo(v)
+            const t = v.currentTime
+            // Con i tempi esatti dell'episodio il pulsante è fisso durante
+            // la sigla e la coda parte coi titoli; senza, il punto imparato
+            // per la serie e i primi minuti.
+            const ora = pulsanteSigla(t, { esatta: siglaEsatta, punti, durata: durataSigla ?? DURATA_SIGLA_PREDEFINITA })
+            if (ora !== pulsante) setPulsante(ora)
+            const durataVideo = Number.isFinite(v.duration) ? v.duration : null
+            const coda = codaEsatta ? t >= codaEsatta.da : inSiglaFinale(t, durataVideo)
+            if (coda !== inCoda) setInCoda(coda)
+            const partenzaSigla = siglaEsatta ? siglaEsatta.da : punti.inizio
+            if (scelte.inizio && !siglaSaltata && inizioSiglaRaggiunto(t, partenzaSigla)) saltaSigla(true)
+            // Dalla sigla finale parte il conto alla rovescia; tornando
+            // indietro si ferma, invece di cambiare episodio a metà scena.
+            const nellaCoda =
+              scelte.fine && !!prossimo && (codaEsatta ? t >= codaEsatta.da : codaSiglaRaggiunta(t, durataVideo, punti.coda))
+            if (nellaCoda !== codaAutomatica) setCodaAutomatica(nellaCoda)
+            if (tentativi.current > 0 && v.currentTime > ripresoDa.current + 30) tentativi.current = 0
+            if (!audioControllato.current && v.currentTime >= 3) {
+              audioControllato.current = true
+              if (senzaAudio(v)) segnala('muto')
+            }
+          }}
+        />
+        <SottotitoliVideo
+          videoRef={videoRef}
+          contenitore={riquadroVideo}
+          vtt={sottotitolo < 0 ? null : (tracce[sottotitolo]?.vtt ?? null)}
+          chiaveVideo={hlsCasa ?? 'diretto'}
+          scala={DIMENSIONI_SOTTOTITOLI[dimensioneSottotitoli].scala}
+          sollevate={comandiVisibili}
+        />
+        {srcAudio && (
           // Una lingua nuova è un elemento nuovo: riparte allineato al video.
           <audio key={srcAudio} ref={setElementoAudio} src={srcAudio} preload="auto" data-testid="audio-lingua" />
         )}
-        {lettore === 'ciak' && <IndicatoreCaricamento videoRef={videoRef} />}
+        <IndicatoreCaricamento videoRef={videoRef} />
         {loc && locale !== undefined && cercatoInCartella && !srcLocale && (
           // Riaprendo Ciak (o dalla cronologia) il file del disco non c'è più:
           // il browser non lascia riaprirlo da solo. Con la cartella collegata
@@ -1146,122 +942,114 @@ function LettoreStreaming() {
             )}
           </div>
         )}
-        {lettore === 'ciak' && (
-          // Anche col mouse: senza i comandi del browser il clic sul video
-          // ferma e riprende, come in ogni lettore.
-          <ToccoVideo
-            onAlterna={() => {
-              // A tutta finestra senza schermo intero vero: questo tocco lo concede.
-              if (aTuttaFinestra && !document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(logFailure('Schermo intero del lettore'))
-              }
-              return alternaRiproduzione()
-            }}
-            onSalta={salta}
-          />
-        )}
-        {lettore === 'ciak' && (
-          <AvvisoRipresa
-            da={archivio.ripresoDa}
-            onRicomincia={() => {
-              if (videoRef.current) videoRef.current.currentTime = 0
-            }}
-          />
-        )}
-        {lettore === 'ciak' && (
-          <BarraLettore
-            videoRef={videoRef}
-            visibile={comandiVisibili}
-            cinema={cinema}
-            onSchermoIntero={alternaSchermoIntero}
-            suono={elementoAudio}
-          >
-            {/* Gli episodi accanto, sempre a portata: non solo «il prossimo» a fine
-                episodio, ma anche tornare a quello prima. */}
-            {precedente && (
-              <button
-                type="button"
-                onClick={vaiAlPrecedente}
-                aria-label={`Episodio precedente: ${sigla(precedente) ?? ''}`}
-                title={`Episodio precedente (${sigla(precedente) ?? ''}) · P`}
-                className="rounded-md px-2 py-1 text-zinc-100 transition hover:bg-white/10"
-              >
-                ⏮
-              </button>
-            )}
-            {prossimo && (
-              <button
-                type="button"
-                onClick={inCoda ? prossimoDallaSigla : vaiAlProssimo}
-                aria-label={`Episodio successivo: ${sigla(prossimo) ?? ''}`}
-                title={`Episodio successivo (${sigla(prossimo) ?? ''}) · N`}
-                className="rounded-md px-2 py-1 text-zinc-100 transition hover:bg-white/10"
-              >
-                ⏭
-              </button>
-            )}
-            {tracceAudio.length > 1 && (
-              <MenuAudio
-                nomi={nomiTracceAudio(tracceAudio)}
-                scelto={sceltaAudio}
-                sigla={siglaTracciaAudio(tracciaAudio)}
-                onScegli={scegliAudio}
-                onAperto={setMenuAudioAperto}
-              />
-            )}
-            {tracce.length > 0 && (
-              <MenuSottotitoli
-                nomi={nomiSottotitoli}
-                scelto={sottotitolo}
-                sigla={siglaSottotitolo}
-                onScegli={scegliSottotitoli}
-                onAperto={setMenuSottotitoliAperto}
-                dimensione={dimensioneSottotitoli}
-                onDimensione={cambiaDimensioneSottotitoli}
-              />
-            )}
-          </BarraLettore>
-        )}
-        {lettore === 'ciak' && (
-          // In alto a destra, lontano dalla barra: «Salta sigla», «Rivedi la
-          // sigla» e l'episodio dopo.
-          <div className="absolute right-2 top-2 flex flex-col items-end gap-2">
-            {saltaSiglaInVista && (
-              <button type="button" onClick={() => saltaSigla()} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">
-                ⏭ Salta sigla
-              </button>
-            )}
-            {rivedi !== null && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (videoRef.current) videoRef.current.currentTime = rivedi
-                  setRivedi(null)
-                }}
-                className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel"
-              >
-                ↩ Rivedi la sigla
-              </button>
-            )}
-            {etichettaProssimo && (inCoda || finito || codaAutomatica) && (
-              <ProssimoEpisodio
-                etichetta={etichettaProssimo}
-                finito={finito || codaAutomatica}
-                onVai={prossimoDallaSigla}
-              />
-            )}
-          </div>
-        )}
+        {/* Anche col mouse: senza i comandi del browser il clic sul video
+           ferma e riprende, come in ogni lettore. */}
+        <ToccoVideo
+          onAlterna={() => {
+            // A tutta finestra senza schermo intero vero: questo tocco lo concede.
+            if (aTuttaFinestra && !document.fullscreenElement) {
+              document.documentElement.requestFullscreen().catch(logFailure('Schermo intero del lettore'))
+            }
+            return alternaRiproduzione()
+          }}
+          onSalta={salta}
+        />
+        <AvvisoRipresa
+          da={archivio.ripresoDa}
+          onRicomincia={() => {
+            if (videoRef.current) videoRef.current.currentTime = 0
+          }}
+        />
+        <BarraLettore
+          videoRef={videoRef}
+          visibile={comandiVisibili}
+          cinema={cinema}
+          onSchermoIntero={alternaSchermoIntero}
+          suono={elementoAudio}
+        >
+          {/* Gli episodi accanto, sempre a portata: non solo «il prossimo» a fine
+              episodio, ma anche tornare a quello prima. */}
+          {precedente && (
+            <button
+              type="button"
+              onClick={vaiAlPrecedente}
+              aria-label={`Episodio precedente: ${sigla(precedente) ?? ''}`}
+              title={`Episodio precedente (${sigla(precedente) ?? ''}) · P`}
+              className="rounded-md px-2 py-1 text-zinc-100 transition hover:bg-white/10"
+            >
+              ⏮
+            </button>
+          )}
+          {prossimo && (
+            <button
+              type="button"
+              onClick={inCoda ? prossimoDallaSigla : vaiAlProssimo}
+              aria-label={`Episodio successivo: ${sigla(prossimo) ?? ''}`}
+              title={`Episodio successivo (${sigla(prossimo) ?? ''}) · N`}
+              className="rounded-md px-2 py-1 text-zinc-100 transition hover:bg-white/10"
+            >
+              ⏭
+            </button>
+          )}
+          {tracceAudio.length > 1 && (
+            <MenuAudio
+              nomi={nomiTracceAudio(tracceAudio)}
+              scelto={sceltaAudio}
+              sigla={siglaTracciaAudio(tracciaAudio)}
+              onScegli={scegliAudio}
+              onAperto={setMenuAudioAperto}
+            />
+          )}
+          {tracce.length > 0 && (
+            <MenuSottotitoli
+              nomi={nomiSottotitoli}
+              scelto={sottotitolo}
+              sigla={siglaSottotitolo}
+              onScegli={scegliSottotitoli}
+              onAperto={setMenuSottotitoliAperto}
+              dimensione={dimensioneSottotitoli}
+              onDimensione={cambiaDimensioneSottotitoli}
+            />
+          )}
+        </BarraLettore>
+        {/* In alto a destra, lontano dalla barra: «Salta sigla», «Rivedi la
+           sigla» e l'episodio dopo. */}
+        <div className="absolute right-2 top-2 flex flex-col items-end gap-2">
+          {saltaSiglaInVista && (
+            <button type="button" onClick={() => saltaSigla()} className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel">
+              ⏭ Salta sigla
+            </button>
+          )}
+          {rivedi !== null && (
+            <button
+              type="button"
+              onClick={() => {
+                if (videoRef.current) videoRef.current.currentTime = rivedi
+                setRivedi(null)
+              }}
+              className="rounded-xl bg-theatre-950/90 px-3 py-1.5 text-sm text-zinc-100 shadow-reel"
+            >
+              ↩ Rivedi la sigla
+            </button>
+          )}
+          {etichettaProssimo && (inCoda || finito || codaAutomatica) && (
+            <ProssimoEpisodio
+              etichetta={etichettaProssimo}
+              finito={finito || codaAutomatica}
+              onVai={prossimoDallaSigla}
+            />
+          )}
+        </div>
       </div>
 
-      {lettore === 'ciak' && !touch && (
+      {!touch && (
         <p className="text-xs text-zinc-500">
           Dalla tastiera: spazio pausa · ← → 10 secondi · F schermo intero · M audio{tracce.length > 0 && ' · C sottotitoli'}
           {serie && ' · S salta la sigla · N episodio dopo · P episodio prima'}
         </p>
       )}
 
-      {lettore === 'ciak' && serie && durataSigla !== null && (
+      {serie && durataSigla !== null && (
         <SigleSerie
           punti={punti}
           onReimpara={() => imparaPunti(PUNTI_VUOTI)}
@@ -1279,44 +1067,11 @@ function LettoreStreaming() {
         />
       )}
 
-      {problema && lettore === 'ciak' && (
-        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-projector/40 bg-projector/10 p-4 text-sm text-zinc-200">
-          <p className="flex-1">{MESSAGGI[problema]}</p>
-          {problema === 'sessione' || problema === 'negato' ? (
-            <button type="button" onClick={ricollega} className="btn-primary px-3 py-2">
-              Ricollega Google Drive
-            </button>
-          ) : problema === 'assente' ? (
-            <Link to="/streaming" className="btn-primary px-3 py-2">
-              Torna all’elenco
-            </Link>
-          ) : problema === 'rete' || problema === 'salto' ? (
-            <>
-              <button type="button" onClick={riprova} className="btn-primary px-3 py-2">
-                Riprova
-              </button>
-              <button type="button" onClick={usaDrive} className="btn-ghost px-3 py-2">
-                Usa il lettore di Drive
-              </button>
-            </>
-          ) : (
-            <button type="button" onClick={usaDrive} className="btn-primary px-3 py-2">
-              Usa il lettore di Drive
-            </button>
-          )}
-        </div>
+      {(errore ?? erroreCasa) && (
+        <p role="alert" className="rounded-xl border border-projector/40 bg-projector/10 p-4 text-sm text-zinc-200">
+          {errore ?? erroreCasa}
+        </p>
       )}
-      {inScadenza && !problema && lettore === 'ciak' && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900/40 p-3 text-sm text-zinc-300">
-          <p className="flex-1">
-            La sessione Google sta per scadere e il film si fermerebbe: rinnovala ora, riprende da dove sei.
-          </p>
-          <button type="button" onClick={ricollega} className="btn-ghost px-3 py-1.5">
-            Rinnova la sessione Google
-          </button>
-        </div>
-      )}
-      {(errore ?? erroreCasa) && <p className="text-sm text-red-400">{errore ?? erroreCasa}</p>}
 
       {archivio.caricata && (
         <PannelloArchivio
@@ -1369,175 +1124,60 @@ function LettoreStreaming() {
         </div>
       )}
 
-      {/* Sul dispositivo: scaricare, avanzamento, eliminare. Dal server di
-          casa non ancora: il download passa da Drive. */}
-      {daDrive && offlineDisponibile() && locale !== undefined && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900/40 p-3 text-sm">
-          {scaricato ? (
-            <>
-              <p className="flex-1 text-zinc-300">
-                📱 Scaricato sul dispositivo{locale?.dimensione ? ` (${taglia(locale.dimensione)})` : ''}: si vede anche
-                offline, e i salti sono istantanei.
-              </p>
-              <button type="button" onClick={elimina} className="btn-ghost px-3 py-1.5">
-                Elimina dal dispositivo
-              </button>
-            </>
-          ) : inCorso ? (
-            <>
-              <p className="flex-1 text-zinc-300">
-                ⬇️ Download in corso
-                {avanzamento
-                  ? `: ${taglia(avanzamento.ricevuti)}${avanzamento.totale ? ` di ${taglia(avanzamento.totale)}` : ''}`
-                  : locale?.stato === 'in-corso' && !downloadInCorso(fileId)
-                    ? ' in sottofondo: puoi chiudere Ciak, ti avvisa quando è pronto.'
-                    : '…'}
-              </p>
-              {downloadInCorso(fileId) && (
-                <button type="button" onClick={() => annullaDownload(fileId)} className="btn-ghost px-3 py-1.5">
-                  Annulla
-                </button>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="flex-1 text-zinc-400">
-                {locale?.stato === 'errore'
-                  ? `L'ultimo download non è riuscito${locale.errore ? ` (${locale.errore})` : ''}.`
-                  : 'Scaricalo sul dispositivo per vederlo anche senza rete, in giro.'}
-              </p>
-              <button type="button" onClick={scarica} disabled={!connesso || !ciakPronto} className="btn-primary px-3 py-1.5">
-                Scarica per l'offline
-              </button>
-            </>
-          )}
-          {erroreDownload && <p className="w-full text-red-400">{erroreDownload}</p>}
-        </div>
-      )}
-
-      {/* Cancellare da Ciak: il file va nel cestino di Drive, non si perde. */}
-      {daDrive && connesso && !scaricato && (
+      {/* Cancellare dal disco: i video della cartella collegata, dove il
+          browser lascia modificarla (Chrome, Edge). */}
+      {aperto?.origine === 'cartella' && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900/40 p-3 text-sm">
           <p className="flex-1 text-zinc-400">
-            {erroreCestino === 'permesso'
-              ? 'Per cancellare serve un permesso che Ciak non ha ancora chiesto a Google: ricollega Drive e riprova.'
-              : erroreCestino
-                ? `Cancellazione non riuscita: ${erroreCestino}`
-                : 'Non lo vuoi più? Va nel cestino di Google Drive, coi suoi sottotitoli, e sparisce da Ciak.'}
+            {cancellabileDalDisco()
+              ? 'Non lo vuoi più? Lo cancelli dal disco, coi suoi sottotitoli: sparisce dalla cartella e da Ciak. Non passa dal Cestino.'
+              : 'Per cancellarlo dal disco apri Ciak con Chrome o Edge (questo browser lascia solo leggere i file), oppure usa Esplora file.'}
           </p>
-          {erroreCestino === 'permesso' ? (
-            <button type="button" onClick={ricollegaConPermessoNuovo} className="btn-primary px-3 py-1.5">
-              Ricollega Google Drive
-            </button>
-          ) : (
-            <button type="button" onClick={cestina} disabled={cestinando} className="btn-ghost px-3 py-1.5">
-              {cestinando ? 'Cancello…' : '🗑 Cancella da Drive'}
+          {cancellabileDalDisco() && (
+            <button type="button" onClick={() => void cancellaDalPc()} disabled={cancellando} className="btn-ghost px-3 py-1.5">
+              {cancellando ? 'Cancello…' : '🗑 Cancella dal disco'}
             </button>
           )}
         </div>
       )}
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        {lettore === 'ciak' && (
-          <>
-            <p className="text-zinc-300">💬 {testoSottotitoli}</p>
-            {tracce.length > 0 && (
-              <label className="flex items-center gap-2 text-zinc-400">
-                Mostra
-                <select
-                  value={sottotitolo}
-                  onChange={(e) => scegliSottotitoli(Number(e.target.value))}
-                  className="rounded-lg border border-theatre-700 bg-theatre-950 px-2 py-1 text-zinc-100"
-                >
-                  <option value={-1}>Nessun sottotitolo</option>
-                  {nomiSottotitoli.map((nome, i) => (
-                    <option key={tracce[i].url} value={i}>
-                      {nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {!usaSalvati &&
-              sub.stato === 'pronti' &&
-              sub.tracce
-                .filter((t) => sub.altri[t.chiave])
-                .map((t) => (
-                  <button
-                    key={t.chiave}
-                    type="button"
-                    onClick={() => sub.provaAltro(t.chiave)}
-                    className="btn-ghost px-3 py-1.5"
-                  >
-                    {nomeLingua(t.lingua)} fuori sincrono? Prova un altro
-                  </button>
-                ))}
-          </>
+        <p className="text-zinc-300">💬 {testoSottotitoli}</p>
+        {tracce.length > 0 && (
+          <label className="flex items-center gap-2 text-zinc-400">
+            Mostra
+            <select
+              value={sottotitolo}
+              onChange={(e) => scegliSottotitoli(Number(e.target.value))}
+              className="rounded-lg border border-theatre-700 bg-theatre-950 px-2 py-1 text-zinc-100"
+            >
+              <option value={-1}>Nessun sottotitolo</option>
+              {nomiSottotitoli.map((nome, i) => (
+                <option key={tracce[i].url} value={i}>
+                  {nome}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
-        <span className="flex-1" />
-        {!daDrive ? null : lettore === 'ciak' ? (
-          <button type="button" onClick={usaDrive} className="btn-ghost px-3 py-1.5">
-            Usa il lettore di Drive
-          </button>
-        ) : !connesso && !scaricato ? (
-          <button type="button" onClick={ricollega} className="btn-ghost px-3 py-1.5">
-            Collega Google Drive per i sottotitoli
-          </button>
-        ) : ciakPronto ? (
-          <button type="button" onClick={usaCiak} className="btn-ghost px-3 py-1.5">
-            Usa il lettore di Ciak (con sottotitoli)
-          </button>
-        ) : (
-          <>
-            <p className="text-zinc-400">
-              Il lettore di Ciak, quello con i sottotitoli, non è ancora attivo in questa scheda.
-            </p>
-            <button type="button" onClick={() => window.location.reload()} className="btn-ghost px-3 py-1.5">
-              Ricarica la pagina
-            </button>
-          </>
-        )}
+        {!usaSalvati &&
+          sub.stato === 'pronti' &&
+          sub.tracce
+            .filter((t) => sub.altri[t.chiave])
+            .map((t) => (
+              <button
+                key={t.chiave}
+                type="button"
+                onClick={() => sub.provaAltro(t.chiave)}
+                className="btn-ghost px-3 py-1.5"
+              >
+                {nomeLingua(t.lingua)} fuori sincrono? Prova un altro
+              </button>
+            ))}
       </div>
 
-      {lettore === 'ciak' && daDrive && (
-        <details className="rounded-xl border border-theatre-800 bg-theatre-900/40 px-4 py-2 text-xs text-zinc-400">
-          <summary className="cursor-pointer text-zinc-300">Dettagli tecnici (cosa risponde Drive)</summary>
-          <ul className="mt-2 space-y-1 font-mono">
-            <li>
-              {versione === undefined
-                ? 'Service worker: …'
-                : versione === null
-                  ? 'Service worker: non risponde (versione vecchia o assente: ricarica la pagina)'
-                  : `Service worker: ${versione}`}
-            </li>
-            {diagnostica.length === 0 && <li>Nessuna richiesta a Drive registrata finora.</li>}
-            {diagnostica.map((d, i) => (
-              <li key={`${d.quando}-${i}`}>{descriviDiagnostica(d)}</li>
-            ))}
-          </ul>
-        </details>
-      )}
-
       <div className="grid gap-3 text-sm text-zinc-400 sm:grid-cols-2">
-        {loc ? (
-          <>
-            <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
-              <p className="mb-1 font-medium text-zinc-200">💽 Dal dispositivo</p>
-              <p>
-                Il browser legge il file dal disco man mano, senza caricarlo da nessuna parte. MP4 e WebM
-                partono ovunque; un MKV spesso no: convertilo prima con prepara-ciak.
-              </p>
-            </div>
-            <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
-              <p className="mb-1 font-medium text-zinc-200">💬 Sottotitoli</p>
-              <p>
-                Quelli accanto al video nella cartella collegata, oppure il file <code>.srt</code> scelto
-                insieme al film (tenendo premuto Ctrl): un nome che finisce in <code>.it.srt</code> o{' '}
-                <code>.en.srt</code> dice la lingua.
-              </p>
-            </div>
-          </>
-        ) : casa ? (
+        {casa ? (
           <>
             <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
               <p className="mb-1 font-medium text-zinc-200">🏠 Dal server di casa</p>
@@ -1556,47 +1196,22 @@ function LettoreStreaming() {
               </p>
             </div>
           </>
-        ) : lettore === 'ciak' ? (
-          <>
-            <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
-              <p className="mb-1 font-medium text-zinc-200">📺 Il lettore di Ciak</p>
-              <p>
-                Legge il file originale, alla sua qualità piena, anche appena caricato. I sottotitoli
-                (italiano e inglese) si scelgono dal pulsante CC in alto a destra; lo schermo intero è
-                il pulsante del lettore in basso a destra.
-              </p>
-            </div>
-            <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
-              <p className="mb-1 font-medium text-zinc-200">💬 Da dove arrivano i sottotitoli</p>
-              <p>
-                Prima un file <code>.srt</code> accanto al film nella cartella su Drive; se manca una
-                lingua, OpenSubtitles, e quello trovato viene salvato nella cartella per la volta dopo.
-              </p>
-            </div>
-          </>
         ) : (
           <>
             <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
-              <p className="mb-1 font-medium text-zinc-200">📺 Il lettore di Drive</p>
+              <p className="mb-1 font-medium text-zinc-200">💽 Dal dispositivo</p>
               <p>
-                Usa ⛶ per lo schermo intero e l'ingranaggio ⚙ per la qualità. I file appena caricati
-                non partono finché Google non ha finito di elaborarli.
+                Il browser legge il file dal disco man mano, senza caricarlo da nessuna parte. MP4 e WebM
+                partono ovunque; un MKV spesso no: convertilo prima con prepara-ciak. Le lingue dell’audio
+                preparate da prepara-ciak si scelgono dal pulsante 🗣.
               </p>
             </div>
             <div className="rounded-xl border border-theatre-800 bg-theatre-900/40 p-4">
               <p className="mb-1 font-medium text-zinc-200">💬 Sottotitoli</p>
               <p>
-                Il lettore di Drive mostra solo i sottotitoli caricati sul file: apri il film su Drive,
-                poi ⋮ → <em>Gestisci tracce dei sottotitoli</em> → aggiungi il file <code>.srt</code>.
-                Qui li attivi col pulsante CC.{' '}
-                <a
-                  href={apriSuDriveUrl(fileId)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-projector hover:underline"
-                >
-                  Apri su Drive ↗
-                </a>
+                Prima i file <code>.srt</code> accanto al video (o scelti insieme al film): un nome che
+                finisce in <code>.it.srt</code> o <code>.en.srt</code> dice la lingua. Se manca una lingua,
+                OpenSubtitles, e quello trovato si salva accanto al video per la volta dopo.
               </p>
             </div>
           </>

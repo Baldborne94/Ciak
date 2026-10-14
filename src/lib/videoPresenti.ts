@@ -1,7 +1,9 @@
-// Quali file ci sono ancora su Drive. Il legame file → titolo (user_streaming)
-// resta anche quando il file viene cancellato, e «▶ Riprendi da 7:40» portava
-// a un file che non c'era più. La videoteca, ogni volta che legge Drive per
-// intero, ricorda qui gli id trovati; i pulsanti «Guarda» li consultano.
+// Quali file ci sono ancora nella videoteca. Il legame file → titolo
+// (user_streaming) resta anche quando il file viene cancellato, e «▶ Riprendi
+// da 7:40» portava a un file che non c'era più. La videoteca, ogni volta che
+// legge la cartella per intero, ricorda qui gli id trovati; i pulsanti
+// «Guarda» li consultano. (La chiave porta ancora il nome di quando la
+// videoteca era su Drive: cambiarla farebbe ricomparire i vecchi file.)
 //
 // Sta sul dispositivo: è il riflesso dell'ultimo elenco letto, non un dato da
 // conservare, e la riga in Supabase (posizione, visto) non si tocca — se il
@@ -17,7 +19,7 @@ export function salvaPresenti(ids: string[]): void {
   }
 }
 
-// null se Drive non è mai stato letto per intero da qui: allora non si sa, e
+// null se la videoteca non è mai stata letta per intero da qui: allora non si sa, e
 // non si toglie niente.
 export function leggiPresenti(): Set<string> | null {
   try {
@@ -28,7 +30,7 @@ export function leggiPresenti(): Set<string> | null {
   }
 }
 
-// Un film scaricato sul dispositivo si guarda anche se su Drive non c'è più.
+// Un film salvato in Ciak si guarda anche se nella cartella non c'è più.
 export function soloPresenti<T extends { drive_file_id: string }>(righe: T[], presenti: Set<string> | null, scaricati: Set<string>): T[] {
   if (!presenti) return righe
   return righe.filter((r) => presenti.has(r.drive_file_id) || scaricati.has(r.drive_file_id))

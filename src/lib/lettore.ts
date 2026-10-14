@@ -1,54 +1,13 @@
 // Le decisioni del lettore di Ciak quando qualcosa va storto, separate dalla
 // pagina perché si possano provare senza un video vero.
 
-export type Problema = 'formato' | 'muto' | 'sessione' | 'negato' | 'assente' | 'rete' | 'salto' | 'avvio'
+// I guai del lettore che si dicono a chi guarda: un formato che il browser
+// non legge, un video muto (audio Dolby), un salto o un avvio che non
+// arrivano, la rete (il server di casa) che cade.
+export type Problema = 'formato' | 'muto' | 'rete' | 'salto' | 'avvio'
 
-// I codici di MediaError: 2 è la rete, 3 la decodifica, 4 un formato che il
-// browser non sa leggere.
-const ERRORE_RETE = 2
-
+// Riprese automatiche dopo un errore di rete, prima di dirlo.
 export const TENTATIVI_MAX = 3
-
-export interface StatoErrore {
-  codice: number | undefined
-  posizione: number // secondi già visti
-  tentativi: number // riprese automatiche già fatte di fila
-  connesso: boolean
-  // Lo status dell'ultima risposta di Drive, come l'ha raccontata il service
-  // worker (vedi DiagnosticaVideo); undefined se non se ne sa niente.
-  drive?: number | null
-}
-
-// Cosa fare quando il <video> dà errore:
-//  - sessione Google scaduta: ricollegarsi (nessun tentativo servirebbe).
-//    Anche quando qui il token sembra buono ma Drive l'ha rifiutato (401): il
-//    service worker risponde vuoto, il <video> dà «formato non supportato» e
-//    si finiva per incolpare un MP4 sano;
-//  - Drive che nega il file (403: permesso che non basta, o quota di download
-//    finita) o non lo trova più (404): riprovare non cambia niente, e il
-//    lettore di Drive non lo aprirebbe meglio;
-//  - errore di rete, o qualunque errore a film già partito: riprendere da dove
-//    si era. Il flusso passa dal service worker, che il browser può fermare a
-//    metà film: la richiesta a Drive si chiude e il video si blocca, ma una
-//    nuova richiesta lo risveglia;
-//  - troppi tentativi di fila: dirlo, invece di girare a vuoto;
-//  - errore prima ancora di partire: il browser non legge il file.
-export function decidiErrore(s: StatoErrore): 'riprova' | Problema {
-  if (!s.connesso || s.drive === 401) return 'sessione'
-  if (s.drive === 403) return 'negato'
-  if (s.drive === 404) return 'assente'
-  const aMetaFilm = s.posizione > 0
-  if (s.codice === ERRORE_RETE || aMetaFilm) return s.tentativi < TENTATIVI_MAX ? 'riprova' : 'rete'
-  return 'formato'
-}
-
-// La sessione Google scade entro questo margine: meglio rinnovarla adesso, con
-// un clic, che vedersi fermare il film a metà.
-export const PREAVVISO_SESSIONE_MS = 10 * 60_000
-
-export function sessioneInScadenza(scadenza: number, ora: number): boolean {
-  return scadenza > 0 && scadenza - ora < PREAVVISO_SESSIONE_MS
-}
 
 // Il browser sta decodificando l'audio? Ogni motore lo espone a modo suo; null
 // quando non si può sapere, e allora non si avvisa.
@@ -64,47 +23,9 @@ export function senzaAudio(v: HTMLVideoElement): boolean | null {
   return null
 }
 
-// Cosa ha risposto Drive a un pezzo di film, come lo racconta il service worker.
-export interface DiagnosticaVideo {
-  quando: number
-  ms: number
-  range: string | null
-  status: number
-  redirect: string | null
-  contentLength: string | null
-  totale: number | null
-  esito: 'ok' | 'errore' | 'range-ignorato' | 'rifiutata' | 'dispositivo'
-  // Solo per «rifiutata»: il messaggio del browser.
-  errore?: string
-}
-
-// Una riga per il pannello «Dettagli tecnici»: quello che serve a capire da
-// uno screenshot perché un salto avanti non funziona.
-export function descriviDiagnostica(d: DiagnosticaVideo): string {
-  const ora = new Date(d.quando).toLocaleTimeString('it-IT')
-  const chiesto = d.range ? `chiesto ${d.range}` : 'chiesto tutto il file'
-  if (d.esito === 'dispositivo') {
-    return `${ora} · ${chiesto} → servito dal film scaricato sul dispositivo${d.totale ? ` (${d.totale} byte)` : ''}`
-  }
-  const esito =
-    d.esito === 'rifiutata'
-      ? `il browser ha rifiutato la richiesta a Drive${d.errore ? ` (${d.errore})` : ''}`
-      : d.esito === 'range-ignorato'
-      ? 'Drive ha ignorato il Range e ha mandato tutto il file'
-      : d.esito === 'errore'
-        ? `Drive ha risposto ${d.status}`
-        : `Drive ha risposto ${d.status}${d.contentLength ? `, ${d.contentLength} byte` : ''}`
-  const extra = [
-    d.totale ? `file di ${d.totale} byte` : 'dimensione del file sconosciuta',
-    d.redirect ? `reindirizzato a ${d.redirect}` : null,
-    `${d.ms} ms`,
-  ].filter(Boolean)
-  return `${ora} · ${chiesto} → ${esito} (${extra.join(', ')})`
-}
-
 // Un salto che non finisce: il browser chiede il pezzo nuovo e, se non arriva
-// (Drive che ignora il Range, worker fermato a metà), resta in attesa senza
-// mai dare errore. Dopo un po' lo si dice, invece di lasciare la rotellina.
+// (il server di casa che non risponde), resta in attesa senza mai dare
+// errore. Dopo un po' lo si dice, invece di lasciare la rotellina.
 export const ATTESA_SALTO_MS = 20_000
 // Un film che non parte: alcuni MKV il browser li scarica senza mai riuscire
 // ad aprirli, e senza dare errore. Oltre questa attesa lo si dice.
@@ -130,7 +51,7 @@ export function vigilanzaSalto(suBlocco: () => void, attesaMs = ATTESA_SALTO_MS)
 
 // Il <video> che si lascia (episodio dopo, nuovo tentativo, uscita dal
 // lettore). Tolto dalla pagina e basta, il browser continua a caricarlo: la
-// richiesta a Drive resta aperta e su un tablet ruba banda e decodificatore
+// richiesta resta aperta e su un tablet ruba banda e decodificatore
 // all'episodio nuovo, che stentava a partire finché non si ricaricava la
 // pagina. Senza `src` e ricaricato vuoto, il browser lo lascia andare davvero.
 // Solo se è già fuori dalla pagina: React (in sviluppo) chiude e riapre gli

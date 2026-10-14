@@ -4,8 +4,6 @@
 // provava aveva l'impressione di essere entrato e poi buttato fuori, senza
 // alcun indizio sul perché.
 
-import { PREFISSO_STATO_DRIVE } from './ritornoDrive'
-
 export interface ErroreAccesso {
   message: string
   code?: string
@@ -18,9 +16,6 @@ export function leggiErroreAccesso(href: string): ErroreAccesso | null {
   for (const parametri of [new URLSearchParams(url.hash.slice(1)), url.searchParams]) {
     const errore = parametri.get('error')
     if (!errore) continue
-    // Un rifiuto del collegamento a Drive (stesso Google, altro permesso) ha
-    // il suo avviso in ritornoDrive: qui sembrerebbe un login fallito.
-    if (parametri.get('state')?.startsWith(PREFISSO_STATO_DRIVE)) return null
     const code = parametri.get('error_code') || errore
     return { message: decodificaAncora(parametri.get('error_description') || errore), code }
   }

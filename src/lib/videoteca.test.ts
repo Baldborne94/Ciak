@@ -70,7 +70,7 @@ describe('ordinare la videoteca', () => {
     expect(ids(ordinaVideoteca(tutti, 'anno-asc'))).toEqual(['alien', 'kells', 'song', 'mistero'])
   })
 
-  it('per data di arrivo su Drive e per ultima visione', () => {
+  it('per data di arrivo nella cartella e per ultima visione', () => {
     expect(ids(ordinaVideoteca(tutti, 'aggiunti'))).toEqual(['kells', 'song', 'alien', 'mistero'])
     // Mai guardati in fondo, in ordine di titolo.
     expect(ids(ordinaVideoteca(tutti, 'guardati'))).toEqual(['song', 'alien', 'kells', 'mistero'])

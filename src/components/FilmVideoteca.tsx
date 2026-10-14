@@ -1,6 +1,6 @@
 import { posterUrl } from '../lib/tmdb'
 import { taglia } from '../lib/filmOffline'
-import type { DriveVideo } from '../lib/googleDrive'
+import type { VideoFile } from '../lib/fileVideo'
 import type { VoceStreaming } from '../lib/streaming'
 
 // «video/x-matroska» → «MKV»: il sottotipo MIME è poco leggibile.
@@ -24,7 +24,7 @@ export default function FilmVideoteca({
   onApri,
   onScegli,
 }: {
-  video: DriveVideo
+  video: VideoFile
   voce: VoceStreaming | undefined
   nome: string
   anno: string | null

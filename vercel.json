@@ -2,10 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
-      "source": "/api/drive-callback",
-      "destination": "/api/drive?azione=callback"
-    },
-    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },

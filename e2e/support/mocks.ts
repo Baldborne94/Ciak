@@ -421,13 +421,6 @@ export async function signIn(page: Page): Promise<void> {
         user,
       }
       localStorage.setItem('sb-e2e-fake-auth-token', JSON.stringify(session))
-      // Il primo collegamento a Drive senza domande è già stato tentato su
-      // questo «dispositivo»: altrimenti ogni test partirebbe verso Google.
-      // Il test che lo prova toglie il segno.
-      localStorage.setItem('ciak:drive-provato', '1')
-      // Drive è acceso nelle Impostazioni: la videoteca dei test è su Drive.
-      // I test della videoteca senza Drive lo spengono.
-      localStorage.setItem('ciak:drive', 'acceso')
       // Lo stesso per i titoli salvati riscritti in italiano: richieste a TMDB
       // in sottofondo che cambierebbero i titoli dei dati finti. Il test che
       // lo prova toglie il segno.

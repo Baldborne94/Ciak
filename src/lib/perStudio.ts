@@ -4,7 +4,7 @@ import { discoverByCompany, searchCompany } from './tmdb'
 // riempire una saga o una raccolta in un colpo invece di spuntarli uno a uno.
 // Il primo studio che TMDB trova col nome; le pagine hanno un tetto, perché
 // uno studio enorme (Disney) ne ha centinaia e qui ne servono solo i suoi
-// film che sono su Drive.
+// film che sono nella videoteca.
 const MAX_PAGINE = 10
 
 export interface FilmDelloStudio {

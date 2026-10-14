@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { cartellaDaChiudere, pianoCestino as piano, type PianoCestino } from './cestinoDrive'
+import { cartellaDaChiudere, pianoCancellazione as piano, type PianoCancellazione } from './pianoCancellazione'
 
-const pianoCestino = (a: Omit<Parameters<typeof piano>[0], 'radice'>): PianoCestino => piano({ ...a, radice: 'Ciak' })
+const pianoCancellazione = (a: Omit<Parameters<typeof piano>[0], 'radice'>): PianoCancellazione => piano({ ...a, radice: 'Ciak' })
 
 const video = { id: 'v1', name: 'Song.of.the.Sea.2014.1080p.mp4' }
 const srtIt = { id: 's-it', name: 'Song.of.the.Sea.it.srt', mimeType: 'application/x-subrip' }
@@ -9,20 +9,20 @@ const srtEn = { id: 's-en', name: 'Song.of.the.Sea.en.srt', mimeType: 'applicati
 const me = { ...video, mimeType: 'video/mp4' }
 const cartellaFilm = { id: 'c-song', name: 'Song of the Sea (2014) [1080p]' }
 
-describe('pianoCestino', () => {
-  it('la cartella dedicata del film, rimasta vuota, va nel cestino intera', () => {
+describe('pianoCancellazione', () => {
+  it('la cartella dedicata del film, rimasta vuota, si cancella intera', () => {
     expect(
-      pianoCestino({ video, cartella: cartellaFilm, vicini: [me, srtIt, srtEn], sottocartelle: 0, nomeCartellaSopra: 'FILM' }),
+      pianoCancellazione({ video, cartella: cartellaFilm, vicini: [me, srtIt, srtEn], sottocartelle: 0, nomeCartellaSopra: 'FILM' }),
     ).toEqual({ file: [], cartella: 'c-song' })
   })
 
-  it('con altro dentro la cartella si cestinano solo il video e i suoi sottotitoli', () => {
+  it('con altro dentro la cartella si cancellano solo il video e i suoi sottotitoli', () => {
     const altro = { id: 'v2', name: '02 Spontaneous Combustion.mp4', mimeType: 'video/mp4' }
     const ep = { id: 'v1', name: '01 Rainforest Shmainforest.mp4' }
     const suo = { id: 's1', name: '01 Rainforest Shmainforest.it.srt', mimeType: 'application/x-subrip' }
     const nonSuo = { id: 's2', name: '02 Spontaneous Combustion.it.srt', mimeType: 'application/x-subrip' }
     expect(
-      pianoCestino({
+      pianoCancellazione({
         video: ep,
         cartella: { id: 'c-s03', name: 'Season 03' },
         vicini: [{ ...ep, mimeType: 'video/mp4' }, altro, suo, nonSuo],
@@ -36,7 +36,7 @@ describe('pianoCestino', () => {
     const m4a = { id: 'a2', name: 'Song.of.the.Sea.2014.1080p.audio-2.m4a', mimeType: 'audio/mp4' }
     const elenco = { id: 'aj', name: 'Song.of.the.Sea.2014.1080p.audio.json', mimeType: 'application/json' }
     expect(
-      pianoCestino({ video, cartella: cartellaFilm, vicini: [me, srtIt, m4a, elenco], sottocartelle: 0, nomeCartellaSopra: 'FILM' }),
+      pianoCancellazione({ video, cartella: cartellaFilm, vicini: [me, srtIt, m4a, elenco], sottocartelle: 0, nomeCartellaSopra: 'FILM' }),
     ).toEqual({ file: [], cartella: 'c-song' })
 
     // In una stagione, uno per uno, e non quelle dell'episodio accanto.
@@ -49,46 +49,46 @@ describe('pianoCestino', () => {
       { id: 'a2', name: '02.audio-2.m4a', mimeType: 'audio/mp4' },
     ]
     expect(
-      pianoCestino({ video: ep, cartella: { id: 'c', name: 'Season 01' }, vicini, sottocartelle: 0, nomeCartellaSopra: 'Shogun' }),
+      pianoCancellazione({ video: ep, cartella: { id: 'c', name: 'Season 01' }, vicini, sottocartelle: 0, nomeCartellaSopra: 'Shogun' }),
     ).toEqual({ file: ['v1', 'a1', 'j1'], cartella: null })
   })
 
   it('una sottocartella (gli extra) tiene in vita la cartella', () => {
-    expect(pianoCestino({ video, cartella: cartellaFilm, vicini: [me], sottocartelle: 1, nomeCartellaSopra: 'FILM' })).toEqual({
+    expect(pianoCancellazione({ video, cartella: cartellaFilm, vicini: [me], sottocartelle: 1, nomeCartellaSopra: 'FILM' })).toEqual({
       file: ['v1'],
       cartella: null,
     })
   })
 
-  it('«Ciak» e le categorie subito sotto non si cestinano mai, nemmeno vuote', () => {
-    expect(pianoCestino({ video, cartella: { id: 'c-film', name: 'FILM' }, vicini: [me], sottocartelle: 0, nomeCartellaSopra: 'Ciak' })).toEqual({
+  it('«Ciak» e le categorie subito sotto non si cancellano mai, nemmeno vuote', () => {
+    expect(pianoCancellazione({ video, cartella: { id: 'c-film', name: 'FILM' }, vicini: [me], sottocartelle: 0, nomeCartellaSopra: 'Ciak' })).toEqual({
       file: ['v1'],
       cartella: null,
     })
-    expect(pianoCestino({ video, cartella: { id: 'c-ciak', name: 'Ciak' }, vicini: [me], sottocartelle: 0, nomeCartellaSopra: null })).toEqual({
+    expect(pianoCancellazione({ video, cartella: { id: 'c-ciak', name: 'Ciak' }, vicini: [me], sottocartelle: 0, nomeCartellaSopra: null })).toEqual({
       file: ['v1'],
       cartella: null,
     })
   })
 
   it('senza sapere cosa c’è sopra, meglio i soli file', () => {
-    expect(pianoCestino({ video, cartella: cartellaFilm, vicini: [me, srtIt], sottocartelle: 0, nomeCartellaSopra: null })).toEqual({
+    expect(pianoCancellazione({ video, cartella: cartellaFilm, vicini: [me, srtIt], sottocartelle: 0, nomeCartellaSopra: null })).toEqual({
       file: ['v1', 's-it'],
       cartella: null,
     })
-    expect(pianoCestino({ video, cartella: null, vicini: [], sottocartelle: 0, nomeCartellaSopra: null })).toEqual({ file: ['v1'], cartella: null })
+    expect(pianoCancellazione({ video, cartella: null, vicini: [], sottocartelle: 0, nomeCartellaSopra: null })).toEqual({ file: ['v1'], cartella: null })
   })
 })
 
-describe('pianoCestino con più video (una serie, una saga)', () => {
+describe('pianoCancellazione con più video (una serie, una saga)', () => {
   const ep1 = { id: 'v1', name: '01 Rainforest Shmainforest.mp4' }
   const ep2 = { id: 'v2', name: '02 Spontaneous Combustion.mp4' }
   const sub1 = { id: 's1', name: '01 Rainforest Shmainforest.it.srt', mimeType: 'application/x-subrip' }
   const stagione = { id: 'c-s03', name: 'Season 03' }
 
-  it('tutti i video della stagione: va nel cestino la cartella intera, con una richiesta sola', () => {
+  it('tutti i video della stagione: si cancella la cartella intera, in un colpo', () => {
     expect(
-      pianoCestino({
+      pianoCancellazione({
         video: [ep1, ep2],
         cartella: stagione,
         vicini: [{ ...ep1, mimeType: 'video/mp4' }, { ...ep2, mimeType: 'video/mp4' }, sub1],
@@ -101,7 +101,7 @@ describe('pianoCestino con più video (una serie, una saga)', () => {
   it('se nella cartella resta altro, i video e i loro sottotitoli uno per uno', () => {
     const film = { id: 'f', name: 'Alien.1979.mp4', mimeType: 'video/mp4' }
     expect(
-      pianoCestino({
+      pianoCancellazione({
         video: [ep1],
         cartella: { id: 'c-film', name: 'Raccolta' },
         vicini: [{ ...ep1, mimeType: 'video/mp4' }, sub1, film],
@@ -113,7 +113,7 @@ describe('pianoCestino con più video (una serie, una saga)', () => {
 })
 
 describe('cartellaDaChiudere', () => {
-  it('la cartella della serie, rimasta vuota dopo le stagioni, va nel cestino', () => {
+  it('la cartella della serie, rimasta vuota dopo le stagioni, si cancella', () => {
     expect(cartellaDaChiudere({ nome: 'South Park', nomeSopra: 'SERIE TV', file: 0, sottocartelle: 0, radice: 'Ciak' })).toBe(true)
   })
 

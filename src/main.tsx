@@ -1,6 +1,3 @@
-// Per primo: legge il ritorno da Google (consenso a Drive nell'app installata)
-// e lo toglie dall'indirizzo prima che Supabase lo scambi per un suo login.
-import './lib/ritornoDrive'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'

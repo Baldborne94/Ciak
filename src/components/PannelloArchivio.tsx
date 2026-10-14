@@ -32,7 +32,7 @@ export default function PannelloArchivio({
   votoSalvato: number | null
   errore: string | null
   prossimo: VoceStreaming | null
-  // L'episodio prima: anche col lettore di Drive, che i comandi di Ciak non ha.
+  // L'episodio prima, anche qui sotto il video, oltre che nella sua barra.
   precedente?: VoceStreaming | null
   onRicomincia: () => void
   onVota: (voto: number | null) => void

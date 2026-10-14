@@ -56,7 +56,6 @@ describe('videoDaJellyfin', () => {
         serie: null,
         categoria: 'FILM',
         aggiunto: '2026-10-11T16:54:44Z',
-        cartellaId: null,
       },
       expect.objectContaining({ id: `jf-${ID2}`, name: '01 Rainforest.mkv', mimeType: 'video/mkv', cartella: 'Season 03', serie: 'South Park', categoria: 'SERIE TV' }),
     ])
@@ -215,12 +214,12 @@ describe('collegamento ed elenco', () => {
 
 describe('unisciFonti', () => {
   const v = (id: string, name: string) => ({ id, name, size: null, mimeType: 'video/mp4', cartella: null })
-  it('lo stesso file su Drive e a casa compare una volta, quella di casa', () => {
+  it('lo stesso file nella cartella e a casa compare una volta, quella di casa', () => {
     const tutti = unisciFonti([v('d1', 'Alien.1979.mp4'), v('d2', 'Brazil.1985.mp4')], [v(`jf-${ID}`, 'alien.1979.MP4')])
     expect(tutti.map((x) => x.id)).toEqual([`jf-${ID}`, 'd2'])
   })
-  it('senza il server di casa l’elenco di Drive resta quello', () => {
-    const drive = [v('d1', 'Alien.1979.mp4')]
-    expect(unisciFonti(drive, [])).toBe(drive)
+  it('senza il server di casa l’elenco della cartella resta quello', () => {
+    const cartella = [v('d1', 'Alien.1979.mp4')]
+    expect(unisciFonti(cartella, [])).toBe(cartella)
   })
 })

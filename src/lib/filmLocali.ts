@@ -1,6 +1,4 @@
-import type { DriveVideo } from './googleDrive'
-import { decodificaTesto, linguaDaNome, srtAVtt } from './sottotitoli'
-import type { SottotitoloOffline } from './filmOffline'
+import type { VideoFile } from './fileVideo'
 
 // I film aperti dal dispositivo: un file scelto dal disco del PC (F:) o dalla
 // memoria del tablet, riprodotto dal lettore di Ciak senza caricarlo da
@@ -9,7 +7,7 @@ import type { SottotitoloOffline } from './filmOffline'
 // L'id viene dal nome e dalla dimensione del file, sempre uguale: riaprendo lo
 // stesso film un'altra sera, Ciak ritrova il titolo riconosciuto, il punto in
 // cui ci si era fermati e il diario (tutto legato all'id del file, come per
-// Drive).
+// la cartella collegata).
 export const PREFISSO_LOCALE = 'loc-'
 
 export function eLocale(fileId: string): boolean {
@@ -31,12 +29,21 @@ export function idLocale(file: { name: string; size: number }): string {
 }
 
 const ESTENSIONE_VIDEO = /\.(mp4|m4v|mkv|webm|mov|avi|wmv|ts)$/i
-const ESTENSIONE_SOTTOTITOLI = /\.(srt|vtt)$/i
 
 export interface FilmAperto {
   id: string
   file: File
-  sottotitoli: SottotitoloOffline[]
+  // I file accanto al video, da cui il lettore prende sottotitoli e lingue
+  // dell'audio: quelli della sua cartella, o gli altri scelti insieme a lui.
+  vicini: File[]
+  origine: 'cartella' | 'scelto'
+  // Le cartelle del film o della stagione, per il titolo e la ricerca dei
+  // sottotitoli online; null per un file scelto a mano.
+  cartella: string | null
+  serie: string | null
+  // Scrive o toglie un file accanto al video (un sottotitolo trovato online).
+  // null dove il browser non lascia scrivere: allora resta in Ciak.
+  scrivi: { salva: (nome: string, testo: string) => Promise<void>; togli: (nome: string) => Promise<void> } | null
 }
 
 // I file aperti in questa visita: il browser li legge solo finché la pagina
@@ -54,33 +61,17 @@ export function registraFilmAperto(film: FilmAperto): FilmAperto {
   return film
 }
 
-// Dai file scelti (un video, ed eventualmente i suoi .srt) il film da aprire.
-// I sottotitoli si leggono subito: sono piccoli, e così il lettore li ha già.
-export async function apriFile(scelti: File[]): Promise<FilmAperto> {
+// Dai file scelti (un video, ed eventualmente i suoi .srt o le sue lingue
+// dell'audio) il film da aprire. Si legge solo il nome: il resto quando serve.
+export function apriFile(scelti: File[]): FilmAperto {
   const video = scelti.find((f) => f.type.startsWith('video/') || ESTENSIONE_VIDEO.test(f.name))
   if (!video) throw new Error('Scegli un file video (MP4, MKV, WebM…).')
-  const sottotitoli = await Promise.all(
-    scelti
-      .filter((f) => ESTENSIONE_SOTTOTITOLI.test(f.name))
-      .map(async (f, i) => {
-        const lingua = linguaDaNome(f.name)
-        return {
-          chiave: lingua ?? `altro-${i}`,
-          lingua,
-          etichetta: `${lingua === 'it' ? 'Italiano' : lingua === 'en' ? 'Inglese' : 'Sottotitoli'} · dal file scelto`,
-          // I .srt italiani sono spesso in Windows-1252: `text()` storpierebbe gli accenti.
-          vtt: srtAVtt(decodificaTesto(await f.arrayBuffer())),
-        }
-      }),
-  )
-  const film = { id: idLocale(video), file: video, sottotitoli }
-  aperti.set(film.id, film)
-  return film
+  return registraFilmAperto({ id: idLocale(video), file: video, vicini: scelti, origine: 'scelto', cartella: null, serie: null, scrivi: null })
 }
 
 // Il file come video della videoteca, per riconoscerne il titolo come quelli
-// di Drive (nome del file, nessuna cartella).
-export function comeVideo(film: FilmAperto): DriveVideo {
+// della cartella (nome del file, nessuna cartella).
+export function comeVideo(film: FilmAperto): VideoFile {
   return { id: film.id, name: film.file.name, size: film.file.size, mimeType: film.file.type || 'video/mp4', cartella: null }
 }
 

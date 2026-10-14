@@ -4,29 +4,26 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { mockTmdb, mockSupabase, signIn } from './support/mocks'
 
-// La videoteca senza Google Drive: un film scelto dal disco del PC (o dalla
-// memoria del tablet) parte nel lettore di Ciak, coi suoi sottotitoli, e si
-// può copiare in Ciak per vederlo anche senza il file a portata.
+// La videoteca dal disco: un film scelto dal PC (o dalla memoria del tablet)
+// parte nel lettore di Ciak, coi suoi sottotitoli, e si può copiare in Ciak
+// per vederlo anche senza il file a portata; una cartella intera (E:\Ciak) si
+// collega e diventa la videoteca, da cui si può anche cancellare.
 
 const SRT = '1\n00:00:01,000 --> 00:00:03,000\nC’era una volta\n'
 // Pochi byte, non un film vero: al browser basta averne l'indirizzo.
 const FILM = { name: 'Song.of.the.Sea.2014.1080p.mp4', mimeType: 'video/mp4', buffer: Buffer.alloc(64, 1) }
 const SOTTOTITOLI = { name: 'Song.of.the.Sea.2014.1080p.it.srt', mimeType: 'application/x-subrip', buffer: Buffer.from(SRT) }
 
-// Drive spento nelle Impostazioni (dopo `signIn`, che lo accende per gli altri test).
-async function senzaDrive(page: Page) {
-  await page.addInitScript(() => localStorage.removeItem('ciak:drive'))
-}
-
 test.beforeEach(async ({ page }) => {
   await signIn(page)
   await mockTmdb(page)
+  // OpenSubtitles non ha niente: valgono i sottotitoli accanto al video.
+  await page.route('**/api/sottotitoli', (route) => route.fulfill({ json: { candidati: [] } }))
 })
 
-test('senza Drive un film si apre dal disco, coi sottotitoli, e si salva in Ciak', async ({ page }) => {
-  await senzaDrive(page)
+test('un film si apre dal disco, coi sottotitoli, e si salva in Ciak', async ({ page }) => {
   const db = await mockSupabase(page, { user_streaming: [] })
-  // Nessuna richiesta a Google: Drive è spento.
+  // Nessuna richiesta a Google: Drive non c'è più.
   const google: string[] = []
   await page.route('https://www.googleapis.com/**', (route) => {
     google.push(route.request().url())
@@ -34,7 +31,7 @@ test('senza Drive un film si apre dal disco, coi sottotitoli, e si salva in Ciak
   })
 
   await page.goto('/streaming')
-  await expect(page.getByRole('button', { name: '📁 Collega Google Drive' })).toHaveCount(0)
+  await expect(page.getByText(/Google Drive/)).toHaveCount(0)
   await page.getByLabel('Scegli il film (ed eventualmente i sottotitoli)').setInputFiles([FILM, SOTTOTITOLI])
 
   await expect(page).toHaveURL(/\/streaming\/loc-[0-9a-f]{16}$/)
@@ -43,11 +40,9 @@ test('senza Drive un film si apre dal disco, coi sottotitoli, e si salva in Ciak
   await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
   await expect(page.getByText(/Italiano · dal file scelto/)).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
-  // Le parti solo di Drive non ci sono.
-  await expect(page.getByRole('button', { name: /Usa il lettore di Drive/ })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /Scarica per l'offline/ })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /Cancella da Drive/ })).toHaveCount(0)
-  // L'archivio funziona come per Drive: il file si lega al suo id «loc-».
+  // Un file scelto a mano non si cancella da qui: non sta nella cartella.
+  await expect(page.getByRole('button', { name: /Cancella dal disco/ })).toHaveCount(0)
+  // L'archivio: il file si lega al suo id «loc-».
   await expect.poll(() => db.writes.some((w) => w.table === 'user_streaming' && JSON.stringify(w.body).includes(id))).toBe(true)
 
   // Copiato in Ciak: il film e i suoi sottotitoli, nella cache del lettore.
@@ -69,7 +64,8 @@ test('senza Drive un film si apre dal disco, coi sottotitoli, e si salva in Ciak
 
   // Riaprendo Ciak il file del disco non c'è più, la copia sì: parte da lì.
   await page.reload()
-  await expect(page.locator('video')).toHaveAttribute('src', `/drive-video/${id}`)
+  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+  await expect(page.getByText(/sceglilo di nuovo per guardarlo/)).toHaveCount(0)
   await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
 
   // Eliminata la copia, Ciak chiede di sceglierlo di nuovo.
@@ -86,7 +82,6 @@ test('senza Drive un film si apre dal disco, coi sottotitoli, e si salva in Ciak
 })
 
 test('un MKV che il browser non legge: lo si dice, con il rimedio', async ({ page }) => {
-  await senzaDrive(page)
   await mockSupabase(page, { user_streaming: [] })
   await page.goto('/streaming')
   await page
@@ -97,7 +92,6 @@ test('un MKV che il browser non legge: lo si dice, con il rimedio', async ({ pag
 })
 
 test('scegliendo solo i sottotitoli, si chiede il video', async ({ page }) => {
-  await senzaDrive(page)
   await mockSupabase(page, { user_streaming: [] })
   await page.goto('/streaming')
   await page.getByLabel('Scegli il film (ed eventualmente i sottotitoli)').setInputFiles([SOTTOTITOLI])
@@ -105,23 +99,15 @@ test('scegliendo solo i sottotitoli, si chiede il video', async ({ page }) => {
   await expect(page).toHaveURL(/\/streaming$/)
 })
 
-test('Drive si spegne e si riaccende dalle Impostazioni', async ({ page }) => {
+test('Google Drive non c’è più: né nelle Impostazioni né in un vecchio link al lettore', async ({ page }) => {
   await mockSupabase(page)
   await page.goto('/settings')
-  const drive = page.getByRole('checkbox', { name: /Usa Google Drive per lo streaming/ })
-  await expect(drive).toBeChecked()
-
-  await drive.uncheck()
-  expect(await page.evaluate(() => localStorage.getItem('ciak:drive'))).toBeNull()
-  // Senza ricaricare (che rimetterebbe il segno di `signIn`): la videoteca
-  // non propone più Drive, ma il film dal dispositivo sì.
-  await page.getByRole('link', { name: '🎬 Streaming' }).first().click()
-  await expect(page.getByRole('button', { name: '🎬 Apri un film dal dispositivo' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '📁 Collega Google Drive' })).toHaveCount(0)
-
-  await page.goBack()
-  await page.getByRole('checkbox', { name: /Usa Google Drive per lo streaming/ }).check()
-  expect(await page.evaluate(() => localStorage.getItem('ciak:drive'))).toBe('acceso')
+  await expect(page.getByRole('heading', { name: 'Impostazioni' })).toBeVisible()
+  await expect(page.getByText(/Google Drive/)).toHaveCount(0)
+  // Un video di Drive dalla cronologia: lo si dice, invece di un lettore muto.
+  await page.goto('/streaming/1AbCdEfGhIjKlMnOpQr')
+  await expect(page.getByRole('heading', { name: 'Questo video era su Google Drive' })).toBeVisible()
+  await expect(page.locator('video')).toHaveCount(0)
 })
 
 // ── La cartella del PC collegata (E:\Ciak) ──────────────────────────────────
@@ -164,7 +150,6 @@ async function senzaRiconoscimento(page: Page) {
 }
 
 test('collegata la cartella del PC, la serie compare per stagioni e l’episodio parte dal disco', async ({ page }) => {
-  await senzaDrive(page)
   await senzaRiconoscimento(page)
   const db = await mockSupabase(page, { user_streaming: [] })
   await cartellaFinta(page, CARTELLA)
@@ -199,7 +184,6 @@ test('collegata la cartella del PC, la serie compare per stagioni e l’episodio
 })
 
 test('riaperto il browser, il permesso della cartella si ridà con un clic', async ({ page }) => {
-  await senzaDrive(page)
   await senzaRiconoscimento(page)
   await mockSupabase(page, { user_streaming: [] })
   await cartellaFinta(page, CARTELLA)
@@ -236,7 +220,6 @@ test('riaperto il browser, il permesso della cartella si ridà con un clic', asy
 // si sceglie col selettore normale, una volta per visita. Era il caso
 // dell'utente: il pulsante della cartella non compariva proprio.
 test('in un browser senza maniglie la cartella si sceglie col selettore, e si risceglie a ogni visita', async ({ page }) => {
-  await senzaDrive(page)
   await senzaRiconoscimento(page)
   await mockSupabase(page, { user_streaming: [] })
   await page.addInitScript(() => Object.defineProperty(window, 'showDirectoryPicker', { value: undefined, configurable: true }))
@@ -260,6 +243,9 @@ test('in un browser senza maniglie la cartella si sceglie col selettore, e si ri
   await page.getByRole('list', { name: 'Stagione 3' }).getByText('01 Rainforest Shmainforest').click()
   await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
   await expect(page.getByText(/Italiano · dalla cartella/)).toBeVisible()
+  // Qui i file si leggono e basta: per cancellarli serve Chrome o Edge.
+  await expect(page.getByText(/Per cancellarlo dal disco apri Ciak con Chrome o Edge/)).toBeVisible()
+  await expect(page.getByRole('button', { name: /Cancella dal disco/ })).toHaveCount(0)
 
   // Riaperta la pagina il browser ha dimenticato i file: Ciak lo dice, e lo
   // stesso pulsante li fa riscegliere.
@@ -273,4 +259,101 @@ test('in un browser senza maniglie la cartella si sceglie col selettore, e si ri
   await expect(page.getByRole('button', { name: /Paprika \(2006\)/ })).toBeVisible()
   await scegli('📂 Riapri la cartella «Ciak»')
   await expect(page.getByRole('button', { name: '📂 Riapri la cartella «Ciak»' })).toHaveCount(0)
+})
+
+// Tutti i file della cartella finta, come percorsi («SERIE TV/South Park/…»).
+async function fileSulDisco(page: Page): Promise<string[]> {
+  return page.evaluate(async () => {
+    const tutti: string[] = []
+    const visita = async (dir: FileSystemDirectoryHandle, sopra: string) => {
+      for await (const voce of (dir as unknown as { values(): AsyncIterable<FileSystemHandle> }).values()) {
+        const qui = sopra ? `${sopra}/${voce.name}` : voce.name
+        if (voce.kind === 'directory') {
+          tutti.push(`${qui}/`)
+          await visita(voce as FileSystemDirectoryHandle, qui)
+        } else tutti.push(qui)
+      }
+    }
+    await visita(await (await navigator.storage.getDirectory()).getDirectoryHandle('Ciak'), '')
+    return tutti.sort()
+  })
+}
+
+test('si cancella dal disco: un episodio dal lettore, poi la serie intera dalla videoteca', async ({ page }) => {
+  await senzaRiconoscimento(page)
+  await mockSupabase(page, { user_streaming: [] })
+  // Un terzo episodio: con uno solo rimasto la serie non sarebbe più un gruppo.
+  await cartellaFinta(page, [...CARTELLA, ['SERIE TV/South Park/Season 03/03 Tweek vs Craig.mp4', 'd'.repeat(72)]])
+  const avvisi: string[] = []
+  page.on('dialog', (d) => {
+    avvisi.push(d.message())
+    void d.accept()
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: '📂 Collega la cartella dei film' }).click()
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  await page.getByRole('list', { name: 'Stagione 3' }).getByText('01 Rainforest Shmainforest').click()
+
+  // Dal lettore: va via l'episodio col suo sottotitolo; la stagione resta,
+  // perché c'è ancora l'altro episodio.
+  await page.getByRole('button', { name: '🗑 Cancella dal disco' }).click()
+  await expect(page).toHaveURL(/\/streaming$/)
+  await expect(page.getByText(/è stato cancellato dal disco/)).toBeVisible()
+  expect(avvisi[0]).toMatch(/Non finisce nel Cestino/)
+  expect(await fileSulDisco(page)).toEqual([
+    'FILM/',
+    'FILM/Paprika (2006)/',
+    'FILM/Paprika (2006)/Paprika.2006.mp4',
+    'SERIE TV/',
+    'SERIE TV/South Park/',
+    'SERIE TV/South Park/Season 03/',
+    'SERIE TV/South Park/Season 03/02 Spontaneous Combustion.mp4',
+    'SERIE TV/South Park/Season 03/03 Tweek vs Craig.mp4',
+    'sposta-su-disco.bat',
+  ])
+
+  // Dalla videoteca, la serie intera: la stagione e la cartella della serie,
+  // rimaste vuote. La scheda SERIE TV resta, e il film non si tocca.
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  await page.getByRole('button', { name: '🗑 Cancella la serie dal disco' }).click()
+  await expect(page.getByRole('button', { name: /^South Park/ })).toHaveCount(0)
+  expect(avvisi[1]).toMatch(/Non finiscono nel Cestino/)
+  expect(await fileSulDisco(page)).toEqual(['FILM/', 'FILM/Paprika (2006)/', 'FILM/Paprika (2006)/Paprika.2006.mp4', 'SERIE TV/', 'sposta-su-disco.bat'])
+})
+
+test('chi ci ripensa davanti alla conferma non perde niente', async ({ page }) => {
+  await senzaRiconoscimento(page)
+  await mockSupabase(page, { user_streaming: [] })
+  await cartellaFinta(page, CARTELLA)
+  page.on('dialog', (d) => void d.dismiss())
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: '📂 Collega la cartella dei film' }).click()
+  await page.getByRole('button', { name: /Paprika \(2006\)/ }).click()
+  await page.getByRole('button', { name: '🗑 Cancella dal disco' }).click()
+  await expect(page).toHaveURL(/\/streaming\/loc-/)
+  expect(await fileSulDisco(page)).toContain('FILM/Paprika (2006)/Paprika.2006.mp4')
+})
+
+test('un sottotitolo trovato online per un file scelto a mano resta in Ciak: la volta dopo non si riscarica', async ({ page }) => {
+  await mockSupabase(page, { user_streaming: [] })
+  const scaricati: unknown[] = []
+  await page.route('**/api/sottotitoli', (route) => {
+    const body = route.request().postDataJSON() as { azione: string; fileId?: number }
+    if (body.azione === 'cerca') return route.fulfill({ json: { candidati: [{ fileId: 7, lingua: 'it', nome: 'song.it.srt', download: 5, hash: false }] } })
+    scaricati.push(body.fileId)
+    return route.fulfill({ json: { testo: SRT, rimasti: 9 } })
+  })
+  await page.goto('/streaming')
+  await page.getByLabel('Scegli il film (ed eventualmente i sottotitoli)').setInputFiles([FILM])
+  // Accanto a un file scelto a mano il browser non lascia scrivere: lo tiene Ciak.
+  await expect(page.getByText(/Italiano · da OpenSubtitles, salvato in Ciak/)).toBeVisible()
+  expect(scaricati).toEqual([7])
+
+  // Riaprendo lo stesso file un'altra volta, l'italiano c'è già.
+  await page.goto('/streaming')
+  await page.getByLabel('Scegli il film (ed eventualmente i sottotitoli)').setInputFiles([FILM])
+  await expect(page.getByText(/Italiano · da OpenSubtitles, salvato in Ciak/)).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
+  expect(scaricati).toEqual([7])
 })

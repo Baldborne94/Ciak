@@ -133,7 +133,7 @@ describe('SerieVideoteca', () => {
   })
 })
 
-describe('SerieVideoteca, gli episodi che mancano su Drive', () => {
+describe('SerieVideoteca, gli episodi che mancano nella cartella', () => {
   it('aperta, chiede a TMDB quanti sono e mostra i buchi in grigio al loro posto', async () => {
     vi.mocked(stagioniSerie).mockResolvedValue([
       { stagione: 1, episodi: 3 },
@@ -148,15 +148,15 @@ describe('SerieVideoteca, gli episodi che mancano su Drive', () => {
     const righe = within(stagione1).getAllByRole('listitem')
     expect(righe.map((r) => r.textContent)).toEqual([
       expect.stringContaining('Ep. 1'),
-      expect.stringMatching(/Ep\. 2.*non su Drive/),
+      expect.stringMatching(/Ep\. 2.*non nella cartella/),
       expect.stringContaining('Ep. 3'),
     ])
     expect(screen.getByText(/manca l'ep\. 2/)).toBeInTheDocument()
     // Una stagione intera che non c'è si dice, senza elencare i suoi episodi.
-    expect(within(screen.getByRole('list', { name: 'Stagioni non su Drive' })).getByText('Stagione 2 · 4 episodi, nessuno su Drive')).toBeInTheDocument()
+    expect(within(screen.getByRole('list', { name: 'Stagioni non nella cartella' })).getByText('Stagione 2 · 4 episodi, nessuno nella cartella')).toBeInTheDocument()
     expect(screen.queryByRole('list', { name: 'Stagione 2' })).not.toBeInTheDocument()
     // Anche la riga chiusa lo dice, ora che si sa.
-    expect(screen.getByText(/5 non su Drive/)).toBeInTheDocument()
+    expect(screen.getByText(/5 non nella cartella/)).toBeInTheDocument()
   })
 
   it('senza id TMDB non chiede niente e non inventa buchi', async () => {
@@ -164,17 +164,17 @@ describe('SerieVideoteca, gli episodi che mancano su Drive', () => {
     monta()
     await userEvent.click(screen.getByRole('button', { name: /^South Park/ }))
     expect(stagioniSerie).not.toHaveBeenCalled()
-    expect(screen.queryByText(/non su Drive/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/non nella cartella/)).not.toBeInTheDocument()
   })
 
-  it('aperta si può cancellare tutta da Drive; chiusa il pulsante non c’è, per non premerlo per sbaglio', async () => {
+  it('aperta si può cancellare tutta dal disco; chiusa il pulsante non c’è, per non premerlo per sbaglio', async () => {
     const onCancella = vi.fn()
     render(
       <SerieVideoteca titolo="South Park" poster={null} anno="1997" episodi={EPISODI} scaricati={new Set()} onApri={vi.fn()} onCancella={onCancella} />,
     )
     expect(screen.queryByRole('button', { name: /Cancella la serie/ })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /South Park/, expanded: false }))
-    await userEvent.click(screen.getByRole('button', { name: '🗑 Cancella la serie da Drive' }))
+    await userEvent.click(screen.getByRole('button', { name: '🗑 Cancella la serie dal disco' }))
     expect(onCancella).toHaveBeenCalledTimes(1)
   })
 })

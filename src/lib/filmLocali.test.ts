@@ -13,21 +13,18 @@ describe('filmLocali', () => {
     expect(eLocale('1AbCdEfGhIjKlMn')).toBe(false)
   })
 
-  it('apre il video coi suoi sottotitoli, letti subito in WebVTT', async () => {
-    const film = await apriFile([
-      file('Alien.1979.it.srt', '1\n00:00:01,000 --> 00:00:02,000\nCiao\n'),
-      file('Alien.1979.mp4', 'video', 'video/mp4'),
-    ])
+  it('apre il video coi file scelti insieme a lui, da cui il lettore prende i sottotitoli', () => {
+    const srt = file('Alien.1979.it.srt', '1\n00:00:01,000 --> 00:00:02,000\nCiao\n')
+    const film = apriFile([srt, file('Alien.1979.mp4', 'video', 'video/mp4')])
     expect(film.file.name).toBe('Alien.1979.mp4')
-    expect(film.sottotitoli).toHaveLength(1)
-    expect(film.sottotitoli[0]).toMatchObject({ lingua: 'it', etichetta: 'Italiano · dal file scelto' })
-    expect(film.sottotitoli[0].vtt).toContain('WEBVTT')
+    expect(film.vicini).toContain(srt)
+    expect(film).toMatchObject({ origine: 'scelto', cartella: null, scrivi: null })
     expect(filmAperto(film.id)).toBe(film)
     expect(comeVideo(film)).toMatchObject({ id: film.id, name: 'Alien.1979.mp4', cartella: null })
   })
 
-  it('senza un video lo dice', async () => {
-    await expect(apriFile([file('Alien.it.srt')])).rejects.toThrow(/file video/)
+  it('senza un video lo dice', () => {
+    expect(() => apriFile([file('Alien.it.srt')])).toThrow(/file video/)
   })
 
   it('riconosce i formati che il browser legge', () => {

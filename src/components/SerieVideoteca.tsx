@@ -29,9 +29,9 @@ interface Props {
   riconosciuta?: boolean
   onScegliTitolo?: () => void
   // L'id TMDB della serie: con quello si chiede quanti episodi ha davvero
-  // ogni stagione, e i mancanti su Drive si vedono in grigio al loro posto.
+  // ogni stagione, e i mancanti nella cartella si vedono in grigio al loro posto.
   tmdbId?: number | null
-  // Tutta la serie nel cestino di Drive (la pagina chiede conferma).
+  // Tutta la serie cancellata dal disco (la pagina chiede conferma).
   onCancella?: () => void
   cancellando?: boolean
   // Un file fra gli «Altri episodi» che forse non è un episodio (il film della
@@ -83,7 +83,7 @@ export default function SerieVideoteca({
   const buchi = stagioniTmdb ? episodiMancanti(episodi, stagioniTmdb) : []
   const bucoDi = new Map(buchi.map((b) => [b.stagione, b]))
   const mancanti = totaleMancanti(buchi)
-  const stagioniAssenti = buchi.filter((b) => b.suDrive === 0)
+  const stagioniAssenti = buchi.filter((b) => b.nellaCartella === 0)
   const setAperta = (cambia: (a: boolean) => boolean) => {
     const nuova = cambia(aperta)
     setApertaQui(nuova)
@@ -123,7 +123,7 @@ export default function SerieVideoteca({
               {episodi.length === 1 ? '1 episodio' : `${episodi.length} episodi`}
               {stagioni.length > 1 && ` in ${stagioni.length} stagioni`}
               {visti > 0 && ` · ${visti === episodi.length ? 'tutti visti' : `${visti} visti`}`}
-              {mancanti > 0 && ` · ${mancanti} non su Drive`}
+              {mancanti > 0 && ` · ${mancanti} non nella cartella`}
             </span>
             {visti > 0 && visti < episodi.length && (
               <span className="mt-1 block h-1 overflow-hidden rounded bg-theatre-800" aria-hidden="true">
@@ -170,7 +170,7 @@ export default function SerieVideoteca({
                       return (
                         <li key={`manca-${riga.n}`} className="flex items-center gap-3 px-2 py-1.5 text-zinc-600">
                           <span className="w-12 shrink-0 text-xs font-medium">Ep. {riga.n}</span>
-                          <span className="min-w-0 flex-1 truncate text-sm italic">non su Drive</span>
+                          <span className="min-w-0 flex-1 truncate text-sm italic">non nella cartella</span>
                         </li>
                       )
                     }
@@ -219,10 +219,10 @@ export default function SerieVideoteca({
             )
           })}
           {stagioniAssenti.length > 0 && (
-            <ul aria-label="Stagioni non su Drive" className="pt-3 text-xs text-zinc-600">
+            <ul aria-label="Stagioni non nella cartella" className="pt-3 text-xs text-zinc-600">
               {stagioniAssenti.map((b) => (
                 <li key={b.stagione} className="px-2 py-1">
-                  {nomeStagione(b.stagione)} · {b.totale === 1 ? '1 episodio' : `${b.totale} episodi`}, nessuno su Drive
+                  {nomeStagione(b.stagione)} · {b.totale === 1 ? '1 episodio' : `${b.totale} episodi`}, nessuno nella cartella
                 </li>
               ))}
             </ul>
@@ -236,7 +236,7 @@ export default function SerieVideoteca({
             {/* Solo a serie aperta: chiusa, un clic per sbaglio costerebbe troppo. */}
             {onCancella && (
               <button type="button" onClick={onCancella} disabled={cancellando} className="text-xs text-zinc-500 transition hover:text-red-400">
-                {cancellando ? 'Cancello…' : '🗑 Cancella la serie da Drive'}
+                {cancellando ? 'Cancello…' : '🗑 Cancella la serie dal disco'}
               </button>
             )}
           </div>

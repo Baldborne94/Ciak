@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { idDriveValido, senzaExtra, nomeCategoria, queryInCartelle, schedeCategorie, soloRiproducibili, titoloVideo } from './googleDrive'
+import { idFileValido, senzaExtra, nomeCategoria, schedeCategorie, soloRiproducibili, titoloVideo } from './fileVideo'
 
 describe('titoloVideo', () => {
   it('usa il nome della sottocartella, che di solito è il film', () => {
@@ -47,35 +47,17 @@ describe('titoloVideo', () => {
   })
 })
 
-describe('queryInCartelle', () => {
-  it('mette le cartelle in OR e aggiunge la condizione e il cestino', () => {
-    expect(queryInCartelle(['a', 'b'], "mimeType contains 'video/'")).toEqual([
-      "('a' in parents or 'b' in parents) and mimeType contains 'video/' and trashed = false",
-    ])
-  })
-
-  it('divide le cartelle in blocchi, per non superare la lunghezza di un URL', () => {
-    const ids = Array.from({ length: 45 }, (_, i) => `c${i}`)
-    const query = queryInCartelle(ids, 'x', 20)
-    expect(query).toHaveLength(3)
-    expect(query[2]).toBe("('c40' in parents or 'c41' in parents or 'c42' in parents or 'c43' in parents or 'c44' in parents) and x and trashed = false")
-  })
-
-  it('nessuna cartella, nessuna query', () => {
-    expect(queryInCartelle([], 'x')).toEqual([])
-  })
-})
-
-describe('idDriveValido', () => {
-  it('accetta gli id veri di Drive', () => {
-    expect(idDriveValido('1AbC_dEf-GhIjKlMnOpQrStUv')).toBe(true)
+describe('idFileValido', () => {
+  it('accetta gli id dei file della cartella e del server di casa', () => {
+    expect(idFileValido('loc-0123456789abcdef')).toBe(true)
+    expect(idFileValido('jf-06006283103f8493628d6b5b9a95da9d')).toBe(true)
   })
 
   it('rifiuta ciò che potrebbe uscire dall’URL del lettore', () => {
-    expect(idDriveValido('../../evil')).toBe(false)
-    expect(idDriveValido('abc?x=1')).toBe(false)
-    expect(idDriveValido('corto')).toBe(false)
-    expect(idDriveValido('')).toBe(false)
+    expect(idFileValido('../../evil')).toBe(false)
+    expect(idFileValido('abc?x=1')).toBe(false)
+    expect(idFileValido('corto')).toBe(false)
+    expect(idFileValido('')).toBe(false)
   })
 })
 

@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { videoDaPercorsi } from './cartellaLocale'
 import { idLocale } from './filmLocali'
-import { titoloVideo } from './googleDrive'
+import { titoloVideo } from './fileVideo'
 
-// La cartella del PC letta come la videoteca di Drive: scheda, serie,
+// La cartella del PC letta come una videoteca: scheda, serie,
 // stagione, e lo stesso id che si avrebbe aprendo il file a mano.
 
 describe('videoDaPercorsi', () => {
-  it('scheda, serie e stagione dalle cartelle, come su Drive', () => {
+  it('scheda, serie e stagione dalle cartelle', () => {
     const [ep] = videoDaPercorsi([{ percorso: ['SERIE TV', 'South Park', 'Season 26', 'South Park S26E06.mp4'], dimensione: 350_000_000 }])
     expect(ep).toMatchObject({
       name: 'South Park S26E06.mp4',

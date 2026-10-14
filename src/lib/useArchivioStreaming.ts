@@ -49,7 +49,7 @@ export function useArchivioStreaming(fileId: string, attivo: boolean) {
   const { user } = useAuth()
   const [voce, setVoce] = useState<VoceStreaming | null>(null)
   const [tutte, setTutte] = useState<VoceStreaming[]>([])
-  // I film scaricati qui: si guardano anche se su Drive non ci sono più.
+  // I film scaricati qui: si guardano anche se nella cartella non ci sono più.
   const [scaricati, setScaricati] = useState<Set<string>>(new Set())
   useEffect(() => {
     let vivo = true

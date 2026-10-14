@@ -1,5 +1,5 @@
 // Logica pura dei sottotitoli del lettore di Ciak: riconoscere quali file di una
-// cartella Drive sono i sottotitoli di un video, capire dal nome del file quale
+// cartella sono i sottotitoli di un video, capire dal nome del file quale
 // film cercare online, convertire l'SRT in WebVTT (l'unico formato che il
 // browser accetta in un <track>) e calcolare l'hash di OpenSubtitles.
 
@@ -11,7 +11,7 @@ export interface FileCartella {
   mimeType: string
 }
 
-export interface SottotitoloDrive {
+export interface SottotitoloAccanto {
   id: string
   name: string
   lingua: Lingua | null
@@ -41,7 +41,7 @@ const ORDINE_LINGUE: (Lingua | null)[] = ['it', 'en', null]
 // comincia col nome del video («B99 S7E2.it.srt» per «B99 S7E2.mp4»); se nella
 // cartella c'è un solo video, ogni sottotitolo è suo — è il caso tipico della
 // cartella dedicata a un film, dove l'.srt ha un nome tutto suo. Italiano prima.
-export function sottotitoliPerVideo(nomeVideo: string, vicini: FileCartella[]): SottotitoloDrive[] {
+export function sottotitoliPerVideo(nomeVideo: string, vicini: FileCartella[]): SottotitoloAccanto[] {
   const unicoVideo = vicini.filter((f) => ESTENSIONE_VIDEO.test(f.name) || f.mimeType.startsWith('video/')).length <= 1
   const stem = radice(nomeVideo)
   return vicini

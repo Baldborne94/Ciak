@@ -68,8 +68,8 @@ describe('useComandiVisibili', () => {
   })
 })
 
-// Il lettore di Ciak arriva dopo la pagina (prima c'è l'anteprima di Drive):
-// il <video> non c'era quando il controllo è partito, e i comandi restavano
+// Il lettore di Ciak arriva dopo la pagina (quando il file è pronto): il
+// <video> non c'era quando il controllo è partito, e i comandi restavano
 // fissi come a video fermo.
 function LettoreCheArriva({ conVideo }: { conVideo: boolean }) {
   const contenitore = useRef<HTMLDivElement>(null)
@@ -77,7 +77,7 @@ function LettoreCheArriva({ conVideo }: { conVideo: boolean }) {
   const visibile = useComandiVisibili(contenitore, video)
   return (
     <div ref={contenitore} data-testid="contenitore">
-      {conVideo ? <video ref={video} data-testid="video" /> : <iframe title="Drive" />}
+      {conVideo ? <video ref={video} data-testid="video" /> : <p>Apro il file…</p>}
       <p>{visibile ? 'comandi visibili' : 'comandi nascosti'}</p>
     </div>
   )

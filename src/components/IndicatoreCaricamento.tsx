@@ -1,7 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react'
 import { useElementoVideo } from '../lib/useElementoVideo'
 
-// Mentre il video aspetta i dati (da Drive, su rete lenta) si vede che sta
+// Mentre il video aspetta i dati (dal disco lento, dal server di casa) si vede che sta
 // caricando: senza i comandi del browser non c'era più il suo cerchio, e un
 // fotogramma fermo sembrava un lettore rotto.
 

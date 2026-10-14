@@ -37,7 +37,7 @@ function titolo(over: Record<string, unknown>) {
 }
 
 const SONG = voce({
-  drive_file_id: 'video-song-0001',
+  drive_file_id: 'loc-song-of-the-sea',
   nome_file: 'Song.of.the.Sea.2014.1080p.mp4',
   tmdb_id: 110416,
   media_type: 'movie',
@@ -48,6 +48,9 @@ const SONG = voce({
 test.beforeEach(async ({ page }) => {
   await signIn(page)
   await mockAiApi(page)
+  // Una videoteca c'è: la cartella dei film è collegata (i pulsanti «Guarda»
+  // compaiono solo allora).
+  await page.addInitScript(() => localStorage.setItem('ciak:cartella', 'Ciak'))
 })
 
 test('nella scheda di un film che è nella videoteca c’è «Riprendi» e porta al lettore', async ({ page }) => {
@@ -56,9 +59,9 @@ test('nella scheda di un film che è nella videoteca c’è «Riprendi» e porta
 
   await page.goto('/title/movie/110416')
   const pulsante = page.getByRole('link', { name: '▶ Riprendi da 22:20' })
-  await expect(pulsante).toHaveAttribute('href', '/streaming/video-song-0001')
+  await expect(pulsante).toHaveAttribute('href', '/streaming/loc-song-of-the-sea')
   await pulsante.click()
-  await expect(page).toHaveURL(/\/streaming\/video-song-0001$/)
+  await expect(page).toHaveURL(/\/streaming\/loc-song-of-the-sea$/)
   await expect(page.getByRole('heading', { name: 'Song of the Sea' })).toBeVisible()
 })
 
@@ -67,14 +70,14 @@ test('con più di mille file nella videoteca anche gli ultimi aggiunti hanno il 
   // ne ha tagliate: «Il settimo sigillo», appena convertito e quindi in fondo,
   // spariva dalla videoteca letta dalla scheda del film.
   const episodi = Array.from({ length: 1000 }, (_, i) =>
-    voce({ drive_file_id: `ep-${i}`, tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', stagione: 1 + Math.floor(i / 20), episodio: 1 + (i % 20) }),
+    voce({ drive_file_id: `loc-episodio-${i}`, tmdb_id: 2190, media_type: 'tv', titolo: 'South Park', stagione: 1 + Math.floor(i / 20), episodio: 1 + (i % 20) }),
   )
-  const sigillo = voce({ drive_file_id: 'video-sigillo-01', tmdb_id: 490, media_type: 'movie', titolo: 'Det sjunde inseglet' })
+  const sigillo = voce({ drive_file_id: 'loc-sigillo-01', tmdb_id: 490, media_type: 'movie', titolo: 'Det sjunde inseglet' })
   await mockTmdb(page, { detail: movieDetail(490, 'Il settimo sigillo') })
   await mockSupabase(page, { user_streaming: [...episodi, sigillo] })
 
   await page.goto('/title/movie/490')
-  await expect(page.getByRole('link', { name: '▶ Guarda ora' })).toHaveAttribute('href', '/streaming/video-sigillo-01')
+  await expect(page.getByRole('link', { name: '▶ Guarda ora' })).toHaveAttribute('href', '/streaming/loc-sigillo-01')
 })
 
 test('un titolo senza file nella videoteca non ha il pulsante', async ({ page }) => {
@@ -100,7 +103,7 @@ test('in «Da vedere» il pulsante c’è solo sulle card dei titoli con un file
   await expect(page.getByText('Fight Club')).toBeVisible()
   const pulsanti = page.getByRole('link', { name: '▶ Guarda ora' })
   await expect(pulsanti).toHaveCount(1)
-  await expect(pulsanti).toHaveAttribute('href', '/streaming/video-song-0001')
+  await expect(pulsanti).toHaveAttribute('href', '/streaming/loc-song-of-the-sea')
 })
 
 test('«Riprendi a guardare» porta dritto all’episodio da riprendere', async ({ page }) => {
@@ -113,7 +116,7 @@ test('«Riprendi a guardare» porta dritto all’episodio da riprendere', async 
     }),
   })
   const ep = (n: number) =>
-    voce({ drive_file_id: `shogun-ep-000${n}`, tmdb_id: 126308, media_type: 'tv', titolo: 'Shōgun', stagione: 1, episodio: n, durata: 3600 })
+    voce({ drive_file_id: `loc-shogun-000${n}`, tmdb_id: 126308, media_type: 'tv', titolo: 'Shōgun', stagione: 1, episodio: n, durata: 3600 })
   await mockSupabase(page, {
     user_titles: [titolo({ id: 't3', tmdb_id: 126308, media_type: 'tv', title: 'Shōgun', status: 'in_progress' })],
     // Visti i primi due episodi: si riprende dal terzo.
@@ -130,5 +133,5 @@ test('«Riprendi a guardare» porta dritto all’episodio da riprendere', async 
 
   await page.goto('/')
   const riprendi = page.locator('section', { hasText: 'Riprendi a guardare' }).first()
-  await expect(riprendi.getByRole('link', { name: '▶ Guarda S1E3' })).toHaveAttribute('href', '/streaming/shogun-ep-0003')
+  await expect(riprendi.getByRole('link', { name: '▶ Guarda S1E3' })).toHaveAttribute('href', '/streaming/loc-shogun-0003')
 })

@@ -26,7 +26,7 @@ export default function SceltaTitolo({
     try {
       setRisultati((await searchMulti(ricerca)).slice(0, 8))
     } catch (e) {
-      logFailure('Ricerca del titolo per il film di Drive')(e)
+      logFailure('Ricerca del titolo per il film della videoteca')(e)
       setRisultati([])
     } finally {
       setCercando(false)

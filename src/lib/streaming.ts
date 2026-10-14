@@ -5,7 +5,7 @@ import type { NomeFilm } from './sottotitoli'
 import { ordinaEpisodi, prossimoDaGuardare, sigla, type EpisodioVideoteca } from './videoteca'
 import { arrivatoAllaFine, contaComeVisto } from './fineVisione'
 
-// Il legame fra un file su Drive e l'archivio: quale titolo è, dove ci si è
+// Il legame fra un file della videoteca e l'archivio: quale titolo è, dove ci si è
 // fermati, quando lo si è finito. È ciò che permette al lettore di segnare un
 // film come visto, spuntare un episodio e riprendere dal punto giusto.
 

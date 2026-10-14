@@ -6,7 +6,7 @@ import { chiaveSerie } from './videoteca'
 import { abbinamentoDa, contaComeVisto, salvaStreaming, scegliAbbinamento, type VoceStreaming } from './streaming'
 import { markEpisode } from './episodes'
 import { progressiDaEreditare } from './progressiEreditati'
-import type { DriveVideo } from './googleDrive'
+import type { VideoFile } from './fileVideo'
 import type { MediaItem } from './types'
 import type { NomeFilm } from './sottotitoli'
 
@@ -80,15 +80,15 @@ function segnaRiprovato(fileId: string): void {
   }
 }
 
-// Collega ai titoli di TMDB i file di Drive che non lo sono ancora. Si prova
+// Collega ai titoli di TMDB i file della videoteca che non lo sono ancora. Si prova
 // una volta sola per file: se non si trova niente la riga resta senza titolo,
 // e l'abbinamento si sceglie a mano dal lettore. Riprovare a ogni apertura
 // della lista vorrebbe dire le stesse ricerche inutili ogni volta.
 export async function riconosciNuovi(
   userId: string,
-  video: DriveVideo[],
+  video: VideoFile[],
   noti: Map<string, VoceStreaming>,
-  // Tutti i file su Drive, anche quelli che la videoteca non mostra: un file
+  // Tutti i file della videoteca, anche quelli che la videoteca non mostra: un file
   // che c'è ancora non è «sostituito», e non cede i suoi progressi.
   presenti: Set<string> = new Set(video.map((v) => v.id)),
 ): Promise<Map<string, VoceStreaming>> {
@@ -126,7 +126,7 @@ export async function riconosciNuovi(
   // Anche un episodio preso per film quando Ciak non leggeva la sua cartella
   // («Webisodes»): «The Accountants» era diventato il film «The Accountant».
   // Una scelta fatta a mano resta.
-  const episodioPresoPerFilm = (v: DriveVideo, r: VoceStreaming | undefined) =>
+  const episodioPresoPerFilm = (v: VideoFile, r: VoceStreaming | undefined) =>
     r?.media_type === 'movie' && filmDaCercare(v.name, v.cartella, v.serie ?? null).stagione !== undefined
   await mapLimit(
     video.filter((v) => {
@@ -160,19 +160,19 @@ export async function riconosciNuovi(
     },
   )
 
-  const senzaTitolo = (v: DriveVideo) => {
+  const senzaTitolo = (v: VideoFile) => {
     const r = noti.get(v.id)
     return !!r && !r.tmdb_id && !r.abbinato_a_mano && !giaRiprovato(v.id)
   }
   // Un file che non è un episodio ma è abbinato a una serie: con le regole di
   // prima un film poteva finire sotto una serie omonima di un altro anno. Si
   // riprova una volta per versione; una scelta a mano non si tocca.
-  const filmSottoSerie = (v: DriveVideo) => {
+  const filmSottoSerie = (v: VideoFile) => {
     const r = noti.get(v.id)
     if (r?.media_type !== 'tv' || !r.tmdb_id || r.abbinato_a_mano || giaRiprovato(v.id)) return false
     return filmDaCercare(v.name, v.cartella, v.serie ?? null).stagione === undefined
   }
-  const episodioDaRicercare = (v: DriveVideo) => {
+  const episodioDaRicercare = (v: VideoFile) => {
     const r = noti.get(v.id)
     return !!r?.tmdb_id && !r.abbinato_a_mano && episodioPresoPerFilm(v, r) && !giaRiprovato(v.id)
   }
@@ -272,7 +272,7 @@ export async function riconosciNuovi(
       falliti++
     }
   })
-  // I file sostituiti su Drive (ricodificati, ricaricati): il nuovo prende
+  // I file sostituiti nella cartella (ricodificati, ricopiati): il nuovo prende
   // «visto» e posizione dal vecchio. Dopo il riconoscimento, perché serve
   // sapere di che titolo ed episodio è il file nuovo.
   await mapLimit(progressiDaEreditare([...esito.values()], presenti), 3, async ({ fileId, campi }) => {
@@ -306,7 +306,7 @@ export async function riconosciNuovi(
     }
   })
   // Una volta col totale, non a ogni file.
-  if (falliti > 0) logFailure('Riconoscimento dei film di Drive')(new Error(`${falliti} file su ${daFare.length} non riconosciuti per errore`))
+  if (falliti > 0) logFailure('Riconoscimento dei film della videoteca')(new Error(`${falliti} file su ${daFare.length} non riconosciuti per errore`))
   return esito
 }
 
@@ -315,7 +315,7 @@ export async function riconosciNuovi(
 // A mano vuol dire per sempre: il riconoscimento non ci torna sopra.
 export async function abbinaAMano(
   userId: string,
-  video: Pick<DriveVideo, 'id' | 'name' | 'cartella' | 'serie'>[],
+  video: Pick<VideoFile, 'id' | 'name' | 'cartella' | 'serie'>[],
   item: MediaItem,
 ): Promise<Map<string, Partial<VoceStreaming>>> {
   const titolo = await titoloDaSalvare(item)

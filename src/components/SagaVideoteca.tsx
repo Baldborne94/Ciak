@@ -23,7 +23,7 @@ export default function SagaVideoteca({
   // Mentre si cerca: la saga compare perché un suo film corrisponde, e
   // chiusa nasconderebbe proprio quello.
   apertaSempre?: boolean
-  // Tutta la saga nel cestino di Drive (la pagina chiede conferma).
+  // Tutta la saga cancellata dal disco (la pagina chiede conferma).
   onCancella?: () => void
   cancellando?: boolean
   // Altri comandi a saga aperta (per quelle fatte a mano: modificarla, la copertina).
@@ -70,7 +70,7 @@ export default function SagaVideoteca({
               {/* Solo a saga aperta: chiusa, un clic per sbaglio costerebbe troppo. */}
               {onCancella && (
                 <button type="button" onClick={onCancella} disabled={cancellando} className="text-xs text-zinc-500 transition hover:text-red-400">
-                  {cancellando ? 'Cancello…' : '🗑 Cancella la saga da Drive'}
+                  {cancellando ? 'Cancello…' : '🗑 Cancella la saga dal disco'}
                 </button>
               )}
             </div>

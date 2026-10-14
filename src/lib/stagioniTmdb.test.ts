@@ -19,7 +19,7 @@ const ep = (stagione: number, episodio: number | null) => ({ stagione, episodio 
 describe('episodiMancanti', () => {
   it('trova i buchi dentro una stagione', () => {
     const buchi = episodiMancanti([ep(1, 1), ep(1, 2), ep(1, 4)], [{ stagione: 1, episodi: 5 }])
-    expect(buchi).toEqual([{ stagione: 1, totale: 5, suDrive: 3, mancanti: [3, 5] }])
+    expect(buchi).toEqual([{ stagione: 1, totale: 5, nellaCartella: 3, mancanti: [3, 5] }])
   })
 
   it('una stagione senza nessun file manca tutta', () => {
@@ -27,13 +27,13 @@ describe('episodiMancanti', () => {
       { stagione: 1, episodi: 1 },
       { stagione: 2, episodi: 3 },
     ])
-    expect(buchi[1]).toEqual({ stagione: 2, totale: 3, suDrive: 0, mancanti: [1, 2, 3] })
+    expect(buchi[1]).toEqual({ stagione: 2, totale: 3, nellaCartella: 0, mancanti: [1, 2, 3] })
     expect(totaleMancanti(buchi)).toBe(3)
   })
 
   it('niente manca quando ci sono tutti, e gli speciali senza numero non contano', () => {
     const buchi = episodiMancanti([ep(1, 1), ep(1, 2), ep(0, null)], [{ stagione: 1, episodi: 2 }])
-    expect(buchi).toEqual([{ stagione: 1, totale: 2, suDrive: 2, mancanti: [] }])
+    expect(buchi).toEqual([{ stagione: 1, totale: 2, nellaCartella: 2, mancanti: [] }])
     expect(totaleMancanti(buchi)).toBe(0)
   })
 
