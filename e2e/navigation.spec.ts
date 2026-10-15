@@ -27,13 +27,14 @@ test('un ospite che apre una pagina personale finisce sul login', async ({ page 
   await expect(page.getByRole('button', { name: /Accedi/ }).first()).toBeVisible()
 })
 
-test("un accesso con Google rifiutato da Supabase dice perché, invece di riproporre «Accedi» muto", async ({ page }) => {
+test("un link d'accesso scaduto dice perché e come averne un altro, invece di riproporre «Accedi» muto", async ({ page }) => {
   await mockTmdb(page)
-  // Così torna Supabase da Google quando le registrazioni nuove sono chiuse.
-  await page.goto('/#error=server_error&error_code=signup_disabled&error_description=Signups+not+allowed+for+this+instance')
+  // Così torna Supabase da un link di «Password dimenticata?» già usato o scaduto.
+  await page.goto('/#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired')
 
   const avviso = page.getByRole('alert').filter({ hasText: 'Accesso non riuscito' })
-  await expect(avviso).toContainText('Ciak non accetta account nuovi')
+  await expect(avviso).toContainText('scaduto o è già stato usato')
+  await expect(avviso).toContainText('Password dimenticata?')
   // L'errore esce dall'indirizzo: ricaricando non ricompare.
   await expect(page).toHaveURL(/\/$/)
   await avviso.getByRole('button', { name: 'Chiudi' }).click()

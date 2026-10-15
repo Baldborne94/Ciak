@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
+import ScegliPassword from '../components/ScegliPassword'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { tmdbConfigurato } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
@@ -374,16 +375,36 @@ function PushSettings() {
   )
 }
 
+// Si entra solo con email e password. Chi entrava con Google la password non
+// l'ha mai scelta: la sceglie qui, da dentro, sullo stesso account (diario,
+// liste e voti restano). Serve anche a cambiarla.
+function AccessoSettings() {
+  const { user, cambiaPassword } = useAuth()
+  if (!user) return null
+  return (
+    <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5">
+      <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">🔑 Accesso</h2>
+      <p className="mb-4 text-sm text-zinc-400">
+        Entri con la tua email (<span className="text-zinc-200">{user.email}</span>) e una password. Se finora entravi con Google,
+        sceglila qui: l’accesso con Google non c’è più.
+      </p>
+      <ScegliPassword onSalva={cambiaPassword} />
+    </section>
+  )
+}
+
 export default function Settings() {
   return (
     <div>
       <PageHeader
         eyebrow="Il tuo profilo"
         title="Impostazioni"
-        subtitle="Notifiche, preferenze di raccomandazione e stato delle integrazioni."
+        subtitle="Accesso, notifiche, preferenze di raccomandazione e stato delle integrazioni."
       />
 
       <div className="grid gap-6 md:grid-cols-2">
+        <AccessoSettings />
+
         <IntegrationsSettings />
 
         <PushSettings />

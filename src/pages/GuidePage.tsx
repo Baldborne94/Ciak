@@ -29,7 +29,7 @@ const SLIDES: Slide[] = [
       {
         icon: '🎟️',
         title: '1. Accedi',
-        body: 'Crea un account con email e password (o Google). Serve per salvare liste, preferiti, diario e per i suggerimenti AI: i tuoi dati ti seguono su qualsiasi dispositivo.',
+        body: 'Crea un account con email e password (la password dimenticata si recupera dalla pagina di accesso). Serve per salvare liste, preferiti, diario e per i suggerimenti AI: i tuoi dati ti seguono su qualsiasi dispositivo.',
         to: '/login',
         cta: 'Vai al login',
       },

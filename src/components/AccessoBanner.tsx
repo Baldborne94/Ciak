@@ -1,8 +1,8 @@
 import { useAuth } from '../lib/auth'
 
-// Il motivo per cui l'accesso con Google è stato rifiutato, in cima a ogni
-// pagina: Supabase rimanda alla home, non al login, e lì un messaggio dentro
-// il modulo d'accesso nessuno lo vedrebbe.
+// Il motivo per cui un link d'accesso (l'email di «Password dimenticata?») è
+// stato rifiutato, in cima a ogni pagina: Supabase rimanda alla home, non al
+// login, e lì un messaggio dentro il modulo d'accesso nessuno lo vedrebbe.
 export default function AccessoBanner() {
   const { erroreAccesso, chiudiErroreAccesso } = useAuth()
   if (!erroreAccesso) return null

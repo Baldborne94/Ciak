@@ -2,37 +2,19 @@ import { describe, it, expect } from 'vitest'
 import { leggiErroreAccesso, spiegaErroreAccesso } from './erroreAccesso'
 
 describe('spiegaErroreAccesso', () => {
-  it('registrazioni chiuse: dice che Google ha funzionato e cosa va cambiato', () => {
-    const testo = spiegaErroreAccesso({ message: 'Signups not allowed for this instance', code: 'signup_disabled' })
-    expect(testo).toMatch(/Google ti ha riconosciuto/)
-    expect(testo).toMatch(/Allow new users to sign up/)
+  it('il link dell’email scaduto o già usato: dice come averne un altro', () => {
+    const testo = spiegaErroreAccesso({ message: 'Email link is invalid or has expired', code: 'otp_expired' })
+    expect(testo).toMatch(/scaduto o è già stato usato/)
+    expect(testo).toMatch(/Password dimenticata\?/)
   })
 
-  it('riconosce le registrazioni chiuse anche senza codice', () => {
-    expect(spiegaErroreAccesso({ message: 'Signups not allowed for this instance' })).toMatch(/account nuovi/)
-  })
-
-  it("un rifiuto di Google indica anche la causa più comune: l'app in prova", () => {
-    // Con la schermata di consenso in «Testing», Google rifiuta chi non è fra
-    // gli utenti di prova con lo stesso access_denied di un annullamento.
-    const testo = spiegaErroreAccesso({ message: 'The user denied access', code: 'access_denied' })
-    expect(testo).toMatch(/annullato/)
-    expect(testo).toMatch(/utenti di prova/)
-  })
-
-  it('il codice di Google non scambiato: cosa provare, e cosa controllare se succede a tutti', () => {
-    // L'amico su Chrome dal telefono: Google l'ha accettato, ma Supabase non è
-    // riuscito a usare il codice che Google gli ha dato.
-    const testo = spiegaErroreAccesso({ message: 'Unable to exchange external code: 4/0AVGzR1A', code: 'server_error' })
-    expect(testo).toMatch(/Riprova/)
-    expect(testo).toMatch(/Client Secret/)
-    // Il testo originale resta, per cercarlo nei log di Supabase.
-    expect(testo).toMatch(/Unable to exchange external code: 4\/0AVGzR1A/)
+  it('lo riconosce anche senza codice', () => {
+    expect(spiegaErroreAccesso({ message: 'Email link is invalid or has expired' })).toMatch(/scaduto/)
   })
 
   it('un errore sconosciuto riporta il messaggio originale, per poterlo cercare', () => {
-    expect(spiegaErroreAccesso({ message: 'Unable to exchange external code: 4/0Ab' })).toMatch(
-      /Unable to exchange external code: 4\/0Ab/,
+    expect(spiegaErroreAccesso({ message: 'Database error saving new user' })).toBe(
+      "L'accesso dal link non è riuscito: Database error saving new user",
     )
   })
 })
@@ -47,10 +29,8 @@ describe('leggiErroreAccesso', () => {
 
   it("prende codice e descrizione dall'indirizzo di ritorno", () => {
     expect(
-      leggiErroreAccesso(
-        'https://ciak.app/#error=server_error&error_code=signup_disabled&error_description=Signups+not+allowed+for+this+instance',
-      ),
-    ).toEqual({ message: 'Signups not allowed for this instance', code: 'signup_disabled' })
+      leggiErroreAccesso('https://ciak.app/#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired'),
+    ).toEqual({ message: 'Email link is invalid or has expired', code: 'otp_expired' })
   })
 
   it('legge anche gli errori nella query (?error=…)', () => {

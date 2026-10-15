@@ -21,10 +21,10 @@ describe('AccessoBanner', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
-  it("dice perché l'accesso con Google non è riuscito, e si può chiudere", async () => {
-    conErrore('Ciak non accetta account nuovi.')
+  it("dice perché il link d'accesso non è riuscito, e si può chiudere", async () => {
+    conErrore('Il link dell’email è scaduto.')
     render(<AccessoBanner />)
-    expect(screen.getByRole('alert')).toHaveTextContent('Ciak non accetta account nuovi.')
+    expect(screen.getByRole('alert')).toHaveTextContent('Il link dell’email è scaduto.')
     await userEvent.click(screen.getByRole('button', { name: 'Chiudi' }))
     expect(chiudi).toHaveBeenCalled()
   })

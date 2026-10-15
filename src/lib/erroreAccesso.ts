@@ -1,8 +1,9 @@
-// Quando Supabase rifiuta un accesso con Google, non lo dice a nessuno: rimanda
-// al sito con l'errore nell'indirizzo (#error=…&error_description=…) e la
-// sessione resta vuota. L'app mostrava di nuovo «Accedi» e basta, e chi ci
-// provava aveva l'impressione di essere entrato e poi buttato fuori, senza
-// alcun indizio sul perché.
+// Quando Supabase rifiuta un link d'accesso (quello di «Password
+// dimenticata?»), non lo dice a nessuno: rimanda al sito con l'errore
+// nell'indirizzo (#error=…&error_description=…) e la sessione resta vuota.
+// L'app mostrava di nuovo «Accedi» e basta, senza alcun indizio sul perché.
+// (Nato per l'accesso con Google, che non c'è più: i link dell'email tornano
+// allo stesso modo.)
 
 export interface ErroreAccesso {
   message: string
@@ -34,33 +35,11 @@ function decodificaAncora(testo: string): string {
 }
 
 export function spiegaErroreAccesso({ message, code }: ErroreAccesso): string {
-  if (code === 'signup_disabled' || /signups not allowed/i.test(message)) {
-    return (
-      'Google ti ha riconosciuto, ma Ciak non accetta account nuovi. Chi gestisce Ciak deve ' +
-      'attivarli su Supabase (Authentication → Sign In / Providers → «Allow new users to sign up»).'
-    )
-  }
-  // Google usa access_denied sia per chi annulla sia per chi non è fra gli
-  // utenti di prova di un'app ancora in «Testing»: il secondo è il caso di un
-  // amico che sceglie l'account e si ritrova fuori senza aver annullato nulla.
-  if (code === 'access_denied') {
-    return (
-      "Google ha negato l'accesso. Se non l'hai annullato tu, chi gestisce Ciak deve aggiungere il tuo " +
-      'account Gmail fra gli utenti di prova (Google Cloud → Google Auth Platform → Audience → Test users).'
-    )
-  }
-  // Google ha accettato l'account, ma Supabase non è riuscito a usare il
-  // codice che gli ha dato: già usato (pagina ricaricata, tornati indietro,
-  // due schede) o scaduto, oppure — se succede a tutti — il Client Secret di
-  // Google su Supabase non è quello giusto.
-  if (/unable to exchange external code/i.test(message)) {
-    return (
-      'Google ti ha riconosciuto, ma il passaggio finale non è riuscito. Riprova una volta da capo, aprendo ' +
-      'Ciak direttamente in Chrome e senza tornare indietro. Se succede a tutti, chi gestisce Ciak deve ' +
-      'controllare il Client Secret di Google su Supabase (Authentication → Sign In / Providers → Google). ' +
-      `(${message})`
-    )
+  // Il link dell'email vale una volta e per poco: aperto due volte, da
+  // un'email vecchia o dopo averne chiesta un'altra, Supabase rimanda qui.
+  if (code === 'otp_expired' || /link is invalid or has expired/i.test(message)) {
+    return 'Il link dell’email è scaduto o è già stato usato. Chiedine un altro dalla pagina di accesso, con «Password dimenticata?».'
   }
   // Il testo originale resta: è quello che si cerca nei log di Supabase.
-  return `L'accesso con Google non è riuscito: ${message}`
+  return `L'accesso dal link non è riuscito: ${message}`
 }
