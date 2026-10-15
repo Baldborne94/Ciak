@@ -62,3 +62,24 @@ describe('service worker: film salvati in Ciak', () => {
     expect(codice).not.toMatch(/googleapis|drive-video|ciak:drive-token/)
   })
 })
+
+describe('service worker: il manifest dell’app installata', () => {
+  it('non lo serve dalla cache: un manifest cambiato deve arrivare al telefono', () => {
+    // Servito cache-first, il tablet ha tenuto per sempre il vecchio
+    // "orientation": "portrait" e l'app installata non girava più in
+    // orizzontale, anche dopo il deploy che lo toglieva.
+    const { gestori } = avviaWorker()
+    const respondWith = vi.fn()
+    gestori.fetch({ request: new Request('https://ciak.test/manifest.webmanifest'), respondWith })
+    expect(respondWith).not.toHaveBeenCalled()
+  })
+
+  it('un worker nuovo butta la cache dove era rimasto il manifest vecchio', async () => {
+    const { gestori, caches } = avviaWorker()
+    await (await caches.open('ciak-v3')).put('/manifest.webmanifest', new Response('{"orientation":"portrait"}'))
+    const attese: Promise<unknown>[] = []
+    gestori.activate({ waitUntil: (p: Promise<unknown>) => attese.push(p) })
+    await Promise.all(attese)
+    expect(await caches.keys()).not.toContain('ciak-v3')
+  })
+})

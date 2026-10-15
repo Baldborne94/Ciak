@@ -9,7 +9,9 @@
 //  - Tutto il resto cross-origin (API TMDB, Supabase, Anthropic) non si tocca:
 //    sono dati che cambiano e richieste autenticate, non roba da cache muta.
 
-const CACHE = 'ciak-v3'
+// Cambiare il nome butta la cache vecchia all'attivazione: v4 per il manifest
+// rimasto in v3 (vedi sotto, /manifest.webmanifest).
+const CACHE = 'ciak-v4'
 // I film salvati in Ciak per vederli offline. Una cache a parte, che
 // sopravvive ai deploy come quella delle immagini: ributtarla vorrebbe dire
 // perdere gigabyte a ogni aggiornamento dell'app. La legge la pagina.
@@ -74,6 +76,10 @@ self.addEventListener('fetch', (event) => {
   // La versione pubblicata va chiesta sempre alla rete: servita dalla cache
   // direbbe per sempre che non c'è niente di nuovo.
   if (url.pathname === '/versione.json') return
+  // Lo stesso per il manifest: non ha l'impronta nel nome come i file di
+  // build, e servito dalla cache il telefono non vedeva mai le modifiche (il
+  // tablet restava bloccato in verticale dopo che "portrait" era stato tolto).
+  if (url.pathname === '/manifest.webmanifest') return
 
   // App navigations → network-first with offline fallback to the cached shell.
   if (req.mode === 'navigate') {
