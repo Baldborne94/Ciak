@@ -8,6 +8,7 @@ import ReleaseAlerts from './ReleaseAlerts'
 import ErrorBoundary from './ErrorBoundary'
 import SchemaBanner from './SchemaBanner'
 import AccessoBanner from './AccessoBanner'
+import RecuperoPassword from './RecuperoPassword'
 import OfflineBanner from './OfflineBanner'
 import NuovaVersioneBanner from './NuovaVersioneBanner'
 import TitoliItaliani from './TitoliItaliani'
@@ -24,6 +25,7 @@ export default function Layout() {
       <Navbar />
       <NuovaVersioneBanner />
       <AccessoBanner />
+      <RecuperoPassword />
       <OfflineBanner />
       <SchemaBanner />
       <main className="container-cine flex-1 py-8">

@@ -7,7 +7,7 @@ import { useAuth } from '../lib/auth'
 type Mode = 'signin' | 'signup'
 
 export default function Login() {
-  const { signInWithPassword, signUp, signInWithGoogle, configured } = useAuth()
+  const { signInWithPassword, signUp, inviaReimpostazione, configured } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const from = (location.state as { from?: string } | null)?.from ?? '/'
@@ -53,13 +53,19 @@ export default function Login() {
     navigate(from, { replace: true })
   }
 
-  async function onGoogle() {
-    setBusy(true)
+  // L'accesso è solo con email e password: chi non la ricorda (o non l'ha mai
+  // scelta, perché entrava con Google) se ne fa mandare una nuova per email.
+  // Supabase manda un link che fa entrare; lì si sceglie la password
+  // (RecuperoPassword, in ogni pagina).
+  async function passwordDimenticata() {
     setError(null)
-    const err = await signInWithGoogle()
+    setInfo(null)
+    if (!email) return setError('Scrivi la tua email qui sopra, poi premi di nuovo «Password dimenticata?».')
+    setBusy(true)
+    const err = await inviaReimpostazione(email)
     setBusy(false)
-    if (err) setError(err)
-    // On success the browser is redirected by Supabase.
+    if (err) return setError(`Email non inviata: ${err}`)
+    setInfo(`Ti ho mandato un'email a ${email}: apri il link e scegli la password nuova. Se non arriva, guarda nello spam.`)
   }
 
   return (
@@ -117,15 +123,16 @@ export default function Login() {
           {busy ? '…' : mode === 'signin' ? '🎟️ Accedi' : '✨ Crea account'}
         </button>
 
-        <div className="flex items-center gap-3 text-xs text-zinc-600">
-          <span className="h-px flex-1 bg-theatre-700" />
-          oppure
-          <span className="h-px flex-1 bg-theatre-700" />
-        </div>
-
-        <button type="button" onClick={onGoogle} className="btn-ghost w-full" disabled={busy}>
-          Continua con Google
-        </button>
+        {mode === 'signin' && (
+          <button
+            type="button"
+            onClick={() => void passwordDimenticata()}
+            className="w-full text-center text-sm text-zinc-400 transition hover:text-projector"
+            disabled={busy}
+          >
+            Password dimenticata?
+          </button>
+        )}
       </form>
 
       <p className="mt-4 text-center text-sm text-zinc-400">

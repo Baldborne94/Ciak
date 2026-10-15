@@ -19,7 +19,7 @@ Estetica da sala cinematografica: tema scuro, oro proiettore, rosso sipario, cia
 - 🎞️ **Dashboard "Sala"** con trending TMDB e **statistiche personali reali** (visti, da vedere, in corso, preferiti)
 - 🔍 **Ricerca** con filtri combinabili (tipo, voto minimo)
 - 🎭 **Scheda dettaglio** con backdrop, locandina, generi, durata, cast e raccomandazioni
-- 🔐 **Autenticazione Supabase** (email/password + Google OAuth)
+- 🔐 **Autenticazione Supabase** (email e password, con «Password dimenticata?» via email)
 - 📋 **Liste personali** (Visti / Da vedere / In corso) salvate su Supabase — assegna lo stato dalla scheda titolo
 - ❤️ **Preferiti** con **voto (1–5 ★)** e **note** modificabili, ordinabili per voto/data/titolo
 - 🌙 **"Stasera"** — consigli AI in base a umore e tempo a disposizione, serverless `/api/tonight`, chiave Anthropic mai esposta al browser
@@ -105,9 +105,9 @@ src/
 
 ### Autenticazione e dati
 
-L'accesso usa **Supabase Auth** (email/password o Google OAuth). Tutte le query a `user_titles` passano per le policy **RLS**: ogni utente legge e scrive solo le proprie righe. Le rotte `/lists/*` e `/favorites` richiedono il login; le schede titolo e la ricerca restano pubbliche.
+L'accesso usa **Supabase Auth**, solo con email e password. Tutte le query a `user_titles` passano per le policy **RLS**: ogni utente legge e scrive solo le proprie righe. Le rotte `/lists/*` e `/favorites` richiedono il login; le schede titolo e la ricerca restano pubbliche.
 
-> Per Google OAuth, abilita il provider in Supabase → Authentication → Providers e aggiungi l'URL dell'app tra i redirect consentiti.
+> «Password dimenticata?» manda un'email con un link che riporta alla radice dell'app (la Site URL di Supabase → Authentication → URL Configuration): lì Ciak chiede subito la password nuova.
 
 ## Roadmap
 
