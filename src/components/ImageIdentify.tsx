@@ -2,6 +2,8 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { EmptyState, Loader } from './States'
 import { useAuth } from '../lib/auth'
+import { logFailure } from '../lib/logFailure'
+import { abbinaTitolo } from '../lib/abbinaTitoloAi'
 import { searchMulti, searchPerson, posterUrl, profileUrl, displayTitle } from '../lib/tmdb'
 import { refFromMedia, upsertUserTitle } from '../lib/userTitles'
 import { useToast } from '../lib/toastCtx'
@@ -103,9 +105,11 @@ export default function ImageIdentify() {
           (data.titles ?? []).map(async (c) => {
             let item: MediaItem | null = null
             try {
-              const results = await searchMulti(c.title)
-              item = results.find((r) => r.mediaType === c.type) ?? results[0] ?? null
-            } catch { /* ignore */ }
+              // Il tipo e l'anno riconosciuti separano gli omonimi (vedi abbinaTitolo).
+              item = abbinaTitolo({ titolo: c.title, anno: c.year, tipo: c.type }, await searchMulti(c.title))
+            } catch (e) {
+              logFailure('Titolo riconosciuto da un’immagine, su TMDB')(e)
+            }
             return { ...c, item }
           }),
         ),

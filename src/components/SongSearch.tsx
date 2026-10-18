@@ -5,6 +5,7 @@ import MediaCard from './MediaCard'
 import { EmptyState, ErrorState, Loader } from './States'
 import AiCreditsNote from './AiCreditsNote'
 import { searchMulti } from '../lib/tmdb'
+import { abbinaTitolo } from '../lib/abbinaTitoloAi'
 import { aiFetch } from '../lib/aiClient'
 import { useAuth } from '../lib/auth'
 import {
@@ -24,30 +25,15 @@ async function findSongFilms(song: string): Promise<{ item: MediaItem; note: str
     '/api/song-films',
     { song },
   )
-  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
   const resolved = await Promise.all(
     (data.films ?? []).map(async (f) => {
       try {
-        const items = await searchMulti(f.title)
-        if (items.length === 0) return null
-        const target = norm(f.title)
-        // Rank by title match + year + prefer movies, to avoid casual mismatches
-        // (e.g. a same-sounding anime instead of the actual film).
-        const ranked = items
-          .map((r) => {
-            let score = 0
-            if (norm(r.title) === target || norm(r.originalTitle ?? '') === target) score += 10
-            else if (norm(r.title).includes(target) || target.includes(norm(r.title))) score += 4
-            if (f.year && r.releaseDate?.slice(0, 4) === String(f.year)) score += 5
-            if (r.mediaType === 'movie') score += 1
-            return { r, score }
-          })
-          .sort((a, b) => b.score - a.score)
-        const best = ranked[0]
-        // If nothing matches the title at all, the AI title is unreliable → skip.
-        if (!best || best.score === 0) return null
-        return { item: best.r, note: f.scene }
-      } catch {
+        // Un film col titolo e l'anno giusti, non un omonimo (vedi abbinaTitolo);
+        // se niente somiglia, il titolo dell'AI non è affidabile e si salta.
+        const item = abbinaTitolo({ titolo: f.title, anno: f.year, tipo: 'movie' }, await searchMulti(f.title))
+        return item ? { item, note: f.scene } : null
+      } catch (e) {
+        logFailure('Film di una canzone su TMDB')(e)
         return null
       }
     }),
