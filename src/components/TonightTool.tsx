@@ -7,6 +7,8 @@ import { listByStatus, listFavorites } from '../lib/userTitles'
 import { aiFetch } from '../lib/aiClient'
 import { usePersistedState } from '../lib/usePersistedState'
 import { searchMulti, posterUrl, displayTitle } from '../lib/tmdb'
+import { abbinaTitolo } from '../lib/abbinaTitoloAi'
+import { logFailure } from '../lib/logFailure'
 import type { MediaItem, UserTitle } from '../lib/types'
 
 interface Suggestion {
@@ -23,42 +25,18 @@ interface ResolvedSuggestion {
   item: MediaItem | null
 }
 
-// Associa il titolo proposto dall'AI al miglior risultato TMDB: privilegia il
-// match esatto del titolo e l'anno, per evitare omonimi o scambi di media.
-async function resolveSuggestion(s: Suggestion): Promise<ResolvedSuggestion> {
-  const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '')
-
-  function pickBest(items: Awaited<ReturnType<typeof searchMulti>>, target: string) {
-    return items
-      .map((r) => {
-        let score = 0
-        if (norm(r.title) === target || norm(r.originalTitle ?? '') === target) score += 10
-        else if (norm(r.title).includes(target) || target.includes(norm(r.title))) score += 4
-        if (s.year && r.releaseDate?.slice(0, 4) === String(s.year)) score += 5
-        // Use vote average as tiebreaker so a well-known film beats an obscure
-        // namesake (e.g. the A24 "Talk to Me" vs a 0.0-rated Lebanese short).
-        score += r.voteAverage * 0.1
-        return { r, score }
-      })
-      .sort((a, b) => b.score - a.score)[0]?.r ?? items[0]
-  }
-
+// Il titolo proposto dall'AI abbinato a TMDB (vedi abbinaTitolo): anno e tipo
+// separano gli omonimi. Se l'AI aggiunge un sottotitolo («Titolo - …»), si
+// riprova col titolo e basta.
+async function resolveSuggestion(s: Suggestion, tipo: 'movie' | 'tv'): Promise<ResolvedSuggestion> {
   try {
-    const items = await searchMulti(s.title)
-    if (items.length > 0) {
-      return { suggestion: s, item: pickBest(items, norm(s.title)) }
-    }
-    // Fallback: if the title contains " - " (e.g. Italian subtitle added by AI),
-    // retry with just the base title which is more likely to match TMDB.
+    const item = abbinaTitolo({ titolo: s.title, anno: s.year, tipo }, await searchMulti(s.title))
+    if (item) return { suggestion: s, item }
     const base = s.title.split(/\s*[-:]\s*/)[0].trim()
-    if (base && base !== s.title) {
-      const fallbackItems = await searchMulti(base)
-      if (fallbackItems.length > 0) {
-        return { suggestion: s, item: pickBest(fallbackItems, norm(base)) }
-      }
-    }
-  } catch {
-    // ricerca TMDB non riuscita: si mostra comunque il testo dell'AI.
+    if (base && base !== s.title) return { suggestion: s, item: abbinaTitolo({ titolo: base, anno: s.year, tipo }, await searchMulti(base)) }
+  } catch (e) {
+    // Senza TMDB si mostra comunque il testo dell'AI.
+    logFailure('Titolo di «Stasera» su TMDB')(e)
   }
   return { suggestion: s, item: null }
 }
@@ -145,7 +123,7 @@ export default function TonightTool() {
         favorites: favorites.map(toSummary),
         watched: watched.map(toSummary),
       })
-      const resolved = await Promise.all((data.suggestions ?? []).map(resolveSuggestion))
+      const resolved = await Promise.all((data.suggestions ?? []).map((s) => resolveSuggestion(s, time.series ? 'tv' : 'movie')))
 
       // Il prompt chiede all'AI di non suggerire titoli già visti/preferiti, ma è
       // un vincolo testuale: non garantito al 100%. Una volta risolto il
