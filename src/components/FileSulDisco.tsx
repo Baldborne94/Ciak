@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { cancellaDalDisco, cancellabileDalDisco, cartellaCollegata } from '../lib/cartellaLocale'
+import { audioDaVicini } from '../lib/copiaInCiak'
 import { eliminaFilm, filmOffline, offlineDisponibile, salvaFileSulDispositivo, taglia, type FilmOffline } from '../lib/filmOffline'
 import type { FilmAperto } from '../lib/filmLocali'
 import { logFailure } from '../lib/logFailure'
@@ -45,6 +46,8 @@ export default function FileSulDisco({
         { id: fileId, titolo, file: aperto.file.name },
         aperto.file,
         sottotitoli.map(({ chiave, lingua, etichetta, vtt }) => ({ chiave, lingua, etichetta, vtt })),
+        // Le lingue dell'audio accanto: senza, la copia suonerebbe solo nella prima.
+        audioDaVicini(aperto.file.name, aperto.vicini),
       )
       onLocale(await filmOffline(fileId))
     } catch (e) {

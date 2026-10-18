@@ -230,7 +230,7 @@ function LettoreStreaming() {
   const audio = useSceltaAudio({
     fileId,
     casa,
-    aperto,
+    conVicini: disco.conVicini,
     infoCasa,
     voce: archivio.voce,
     archivioCaricato,

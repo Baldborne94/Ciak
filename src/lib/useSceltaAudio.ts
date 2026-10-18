@@ -1,9 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
-import type { FilmAperto } from './filmLocali'
 import type { InfoJellyfin } from './jellyfin'
 import type { VoceStreaming } from './streaming'
 import { indiceAudio, leggiLinguaAudio, salvaLinguaAudio, type TracciaAudio } from './tracceAudio'
-import { useTracceAudio } from './useTracceAudio'
+import { useTracceAudio, type VideoConVicini } from './useTracceAudio'
 
 // La lingua dell'audio nel lettore (vedi lib/tracceAudio): il menu c'è solo
 // per i video con più lingue. Dal disco le prepara prepara-ciak accanto al
@@ -14,14 +13,14 @@ import { useTracceAudio } from './useTracceAudio'
 export function useSceltaAudio(p: {
   fileId: string
   casa: boolean
-  aperto: FilmAperto | undefined
+  conVicini: VideoConVicini | undefined
   infoCasa: InfoJellyfin | null
   voce: VoceStreaming | null
   archivioCaricato: boolean
   primaDiCambiare: () => void
 }) {
   const { fileId, casa, infoCasa, voce, archivioCaricato, primaDiCambiare } = p
-  const audioDisco = useTracceAudio(p.aperto)
+  const audioDisco = useTracceAudio(p.conVicini)
   const tracceCasa = useMemo<TracciaAudio[]>(
     () => (infoCasa ? infoCasa.audio.map((a, i) => ({ indice: i + 1, lingua: a.lingua, titolo: a.titolo, fileId: null })) : []),
     [infoCasa],

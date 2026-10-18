@@ -6,7 +6,8 @@ import { logFailure } from './logFailure'
 //
 // Per ogni film: il file (/film-offline/{id}) e una scheda (/film-offline/
 // {id}/info.json) con titolo, stato e i sottotitoli già trovati, così offline
-// ci sono anche quelli.
+// ci sono anche quelli; e i file accanto che servono al lettore (le lingue
+// dell'audio di prepara-ciak) in /film-offline/{id}/vicino/{nome}.
 
 const CACHE_FILM = 'ciak-film-v1'
 
@@ -28,6 +29,10 @@ export interface FilmOffline {
   scaricatoIl?: number
   errore?: string
   sottotitoli?: SottotitoloOffline[]
+  // La serie, per un episodio: «Sul dispositivo» li raccoglie sotto di lei.
+  serie?: string | null
+  // I nomi dei file accanto salvati con lui (vedi `viciniSalvati`).
+  vicini?: string[]
 }
 
 const PREFISSO = '/film-offline/'
@@ -37,6 +42,9 @@ function urlFilm(id: string): string {
 }
 function urlInfo(id: string): string {
   return PREFISSO + id + '/info.json'
+}
+function urlVicino(id: string, nome: string): string {
+  return PREFISSO + id + '/vicino/' + encodeURIComponent(nome)
 }
 
 // Senza Cache API (contesti privati restrittivi, browser vecchi) la funzione
@@ -144,6 +152,8 @@ export function ascoltaFilmOffline(cb: Ascoltatore): () => void {
 export async function eliminaFilm(id: string): Promise<void> {
   if (!offlineDisponibile()) return
   const cache = await caches.open(CACHE_FILM)
+  const info = await leggiInfo(cache, id)
+  for (const nome of info?.vicini ?? []) await cache.delete(urlVicino(id, nome))
   await cache.delete(urlFilm(id))
   await cache.delete(urlInfo(id))
   avvisa({ id, stato: 'eliminato' })
@@ -159,34 +169,43 @@ export async function salvaSottotitoliOffline(id: string, sottotitoli: Sottotito
   await scriviInfo(cache, { ...info, sottotitoli })
 }
 
+// Lo spazio concesso dal browser è finito: chi copia una serie intera si
+// ferma e lo dice, invece di riprovare ogni episodio che seguirebbe.
+export class SpazioFinito extends Error {
+  constructor() {
+    super('Non c’è abbastanza spazio sul dispositivo per salvarlo.')
+  }
+}
+
 // Un film che è già sul dispositivo (aperto dal disco, vedi filmLocali): si
 // copia nella cache del lettore così com'è, senza rete, e da lì parte anche
-// dopo aver chiuso Ciak o staccato il disco.
+// dopo aver chiuso Ciak o staccato il disco. `vicini` sono i file accanto da
+// tenere con lui: le lingue dell'audio, senza le quali un anime doppiato
+// tornerebbe muto nella lingua scelta.
 export async function salvaFileSulDispositivo(
-  film: { id: string; titolo: string; file: string },
+  film: { id: string; titolo: string; file: string; serie?: string | null },
   contenuto: Blob,
   sottotitoli: SottotitoloOffline[],
+  vicini: File[] = [],
 ): Promise<void> {
   if (!offlineDisponibile()) throw new Error('Questo browser non può salvare film sul dispositivo.')
   const cache = await caches.open(CACHE_FILM)
   void chiediPersistenza()
-  const scheda = { ...film, dimensione: contenuto.size }
+  const nomiVicini = vicini.map((f) => f.name)
+  const scheda = { ...film, dimensione: contenuto.size + vicini.reduce((t, f) => t + f.size, 0), vicini: nomiVicini }
   await scriviInfo(cache, { ...scheda, stato: 'in-corso', sottotitoli })
   avvisa({ id: film.id, stato: 'in-corso' })
   try {
     await cache.put(urlFilm(film.id), new Response(contenuto, { headers: { 'Content-Type': contenuto.type || 'video/mp4' } }))
+    for (const f of vicini) await cache.put(urlVicino(film.id, f.name), new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream' } }))
   } catch (e) {
+    for (const nome of nomiVicini) await cache.delete(urlVicino(film.id, nome))
     await cache.delete(urlFilm(film.id))
     await cache.delete(urlInfo(film.id))
     avvisa({ id: film.id, stato: 'errore' })
     // Il caso tipico: il film non ci sta nello spazio che il browser concede.
-    throw new Error(
-      e instanceof DOMException && e.name === 'QuotaExceededError'
-        ? 'Non c’è abbastanza spazio sul dispositivo per salvarlo.'
-        : e instanceof Error
-          ? e.message
-          : 'Salvataggio non riuscito.',
-    )
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') throw new SpazioFinito()
+    throw new Error(e instanceof Error ? e.message : 'Salvataggio non riuscito.')
   }
   await scriviInfo(cache, { ...scheda, stato: 'completo', scaricatoIl: Date.now(), sottotitoli })
   avvisa({ id: film.id, stato: 'completo' })
@@ -199,4 +218,18 @@ export async function urlFilmSalvato(id: string): Promise<string | null> {
   if (!offlineDisponibile()) return null
   const res = await (await caches.open(CACHE_FILM)).match(urlFilm(id))
   return res ? URL.createObjectURL(await res.blob()) : null
+}
+
+// I file accanto salvati con un film, di nuovo come File: il lettore li usa
+// come quelli della cartella (vedi useTracceAudio). Vuoto se non ce ne sono.
+export async function viciniSalvati(id: string): Promise<File[]> {
+  if (!offlineDisponibile()) return []
+  const cache = await caches.open(CACHE_FILM)
+  const info = await leggiInfo(cache, id)
+  const file: File[] = []
+  for (const nome of info?.vicini ?? []) {
+    const res = await cache.match(urlVicino(id, nome))
+    if (res) file.push(new File([await res.blob()], nome, { type: res.headers.get('Content-Type') ?? '' }))
+  }
+  return file
 }
