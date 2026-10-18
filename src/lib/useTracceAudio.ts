@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import type { FilmAperto } from './filmLocali'
 import { logFailure } from './logFailure'
 import { decodificaTesto } from './sottotitoli'
 import { leggiElencoAudio, nomeElencoAudio, type TracciaAudio } from './tracceAudio'
@@ -9,7 +8,12 @@ import { leggiElencoAudio, nomeElencoAudio, type TracciaAudio } from './tracceAu
 // arriva, e per un video senza elenco (una lingua sola, o preparato prima che
 // lo script le aggiungesse): allora il menu Audio non c'è e il film suona come
 // sempre. `url` dà il file di una lingua per l'<audio> del lettore.
-export function useTracceAudio(film: FilmAperto | undefined): { tracce: TracciaAudio[]; url: (fileId: string) => string | null } {
+//
+// Basta il nome del video e i file accanto: anche la copia salvata in Ciak li
+// ha (vedi viciniSalvati), senza il file vero.
+export type VideoConVicini = { file: Pick<File, 'name'>; vicini: File[] }
+
+export function useTracceAudio(film: VideoConVicini | undefined): { tracce: TracciaAudio[]; url: (fileId: string) => string | null } {
   const [tracce, setTracce] = useState<TracciaAudio[]>([])
   useEffect(() => {
     setTracce([])

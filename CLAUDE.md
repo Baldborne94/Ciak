@@ -115,7 +115,13 @@ Due guardie automatiche, oltre ai test veri e propri:
     `ScegliCartella` usa da sé il modo che c'è: non mostrare mai il pulsante
     solo dove esiste `showDirectoryPicker`;
   - i **film aperti a mano** (`src/lib/filmLocali.ts`), e la loro copia
-    salvata in Ciak («Salva in Ciak», `filmOffline.ts`);
+    salvata in Ciak («Salva in Ciak», `filmOffline.ts`), coi sottotitoli e le
+    lingue dell'audio accanto (`vicini`);
+  - le **serie tenute in Ciak** (`serieInCiak.ts`, `useSerieInCiak.ts`): il
+    dispositivo ricorda la cartella della serie, e a ogni lettura della
+    videoteca si copiano gli episodi nuovi e si tolgono le copie dei visti
+    (l'originale resta). I «visto» si rileggono anche con la cartella da
+    riaprire: sul tablet il permesso si ridà solo quando servono episodi nuovi;
   - il **server di casa** (Jellyfin, `src/lib/jellyfin.ts`), id `jf-<id>`.
   Un video del disco ha id `loc-<impronta>` dal nome e dalla dimensione del
   file: tutto ciò che è legato all'id (`user_streaming`, punto di ripresa,

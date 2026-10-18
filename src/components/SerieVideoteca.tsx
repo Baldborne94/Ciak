@@ -8,6 +8,8 @@ import {
   sigla,
   type EpisodioVideoteca,
 } from '../lib/videoteca'
+import type { RigaInCiak } from '../lib/useSerieInCiak'
+import SerieInCiak from './SerieInCiak'
 
 // Una serie della videoteca: una riga sola con la locandina, quanti episodi ci
 // sono e quanti ne hai visti, e «▶ Continua» per partire dal prossimo. Aperta,
@@ -37,6 +39,9 @@ interface Props {
   // Un file fra gli «Altri episodi» che forse non è un episodio (il film della
   // serie, un extra): gli si sceglie il titolo da solo, senza toccare la serie.
   onScegliFile?: (episodio: EpisodioVideoteca) => void
+  // Tenerla in Ciak, sul dispositivo (vedi useSerieInCiak); null dove non si
+  // può (nessun episodio del disco, o un browser senza Cache API).
+  inCiak?: RigaInCiak | null
 }
 
 // La stagione 0 sono gli speciali (OAD, OVA), come su TMDB.
@@ -64,6 +69,7 @@ export default function SerieVideoteca({
   onCancella,
   cancellando = false,
   onScegliFile,
+  inCiak = null,
 }: Props) {
   const [apertaQui, setApertaQui] = useState(false)
   const aperta = apertaFuori ?? apertaQui
@@ -124,6 +130,7 @@ export default function SerieVideoteca({
               {stagioni.length > 1 && ` in ${stagioni.length} stagioni`}
               {visti > 0 && ` · ${visti === episodi.length ? 'tutti visti' : `${visti} visti`}`}
               {mancanti > 0 && ` · ${mancanti} non nella cartella`}
+              {inCiak?.tenuta && ' · 📱 in Ciak'}
             </span>
             {visti > 0 && visti < episodi.length && (
               <span className="mt-1 block h-1 overflow-hidden rounded bg-theatre-800" aria-hidden="true">
@@ -227,6 +234,7 @@ export default function SerieVideoteca({
               ))}
             </ul>
           )}
+          {inCiak && <SerieInCiak riga={inCiak} titolo={titolo} />}
           <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1">
             {onScegliTitolo && (
               <button type="button" onClick={onScegliTitolo} className="text-xs text-zinc-400 transition hover:text-projector">

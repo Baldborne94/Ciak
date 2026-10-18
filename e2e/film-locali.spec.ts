@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { mkdtempSync, mkdirSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { mockTmdb, mockSupabase, signIn } from './support/mocks'
+import { E2E_USER, mockTmdb, mockSupabase, signIn } from './support/mocks'
 
 // La videoteca dal disco: un film scelto dal PC (o dalla memoria del tablet)
 // parte nel lettore di Ciak, coi suoi sottotitoli, e si può copiare in Ciak
@@ -356,4 +356,150 @@ test('un sottotitolo trovato online per un file scelto a mano resta in Ciak: la 
   await expect(page.getByText(/Italiano · da OpenSubtitles, salvato in Ciak/)).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
   expect(scaricati).toEqual([7])
+})
+
+// ── Una serie tenuta in Ciak ────────────────────────────────────────────────
+// Sul tablet il permesso della cartella si perde a ogni chiusura dell'app: la
+// serie salvata in Ciak si guarda senza, con sottotitoli e lingue dell'audio.
+
+// Le schede dei film salvati in Ciak, in ordine di file.
+async function salvatiInCiak(page: Page) {
+  return page.evaluate(async () => {
+    const cache = await caches.open('ciak-film-v1')
+    const schede: { id: string; file: string; serie: string | null; vicini: string[]; sottotitoli: (string | null)[] }[] = []
+    for (const r of await cache.keys()) {
+      if (!r.url.endsWith('/info.json')) continue
+      const info = await (await cache.match(r))!.json()
+      schede.push({
+        id: info.id,
+        file: info.file,
+        serie: info.serie ?? null,
+        vicini: [...(info.vicini ?? [])].sort(),
+        sottotitoli: (info.sottotitoli ?? []).map((s: { lingua: string | null }) => s.lingua),
+      })
+    }
+    return schede.sort((a, b) => a.file.localeCompare(b.file))
+  })
+}
+
+test('una serie salvata in Ciak copia da sola gli episodi nuovi e toglie quelli visti', async ({ page }) => {
+  await senzaRiconoscimento(page)
+  const db = await mockSupabase(page, { user_streaming: [] })
+  const accanto = 'SERIE TV/South Park/Season 03/02 Spontaneous Combustion'
+  const elencoAudio = JSON.stringify({
+    versione: 1,
+    tracce: [
+      { indice: 1, lingua: 'en', titolo: '', file: null },
+      { indice: 2, lingua: 'it', titolo: '', file: '02 Spontaneous Combustion.audio-2.m4a' },
+    ],
+  })
+  await cartellaFinta(page, [...CARTELLA, [`${accanto}.audio.json`, elencoAudio], [`${accanto}.audio-2.m4a`, 'audio']])
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: '📂 Collega la cartella dei film' }).click()
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  await page.getByRole('button', { name: '📱 Salva la serie in Ciak' }).click()
+  await expect(page.getByText(/Tenuta in Ciak: 2 di 2 episodi/)).toBeVisible()
+  await expect(page.getByRole('button', { name: /^South Park.*📱 in Ciak/ })).toBeVisible()
+
+  // Ogni episodio col suo: il sottotitolo del primo, le lingue del secondo.
+  expect(await salvatiInCiak(page)).toEqual([
+    { id: expect.stringMatching(/^loc-/), file: '01 Rainforest Shmainforest.mp4', serie: 'South Park', vicini: [], sottotitoli: ['it'] },
+    {
+      id: expect.stringMatching(/^loc-/),
+      file: '02 Spontaneous Combustion.mp4',
+      serie: 'South Park',
+      vicini: ['02 Spontaneous Combustion.audio-2.m4a', '02 Spontaneous Combustion.audio.json'],
+      sottotitoli: [],
+    },
+  ])
+  // «Sul dispositivo» li raccoglie in una riga sola.
+  await expect(page.locator('section').filter({ has: page.getByRole('heading', { name: /Sul dispositivo/ }) })).toContainText(/South Park\s*2 episodi/)
+
+  // Un episodio nuovo nella cartella: alla prossima lettura si copia da solo.
+  await page.evaluate(async () => {
+    let dir = await (await navigator.storage.getDirectory()).getDirectoryHandle('Ciak')
+    for (const p of ['SERIE TV', 'South Park', 'Season 03']) dir = await dir.getDirectoryHandle(p)
+    const scrivi = await (await dir.getFileHandle('03 Tweek vs Craig.mp4', { create: true })).createWritable()
+    await scrivi.truncate(6_000_072)
+    await scrivi.close()
+  })
+  await page.getByRole('button', { name: '🔄 Aggiorna' }).click()
+  await expect(page.getByText(/Tenuta in Ciak: 3 di 3 episodi/)).toBeVisible()
+
+  // Il primo è stato visto (anche su un altro dispositivo): la copia va via,
+  // il file nella cartella resta.
+  const primo = (await salvatiInCiak(page))[0].id
+  const righe = db.tables.user_streaming as Record<string, unknown>[]
+  const riga = righe.find((r) => r.drive_file_id === primo)
+  if (riga) riga.visto_il = '2026-10-18T10:00:00Z'
+  else righe.push({ user_id: E2E_USER.id, drive_file_id: primo, visto_il: '2026-10-18T10:00:00Z', posizione: 0, secondi_visti: 0, durata: null })
+  await page.getByRole('button', { name: '🔄 Aggiorna' }).click()
+  await expect(page.getByText(/Tenuta in Ciak: 2 di 3 episodi/)).toBeVisible()
+  expect((await salvatiInCiak(page)).map((f) => f.file)).toEqual(['02 Spontaneous Combustion.mp4', '03 Tweek vs Craig.mp4'])
+  expect(await fileSulDisco(page)).toContain('SERIE TV/South Park/Season 03/01 Rainforest Shmainforest.mp4')
+
+  // Senza la cartella, l'episodio parte dalla copia, con le sue lingue.
+  await page.getByRole('button', { name: 'Scollega la cartella' }).click()
+  await page.getByText('South Park', { exact: true }).click()
+  await page.getByRole('list', { name: 'Episodi di South Park sul dispositivo' }).getByRole('button', { name: /S3E2/ }).click()
+  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+  await expect(page.getByRole('button', { name: 'Audio: Inglese. Cambia lingua' })).toBeVisible()
+})
+
+test('smettere di tenere una serie in Ciak toglie le copie, non i file', async ({ page }) => {
+  await senzaRiconoscimento(page)
+  await mockSupabase(page, { user_streaming: [] })
+  await cartellaFinta(page, CARTELLA)
+  page.on('dialog', (d) => void d.accept())
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: '📂 Collega la cartella dei film' }).click()
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  await page.getByRole('button', { name: '📱 Salva la serie in Ciak' }).click()
+  await expect(page.getByText(/Tenuta in Ciak: 2 di 2 episodi/)).toBeVisible()
+
+  // Ricaricando resta tenuta: lo ricorda il dispositivo.
+  await page.reload()
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  await expect(page.getByText(/Tenuta in Ciak: 2 di 2 episodi/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'Smetti di tenerla in Ciak' }).click()
+  await expect(page.getByRole('button', { name: '📱 Salva la serie in Ciak' })).toBeVisible()
+  await expect.poll(async () => (await salvatiInCiak(page)).length).toBe(0)
+  expect(await fileSulDisco(page)).toContain('SERIE TV/South Park/Season 03/02 Spontaneous Combustion.mp4')
+})
+
+
+test('con la cartella da riaprire, la copia di un episodio visto va via lo stesso', async ({ page }) => {
+  await senzaRiconoscimento(page)
+  const db = await mockSupabase(page, { user_streaming: [] })
+  await cartellaFinta(page, CARTELLA)
+  // Come Chrome sul tablet: il permesso c'è dopo la scelta, non dopo aver riaperto l'app.
+  await page.addInitScript(() => {
+    let concesso = false
+    const w = window as unknown as { showDirectoryPicker: () => Promise<FileSystemDirectoryHandle> }
+    const scegli = w.showDirectoryPicker
+    w.showDirectoryPicker = async () => {
+      concesso = true
+      return scegli()
+    }
+    ;(FileSystemHandle.prototype as unknown as Record<string, unknown>).queryPermission = async () => (concesso ? 'granted' : 'prompt')
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: '📂 Collega la cartella dei film' }).click()
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  await page.getByRole('button', { name: '📱 Salva la serie in Ciak' }).click()
+  await expect(page.getByText(/Tenuta in Ciak: 2 di 2 episodi/)).toBeVisible()
+
+  const primo = (await salvatiInCiak(page))[0].id
+  const righe = db.tables.user_streaming as Record<string, unknown>[]
+  const riga = righe.find((r) => r.drive_file_id === primo)
+  if (riga) riga.visto_il = '2026-10-18T10:00:00Z'
+  else righe.push({ user_id: E2E_USER.id, drive_file_id: primo, visto_il: '2026-10-18T10:00:00Z', posizione: 0, secondi_visti: 0, durata: null })
+
+  await page.reload()
+  await expect(page.getByRole('button', { name: '📂 Riapri la cartella «Ciak»' })).toBeVisible()
+  await expect.poll(async () => (await salvatiInCiak(page)).map((f) => f.file)).toEqual(['02 Spontaneous Combustion.mp4'])
 })

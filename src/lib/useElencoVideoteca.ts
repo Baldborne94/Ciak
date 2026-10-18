@@ -33,6 +33,9 @@ export function useElencoVideoteca(user: User | null) {
   const [caricato, setCaricato] = useState(false)
   const [caricando, setCaricando] = useState(false)
   const [errore, setErrore] = useState<string | null>(null)
+  // Quante volte la cartella è stata riletta, titoli compresi: le serie tenute
+  // in Ciak copiano gli episodi nuovi a ogni lettura (vedi useSerieInCiak).
+  const [letture, setLetture] = useState(0)
 
   // Si parte dall'elenco dell'ultima volta, se c'è: compare subito, invece di
   // una pagina vuota finché la cartella non è stata letta tutta.
@@ -82,8 +85,17 @@ export function useElencoVideoteca(user: User | null) {
       const problema = aCasa.status === 'rejected' ? aCasa.reason : inCartella.status === 'rejected' && !permessoCartella ? inCartella.reason : null
       if (!riuscite && problema) throw problema
       // Solo la cartella, in attesa del permesso: resta l'elenco dell'ultima
-      // volta, che si guarda appena lo si ridà.
-      if (!riuscite) return
+      // volta, che si guarda appena lo si ridà. I «visto» però si rileggono:
+      // dicono quali copie in Ciak togliere, e sul tablet il permesso si
+      // ridà solo quando servono gli episodi nuovi.
+      if (!riuscite) {
+        if (user && permessoCartella) {
+          await elencaStreaming(user.id)
+            .then((voci) => setArchivio(new Map(voci.map((v) => [v.drive_file_id, v]))))
+            .catch(logFailure('Titoli della videoteca, con la cartella da riaprire'))
+        }
+        return
+      }
       if (problema) setErrore((problema as Error).message)
       const casa = aCasa.status === 'fulfilled' ? aCasa.value : []
       const sulPc = inCartella.status === 'fulfilled' ? inCartella.value : []
@@ -114,6 +126,7 @@ export function useElencoVideoteca(user: User | null) {
           logFailure('Titoli dei film della videoteca')(e)
         }
       }
+      setLetture((n) => n + 1)
     } catch (e) {
       setErrore((e as Error).message)
     } finally {
@@ -173,6 +186,7 @@ export function useElencoVideoteca(user: User | null) {
     copiaDel,
     caricato,
     caricando,
+    letture,
     errore,
     setErrore,
     carica,

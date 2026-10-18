@@ -177,4 +177,24 @@ describe('SerieVideoteca, gli episodi che mancano nella cartella', () => {
     await userEvent.click(screen.getByRole('button', { name: '🗑 Cancella la serie dal disco' }))
     expect(onCancella).toHaveBeenCalledTimes(1)
   })
+
+  it('tenuta in Ciak lo dice anche chiusa; aperta mostra il pannello', async () => {
+    const inCiak = {
+      tenuta: true,
+      liberaDopoVisione: true,
+      salvati: 2,
+      episodi: 3,
+      dimensione: 0,
+      copia: null,
+      avviso: null,
+      onSalva: vi.fn(),
+      onLibera: vi.fn(),
+      onSmetti: vi.fn(),
+    }
+    render(<SerieVideoteca titolo="South Park" poster={null} anno="1997" episodi={EPISODI} scaricati={new Set()} onApri={vi.fn()} inCiak={inCiak} />)
+    expect(screen.getByText(/1 visti · 📱 in Ciak/)).toBeInTheDocument()
+    expect(screen.queryByText(/Tenuta in Ciak/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /South Park/, expanded: false }))
+    expect(screen.getByText('📱 Tenuta in Ciak: 2 di 3 episodi')).toBeInTheDocument()
+  })
 })

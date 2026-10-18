@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ErroreCartella, cartellaCollegata, fileDallaCartella } from './cartellaLocale'
-import { ascoltaFilmOffline, filmOffline, urlFilmSalvato, type FilmOffline } from './filmOffline'
+import { ascoltaFilmOffline, filmOffline, urlFilmSalvato, viciniSalvati, type FilmOffline } from './filmOffline'
 import { eLocale, filmAperto, type FilmAperto } from './filmLocali'
 import { logFailure } from './logFailure'
+import type { VideoConVicini } from './useTracceAudio'
 
 // Il file di un video del disco, per il lettore: quello scelto in questa
 // visita, quello della cartella collegata (cartellaLocale), oppure la copia
@@ -93,6 +94,22 @@ export function useFileDelDisco(fileId: string, valido: boolean, riaperto: numbe
     }
   }, [fileId, scaricato, aperto])
 
+  // I file accanto salvati con la copia (le lingue dell'audio), quando si
+  // guarda quella: un anime doppiato non torna muto nella lingua scelta.
+  const [copia, setCopia] = useState<VideoConVicini | undefined>(undefined)
+  const nomeSalvato = scaricato && !aperto ? (locale?.file ?? null) : null
+  useEffect(() => {
+    setCopia(undefined)
+    if (nomeSalvato === null) return
+    let vivo = true
+    viciniSalvati(fileId)
+      .then((vicini) => vivo && setCopia({ file: { name: nomeSalvato }, vicini }))
+      .catch(logFailure('File accanto al film salvato in Ciak'))
+    return () => {
+      vivo = false
+    }
+  }, [fileId, nomeSalvato])
+
   return {
     loc,
     aperto,
@@ -104,5 +121,7 @@ export function useFileDelDisco(fileId: string, valido: boolean, riaperto: numbe
     scaricato,
     // Da dove legge il <video>: il file del disco o, senza, la copia in Ciak.
     src: urlAperto ?? urlSalvato,
+    // Ciò che sta accanto al video, per le lingue dell'audio: lo stesso ordine.
+    conVicini: aperto ?? copia,
   }
 }

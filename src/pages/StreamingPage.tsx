@@ -36,6 +36,7 @@ import { componiVideoteca, type FilmDellElenco } from '../lib/elencoVideoteca'
 import { useElencoVideoteca } from '../lib/useElencoVideoteca'
 import { useInfoTitoli } from '../lib/useInfoTitoli'
 import { useSulDispositivo } from '../lib/useSulDispositivo'
+import { useSerieInCiak } from '../lib/useSerieInCiak'
 
 // La videoteca: i video della cartella collegata del PC e del server di casa,
 // divisi in schede (le cartelle di primo livello), con le serie raccolte in
@@ -77,6 +78,7 @@ export default function StreamingPage() {
   const [copertinaDi, setCopertinaDi] = useState<string | null>(null)
   const [inModifica, setInModifica] = useState<SagaInModifica | null>(null)
   const { offline, senzaRete, spazioUsato, scaricati } = useSulDispositivo()
+  const inCiak = useSerieInCiak({ video, archivio, offline, scaricati, letture: elenco.letture })
 
   const caricaRaccolte = useCallback(async () => {
     if (!user) return
@@ -198,6 +200,7 @@ export default function StreamingPage() {
       }}
       onCancella={() => void cancellaGruppo(gruppo.chiave, gruppo.titolo, gruppo.ids.map((id) => videoPerId.get(id) as VideoFile))}
       cancellando={cancellando === gruppo.chiave}
+      inCiak={inCiak.rigaDi(gruppo)}
     />
   )
 

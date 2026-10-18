@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ascoltaFilmOffline, elencaFilmOffline, offlineDisponibile, spazio, type FilmOffline } from './filmOffline'
 
 // I film salvati sul dispositivo, per la videoteca: si vedono anche senza
@@ -28,11 +28,8 @@ export function useSulDispositivo() {
       window.removeEventListener('offline', aggiorna)
     }
   }, [])
-  return {
-    offline,
-    senzaRete,
-    spazioUsato,
-    // Gli id dei film già salvati per intero.
-    scaricati: new Set(offline.filter((f) => f.stato === 'completo').map((f) => f.id)),
-  }
+  // Gli id dei film già salvati per intero. Lo stesso insieme finché l'elenco
+  // non cambia: chi tiene le serie in Ciak ci ricalcola il da farsi.
+  const scaricati = useMemo(() => new Set(offline.filter((f) => f.stato === 'completo').map((f) => f.id)), [offline])
+  return { offline, senzaRete, spazioUsato, scaricati }
 }
