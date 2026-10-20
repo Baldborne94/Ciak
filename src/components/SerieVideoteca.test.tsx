@@ -197,4 +197,22 @@ describe('SerieVideoteca, gli episodi che mancano nella cartella', () => {
     await userEvent.click(screen.getByRole('button', { name: /South Park/, expanded: false }))
     expect(screen.getByText('📱 Tenuta in Ciak: 2 di 3 episodi')).toBeInTheDocument()
   })
+
+  it('ogni episodio si spunta o si toglie a mano, se la serie è riconosciuta', async () => {
+    const onSegnaVisto = vi.fn()
+    render(<SerieVideoteca titolo="South Park" poster={null} anno="1997" episodi={EPISODI} scaricati={new Set()} onApri={vi.fn()} onSegnaVisto={onSegnaVisto} />)
+    await userEvent.click(screen.getByRole('button', { name: /South Park/, expanded: false }))
+    const visto = screen.getByRole('button', { name: 'Visto: South Park S01E02' })
+    expect(visto).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(visto)
+    expect(onSegnaVisto).toHaveBeenLastCalledWith(expect.objectContaining({ id: 's1e2' }), false)
+    await userEvent.click(screen.getByRole('button', { name: 'Visto: South Park S01E07' }))
+    expect(onSegnaVisto).toHaveBeenLastCalledWith(expect.objectContaining({ id: 's1e7' }), true)
+  })
+
+  it('senza una serie riconosciuta la spunta non c’è', async () => {
+    monta()
+    await userEvent.click(screen.getByRole('button', { name: /South Park/, expanded: false }))
+    expect(screen.queryByRole('button', { name: /^Visto:/ })).not.toBeInTheDocument()
+  })
 })

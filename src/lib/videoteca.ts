@@ -147,11 +147,15 @@ const piuRecente = (a: EpisodioVideoteca, b: EpisodioVideoteca) => (b.guardato ?
 // recente; altrimenti quello dopo l'ultimo finito; altrimenti il primo non
 // visto. Seguire l'ultimo visto, e non il primo non visto in assoluto, vuol
 // dire che chi guarda solo la terza stagione non viene rimandato alla prima.
+//
+// Un episodio lasciato a metà vince solo se è stato toccato dopo l'ultimo
+// finito: S8E14 aperto mesi fa e mai concluso faceva «Riprendi S8E14» a chi
+// aveva poi visto S9E1–6.
 export function prossimoDaGuardare(episodi: EpisodioVideoteca[]): EpisodioVideoteca | null {
   const ordinati = ordinaEpisodi(episodi)
   const iniziato = ordinati.filter(episodioIniziato).sort(piuRecente)[0]
-  if (iniziato) return iniziato
   const ultimoVisto = ordinati.filter(episodioConcluso).sort(piuRecente)[0]
+  if (iniziato && (iniziato.guardato ?? '') >= (ultimoVisto?.guardato ?? '')) return iniziato
   if (ultimoVisto) {
     const dopo = ordinati.slice(ordinati.indexOf(ultimoVisto) + 1).find((e) => !episodioConcluso(e))
     if (dopo) return dopo

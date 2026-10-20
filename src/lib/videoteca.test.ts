@@ -160,6 +160,17 @@ describe('le serie, per stagioni', () => {
     expect(prossimoDaGuardare([finito, cominciato])?.id).toBe('s3e7')
   })
 
+  it('un episodio lasciato a metà tempo fa non vince su quelli visti dopo', () => {
+    // South Park: S8E14 aperto mesi fa e mai finito, poi viste S9E1–6. Si
+    // proponeva «Riprendi S8E14», la Sala S9E7.
+    const vecchio = ep({ id: 's8e14', stagione: 8, episodio: 14, posizione: 300, secondiVisti: 300, durata: 1320, guardato: '2026-06-01T20:00:00Z' })
+    const s9e6 = ep({ id: 's9e6', stagione: 9, episodio: 6, visto: true, guardato: '2026-10-01T20:00:00Z' })
+    const s9e7 = ep({ id: 's9e7', stagione: 9, episodio: 7 })
+    expect(prossimoDaGuardare([vecchio, s9e6, s9e7])?.id).toBe('s9e7')
+    // Ripreso dopo, torna a vincere lui.
+    expect(prossimoDaGuardare([{ ...vecchio, guardato: '2026-10-02T20:00:00Z' }, s9e6, s9e7])?.id).toBe('s8e14')
+  })
+
   it('tutto visto: niente da continuare', () => {
     expect(prossimoDaGuardare([{ ...s1e2, visto: true }])).toBeNull()
   })

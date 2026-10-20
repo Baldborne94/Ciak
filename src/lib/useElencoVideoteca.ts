@@ -7,8 +7,11 @@ import { eJellyfin, elencaVideoJellyfin, ErroreJellyfin, EVENTO_JELLYFIN, jellyf
 import { cartellaCollegata, elencaVideoCartella, ErroreCartella, EVENTO_CARTELLA, scollegaCartella } from './cartellaLocale'
 import { eLocale } from './filmLocali'
 import { riconosciNuovi } from './riconoscimento'
-import { elencaStreaming, type VoceStreaming } from './streaming'
-import { listAllWatchedEpisodes } from './episodes'
+import { elencaStreaming, salvaStreaming, type VoceStreaming } from './streaming'
+import { listAllWatchedEpisodes, markEpisode, syncSeriesStatus, unmarkEpisode } from './episodes'
+import { contaComeVisto } from './fineVisione'
+import { getDetail } from './tmdb'
+import { episodioNelDiario, type EpisodioVideoteca } from './videoteca'
 import { salvaPresenti } from './videoPresenti'
 import { dimenticaVideoteca } from './useVideoteca'
 
@@ -184,6 +187,52 @@ export function useElencoVideoteca(user: User | null) {
     setVideo((attuali) => attuali.filter((v) => !eLocale(v.id)))
   }
 
+  // Spuntare a mano un episodio dalla videoteca: va nel diario della serie,
+  // lo stesso della scheda e della Sala, così le tre dicono la stessa cosa.
+  // Togliendo la spunta si azzera anche il «visto» del lettore: altrimenti il
+  // file, guardato fino in fondo, resterebbe visto lo stesso.
+  async function segnaEpisodio(serie: { tvId: number; titolo: string }, e: EpisodioVideoteca, visto: boolean) {
+    if (!user || e.stagione === null || e.episodio === null) return
+    const { stagione, episodio } = e
+    const chiave = episodioNelDiario(serie.tvId, stagione, episodio)
+    const prima = vistiNelDiario
+    const dopo = new Map(prima)
+    if (visto) dopo.set(chiave, new Date().toISOString())
+    else dopo.delete(chiave)
+    setVistiNelDiario(dopo)
+    try {
+      if (visto) await markEpisode(user.id, serie.tvId, stagione, episodio)
+      else {
+        await unmarkEpisode(user.id, serie.tvId, stagione, episodio)
+        const voce = archivio.get(e.id)
+        if (voce && (voce.visto_il || contaComeVisto(voce.posizione, voce.durata, voce.secondi_visti ?? 0))) {
+          const campi = { visto_il: null, posizione: 0, secondi_visti: 0 }
+          await salvaStreaming(user.id, e.id, campi)
+          setArchivio((a) => new Map(a).set(e.id, { ...voce, ...campi }))
+        }
+      }
+      dimenticaVideoteca()
+    } catch (err) {
+      setVistiNelDiario(prima)
+      setErrore('Non sono riuscito a segnare l’episodio: riprova.')
+      logFailure('Episodio segnato dalla videoteca')(err)
+      return
+    }
+    // La serie passa a «In corso» o «Vista» come dalla sua scheda.
+    const prefisso = `${serie.tvId}-`
+    const quanti = [...dopo.keys()].filter((k) => k.startsWith(prefisso)).length
+    await getDetail('tv', serie.tvId)
+      .then((d) =>
+        syncSeriesStatus(
+          user.id,
+          { tmdbId: serie.tvId, title: serie.titolo, posterPath: d.posterPath, genreIds: d.genreIds },
+          quanti,
+          d.seasons.filter((st) => st.seasonNumber > 0).reduce((n, st) => n + st.episodeCount, 0),
+        ),
+      )
+      .catch(logFailure('Stato della serie dopo un episodio segnato dalla videoteca'))
+  }
+
   async function casaPronta() {
     setCasaCollegata(true)
     await carica()
@@ -199,6 +248,7 @@ export function useElencoVideoteca(user: User | null) {
     archivio,
     setArchivio,
     vistiNelDiario,
+    segnaEpisodio,
     video,
     nascosti,
     extra,

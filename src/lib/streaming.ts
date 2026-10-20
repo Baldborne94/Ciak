@@ -2,7 +2,7 @@ import { supabase } from './supabase'
 import { fetchAllRows } from './paged'
 import type { MediaItem, TmdbType } from './types'
 import type { NomeFilm } from './sottotitoli'
-import { ordinaEpisodi, prossimoDaGuardare, sigla, type EpisodioVideoteca } from './videoteca'
+import { episodioNelDiario, ordinaEpisodi, prossimoDaGuardare, sigla, type EpisodioVideoteca } from './videoteca'
 import { arrivatoAllaFine, contaComeVisto } from './fineVisione'
 
 // Il legame fra un file della videoteca e l'archivio: quale titolo è, dove ci si è
@@ -313,10 +313,23 @@ export function fileDaGuardare(
     posizione: r.posizione,
     secondiVisti: r.secondi_visti ?? 0,
     durata: r.durata,
-    guardato: r.posizione > 0 ? (r.updated_at ?? null) : null,
+    // Quando lo si è visto conta quanto quando lo si è lasciato a metà: è
+    // ciò che dice se un episodio iniziato viene prima o dopo (prossimoDaGuardare).
+    guardato: [r.posizione > 0 ? r.updated_at : null, r.visto_il].filter((d): d is string => !!d).sort().pop() ?? null,
   }))
   const scelto = prossimoDaGuardare(episodi) ?? ordinaEpisodi(episodi)[0]
   return (scelto && perId.get(scelto.id)) ?? suoi[0]
+}
+
+// Gli episodi spuntati nel diario della serie valgono come visti anche qui,
+// come in videoteca: altrimenti la scheda della serie proponeva un episodio
+// già visto («Guarda S8E14») e la Sala un altro.
+export function conDiario(righe: VoceStreaming[], diario: Map<string, string>): VoceStreaming[] {
+  return righe.map((r) => {
+    if (r.visto_il || r.media_type !== 'tv' || !r.tmdb_id || r.stagione == null || r.episodio == null) return r
+    const quando = diario.get(episodioNelDiario(r.tmdb_id, r.stagione, r.episodio))
+    return quando ? { ...r, visto_il: quando } : r
+  })
 }
 
 // Il testo del pulsante: dice cosa succede cliccando.
