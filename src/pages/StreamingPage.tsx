@@ -201,6 +201,7 @@ export default function StreamingPage() {
       onCancella={() => void cancellaGruppo(gruppo.chiave, gruppo.titolo, gruppo.ids.map((id) => videoPerId.get(id) as VideoFile))}
       cancellando={cancellando === gruppo.chiave}
       inCiak={inCiak.rigaDi(gruppo)}
+      onSegnaVisto={gruppo.tmdb.startsWith('tv-') ? (e, visto) => void elenco.segnaEpisodio({ tvId: Number(gruppo.tmdb.slice(3)), titolo: gruppo.titolo }, e, visto) : undefined}
     />
   )
 

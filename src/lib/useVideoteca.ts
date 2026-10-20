@@ -3,7 +3,8 @@ import { useAuth } from './auth'
 import { logFailure } from './logFailure'
 import { jellyfinCollegato } from './jellyfin'
 import { cartellaCollegata } from './cartellaLocale'
-import { elencaStreaming, type VoceStreaming } from './streaming'
+import { conDiario, elencaStreaming, type VoceStreaming } from './streaming'
+import { listAllWatchedEpisodes } from './episodes'
 import { elencaFilmOffline } from './filmOffline'
 import { leggiPresenti, soloPresenti } from './videoPresenti'
 
@@ -16,11 +17,17 @@ let copia: { userId: string; quando: number; righe: Promise<VoceStreaming[]> } |
 
 function leggi(userId: string): Promise<VoceStreaming[]> {
   if (copia && copia.userId === userId && Date.now() - copia.quando < VALIDITA_MS) return copia.righe
-  const righe = elencaStreaming(userId).catch((e) => {
-    logFailure('Videoteca per «Guarda ora»')(e)
-    copia = null
-    return [] as VoceStreaming[]
+  const diario = listAllWatchedEpisodes(userId).catch((e) => {
+    logFailure('Episodi visti per «Guarda ora»')(e)
+    return new Map<string, string>()
   })
+  const righe = Promise.all([elencaStreaming(userId), diario])
+    .then(([r, d]) => conDiario(r, d))
+    .catch((e) => {
+      logFailure('Videoteca per «Guarda ora»')(e)
+      copia = null
+      return [] as VoceStreaming[]
+    })
   copia = { userId, quando: Date.now(), righe }
   return righe
 }

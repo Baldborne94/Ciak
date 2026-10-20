@@ -1447,7 +1447,7 @@ test('un episodio non ancora riconosciuto sta sotto la serie già riconosciuta, 
   await expect(page.getByRole('button', { name: /^South Park/ })).toHaveCount(1)
   await page.getByRole('button', { name: /^South Park/ }).click()
   const stagione3 = page.getByRole('list', { name: 'Stagione 3' })
-  await expect(stagione3.getByRole('button')).toHaveCount(2)
+  await expect(stagione3.getByRole('listitem')).toHaveCount(2)
 
   // E nell'archivio eredita la serie dal fratello, senza cercarla di nuovo: la
   // scheda della serie proponeva «Guarda S1E2» perché S1E1, provato prima della
@@ -2356,3 +2356,60 @@ test('la videoteca e «Riprendi a guardare» dicono lo stesso: stessi visti, ste
   await expect(riprendi.getByText('▶ S1 · E3')).toBeVisible()
   await expect(riprendi.getByRole('link', { name: '▶ Guarda S1E3' })).toHaveAttribute('href', `/streaming/${ID['video-shogun-03']}`)
 })
+
+test('dalla videoteca si spunta a mano un episodio visto, e si toglie la spunta', async ({ page }) => {
+  await mockCartella(page, { conShogun: true, conShogunPrimo: true })
+  const riga = (chiave: string, episodio: number, campi: Record<string, unknown> = {}) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: ID[chiave],
+    nome_file: `Shogun.S01E0${episodio}.mp4`,
+    tmdb_id: 126308,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    poster_path: '/shogun.jpg',
+    stagione: 1,
+    episodio,
+    posizione: 0,
+    durata: 3600,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: true,
+    ...campi,
+  })
+  const db = await mockSupabase(page, {
+    // Il primo l'ha visto nel lettore, fino in fondo.
+    user_streaming: [riga('video-shogun-01', 1, { visto_il: '2026-10-01T20:00:00Z', posizione: 3590, secondi_visti: 3500 }), riga('video-shogun-02', 2), riga('video-shogun-03', 3)],
+    user_episodes: [{ id: 'e1', user_id: E2E_USER.id, tv_id: 126308, season_number: 1, episode_number: 1, watched_at: '2026-10-01T20:00:00Z' }],
+  })
+  await cercaTmdb(
+    page,
+    [],
+    movieDetail(126308, 'Shōgun', {
+      name: 'Shōgun',
+      number_of_seasons: 1,
+      number_of_episodes: 10,
+      seasons: [{ id: 1, season_number: 1, episode_count: 10, name: 'Stagione 1', air_date: '2024-02-27' }],
+    }),
+  )
+
+  await page.goto('/streaming')
+  await collega(page)
+  const serie = page.getByRole('button', { name: /^Shōgun/ })
+  await expect(serie).toContainText('1 visti')
+  await serie.click()
+
+  // Il secondo l'ha visto altrove: lo spunta, e va nel diario della serie.
+  await page.getByRole('button', { name: 'Visto: Shogun.S01E02' }).click()
+  await expect(serie).toContainText('2 visti')
+  await expect(page.getByRole('button', { name: '▶ Continua S1E3' })).toBeVisible()
+  await expect.poll(() => db.tables.user_episodes.some((r) => r.episode_number === 2)).toBe(true)
+
+  // Il primo non lo ricorda: tolta la spunta, va via dal diario e dal lettore.
+  await page.getByRole('button', { name: 'Visto: Shogun.S01E01' }).click()
+  await expect(serie).toContainText('1 visti')
+  await expect.poll(() => db.tables.user_episodes.some((r) => r.episode_number === 1)).toBe(false)
+  await expect
+    .poll(() => (db.tables.user_streaming.find((r) => r.drive_file_id === ID['video-shogun-01']) as Record<string, unknown>).visto_il)
+    .toBeNull()
+})
+

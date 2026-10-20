@@ -39,6 +39,9 @@ interface Props {
   // Un file fra gli «Altri episodi» che forse non è un episodio (il film della
   // serie, un extra): gli si sceglie il titolo da solo, senza toccare la serie.
   onScegliFile?: (episodio: EpisodioVideoteca) => void
+  // Spuntare a mano un episodio visto, o togliere la spunta: solo per una
+  // serie riconosciuta, che ha il suo diario degli episodi.
+  onSegnaVisto?: (episodio: EpisodioVideoteca, visto: boolean) => void
   // Tenerla in Ciak, sul dispositivo (vedi useSerieInCiak); null dove non si
   // può (nessun episodio del disco, o un browser senza Cache API).
   inCiak?: RigaInCiak | null
@@ -70,6 +73,7 @@ export default function SerieVideoteca({
   cancellando = false,
   onScegliFile,
   inCiak = null,
+  onSegnaVisto,
 }: Props) {
   const [apertaQui, setApertaQui] = useState(false)
   const aperta = apertaFuori ?? apertaQui
@@ -207,6 +211,18 @@ export default function SerieVideoteca({
                           </span>
                           <span className="shrink-0 text-xs text-projector">{iniziato ? '▶ Riprendi' : '▶'}</span>
                         </button>
+                        {onSegnaVisto && e.stagione !== null && e.episodio !== null && (
+                          <button
+                            type="button"
+                            onClick={() => onSegnaVisto(e, !e.visto)}
+                            aria-pressed={e.visto}
+                            aria-label={`Visto: ${e.nome}`}
+                            title={e.visto ? 'Visto: togli la spunta' : 'Segna come visto'}
+                            className={`shrink-0 rounded-lg px-2 py-1.5 text-sm transition hover:text-projector ${e.visto ? 'text-projector' : 'text-zinc-600'}`}
+                          >
+                            {e.visto ? '✓' : '○'}
+                          </button>
+                        )}
                         {s.stagione === null && onScegliFile && (
                           <button
                             type="button"

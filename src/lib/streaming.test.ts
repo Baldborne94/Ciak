@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   abbinamentoDa,
+  conDiario,
   arrivatoAllaFine,
   etichettaGuarda,
   fileDaGuardare,
@@ -278,6 +279,26 @@ describe('«Guarda ora»: quale file far partire', () => {
     // Episodio chiesto che non è nella videoteca: il primo non visto.
     expect(fileDaGuardare(righe, 126308, 'tv', { stagione: 2, episodio: 1 })?.drive_file_id).toBe('s1e2')
     expect(etichettaGuarda(righe[2])).toBe('▶ Guarda S1E3')
+  })
+
+  it('una serie: gli episodi spuntati nel diario contano, e un episodio a metà vecchio non vince', () => {
+    // La scheda di South Park diceva «Guarda S8E14» (aperto mesi fa e mai
+    // finito) mentre il diario aveva S9E1–6 e la Sala proponeva S9E7.
+    const ep = (id: string, stagione: number, episodio: number, over: Partial<VoceStreaming> = {}) =>
+      riga(id, { media_type: 'tv', tmdb_id: 2190, stagione, episodio, durata: 1320, ...over })
+    const righe = [
+      ep('s8e14', 8, 14, { posizione: 300, secondi_visti: 300, updated_at: '2026-06-01T20:00:00Z' }),
+      ep('s9e6', 9, 6),
+      ep('s9e7', 9, 7),
+    ]
+    const diario = new Map([['2190-9-6', '2026-10-01T20:00:00Z']])
+    const segnate = conDiario(righe, diario)
+    expect(segnate[1].visto_il).toBe('2026-10-01T20:00:00Z')
+    // Le righe senza diario restano quelle di prima.
+    expect(segnate[0]).toBe(righe[0])
+    expect(fileDaGuardare(segnate, 2190, 'tv')?.drive_file_id).toBe('s9e7')
+    // Senza diario la scheda proponeva ancora S8E14.
+    expect(fileDaGuardare(righe, 2190, 'tv')?.drive_file_id).toBe('s8e14')
   })
 
   it('una serie: lo stesso episodio che propone la videoteca, con gli speciali in fondo', () => {
