@@ -100,13 +100,15 @@ export interface RigaInCiak {
 export function useSerieInCiak(p: {
   video: VideoFile[]
   archivio: Map<string, VoceStreaming>
+  // Gli episodi spuntati nel diario: visti anche per liberare le copie.
+  vistiNelDiario: Map<string, string>
   offline: FilmOffline[]
   scaricati: Set<string>
   // Quante letture fresche della cartella (useElencoVideoteca): ognuna è il
   // via a copiare gli episodi nuovi.
   letture: number
 }) {
-  const { video, archivio, offline, scaricati, letture } = p
+  const { video, archivio, vistiNelDiario, offline, scaricati, letture } = p
   const [tenute, setTenute] = useState(leggiSerieInCiak)
   useEffect(() => {
     const cambiate = () => setTenute(leggiSerieInCiak())
@@ -116,8 +118,8 @@ export function useSerieInCiak(p: {
   const stato = useSyncExternalStore(ascolta, () => lavoro)
   // Le serie di tutta la videoteca, non solo della scheda mostrata.
   const gruppi = useMemo(
-    () => raggruppaSerie(video.map((v) => ({ id: v.id, name: v.name, cartella: v.cartella, serie: v.serie ?? null, voce: archivio.get(v.id) }))).serie,
-    [video, archivio],
+    () => raggruppaSerie(video.map((v) => ({ id: v.id, name: v.name, cartella: v.cartella, serie: v.serie ?? null, voce: archivio.get(v.id) })), vistiNelDiario).serie,
+    [video, archivio, vistiNelDiario],
   )
 
   // Il via a copiare: una lettura fresca della cartella o «Salva la serie».

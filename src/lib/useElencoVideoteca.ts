@@ -8,6 +8,7 @@ import { cartellaCollegata, elencaVideoCartella, ErroreCartella, EVENTO_CARTELLA
 import { eLocale } from './filmLocali'
 import { riconosciNuovi } from './riconoscimento'
 import { elencaStreaming, type VoceStreaming } from './streaming'
+import { listAllWatchedEpisodes } from './episodes'
 import { salvaPresenti } from './videoPresenti'
 import { dimenticaVideoteca } from './useVideoteca'
 
@@ -18,6 +19,18 @@ import { dimenticaVideoteca } from './useVideoteca'
 export function useElencoVideoteca(user: User | null) {
   // Il legame di ogni file col suo titolo.
   const [archivio, setArchivio] = useState<Map<string, VoceStreaming>>(new Map())
+  // Gli episodi spuntati nel diario delle serie: visti anche in videoteca,
+  // come nella Sala (vedi raggruppaSerie).
+  const [vistiNelDiario, setVistiNelDiario] = useState<Map<string, string>>(new Map())
+  // Senza il diario la videoteca resta quella dei soli file: non deve cadere con lui.
+  const leggiDiario = useCallback(
+    (userId: string) =>
+      listAllWatchedEpisodes(userId).catch((e: unknown) => {
+        logFailure('Episodi visti per la videoteca')(e)
+        return new Map<string, string>()
+      }),
+    [],
+  )
   // Il server di casa (Jellyfin), accanto o al posto della cartella.
   const [casaCollegata, setCasaCollegata] = useState(jellyfinCollegato())
   // La cartella del PC collegata (E:\Ciak). Riaprendo il browser ne va ridato
@@ -90,8 +103,11 @@ export function useElencoVideoteca(user: User | null) {
       // ridà solo quando servono gli episodi nuovi.
       if (!riuscite) {
         if (user && permessoCartella) {
-          await elencaStreaming(user.id)
-            .then((voci) => setArchivio(new Map(voci.map((v) => [v.drive_file_id, v]))))
+          await Promise.all([elencaStreaming(user.id), leggiDiario(user.id)])
+            .then(([voci, diario]) => {
+              setArchivio(new Map(voci.map((v) => [v.drive_file_id, v])))
+              setVistiNelDiario(diario)
+            })
             .catch(logFailure('Titoli della videoteca, con la cartella da riaprire'))
         }
         return
@@ -116,8 +132,10 @@ export function useElencoVideoteca(user: User | null) {
       // i file nuovi. Best effort: senza, la lista resta quella dei file.
       if (user) {
         try {
-          const noti = new Map((await elencaStreaming(user.id)).map((v) => [v.drive_file_id, v]))
+          const [voci, diario] = await Promise.all([elencaStreaming(user.id), leggiDiario(user.id)])
+          const noti = new Map(voci.map((v) => [v.drive_file_id, v]))
           setArchivio(noti)
+          setVistiNelDiario(diario)
           const riconosciuti = await riconosciNuovi(user.id, visibili, noti, new Set(esito.video.map((v) => v.id)))
           setArchivio(riconosciuti)
           salvaCopia(chiaveVideotecaArchivio(user.id), [...riconosciuti.values()])
@@ -132,7 +150,7 @@ export function useElencoVideoteca(user: User | null) {
     } finally {
       setCaricando(false)
     }
-  }, [user])
+  }, [user, leggiDiario])
 
   // Già collegati (token ancora valido in questa scheda): elenco subito, senza
   // chiedere di nuovo il permesso.
@@ -180,6 +198,7 @@ export function useElencoVideoteca(user: User | null) {
   return {
     archivio,
     setArchivio,
+    vistiNelDiario,
     video,
     nascosti,
     extra,

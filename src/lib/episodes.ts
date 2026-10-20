@@ -3,6 +3,8 @@ import { fetchAllRows } from './paged'
 import { getDetail, displayTitle } from './tmdb'
 import { upsertUserTitle } from './userTitles'
 import type { TitleStatus } from './types'
+import { prossimoEpisodio } from './prossimoEpisodio'
+import { episodioNelDiario } from './videoteca'
 
 function client() {
   if (!supabase) {
@@ -25,6 +27,16 @@ export async function listWatchedEpisodes(userId: string, tvId: number): Promise
   if (error) throw new Error(error.message)
   const rows = (data ?? []) as { season_number: number; episode_number: number }[]
   return new Set(rows.map((r) => epKey(r.season_number, r.episode_number)))
+}
+
+// Tutti gli episodi visti di tutte le serie (chiave di episodioNelDiario →
+// quando), per la videoteca: un episodio spuntato qui è visto anche lì.
+// Paginata: una riga per episodio supera presto le 1000.
+export async function listAllWatchedEpisodes(userId: string): Promise<Map<string, string>> {
+  const rows = await fetchAllRows<{ tv_id: number; season_number: number; episode_number: number; watched_at: string }>((from, to) =>
+    client().from('user_episodes').select('tv_id, season_number, episode_number, watched_at').eq('user_id', userId).range(from, to),
+  )
+  return new Map(rows.map((r) => [episodioNelDiario(r.tv_id, r.season_number, r.episode_number), r.watched_at]))
 }
 
 export async function markEpisode(
@@ -197,10 +209,13 @@ export async function getContinueWatching(userId: string, limit = 8): Promise<Co
   const rows = episodesRes
   const order: number[] = []
   const watchedByTv = new Map<number, Set<string>>()
+  // L'ultimo episodio visto di ogni serie: le righe arrivano dalla più recente.
+  const ultimoByTv = new Map<number, string>()
   for (const r of rows) {
     if (abandonedIds.has(r.tv_id)) continue
     if (!watchedByTv.has(r.tv_id)) {
       watchedByTv.set(r.tv_id, new Set())
+      ultimoByTv.set(r.tv_id, epKey(r.season_number, r.episode_number))
       order.push(r.tv_id)
     }
     watchedByTv.get(r.tv_id)!.add(epKey(r.season_number, r.episode_number))
@@ -222,19 +237,8 @@ export async function getContinueWatching(userId: string, limit = 8): Promise<Co
       const detail = await getDetail('tv', tvId)
       const watched = watchedByTv.get(tvId)!
       const seasons = detail.seasons.filter((s) => s.seasonNumber > 0)
-      let total = 0
-      let next: { season: number; episode: number } | null = null
-      for (const s of seasons) {
-        total += s.episodeCount
-        if (!next) {
-          for (let e = 1; e <= s.episodeCount; e++) {
-            if (!watched.has(epKey(s.seasonNumber, e))) {
-              next = { season: s.seasonNumber, episode: e }
-              break
-            }
-          }
-        }
-      }
+      const total = seasons.reduce((n, s) => n + s.episodeCount, 0)
+      const next = prossimoEpisodio(seasons, watched, ultimoByTv.get(tvId) ?? null)
       if (!next) return null // serie completata
       return {
         tvId,

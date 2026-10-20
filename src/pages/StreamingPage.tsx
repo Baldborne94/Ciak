@@ -78,7 +78,7 @@ export default function StreamingPage() {
   const [copertinaDi, setCopertinaDi] = useState<string | null>(null)
   const [inModifica, setInModifica] = useState<SagaInModifica | null>(null)
   const { offline, senzaRete, spazioUsato, scaricati } = useSulDispositivo()
-  const inCiak = useSerieInCiak({ video, archivio, offline, scaricati, letture: elenco.letture })
+  const inCiak = useSerieInCiak({ video, archivio, vistiNelDiario: elenco.vistiNelDiario, offline, scaricati, letture: elenco.letture })
 
   const caricaRaccolte = useCallback(async () => {
     if (!user) return
@@ -152,7 +152,7 @@ export default function StreamingPage() {
   const schede = schedeCategorie(video)
   const schedaValida = scheda === '*' || schede.some((c) => (c.cartella ?? '') === scheda) ? scheda : '*'
   const mostrati = schedaValida === '*' ? video : video.filter((v) => (v.categoria ?? '') === schedaValida)
-  const composta = componiVideoteca(mostrati, archivio, infoTitoli, raccolte)
+  const composta = componiVideoteca(mostrati, archivio, infoTitoli, raccolte, elenco.vistiNelDiario)
   const { infoDi, videoPerId, filmPerId, chiaveTitolo, serie, saghe, voci } = composta
   const righe = voci.map((f) => f.riga)
   const videoDi = new Map(voci.map((f) => [f.riga.id, f.video]))
