@@ -2307,3 +2307,52 @@ test('le cartelle dentro Ciak diventano le schede della videoteca', async ({ pag
   await expect(page.getByRole('tab', { name: /Serie TV/ })).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByText('Song of the Sea (2014) [1080p]', { exact: true })).toHaveCount(0)
 })
+
+test('la videoteca e «Riprendi a guardare» dicono lo stesso: stessi visti, stesso episodio dopo', async ({ page }) => {
+  // La Sala legge il diario degli episodi, la videoteca leggeva solo il
+  // lettore: una serie spuntata dalla scheda risultava «0 visti» in videoteca,
+  // e la Sala ripartiva dal primo buco invece che dopo l'ultimo visto.
+  await mockCartella(page, { conShogun: true, conShogunPrimo: true })
+  const riga = (chiave: string, episodio: number) => ({
+    user_id: E2E_USER.id,
+    drive_file_id: ID[chiave],
+    nome_file: `Shogun.S01E0${episodio}.mp4`,
+    tmdb_id: 126308,
+    media_type: 'tv',
+    titolo: 'Shōgun',
+    poster_path: '/shogun.jpg',
+    stagione: 1,
+    episodio,
+    posizione: 0,
+    durata: 3600,
+    secondi_visti: 0,
+    visto_il: null,
+    abbinato_a_mano: true,
+  })
+  await mockSupabase(page, {
+    user_streaming: [riga('video-shogun-01', 1), riga('video-shogun-02', 2), riga('video-shogun-03', 3)],
+    // Spuntato dalla scheda della serie, non nel lettore: il secondo, con il primo saltato.
+    user_episodes: [{ id: 'e2', user_id: E2E_USER.id, tv_id: 126308, season_number: 1, episode_number: 2, watched_at: '2026-10-01T20:00:00Z' }],
+  })
+  await cercaTmdb(
+    page,
+    [],
+    movieDetail(126308, 'Shōgun', {
+      name: 'Shōgun',
+      number_of_seasons: 1,
+      number_of_episodes: 10,
+      seasons: [{ id: 1, season_number: 1, episode_count: 10, name: 'Stagione 1', air_date: '2024-02-27' }],
+    }),
+  )
+
+  await page.goto('/streaming')
+  await collega(page)
+  const serie = page.getByRole('button', { name: /^Shōgun/ })
+  await expect(serie).toContainText('3 episodi · 1 visti')
+  await expect(page.getByRole('button', { name: '▶ Continua S1E3' })).toBeVisible()
+
+  await page.goto('/')
+  const riprendi = page.locator('section', { hasText: 'Riprendi a guardare' }).first()
+  await expect(riprendi.getByText('▶ S1 · E3')).toBeVisible()
+  await expect(riprendi.getByRole('link', { name: '▶ Guarda S1E3' })).toHaveAttribute('href', `/streaming/${ID['video-shogun-03']}`)
+})

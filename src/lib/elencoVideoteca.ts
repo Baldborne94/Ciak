@@ -29,6 +29,8 @@ export function componiVideoteca(
   archivio: Map<string, VoceStreaming>,
   info: InfoTitoli,
   raccolte: Raccolta[],
+  // Gli episodi spuntati nel diario delle serie (vedi raggruppaSerie).
+  vistiNelDiario: Map<string, string> = new Map(),
 ) {
   const infoDi = (chiave: string) => ({
     anno: info.anni.get(chiave) ?? null,
@@ -38,6 +40,7 @@ export function componiVideoteca(
   const videoPerId = new Map(mostrati.map((v) => [v.id, v]))
   const raggruppati = raggruppaSerie(
     mostrati.map((v) => ({ id: v.id, name: v.name, cartella: v.cartella, serie: v.serie ?? null, voce: archivio.get(v.id) })),
+    vistiNelDiario,
   )
   // Le righe dell'elenco: i film e una per serie.
   const film: FilmDellElenco[] = raggruppati.sciolti.map((id) => {

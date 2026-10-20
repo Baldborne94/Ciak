@@ -237,7 +237,21 @@ export function chiaveSerie(v: { name: string; cartella: string | null; serie?: 
 // va sotto la serie riconosciuta della stessa cartella: altrimenti la stessa
 // serie compariva due volte, una con gli episodi abbinati a TMDB e una con
 // gli altri.
-export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]; serie: GruppoSerie[] } {
+// La chiave di un episodio nel diario della serie (user_episodes), quello che
+// legge la Sala: id TMDB della serie, stagione, episodio.
+export function episodioNelDiario(tvId: number | string, stagione: number, episodio: number): string {
+  return `${tvId}-${stagione}-${episodio}`
+}
+
+// `diario`: gli episodi spuntati nel diario delle serie (episodioNelDiario →
+// quando). Un episodio è visto anche così, non solo se il lettore l'ha visto
+// finire: la stagione spuntata dalla scheda della serie, o vista prima di
+// averla nella cartella, in videoteca risultava ancora da vedere. E il quando
+// conta: «Continua» riparte dopo l'ultimo visto, come la Sala.
+export function raggruppaSerie(
+  video: VideoDaRaggruppare[],
+  diario: Map<string, string> = new Map(),
+): { sciolti: string[]; serie: GruppoSerie[] } {
   const riconosciute = new Map<string, { chiave: string; titolo: string }>()
   for (const v of video) {
     if (v.voce?.media_type !== 'tv' || !v.voce.tmdb_id) continue
@@ -287,17 +301,22 @@ export function raggruppaSerie(video: VideoDaRaggruppare[]): { sciolti: string[]
     if (!g.posterPath && voce?.poster_path) g.posterPath = voce.poster_path
     // Un mezzo episodio («S01E13.5») salvato prima come E13: vale il nome.
     const mezzo = letto.stagione === 0 && letto.episodio === undefined
+    const stagione = mezzo ? 0 : (voce?.stagione ?? letto.stagione ?? null)
+    const episodio = mezzo ? null : (voce?.episodio ?? letto.episodio ?? null)
+    const nelDiario = g.tmdb !== '' && stagione !== null && episodio !== null ? diario.get(episodioNelDiario(g.tmdb.slice('tv-'.length), stagione, episodio)) : undefined
+    const nelLettore = voce && voce.posizione > 0 ? (voce.updated_at ?? null) : null
     g.episodi.push({
       id: v.id,
       nome: v.name.replace(/\.[a-z0-9]{2,4}$/i, ''),
       file: v.name,
-      stagione: mezzo ? 0 : (voce?.stagione ?? letto.stagione ?? null),
-      episodio: mezzo ? null : (voce?.episodio ?? letto.episodio ?? null),
-      visto: !!voce?.visto_il || (!!voce && contaComeVisto(voce.posizione, voce.durata, voce.secondi_visti ?? 0)),
+      stagione,
+      episodio,
+      visto: !!nelDiario || !!voce?.visto_il || (!!voce && contaComeVisto(voce.posizione, voce.durata, voce.secondi_visti ?? 0)),
       posizione: voce?.posizione ?? 0,
       secondiVisti: voce?.secondi_visti ?? 0,
       durata: voce?.durata ?? null,
-      guardato: voce && voce.posizione > 0 ? (voce.updated_at ?? null) : null,
+      // La più recente fra il lettore e il diario (date ISO: si confrontano come testo).
+      guardato: nelDiario && (!nelLettore || nelDiario > nelLettore) ? nelDiario : nelLettore,
     })
     g.ids.push(v.id)
     gruppi.set(chiave, g)

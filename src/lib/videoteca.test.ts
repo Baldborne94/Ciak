@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   episodioIniziato,
+  episodioNelDiario,
   filtraVideoteca,
   generiPresenti,
   ordinaEpisodi,
@@ -188,6 +189,40 @@ describe('raggruppaSerie', () => {
       ['b', 3, 1],
       ['c', 2, 5],
     ])
+  })
+
+  it('un episodio spuntato nel diario della serie è visto anche se nel lettore non l’hai finito', () => {
+    // La Sala legge il diario degli episodi: la videoteca diceva «Stagione 1
+    // 0/13 visti» di una stagione spuntata tutta dalla scheda della serie.
+    const { serie } = raggruppaSerie(
+      [
+        { id: 'a', name: 'South Park S01E01.mp4', cartella: 'South Park', serie: null, voce: { ...sp, stagione: 1, episodio: 1 } },
+        { id: 'b', name: 'South Park S01E02.mp4', cartella: 'South Park', serie: null, voce: null },
+        { id: 'c', name: 'South Park S01E03.mp4', cartella: 'South Park', serie: null, voce: null },
+      ],
+      new Map([
+        [episodioNelDiario(2190, 1, 1), '2026-09-01T20:00:00Z'],
+        [episodioNelDiario(2190, 1, 2), '2026-09-02T20:00:00Z'],
+      ]),
+    )
+    expect(serie[0].episodi.map((e) => [e.id, e.visto, e.guardato])).toEqual([
+      ['a', true, '2026-09-01T20:00:00Z'],
+      ['b', true, '2026-09-02T20:00:00Z'],
+      ['c', false, null],
+    ])
+  })
+
+  it('«Continua» riparte dopo l’ultimo spuntato nel diario, come la Sala, anche con un buco prima', () => {
+    const file = (n: number) => ({ id: `e${n}`, name: `South Park S01E0${n}.mp4`, cartella: 'South Park', serie: null, voce: { ...sp, stagione: 1, episodio: n } })
+    const { serie } = raggruppaSerie(
+      [1, 2, 3, 4, 5].map(file),
+      new Map([
+        [episodioNelDiario(2190, 1, 1), '2026-09-01T20:00:00Z'],
+        [episodioNelDiario(2190, 1, 2), '2026-09-02T20:00:00Z'],
+        [episodioNelDiario(2190, 1, 4), '2026-10-01T20:00:00Z'],
+      ]),
+    )
+    expect(prossimoDaGuardare(serie[0].episodi)?.id).toBe('e5')
   })
 
   it('le stagioni chiamate «Looney Tunes Season 1», «… Season 2» sono una serie sola', () => {
