@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { leggiRicerca, ordinaCandidati, parametriRicerca } from './sottotitoli'
+import { leggiRicerca, ordinaCandidati, parametriRicerca, tentativiRicerca } from './sottotitoli'
 
 describe('leggiRicerca', () => {
   it('tiene solo i campi con una forma sensata', () => {
@@ -64,3 +64,39 @@ describe('ordinaCandidati', () => {
     expect(ordinaCandidati([r('fr', 1), { attributes: { language: 'it', files: [] } }, {}])).toEqual([])
   })
 })
+
+describe('la ricerca per id TMDB', () => {
+  // Lo speciale di L'attacco dei giganti: il nome del file («… S04P03 THE FINAL
+  // CHAPTERS») non trovava niente; l'id della serie e il numero giusto sì.
+  const speciale = { query: 'Shingeki no Kyojin The Final Season THE FINAL CHAPTERS', stagione: 0, episodio: 36, tmdb: 1429, hash: '8e245d9679d31e12' }
+
+  it('un id che non è un numero sensato si scarta', () => {
+    expect(leggiRicerca({ query: 'x', tmdb: 1429 })?.tmdb).toBe(1429)
+    expect(leggiRicerca({ query: 'x', tmdb: '1429&x=1' })?.tmdb).toBeUndefined()
+    expect(leggiRicerca({ query: 'x', tmdb: -3 })?.tmdb).toBeUndefined()
+  })
+
+  it('un episodio si cerca con l’id della serie, senza il titolo', () => {
+    expect(parametriRicerca(speciale, { conTmdb: true, conHash: false })).toBe(
+      'episode_number=36&languages=en%2Cit&parent_tmdb_id=1429&season_number=0&type=episode',
+    )
+  })
+
+  it('un film con l’id del film, senza anno né titolo', () => {
+    expect(parametriRicerca({ query: 'Song of the Sea', anno: 2014, tmdb: 110416 }, { conTmdb: true })).toBe(
+      'languages=en%2Cit&tmdb_id=110416&type=movie',
+    )
+  })
+
+  it('i tentativi vanno dall’id col file al solo titolo, senza ripetersi', () => {
+    expect(tentativiRicerca(speciale)).toEqual([
+      'episode_number=36&languages=en%2Cit&moviehash=8e245d9679d31e12&parent_tmdb_id=1429&season_number=0&type=episode',
+      'episode_number=36&languages=en%2Cit&parent_tmdb_id=1429&season_number=0&type=episode',
+      'episode_number=36&languages=en%2Cit&moviehash=8e245d9679d31e12&query=shingeki+no+kyojin+the+final+season+the+final+chapters&season_number=0&type=episode',
+      'episode_number=36&languages=en%2Cit&query=shingeki+no+kyojin+the+final+season+the+final+chapters&season_number=0&type=episode',
+    ])
+    // Senza id né hash né anno, una ricerca sola.
+    expect(tentativiRicerca({ query: 'Shogun', stagione: 1, episodio: 3 })).toHaveLength(1)
+  })
+})
+

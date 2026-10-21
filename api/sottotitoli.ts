@@ -35,6 +35,9 @@ export interface Ricerca {
   stagione?: number
   episodio?: number
   hash?: string
+  // L'id TMDB del film o della serie, quando Ciak lo conosce: trova i
+  // sottotitoli giusti anche se il nome del file non somiglia al titolo.
+  tmdb?: number
 }
 
 export interface Candidato {
@@ -72,21 +75,28 @@ export function leggiRicerca(body: unknown): Ricerca | null {
     stagione: intero(b.stagione, 0, 200),
     episodio: intero(b.episodio, 0, 5000),
     hash,
+    tmdb: intero(b.tmdb, 1, 100_000_000),
   }
 }
 
 // I parametri in ordine alfabetico e in minuscolo: OpenSubtitles altrimenti
 // risponde con un redirect, e ogni redirect è una richiesta in più.
-export function parametriRicerca(r: Ricerca, { conHash = true, conAnno = true } = {}): string {
-  const p: Record<string, string> = { languages: LINGUE.slice().sort().join(','), query: r.query.toLowerCase() }
+// Con l'id TMDB il titolo non serve: messo insieme, OpenSubtitles li vuole
+// d'accordo, e il nome del file spesso non lo è.
+export function parametriRicerca(r: Ricerca, { conHash = true, conAnno = true, conTmdb = false } = {}): string {
+  const perId = conTmdb && r.tmdb !== undefined
+  const p: Record<string, string> = { languages: LINGUE.slice().sort().join(',') }
+  if (!perId) p.query = r.query.toLowerCase()
   if (conHash && r.hash) p.moviehash = r.hash
   if (r.stagione !== undefined && r.episodio !== undefined) {
     p.season_number = String(r.stagione)
     p.episode_number = String(r.episodio)
     p.type = 'episode'
+    if (perId) p.parent_tmdb_id = String(r.tmdb)
   } else {
     p.type = 'movie'
-    if (conAnno && r.anno !== undefined) p.year = String(r.anno)
+    if (perId) p.tmdb_id = String(r.tmdb)
+    else if (conAnno && r.anno !== undefined) p.year = String(r.anno)
   }
   return new URLSearchParams(Object.entries(p).sort(([a], [b]) => a.localeCompare(b))).toString()
 }
@@ -128,6 +138,27 @@ async function cerca(query: string): Promise<RisultatoGrezzo[]> {
   const res = await fetch(`${BASE}/subtitles?${query}`, { headers: intestazioni() })
   if (!res.ok) throw new Error(`OpenSubtitles ha risposto ${res.status} alla ricerca.`)
   return ((await res.json()) as { data?: RisultatoGrezzo[] }).data ?? []
+}
+
+// Le ricerche, dalla più precisa: per id TMDB (con l'hash del file, poi
+// senza), poi per titolo (con hash e anno, poi solo il titolo). Hash e anno
+// restringono molto, e un titolo preso dal nome del file può non trovare
+// niente: si allarga finché qualcosa arriva. Una richiesta uguale non si ripete.
+export function tentativiRicerca(r: Ricerca): string[] {
+  const opzioni = [
+    ...(r.tmdb !== undefined ? [{ conTmdb: true }, { conTmdb: true, conHash: false }] : []),
+    {},
+    { conHash: false, conAnno: false },
+  ]
+  return [...new Set(opzioni.map((o) => parametriRicerca(r, o)))]
+}
+
+async function cercaFinoATrovare(r: Ricerca): Promise<RisultatoGrezzo[]> {
+  for (const query of tentativiRicerca(r)) {
+    const dati = await cerca(query)
+    if (dati.length > 0) return dati
+  }
+  return []
 }
 
 // Il login dell'account alza il tetto di download rispetto alla sola chiave.
@@ -206,13 +237,7 @@ export default async function handler(req: Req, res: Res) {
     if (body?.azione === 'cerca') {
       const ricerca = leggiRicerca(body)
       if (!ricerca) return res.status(400).json({ error: 'Manca il titolo da cercare.' })
-      let dati = await cerca(parametriRicerca(ricerca))
-      // Hash e anno restringono molto: se non trovano niente, si riprova col
-      // solo titolo, che è meglio di nessun sottotitolo.
-      if (dati.length === 0 && (ricerca.hash || ricerca.anno !== undefined)) {
-        dati = await cerca(parametriRicerca(ricerca, { conHash: false, conAnno: false }))
-      }
-      return res.status(200).json({ candidati: ordinaCandidati(dati) })
+      return res.status(200).json({ candidati: ordinaCandidati(await cercaFinoATrovare(ricerca)) })
     }
     if (body?.azione === 'scarica') {
       const fileId = body.fileId

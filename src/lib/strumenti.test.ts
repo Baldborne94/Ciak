@@ -82,3 +82,40 @@ describe.runIf(pwsh).concurrent('prepara-ciak: le cartelle', () => {
     expect(existsSync(film)).toBe(true)
   }, 30_000)
 })
+
+// Le funzioni dello script, prese dal file vero col parser di PowerShell e
+// provate da sole: lo script intero vorrebbe un disco e dei video.
+function funzioni(nomi: string[], variabili: string[], prova: string): Promise<string> {
+  const carica = `
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile('${script}', [ref]$null, [ref]$null)
+    foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Parent.Parent -eq $ast }, $false)) {
+      if (@(${variabili.map((v) => `'${v}'`).join(',')}) -contains $a.Left.VariablePath.UserPath) { . ([scriptblock]::Create($a.Extent.Text)) }
+    }
+    foreach ($f in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+      if (@(${nomi.map((n) => `'${n}'`).join(',')}) -contains $f.Name) { . ([scriptblock]::Create($f.Extent.Text)) }
+    }
+    ${prova}`
+  return new Promise((risolvi, rifiuta) => {
+    execFile('pwsh', ['-NoProfile', '-NonInteractive', '-Command', carica], (errore, stdout, stderr) =>
+      errore ? rifiuta(new Error(stderr || errore.message)) : risolvi(stdout.trim()),
+    )
+  })
+}
+
+describe.runIf(pwsh).concurrent('prepara-ciak: i sottotitoli in immagine', () => {
+  const lingue = (flussi: unknown[]) =>
+    funzioni(
+      ['Lingua', 'LingueSoloInImmagine'],
+      ['SottotitoliTesto', 'LingueVolute'],
+      `(LingueSoloInImmagine ('${JSON.stringify(flussi)}' | ConvertFrom-Json)) -join ','`,
+    )
+  const sub = (codec_name: string, language: string) => ({ codec_type: 'subtitle', codec_name, tags: { language } })
+
+  it('dice le lingue che ci sono solo come immagini (PGS, VobSub)', async () => {
+    expect(await lingue([{ codec_type: 'video', codec_name: 'hevc' }, sub('hdmv_pgs_subtitle', 'ita'), sub('dvd_subtitle', 'eng')])).toBe('it,en')
+  }, 30_000)
+
+  it('tace se la stessa lingua c’è anche in testo, o se è una lingua che Ciak non offre', async () => {
+    expect(await lingue([sub('hdmv_pgs_subtitle', 'eng'), sub('ass', 'eng'), sub('hdmv_pgs_subtitle', 'jpn')])).toBe('')
+  }, 30_000)
+})

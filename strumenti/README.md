@@ -11,7 +11,9 @@ di Ciak.
 Pronti vuol dire: MP4 con video H.264, audio AAC (il Dolby il browser non lo
 sente; le tracce già AAC si copiano) e i sottotitoli interni italiani e
 inglesi estratti in `.srt` accanto al video — le altre lingue il lettore non
-le offre. Quando per una lingua ci sono più tracce, vince quella con i
+le offre. I sottotitoli in immagine (i PGS dei Blu-ray, i VobSub dei DVD) non
+diventano testo: lo script lo dice, e per quel video serve un `.srt` da mettere
+accanto (`Nome del video.it.srt`), che Ciak trova da solo. Quando per una lingua ci sono più tracce, vince quella con i
 dialoghi: le «forced» e quelle che si chiamano «Signs & Songs» (solo cartelli
 e canzoni) si scartano, e fra le altre si preferisce quella con più battute.
 Il video si scrive prima nella cartella temporanea del PC e in `E:\Ciak`

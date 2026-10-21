@@ -398,6 +398,17 @@ function BattuteTraccia($traccia) {
   return 0
 }
 
+# I sottotitoli in immagine (i PGS dei Blu-ray, i VobSub dei DVD) ffmpeg non
+# li trasforma in testo, e il lettore di Ciak legge solo testo: si saltano.
+# Le lingue volute che ci sono solo cosi', per dirlo invece di tacere: senza,
+# un anime arrivava in Ciak senza sottotitoli e non si capiva perche'.
+function LingueSoloInImmagine($flussi) {
+  $sub = @($flussi | Where-Object { $_.codec_type -eq 'subtitle' })
+  $testo = @($sub | Where-Object { $SottotitoliTesto -contains $_.codec_name } | ForEach-Object { Lingua "$($_.tags.language)" })
+  $immagine = @($sub | Where-Object { $SottotitoliTesto -notcontains $_.codec_name } | ForEach-Object { Lingua "$($_.tags.language)" })
+  return @($LingueVolute | Where-Object { ($immagine -contains $_) -and ($testo -notcontains $_) })
+}
+
 # Per ogni lingua voluta la traccia migliore: non le "forced" o i soli
 # cartelli (vedi PesoTraccia), potendo non quelle per non udenti, e fra le
 # altre quella con piu' battute. Una traccia senza lingua si tiene solo se
@@ -1069,6 +1080,12 @@ foreach ($f in $video) {
         }
         if (Test-Path -LiteralPath $percorsi[$l]) { $srt += $percorsi[$l] }
       }
+    }
+
+    $soloImmagine = @(LingueSoloInImmagine $flussi)
+    if ($soloImmagine.Count -gt 0) {
+      $nomi = ($soloImmagine | ForEach-Object { if ($_ -eq 'it') { 'italiani' } else { 'inglesi' } }) -join ' e '
+      Write-Host "   i sottotitoli $nomi ci sono solo come immagini (PGS/VobSub): Ciak legge solo il testo, quindi non li avra'. Cercane uno .srt (per esempio su OpenSubtitles) e mettilo accanto al video come ""$nome.$($soloImmagine[0]).srt""" -ForegroundColor DarkYellow
     }
 
     # Le lingue dell'audio oltre la prima, accanto al video (vedi TracceAudio).

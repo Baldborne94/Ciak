@@ -42,6 +42,7 @@ const VIDEO: Record<string, string> = {
   'video-aliens-1986': 'FILM/Aliens.1986.mp4',
   'video-song-extra1': 'FILM/Song of the Sea (2014) [1080p]/Featurettes/Making of Song of the Sea.mp4',
   'video-sp-r-0306': 'SERIE TV/South Park/South Park Season 1 to 26 Mp4 1080p/Season 03/South Park S03E06.mp4',
+  'video-snk-fc1': 'ANIME/Shingeki no Kyojin [10bits x265]/Shingeki no Kyojin - The Final Season - S04P03 - THE FINAL CHAPTERS - Special 1.mp4',
 }
 const peso = (chiave: string) => 6_000_000 + Object.keys(VIDEO).indexOf(chiave) * 1000
 const nome = (percorso: string) => percorso.split('/').pop()!
@@ -63,7 +64,7 @@ const alLettore = (chiave: string) => new RegExp(`/streaming/${ID[chiave]}$`)
 // «📂 Collega la cartella dei film» la sceglie (vedi `collega`).
 async function mockCartella(
   page: Page,
-  { vuota = false, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false, conFilmAnime = false, conLingueAudio = false, conWebisodes = false } = {},
+  { vuota = false, sottotitoliNellaCartella = false, conSerie = false, conAnime = false, conRaccolta = false, conExtra = false, conShogun = false, conShogunPrimo = false, conSaga = false, conPacchetto = false, conFilmAnime = false, conLingueAudio = false, conWebisodes = false, conFinalChapters = false } = {},
 ) {
   const scelti = vuota
     ? []
@@ -81,6 +82,7 @@ async function mockCartella(
         ...(conSaga ? ['video-alien-1979', 'video-aliens-1986'] : []),
         ...(conExtra ? ['video-song-extra1'] : []),
         ...(conRaccolta ? ['video-sp-r-0306'] : []),
+        ...(conFinalChapters ? ['video-snk-fc1'] : []),
       ]
   // I video sono zeri: nessun contenuto, solo il peso.
   const file: [string, string, number][] = scelti.map((k) => [VIDEO[k], '', peso(k)])
@@ -748,6 +750,42 @@ test('senza sottotitoli nella cartella li cerca online, in italiano e in inglese
   await expect(page.getByText(/Italiano · dalla cartella/)).toBeVisible()
   await expect(page.getByText(/Inglese · dalla cartella/)).toBeVisible()
   expect(richieste.length).toBe(ricerchePrima)
+})
+
+test('un video abbinato a TMDB cerca i sottotitoli per id, non per nome del file', async ({ page }) => {
+  // «Shingeki no Kyojin … S04P03 THE FINAL CHAPTERS - Special 1» non trovava
+  // niente per nome: con l'id del titolo OpenSubtitles trova quello giusto.
+  await conVideoFermo(page)
+  await mockCartella(page)
+  await mockSupabase(page, {
+    user_streaming: [
+      {
+        user_id: E2E_USER.id,
+        drive_file_id: ID['video-song-0001'],
+        nome_file: 'Song.of.the.Sea.2014.1080p.mp4',
+        tmdb_id: 110416,
+        media_type: 'movie',
+        titolo: 'Song of the Sea',
+        stagione: null,
+        episodio: null,
+        posizione: 0,
+        durata: 5640,
+        secondi_visti: 0,
+        visto_il: null,
+        abbinato_a_mano: true,
+      },
+    ],
+  })
+  const ricerche: Record<string, unknown>[] = []
+  await page.route('**/api/sottotitoli', (route) => {
+    ricerche.push(route.request().postDataJSON() as Record<string, unknown>)
+    return route.fulfill({ json: { candidati: [] } })
+  })
+
+  await apriSongOfTheSea(page)
+  await expect(page.getByText(/Nessun sottotitolo in italiano né in inglese/)).toBeVisible()
+  expect(ricerche).toHaveLength(1)
+  expect(ricerche[0]).toMatchObject({ azione: 'cerca', tmdb: 110416, query: 'Song of the Sea', anno: 2014 })
 })
 
 test('se il browser non legge il file lo dice, col rimedio', async ({ page }) => {
@@ -2411,5 +2449,48 @@ test('dalla videoteca si spunta a mano un episodio visto, e si toglie la spunta'
   await expect
     .poll(() => (db.tables.user_streaming.find((r) => r.drive_file_id === ID['video-shogun-01']) as Record<string, unknown>).visto_il)
     .toBeNull()
+})
+
+test('uno speciale prende il numero che gli dà TMDB, riconosciuto dal nome', async ({ page }) => {
+  // «THE FINAL CHAPTERS - Special 1» era lo speciale 1 (un OAD); su TMDB è il 36.
+  await mockCartella(page, { conFinalChapters: true })
+  const db = await mockSupabase(page, {
+    user_streaming: [
+      {
+        user_id: E2E_USER.id,
+        drive_file_id: ID['video-snk-fc1'],
+        nome_file: nome(VIDEO['video-snk-fc1']),
+        tmdb_id: 1429,
+        media_type: 'tv',
+        titolo: 'Attack on Titan',
+        stagione: 0,
+        episodio: 1,
+        posizione: 0,
+        durata: 3600,
+        secondi_visti: 0,
+        visto_il: null,
+        abbinato_a_mano: false,
+      },
+    ],
+  })
+  await page.route('**/api/tmdb*', (route) => {
+    const path = new URL(route.request().url()).searchParams.get('path')
+    if (path !== '/tv/1429/season/0') return route.fallback()
+    return route.fulfill({
+      json: {
+        episodes: [
+          { id: 1, episode_number: 1, name: "Ilse's Notebook: Memoirs of a Scout Regiment Member" },
+          { id: 36, episode_number: 36, name: 'The Final Chapters Special (1)' },
+          { id: 37, episode_number: 37, name: 'The Final Chapters Special (2)' },
+        ],
+      },
+    })
+  })
+
+  await page.goto('/streaming')
+  await collega(page)
+  await expect
+    .poll(() => (db.tables.user_streaming.find((r) => r.drive_file_id === ID['video-snk-fc1']) as Record<string, unknown>).episodio)
+    .toBe(36)
 })
 

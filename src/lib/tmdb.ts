@@ -39,6 +39,7 @@ export {
   fetchAlternativeTitles,
   getDetail,
   getSeason,
+  getSeasonEpisodeNames,
   getRecommendations,
 } from './tmdb/detail'
 export { searchPerson, getPersonDetail, resolvePeople } from './tmdb/people'

@@ -344,6 +344,20 @@ export async function getSeason(tvId: number, seasonNumber: number): Promise<Epi
   }))
 }
 
+// I nomi degli episodi di una stagione, in italiano e in inglese: servono a
+// riconoscere uno speciale dal nome del file (vedi specialiTmdb).
+export async function getSeasonEpisodeNames(tvId: number, seasonNumber: number): Promise<{ numero: number; nomi: string[] }[]> {
+  const [it, en] = await Promise.all([
+    tmdbFetch<{ episodes?: RawEpisode[] }>(`/tv/${tvId}/season/${seasonNumber}`),
+    tmdbFetch<{ episodes?: RawEpisode[] }>(`/tv/${tvId}/season/${seasonNumber}`, { language: 'en-US' }),
+  ])
+  const nomi = new Map<number, string[]>()
+  for (const e of [...(it.episodes ?? []), ...(en.episodes ?? [])]) {
+    if (e.name) nomi.set(e.episode_number, [...(nomi.get(e.episode_number) ?? []), e.name])
+  }
+  return [...nomi].map(([numero, n]) => ({ numero, nomi: n }))
+}
+
 // ── Discover / browse ─────────────────────────────────────────────────────
 
 // Recommendations for a specific title (used on Dashboard for "Per te").

@@ -432,3 +432,43 @@ export function nomeSottotitoloSalvato(nomeVideo: string, lingua: string | null)
   const base = nomeVideo.replace(ESTENSIONE_VIDEO, '')
   return lingua ? `${base}.${lingua}.srt` : `${base}.srt`
 }
+
+// ── La ricerca su OpenSubtitles ─────────────────────────────────────────────
+
+// Il titolo come lo conosce l'archivio (abbinato a TMDB): con l'id TMDB
+// OpenSubtitles trova i sottotitoli della serie e dell'episodio giusti, invece
+// di cercare il nome del file.
+export interface TitoloNoto {
+  tmdb: number
+  tipo: 'movie' | 'tv'
+  stagione: number | null
+  episodio: number | null
+}
+
+export function titoloNoto(
+  voce: { tmdb_id: number | null; media_type: string | null; stagione: number | null; episodio: number | null } | null,
+): TitoloNoto | null {
+  if (!voce?.tmdb_id || (voce.media_type !== 'movie' && voce.media_type !== 'tv')) return null
+  return { tmdb: voce.tmdb_id, tipo: voce.media_type, stagione: voce.stagione, episodio: voce.episodio }
+}
+
+export interface RicercaSottotitoli {
+  query: string
+  anno?: number
+  stagione?: number
+  episodio?: number
+  tmdb?: number
+}
+
+// Ciò che si chiede a /api/sottotitoli. Dal nome del file si toglie ciò che
+// nessun sottotitolo riporta: «Shingeki no Kyojin The Final Season S04P03 THE
+// FINAL CHAPTERS» non trovava niente per quel «S04P03» (stagione 4, parte 3).
+// Se il titolo è noto vale lui, con la stagione e l'episodio dell'archivio:
+// quelli del file possono essere sbagliati (vedi specialiTmdb).
+export function ricercaSottotitoli(cercato: NomeFilm, noto: TitoloNoto | null): RicercaSottotitoli {
+  const query = cercato.titolo.replace(/\bS\d{1,2}P\d{1,2}\b/gi, ' ').replace(/\s+/g, ' ').trim() || cercato.titolo
+  const { anno, stagione, episodio } = cercato
+  if (!noto) return { query, anno, stagione, episodio }
+  if (noto.tipo === 'movie') return { query, anno, tmdb: noto.tmdb }
+  return { query, tmdb: noto.tmdb, stagione: noto.stagione ?? stagione, episodio: noto.episodio ?? episodio }
+}

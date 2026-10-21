@@ -24,7 +24,7 @@ import { ATTESA_AVVIO_MS, rilasciaVideo, senzaAudio, TENTATIVI_MAX, vigilanzaSal
 import { salvaSottotitoliOffline } from '../lib/filmOffline'
 import { registraErrore } from '../lib/errorLog'
 import { logFailure } from '../lib/logFailure'
-import { filmDaCercare } from '../lib/sottotitoli'
+import { filmDaCercare, titoloNoto } from '../lib/sottotitoli'
 import { PUNTI_VUOTI } from '../lib/sigle'
 import { titoloDaMostrare } from '../lib/streaming'
 import { sigla } from '../lib/videoteca'
@@ -139,10 +139,15 @@ function LettoreStreaming() {
     vigilanzaAvvio.current.inizio()
   }, [pronto])
 
+  // Il legame con l'archivio: quale titolo è, dove ci si era fermati, e a fine
+  // visione «visto» nel diario (o l'episodio spuntato) e il voto.
+  const archivio = useArchivioStreaming(fileId, valido)
+  const { caricata: archivioCaricato, applicaRipresa, prossimo, precedente } = archivio
+
   // I sottotitoli: dal server di casa quelli che conosce Jellyfin; dal disco
   // quelli accanto al video, o trovati online (vedi useSottotitoli). Senza il
   // file a portata (la copia salvata in Ciak) quelli salvati insieme a lui.
-  const subDisco = useSottotitoli(aperto)
+  const subDisco = useSottotitoli(aperto, archivioCaricato ? titoloNoto(archivio.voce) : undefined)
   const subCasa = useSottotitoliCasa(fileId, infoCasa)
   const sub = casa ? subCasa : subDisco
   const usaSalvati = loc && !aperto
@@ -160,10 +165,6 @@ function LettoreStreaming() {
 
   const tracce = usaSalvati ? tracceSalvate : sub.tracce
 
-  // Il legame con l'archivio: quale titolo è, dove ci si era fermati, e a fine
-  // visione «visto» nel diario (o l'episodio spuntato) e il voto.
-  const archivio = useArchivioStreaming(fileId, valido)
-  const { caricata: archivioCaricato, applicaRipresa, prossimo, precedente } = archivio
   const etichettaProssimo = prossimo ? sigla(prossimo) : null
   const vaiAlProssimo = useCallback(() => {
     if (!prossimo) return
