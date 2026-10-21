@@ -10,6 +10,8 @@ import {
   nomeSottotitoloSalvato,
   sottotitoliPerVideo,
   srtAVtt,
+  ricercaSottotitoli,
+  titoloNoto,
 } from './sottotitoli'
 
 const file = (name: string, mimeType = 'application/x-subrip') => ({ id: name, name, mimeType })
@@ -554,3 +556,30 @@ describe('nomeSottotitoloSalvato', () => {
     expect(nomeSottotitoloSalvato('Film.mkv', null)).toBe('Film.srt')
   })
 })
+
+describe('ricercaSottotitoli', () => {
+  const special = filmDaCercare('Shingeki no Kyojin - The Final Season - S04P03 - THE FINAL CHAPTERS - Special 1.mp4', null, null)
+
+  it('dal nome del file toglie «S04P03», che nessun sottotitolo riporta', () => {
+    expect(ricercaSottotitoli(special, null).query).toBe('Shingeki no Kyojin The Final Season THE FINAL CHAPTERS')
+  })
+
+  it('una serie abbinata a TMDB si cerca per id, con stagione ed episodio dell’archivio', () => {
+    const noto = titoloNoto({ tmdb_id: 1429, media_type: 'tv', stagione: 0, episodio: 36 })
+    expect(ricercaSottotitoli(special, noto)).toMatchObject({ tmdb: 1429, stagione: 0, episodio: 36 })
+  })
+
+  it('un film abbinato: id e anno, senza stagione', () => {
+    const film = filmDaCercare('Song.of.the.Sea.2014.1080p.mp4', null, null)
+    const r = ricercaSottotitoli(film, titoloNoto({ tmdb_id: 110416, media_type: 'movie', stagione: null, episodio: null }))
+    expect(r).toEqual({ query: 'Song of the Sea', anno: 2014, tmdb: 110416 })
+  })
+
+  it('un file senza titolo abbinato si cerca come prima, per nome', () => {
+    expect(titoloNoto(null)).toBeNull()
+    expect(titoloNoto({ tmdb_id: null, media_type: null, stagione: null, episodio: null })).toBeNull()
+    const ep = filmDaCercare('Shogun.S01E03.mp4', null, null)
+    expect(ricercaSottotitoli(ep, null)).toEqual({ query: 'Shogun', anno: undefined, stagione: 1, episodio: 3 })
+  })
+})
+

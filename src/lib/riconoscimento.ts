@@ -1,6 +1,7 @@
 import { mapLimit } from './mapLimit'
 import { logFailure } from './logFailure'
-import { fetchAlternativeTitles, fetchOriginalTitle, searchMulti } from './tmdb'
+import { fetchAlternativeTitles, fetchOriginalTitle, getSeasonEpisodeNames, searchMulti } from './tmdb'
+import { abbinaSpeciale, type EpisodioSpeciale } from './specialiTmdb'
 import { filmDaCercare } from './sottotitoli'
 import { chiaveSerie } from './videoteca'
 import { abbinamentoDa, contaComeVisto, salvaStreaming, scegliAbbinamento, type VoceStreaming } from './streaming'
@@ -80,6 +81,22 @@ function segnaRiprovato(fileId: string): void {
   }
 }
 
+// Gli speciali di una serie su TMDB, chiesti una volta per visita: la
+// videoteca si rilegge spesso, gli speciali cambiano di rado. Senza risposta
+// restano i numeri letti dai file.
+const speciali = new Map<number, Promise<EpisodioSpeciale[]>>()
+function specialiDi(tvId: number): Promise<EpisodioSpeciale[]> {
+  let p = speciali.get(tvId)
+  if (!p) {
+    p = getSeasonEpisodeNames(tvId, 0).catch((e: unknown) => {
+      logFailure('Speciali della serie su TMDB')(e)
+      return []
+    })
+    speciali.set(tvId, p)
+  }
+  return p
+}
+
 // Collega ai titoli di TMDB i file della videoteca che non lo sono ancora. Si prova
 // una volta sola per file: se non si trova niente la riga resta senza titolo,
 // e l'abbinamento si sceglie a mano dal lettore. Riprovare a ogni apertura
@@ -94,25 +111,6 @@ export async function riconosciNuovi(
 ): Promise<Map<string, VoceStreaming>> {
   const esito = new Map(noti)
   let falliti = 0
-  // Quando Ciak impara a leggere meglio un nome, le righe già abbinate si
-  // allineano: «S01E13.5» salvato come S1E13 diventa uno speciale. Una
-  // scrittura solo per le righe che non tornano, e mai su una scelta a mano.
-  const daRileggere = video.flatMap((v) => {
-    const r = noti.get(v.id)
-    if (r?.media_type !== 'tv' || !r.tmdb_id || r.abbinato_a_mano) return []
-    const letto = filmDaCercare(v.name, v.cartella, v.serie ?? null)
-    if (letto.stagione === undefined) return []
-    const campi = { stagione: letto.stagione, episodio: letto.episodio ?? null }
-    return r.stagione === campi.stagione && r.episodio === campi.episodio ? [] : [{ r, campi }]
-  })
-  await mapLimit(daRileggere, 3, async ({ r, campi }) => {
-    try {
-      await salvaStreaming(userId, r.drive_file_id, campi)
-      esito.set(r.drive_file_id, { ...r, ...campi })
-    } catch {
-      falliti++
-    }
-  })
   // Un episodio prende la serie dai suoi vicini di cartella già riconosciuti,
   // senza cercare niente, anche se un tentativo l'aveva già fatto: S1E1 provato
   // prima che Ciak sapesse leggere «Shingeki no Kyojin» restava scoperto per
@@ -242,6 +240,31 @@ export async function riconosciNuovi(
       await salvaStreaming(userId, v.id, campi)
       esito.set(v.id, { ...(noti.get(v.id) ?? voceVuota(v.id)), ...campi })
       segnaRiprovato(v.id)
+    } catch {
+      falliti++
+    }
+  })
+  // Quando Ciak impara a leggere meglio un nome, le righe già abbinate si
+  // allineano: «S01E13.5» salvato come S1E13 diventa uno speciale. Una
+  // scrittura solo per le righe che non tornano, e mai su una scelta a mano.
+  // Dopo il riconoscimento, così vale anche per i file appena abbinati. Uno
+  // speciale prende il numero che gli dà TMDB, riconosciuto dal suo nome
+  // (vedi specialiTmdb): quello del file è spesso un altro.
+  const daRileggere: { r: VoceStreaming; campi: Partial<VoceStreaming> }[] = []
+  for (const v of video) {
+    const r = esito.get(v.id)
+    if (r?.media_type !== 'tv' || !r.tmdb_id || r.abbinato_a_mano) continue
+    const letto = filmDaCercare(v.name, v.cartella, v.serie ?? null)
+    if (letto.stagione === undefined) continue
+    let episodio = letto.episodio ?? null
+    if (letto.stagione === 0) episodio = abbinaSpeciale(v.name, await specialiDi(r.tmdb_id)) ?? episodio
+    const campi = { stagione: letto.stagione, episodio }
+    if (r.stagione !== campi.stagione || r.episodio !== campi.episodio) daRileggere.push({ r, campi })
+  }
+  await mapLimit(daRileggere, 3, async ({ r, campi }) => {
+    try {
+      await salvaStreaming(userId, r.drive_file_id, campi)
+      esito.set(r.drive_file_id, { ...r, ...campi })
     } catch {
       falliti++
     }

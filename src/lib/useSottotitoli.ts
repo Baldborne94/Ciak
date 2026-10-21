@@ -10,9 +10,11 @@ import {
   hashOpenSubtitles,
   nomeLingua,
   nomeSottotitoloSalvato,
+  ricercaSottotitoli,
   sottotitoliPerVideo,
   srtAVtt,
   type SottotitoloAccanto,
+  type TitoloNoto,
 } from './sottotitoli'
 import { leggiSottotitoliSalvati, salvaSottotitolo, togliSottotitolo, type SottotitoloSalvato } from './sottotitoliSalvati'
 
@@ -109,7 +111,13 @@ function corsiaDi(lingua: string | null): string {
 
 const ORDINE_CORSIE = ['it', 'en', ALTRO]
 
-export function useSottotitoli(film: FilmAperto | undefined) {
+// Quanto la ricerca online aspetta di sapere che titolo è il video: oltre,
+// cerca per nome, che è meglio di non cercare.
+const ATTESA_TITOLO_MS = 5000
+
+// `noto`: il titolo abbinato nell'archivio (titoloNoto); undefined finché
+// l'archivio non ha risposto, null se il video non è abbinato.
+export function useSottotitoli(film: FilmAperto | undefined, noto?: TitoloNoto | null) {
   const [tracce, setTracce] = useState<Traccia[]>([])
   const [cercando, setCercando] = useState(true)
   const [messaggio, setMessaggio] = useState<string | null>(null)
@@ -126,6 +134,24 @@ export function useSottotitoli(film: FilmAperto | undefined) {
   }>({ film: null, corsie: new Map(), onlineCercati: false, annullato: false })
 
   const urlTracce = useRef(new Map<string, string>())
+
+  // Il titolo noto, per la ricerca online, che parte appena le lingue mancano:
+  // spesso prima che l'archivio abbia risposto, quindi lo aspetta.
+  const titolo = useRef<{ valore: TitoloNoto | null | undefined; attese: (() => void)[] }>({ valore: undefined, attese: [] })
+  useEffect(() => {
+    titolo.current.valore = noto
+    if (noto !== undefined) for (const fatto of titolo.current.attese.splice(0)) fatto()
+  }, [noto])
+  const titoloNotoOra = useCallback(
+    () =>
+      new Promise<TitoloNoto | null>((risolvi) => {
+        const t = titolo.current
+        if (t.valore !== undefined) return risolvi(t.valore)
+        t.attese.push(() => risolvi(t.valore ?? null))
+        setTimeout(() => risolvi(null), ATTESA_TITOLO_MS)
+      }),
+    [],
+  )
 
   const aggiornaAltri = useCallback(() => {
     const l = lavoro.current
@@ -165,10 +191,10 @@ export function useSottotitoli(film: FilmAperto | undefined) {
     l.onlineCercati = true
     if (!l.film) return
     const cercato = filmDaCercare(l.film.file.name, l.film.cartella, l.film.serie)
-    const hash = await hashDelVideo(l.film.file)
-    const { candidati } = await apiSottotitoli<{ candidati: CandidatoOnline[] }>({ azione: 'cerca', ...cercato, query: cercato.titolo, hash })
+    const [hash, noto] = await Promise.all([hashDelVideo(l.film.file), titoloNotoOra()])
+    const { candidati } = await apiSottotitoli<{ candidati: CandidatoOnline[] }>({ azione: 'cerca', ...ricercaSottotitoli(cercato, noto), hash })
     for (const sub of candidati) corsia(corsiaDi(sub.lingua)).fonti.push({ tipo: 'online', sub })
-  }, [])
+  }, [titoloNotoOra])
 
   // Carica la fonte numero `indice` di una corsia, cercando online se quelle
   // che c'erano sono finite. Torna false se non c'era niente da caricare.
