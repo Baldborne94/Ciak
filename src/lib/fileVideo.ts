@@ -22,6 +22,9 @@ export interface VideoFile {
   // La cartella della serie, quando il file sta in una cartella di stagione
   // («South Park» per South Park/Season 03/01 Rainforest….mp4).
   serie?: string | null
+  // La cartella che contiene la sua: «Lawrence of Arabia (1962)» per
+  // …/Lawrence of Arabia (1962)/Extras/Intervista.mp4 (vedi senzaExtra).
+  sopra?: string | null
   // Quando è arrivato nella cartella (ISO), per «Aggiunti di recente».
   aggiunto?: string | null
 }
@@ -59,8 +62,37 @@ function scarto(v: Pick<VideoFile, 'cartella' | 'name' | 'size'>): boolean {
   return v.size !== null && v.size < MINIMO_BYTE
 }
 
-export function senzaExtra<T extends Pick<VideoFile, 'cartella' | 'name' | 'size'>>(video: T[]): { visibili: T[]; extra: number } {
-  const visibili = video.filter((v) => !scarto(v))
+// I contenuti speciali di un film nella sua cartella («Lawrence of Arabia
+// (1962)/Extras»): la cartella «Extras» la videoteca la legge come gli speciali
+// di una serie, e nove interviste diventavano la serie «Lawrence of Arabia
+// (1962)» accanto al film. Sono extra quando la cartella sopra contiene un film
+// e nessun episodio: gli «Extras» di South Park restano la sua stagione 0.
+const CARTELLA_CONTENUTI = /^\s*(?:extras?|specials?|speciali|special[ ._-]?features|bonus(?:[ ._-]?features)?|contenuti[ ._-]?speciali)\s*$/i
+
+type DaVagliare = Pick<VideoFile, 'cartella' | 'name' | 'size'> & Partial<Pick<VideoFile, 'categoria' | 'serie' | 'sopra'>>
+
+function contenutiDiFilm(video: DaVagliare[]): (v: DaVagliare) => boolean {
+  const dove = (categoria: string | null | undefined, cartella: string) => `${categoria ?? ''}/${cartella}`
+  const conFilm = new Set<string>()
+  const conEpisodi = new Set<string>()
+  for (const v of video) {
+    if (!v.cartella || CARTELLA_CONTENUTI.test(v.cartella)) continue
+    if (filmDaCercare(v.name, v.cartella, v.serie ?? null).stagione === undefined) conFilm.add(dove(v.categoria, v.cartella))
+    else {
+      conEpisodi.add(dove(v.categoria, v.cartella))
+      if (v.serie) conEpisodi.add(dove(v.categoria, v.serie))
+    }
+  }
+  return (v) => {
+    if (!v.cartella || !v.sopra || !CARTELLA_CONTENUTI.test(v.cartella)) return false
+    const sopra = dove(v.categoria, v.sopra)
+    return conFilm.has(sopra) && !conEpisodi.has(sopra)
+  }
+}
+
+export function senzaExtra<T extends DaVagliare>(video: T[]): { visibili: T[]; extra: number } {
+  const diFilm = contenutiDiFilm(video)
+  const visibili = video.filter((v) => !scarto(v) && !diFilm(v))
   return { visibili, extra: video.length - visibili.length }
 }
 

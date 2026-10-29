@@ -503,3 +503,24 @@ test('con la cartella da riaprire, la copia di un episodio visto va via lo stess
   await expect(page.getByRole('button', { name: '📂 Riapri la cartella «Ciak»' })).toBeVisible()
   await expect.poll(async () => (await salvatiInCiak(page)).map((f) => f.file)).toEqual(['02 Spontaneous Combustion.mp4'])
 })
+
+test('la cartella «Extras» di un film non diventa una serie: sono i suoi contenuti speciali', async ({ page }) => {
+  // «FILM/Lawrence of Arabia (1962)/Extras/…» compariva come la serie
+  // «Lawrence of Arabia (1962)», con nove episodi, accanto al film.
+  await senzaRiconoscimento(page)
+  await mockSupabase(page, { user_streaming: [] })
+  await cartellaFinta(page, [
+    ...CARTELLA,
+    ['FILM/Paprika (2006)/Extras/Satoshi Kon Interview.mp4', 'e'.repeat(40)],
+    ['FILM/Paprika (2006)/Extras/The Dream Creatures.mp4', 'f'.repeat(48)],
+  ])
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: '📂 Collega la cartella dei film' }).click()
+  await expect(page.getByRole('button', { name: /Paprika \(2006\)/ })).toBeVisible()
+  // Una riga sola per Paprika: il film, non anche una «serie» coi suoi extra.
+  await expect(page.getByRole('button', { name: /Paprika/ })).toHaveCount(1)
+  await expect(page.getByText(/2 extra .* non sono in elenco/)).toBeVisible()
+  // Gli «Extras» di una serie restano i suoi speciali: South Park c'è ancora.
+  await expect(page.getByRole('button', { name: /^South Park/ })).toBeVisible()
+})
