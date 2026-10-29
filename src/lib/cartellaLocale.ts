@@ -55,6 +55,7 @@ export function videoDaPercorsi(voci: VoceCartella[]): VideoFile[] {
         mimeType: `video/${estensione}`,
         cartella,
         serie: cartella && stagioneDaCartella(cartella) !== null ? sopra : null,
+        sopra,
         categoria,
         aggiunto: v.modificato ? new Date(v.modificato).toISOString() : null,
         cartellaId: null,

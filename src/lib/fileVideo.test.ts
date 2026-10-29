@@ -77,6 +77,33 @@ describe('senzaExtra', () => {
     expect(extra).toBe(3)
   })
 
+  it('la cartella «Extras» accanto a un film sono i suoi contenuti speciali, non una serie', () => {
+    // «FILM/Lawrence of Arabia (1962)/Extras/…»: nove video diventavano la
+    // serie «Lawrence of Arabia (1962)», accanto al film.
+    const film = (name: string, cartella: string | null, sopra: string | null = null) => ({ ...v(name, cartella), categoria: 'FILM', sopra })
+    const { visibili, extra } = senzaExtra([
+      film('Lawrence.of.Arabia.1962.1080p.Remastered.BluRay.mp4', 'Lawrence of Arabia (1962)'),
+      film('A Conversation with Steven Spielberg.mp4', 'Extras', 'Lawrence of Arabia (1962)'),
+      film('The Making of Lawrence of Arabia.mp4', 'Extras', 'Lawrence of Arabia (1962)'),
+      film('Peter O’Toole Remembers.mp4', 'Special Features', 'Lawrence of Arabia (1962)'),
+    ])
+    expect(visibili.map((x) => x.name)).toEqual(['Lawrence.of.Arabia.1962.1080p.Remastered.BluRay.mp4'])
+    expect(extra).toBe(3)
+  })
+
+  
+  it('gli «Extras» di una serie restano: sono la sua stagione 0', () => {
+    const ep = (name: string, cartella: string, sopra: string) => ({ ...v(name, cartella), categoria: 'SERIE TV', sopra })
+    const tutti = [
+      ep('South Park S03E01.mp4', 'Season 03', 'South Park'),
+      ep('Behind the Voices.mp4', 'Extras', 'South Park'),
+      // Anche una serie senza cartelle di stagione: nella sua cartella ci sono episodi.
+      ep('Cowboy Bebop S01E01.mp4', 'Cowboy Bebop', 'ANIME'),
+      ep('NCOP.mp4', 'Extras', 'Cowboy Bebop'),
+    ]
+    expect(senzaExtra(tutti).visibili).toHaveLength(4)
+  })
+
   it('le anteprime e i promo delle release non sono titoli', () => {
     // Accanto a «Deathly Hallows Part 1»: «ETRG.mp4» da 1 MB (il promo del
     // gruppo) e «…ETRG.Sample.mp4», un pezzo del film.
