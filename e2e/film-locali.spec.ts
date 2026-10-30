@@ -524,3 +524,42 @@ test('la cartella «Extras» di un film non diventa una serie: sono i suoi conte
   // Gli «Extras» di una serie restano i suoi speciali: South Park c'è ancora.
   await expect(page.getByRole('button', { name: /^South Park/ })).toBeVisible()
 })
+
+test('un episodio salvato in Ciak senza sottotitoli li cerca online, e li tiene con la copia', async ({ page }) => {
+  // Sul tablet le stagioni nuove di South Park, copiate quando accanto ai file
+  // non c'erano .srt, partivano dalla copia senza sottotitoli: si guardavano
+  // solo quelli salvati con lei, e nessuno li cercava.
+  await senzaRiconoscimento(page)
+  await mockSupabase(page, { user_streaming: [] })
+  await cartellaFinta(page, CARTELLA)
+  const richieste: Record<string, unknown>[] = []
+  await page.route('**/api/sottotitoli', (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    richieste.push(body)
+    if (body.azione === 'cerca') return route.fulfill({ json: { candidati: [{ fileId: 7, lingua: 'it', nome: 'sp.it.srt', download: 1, hash: false }] } })
+    return route.fulfill({ json: { testo: SRT, rimasti: 9 } })
+  })
+
+  await page.goto('/streaming')
+  await page.getByRole('button', { name: '📂 Collega la cartella dei film' }).click()
+  await page.getByRole('button', { name: /^South Park/ }).click()
+  await page.getByRole('button', { name: '📱 Salva la serie in Ciak' }).click()
+  await expect(page.getByText(/Tenuta in Ciak: 2 di 2 episodi/)).toBeVisible()
+  const secondo = (await salvatiInCiak(page)).find((f) => f.file.startsWith('02'))!
+  expect(secondo.sottotitoli).toEqual([])
+
+  // Come sul tablet: niente cartella e un'altra visita (i file letti in
+  // questa il browser li ricorda), l'episodio parte dalla copia.
+  await page.getByRole('button', { name: 'Scollega la cartella' }).click()
+  await page.reload()
+  await page.getByText('South Park', { exact: true }).click()
+  await page.getByRole('list', { name: 'Episodi di South Park sul dispositivo' }).getByRole('button', { name: /S3E2/ }).click()
+  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+  await expect(page.getByText(/Italiano · da OpenSubtitles/)).toBeVisible()
+  expect(richieste.filter((r) => r.azione === 'cerca')).toHaveLength(1)
+  // Trovati, restano con la copia: la volta dopo non si cercano più.
+  await expect.poll(async () => (await salvatiInCiak(page)).find((f) => f.id === secondo.id)?.sottotitoli).toEqual(['it'])
+  await page.reload()
+  await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
+  expect(richieste.filter((r) => r.azione === 'cerca')).toHaveLength(1)
+})

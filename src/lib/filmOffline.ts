@@ -215,9 +215,16 @@ export async function salvaFileSulDispositivo(
 // resta sul disco: non si carica tutto in memoria. Chi lo usa lo rilascia
 // (URL.revokeObjectURL) quando non serve più. null se non c'è.
 export async function urlFilmSalvato(id: string): Promise<string | null> {
+  const blob = await fileFilmSalvato(id)
+  return blob ? URL.createObjectURL(blob) : null
+}
+
+// Il file di un film salvato, per chi lo deve leggere (l'hash per i
+// sottotitoli online): anche questo resta sul disco. null se non c'è.
+export async function fileFilmSalvato(id: string): Promise<Blob | null> {
   if (!offlineDisponibile()) return null
   const res = await (await caches.open(CACHE_FILM)).match(urlFilm(id))
-  return res ? URL.createObjectURL(await res.blob()) : null
+  return res ? res.blob() : null
 }
 
 // I file accanto salvati con un film, di nuovo come File: il lettore li usa

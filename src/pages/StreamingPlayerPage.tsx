@@ -147,10 +147,11 @@ function LettoreStreaming() {
   // I sottotitoli: dal server di casa quelli che conosce Jellyfin; dal disco
   // quelli accanto al video, o trovati online (vedi useSottotitoli). Senza il
   // file a portata (la copia salvata in Ciak) quelli salvati insieme a lui.
-  const subDisco = useSottotitoli(aperto, archivioCaricato ? titoloNoto(archivio.voce) : undefined)
+  // Una copia salvata senza sottotitoli li cerca come il file del disco.
+  const subDisco = useSottotitoli(aperto ?? disco.copiaDaSottotitolare, archivioCaricato ? titoloNoto(archivio.voce) : undefined)
   const subCasa = useSottotitoliCasa(fileId, infoCasa)
   const sub = casa ? subCasa : subDisco
-  const usaSalvati = loc && !aperto
+  const usaSalvati = loc && !aperto && !disco.copiaSenzaSottotitoli
 
   const salvati = usaSalvati ? locale?.sottotitoli : undefined
   const tracceSalvate = useMemo(
