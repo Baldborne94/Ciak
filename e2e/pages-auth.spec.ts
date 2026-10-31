@@ -263,6 +263,50 @@ test('la watchlist si cerca anche col titolo originale', async ({ page }) => {
   await expectNoCrash(page)
 })
 
+test('la watchlist si filtra per genere, anno, lingua e voto, come la ricerca', async ({ page }) => {
+  // Anno, lingua e voto arrivano da TMDB (la riga salva solo i generi).
+  await mockTmdb(page, {
+    detailOf: (_tipo, id) =>
+      ({
+        1: movieDetail(1, 'Train to Busan', { release_date: '2016-07-20', original_language: 'ko', vote_average: 7.8 }),
+        2: movieDetail(2, 'Il tempo delle mele', { release_date: '1980-12-17', original_language: 'fr', vote_average: 6.6 }),
+        3: movieDetail(3, 'Parasite', { release_date: '2019-05-30', original_language: 'ko', vote_average: 8.5 }),
+      })[id],
+  })
+  await mockSupabase(page, {
+    user_titles: [
+      userTitle({ id: 'a', tmdb_id: 1, title: 'Train to Busan', status: 'to_watch', genre_ids: [27, 28] }),
+      userTitle({ id: 'b', tmdb_id: 2, title: 'Il tempo delle mele', status: 'to_watch', genre_ids: [35, 10749] }),
+      userTitle({ id: 'c', tmdb_id: 3, title: 'Parasite', status: 'to_watch', genre_ids: [35, 53] }),
+    ],
+  })
+  await page.goto('/lists/watchlist')
+  await expect(page.getByText('Parasite')).toBeVisible()
+
+  // Genere: solo quelli dei titoli della lista, col loro numero.
+  await page.getByRole('combobox', { name: 'Filtra per genere' }).selectOption({ label: 'Commedia (2)' })
+  await expect(page.getByText('Train to Busan')).toHaveCount(0)
+  await expect(page.getByText('Il tempo delle mele')).toBeVisible()
+  await expect(page.getByText('Parasite')).toBeVisible()
+
+  // Con la lingua originale resta il coreano.
+  await page.getByRole('combobox', { name: 'Filtra per lingua' }).selectOption({ label: 'Coreano (2)' })
+  await expect(page.getByText('Il tempo delle mele')).toHaveCount(0)
+  await expect(page.getByText('Parasite')).toBeVisible()
+
+  // Azzerati i filtri, si filtra per anno e per voto.
+  await page.getByRole('button', { name: '✕ Azzera' }).click()
+  await page.getByRole('combobox', { name: 'Filtra per anno' }).selectOption('2016')
+  await expect(page.getByText('Train to Busan')).toBeVisible()
+  await expect(page.getByText('Parasite')).toHaveCount(0)
+  await page.getByRole('button', { name: '✕ Azzera' }).click()
+  await page.getByRole('slider', { name: 'Voto minimo' }).fill('8')
+  await expect(page.getByText('Parasite')).toBeVisible()
+  await expect(page.getByText('Train to Busan')).toHaveCount(0)
+  await expect(page.getByText('Il tempo delle mele')).toHaveCount(0)
+  await expectNoCrash(page)
+})
+
 // ── La Sala mostra la tua roba ────────────────────────────────────────────
 // Mostrava solo sezioni "extra" — un suggerimento casuale, le saghe da finire,
 // i ricordi — tutte condizionali e tutte capaci di essere vuote insieme: con

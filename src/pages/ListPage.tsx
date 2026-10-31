@@ -5,7 +5,7 @@ import SavedTitleCard from '../components/SavedTitleCard'
 import GuardaOra from '../components/GuardaOra'
 import { useVideoteca } from '../lib/useVideoteca'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { FilterBar, FilterGroup, ChipGroup, filterSelectClass } from '../components/FilterBar'
+import { FilterBar, FilterGroup, ChipGroup, RatingSlider, filterSelectClass } from '../components/FilterBar'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../lib/toastCtx'
 import {
@@ -15,8 +15,9 @@ import {
   setWatchlistPublic,
   upsertUserTitle,
 } from '../lib/userTitles'
-import { getReleaseYears, getSearchTitles } from '../lib/tmdb'
+import { getGenres, getReleaseYears, getSearchTitles, getTitleDetails } from '../lib/tmdb'
 import { corrispondeRicerca } from '../lib/ricercaLista'
+import { NESSUN_FILTRO, chiaveTitolo, filtriAttivi, opzioniLista, passaFiltri, type DatiTitolo, type FiltriLista } from '../lib/filtriLista'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
 const ANIME_CARTOON_GENRE = 16 // Animazione
@@ -37,6 +38,13 @@ const SORT_OPTS: { value: Sort; label: string }[] = [
   { value: 'year_desc', label: 'Anno: più recenti' },
   { value: 'year_asc', label: 'Anno: più vecchi' },
 ]
+
+// «ko» → «Coreano»: il nome della lingua in italiano, dal browser.
+const nomiLingue = typeof Intl !== 'undefined' && 'DisplayNames' in Intl ? new Intl.DisplayNames(['it'], { type: 'language' }) : null
+function nomeLingua(codice: string): string {
+  const nome = nomiLingue?.of(codice) ?? codice.toUpperCase()
+  return nome.charAt(0).toUpperCase() + nome.slice(1)
+}
 
 const COPY: Record<TitleStatus, { subtitle: string; icon: string }> = {
   watched: { subtitle: 'Tutti i titoli che hai già guardato.', icon: '✅' },
@@ -75,6 +83,15 @@ export default function ListPage({ status }: { status: TitleStatus }) {
   // Titolo originale e inglese per chiave composta, per cercare «Song of the
   // Sea» e trovare «La canzone del mare»: user_titles salva solo l'italiano.
   const [searchTitles, setSearchTitles] = useState<Map<string, string[]>>(new Map())
+  // Genere, anno, lingua e voto minimo, come nella ricerca (vedi filtriLista).
+  const [filtri, setFiltri] = useState<FiltriLista>(NESSUN_FILTRO)
+  const [dettagli, setDettagli] = useState<Map<string, { lingua: string | null; voto: number | null }>>(new Map())
+  const [nomiGeneri, setNomiGeneri] = useState<Map<number, string>>(new Map())
+  useEffect(() => {
+    Promise.all([getGenres('movie'), getGenres('tv')])
+      .then(([film, serie]) => setNomiGeneri(new Map([...serie, ...film].map((g) => [g.id, g.name]))))
+      .catch(logFailure('Nomi dei generi per i filtri della lista'))
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -84,6 +101,8 @@ export default function ListPage({ status }: { status: TitleStatus }) {
     setSort('recent')
     setReleaseYears(new Map())
     setSearchTitles(new Map())
+    setFiltri(NESSUN_FILTRO)
+    setDettagli(new Map())
     // La watchlist "Da vedere" include anche i film visti marcati "Da rivedere".
     const load = status === 'to_watch' ? listWatchlist(user.id) : listByStatus(user.id, status)
     load
@@ -101,10 +120,27 @@ export default function ListPage({ status }: { status: TitleStatus }) {
             }
           })
           .catch(logFailure('Titoli originali per la ricerca nella lista'))
+        getTitleDetails(refs)
+          .then(({ dettagli: d, falliti }) => {
+            setDettagli(d)
+            if (falliti > 0) logFailure('Lingua e voto per i filtri della lista')(new Error(`${falliti} titoli su ${refs.length} non caricati`))
+          })
+          .catch(logFailure('Lingua e voto per i filtri della lista'))
       })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false))
   }, [user, status])
+
+  // Anno (già caricato per l'ordine), lingua e voto di ogni titolo.
+  const datiTitoli = useMemo(() => {
+    const m = new Map<string, DatiTitolo>()
+    for (const r of items) {
+      const k = chiaveTitolo(r)
+      m.set(k, { anno: releaseYears.get(k) ?? null, lingua: dettagli.get(k)?.lingua ?? null, voto: dettagli.get(k)?.voto ?? null })
+    }
+    return m
+  }, [items, releaseYears, dettagli])
+  const opzioni = useMemo(() => opzioniLista(items, datiTitoli), [items, datiTitoli])
 
   const filteredSorted = useMemo(() => {
     const list = items
@@ -115,6 +151,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
         if (kind === 'animation') return isAnimation
         return true
       })
+      .filter((r) => passaFiltri(r, datiTitoli.get(chiaveTitolo(r)), filtri))
       .filter((r) =>
         corrispondeRicerca(search, [r.title, ...(searchTitles.get(`${r.media_type === 'tv' ? 'tv' : 'movie'}-${r.tmdb_id}`) ?? [])]),
       )
@@ -128,7 +165,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
       return ya.localeCompare(yb)
     })
     return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at)) // recent (default)
-  }, [items, kind, sort, search, releaseYears, searchTitles])
+  }, [items, kind, sort, search, releaseYears, searchTitles, datiTitoli, filtri])
 
   useEffect(() => {
     if (!user || !shareable) return
@@ -246,6 +283,31 @@ export default function ListPage({ status }: { status: TitleStatus }) {
             <select aria-label="Ordina la lista" value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={filterSelectClass}>
               {SORT_OPTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
+            <select
+              aria-label="Filtra per genere"
+              value={filtri.genere ?? ''}
+              onChange={(e) => setFiltri((f) => ({ ...f, genere: e.target.value ? Number(e.target.value) : null }))}
+              className={filterSelectClass}
+            >
+              <option value="">Genere: qualsiasi</option>
+              {opzioni.generi.map((g) => (
+                <option key={g.id} value={g.id}>{nomiGeneri.get(g.id) ?? `Genere ${g.id}`} ({g.quanti})</option>
+              ))}
+            </select>
+            <select aria-label="Filtra per anno" value={filtri.anno} onChange={(e) => setFiltri((f) => ({ ...f, anno: e.target.value }))} className={filterSelectClass}>
+              <option value="">Anno: qualsiasi</option>
+              {opzioni.anni.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+            <select aria-label="Filtra per lingua" value={filtri.lingua} onChange={(e) => setFiltri((f) => ({ ...f, lingua: e.target.value }))} className={filterSelectClass}>
+              <option value="">Lingua: qualsiasi</option>
+              {opzioni.lingue.map((l) => <option key={l.codice} value={l.codice}>{nomeLingua(l.codice)} ({l.quanti})</option>)}
+            </select>
+            <RatingSlider value={filtri.votoMinimo} onChange={(v) => setFiltri((f) => ({ ...f, votoMinimo: v }))} />
+            {filtriAttivi(filtri) && (
+              <button onClick={() => setFiltri(NESSUN_FILTRO)} className="text-sm text-projector/80 hover:text-projector">
+                ✕ Azzera
+              </button>
+            )}
           </FilterBar>
 
           {filteredSorted.length === 0 ? (
