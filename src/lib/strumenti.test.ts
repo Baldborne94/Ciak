@@ -119,3 +119,47 @@ describe.runIf(pwsh).concurrent('prepara-ciak: i sottotitoli in immagine', () =>
     expect(await lingue([sub('hdmv_pgs_subtitle', 'eng'), sub('ass', 'eng'), sub('hdmv_pgs_subtitle', 'jpn')])).toBe('')
   }, 30_000)
 })
+
+// Un video vero di un secondo: lo script ne legge la durata per decidere se
+// la copia in Ciak è intera. Rumore senza perdite, perché pesi più di 5 MB:
+// sotto, lo script lo scarta come il promo di una release.
+const ffmpeg = spawnSync('ffmpeg', ['-version']).status === 0
+function videoVero(percorso: string) {
+  const esito = spawnSync('ffmpeg', [
+    '-v', 'error', '-y',
+    '-f', 'lavfi', '-i', 'nullsrc=s=640x480:r=25:d=1,geq=random(1)*255:128:128',
+    '-f', 'lavfi', '-i', 'sine=duration=1',
+    '-c:v', 'libx264', '-qp', '0', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', percorso,
+  ])
+  if (esito.status !== 0) throw new Error(String(esito.stderr))
+}
+
+describe.runIf(pwsh && ffmpeg).concurrent('prepara-ciak: gli originali', () => {
+  // Un film già convertito in Ciak e il suo originale in «Da preparare».
+  function giaFatto() {
+    const { radice, ciak } = disco()
+    const origine = join(radice, 'Da preparare', 'FILM')
+    mkdirSync(origine, { recursive: true })
+    const originale = join(origine, 'Paprika.2006.mkv')
+    videoVero(originale)
+    videoVero(join(ciak, 'FILM', 'Paprika.2006.mp4'))
+    return { ciak, originale }
+  }
+
+  it('restano dove li si è scaricati, se non si chiede di cancellarli', async () => {
+    const { ciak, originale } = giaFatto()
+    const { codice, uscita } = await lancia('-Destinazione', ciak, '-MinutiDiCalma', '0')
+    expect(codice).toBe(0)
+    expect(uscita).toContain('Originali: restano dove sono')
+    expect(uscita).toContain("1 gia' presenti")
+    expect(existsSync(originale)).toBe(true)
+  }, 120_000)
+
+  it('con -CancellaOriginali vanno via, quando la copia in Ciak è intera', async () => {
+    const { ciak, originale } = giaFatto()
+    const { codice, uscita } = await lancia('-Destinazione', ciak, '-MinutiDiCalma', '0', '-CancellaOriginali')
+    expect(codice).toBe(0)
+    expect(uscita).toContain('originale cancellato')
+    expect(existsSync(originale)).toBe(false)
+  }, 120_000)
+})
