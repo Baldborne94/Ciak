@@ -3,7 +3,7 @@ import { normalise, type RawCollection, type RawMedia } from './raw'
 import { patchReadableTitles } from './titles'
 import { mapLimit } from '../mapLimit'
 import { cacheYears, getCachedYears } from '../releaseYearCache'
-import { cacheGeneri, cacheSaghe, cacheSearchTitles, getCachedSearchTitles } from '../searchTitleCache'
+import { cacheDettagli, cacheGeneri, cacheSaghe, cacheSearchTitles, getCachedSearchTitles, type DettagliTitolo } from '../searchTitleCache'
 import { nomeSaga } from '../saghe'
 import type { CacheLocale } from '../cacheLocale'
 import type { Collection, CollectionDetail, MediaItem, TmdbType } from '../types'
@@ -95,6 +95,7 @@ interface TitleLookup {
   // La collezione di TMDB di cui il film fa parte (Alien, Harry Potter…): è
   // già in questa risposta, e raccoglie i film della videoteca in cartelle.
   saga: Collection | null
+  dettagli: DettagliTitolo
 }
 const lookupInFlight = new Map<string, Promise<TitleLookup>>()
 
@@ -117,6 +118,8 @@ function fetchLookupOnce(mediaType: TmdbType, tmdbId: number, key: string): Prom
     original_title?: string
     original_name?: string
     genres?: { id: number }[]
+    original_language?: string
+    vote_average?: number
     belongs_to_collection?: { id: number; name: string; poster_path?: string | null } | null
     translations?: { translations?: { iso_639_1?: string; data?: { title?: string; name?: string } }[] }
   }>(`/${mediaType}/${tmdbId}`, { language: 'en-US', append_to_response: 'translations' })
@@ -130,6 +133,7 @@ function fetchLookupOnce(mediaType: TmdbType, tmdbId: number, key: string): Prom
         ),
       ],
       generi: (raw.genres ?? []).map((g) => g.id),
+      dettagli: { lingua: raw.original_language ?? null, voto: raw.vote_average ?? null },
       saga: raw.belongs_to_collection
         ? {
             id: raw.belongs_to_collection.id,
@@ -226,6 +230,14 @@ export async function getTitleSagas(
 ): Promise<{ saghe: Map<string, Collection | null>; falliti: number }> {
   const { valori, falliti } = await perTitolo(refs, cacheSaghe, (l) => l.saga)
   return { saghe: valori, falliti }
+}
+
+// Lingua originale e voto di TMDB di ogni titolo, per i filtri delle liste.
+export async function getTitleDetails(
+  refs: { tmdbId: number; mediaType: TmdbType }[],
+): Promise<{ dettagli: Map<string, DettagliTitolo>; falliti: number }> {
+  const { valori, falliti } = await perTitolo(refs, cacheDettagli, (l) => l.dettagli)
+  return { dettagli: valori, falliti }
 }
 
 export interface SagaContinuation {

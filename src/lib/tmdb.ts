@@ -51,6 +51,7 @@ export {
   getReleaseYears,
   getSearchTitles,
   getTitleGenres,
+  getTitleDetails,
   getTitleSagas,
   getSagaContinuations,
   getRelatedCollections,

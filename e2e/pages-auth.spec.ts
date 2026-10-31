@@ -263,6 +263,50 @@ test('la watchlist si cerca anche col titolo originale', async ({ page }) => {
   await expectNoCrash(page)
 })
 
+test('la watchlist si filtra per genere, anno, lingua e voto, come la ricerca', async ({ page }) => {
+  // Anno, lingua e voto arrivano da TMDB (la riga salva solo i generi).
+  await mockTmdb(page, {
+    detailOf: (_tipo, id) =>
+      ({
+        1: movieDetail(1, 'Train to Busan', { release_date: '2016-07-20', original_language: 'ko', vote_average: 7.8 }),
+        2: movieDetail(2, 'Il tempo delle mele', { release_date: '1980-12-17', original_language: 'fr', vote_average: 6.6 }),
+        3: movieDetail(3, 'Parasite', { release_date: '2019-05-30', original_language: 'ko', vote_average: 8.5 }),
+      })[id],
+  })
+  await mockSupabase(page, {
+    user_titles: [
+      userTitle({ id: 'a', tmdb_id: 1, title: 'Train to Busan', status: 'to_watch', genre_ids: [27, 28] }),
+      userTitle({ id: 'b', tmdb_id: 2, title: 'Il tempo delle mele', status: 'to_watch', genre_ids: [35, 10749] }),
+      userTitle({ id: 'c', tmdb_id: 3, title: 'Parasite', status: 'to_watch', genre_ids: [35, 53] }),
+    ],
+  })
+  await page.goto('/lists/watchlist')
+  await expect(page.getByText('Parasite')).toBeVisible()
+
+  // Genere: solo quelli dei titoli della lista, col loro numero.
+  await page.getByRole('combobox', { name: 'Filtra per genere' }).selectOption({ label: 'Commedia (2)' })
+  await expect(page.getByText('Train to Busan')).toHaveCount(0)
+  await expect(page.getByText('Il tempo delle mele')).toBeVisible()
+  await expect(page.getByText('Parasite')).toBeVisible()
+
+  // Con la lingua originale resta il coreano.
+  await page.getByRole('combobox', { name: 'Filtra per lingua' }).selectOption({ label: 'Coreano (2)' })
+  await expect(page.getByText('Il tempo delle mele')).toHaveCount(0)
+  await expect(page.getByText('Parasite')).toBeVisible()
+
+  // Azzerati i filtri, si filtra per anno e per voto.
+  await page.getByRole('button', { name: '✕ Azzera' }).click()
+  await page.getByRole('combobox', { name: 'Filtra per anno' }).selectOption('2016')
+  await expect(page.getByText('Train to Busan')).toBeVisible()
+  await expect(page.getByText('Parasite')).toHaveCount(0)
+  await page.getByRole('button', { name: '✕ Azzera' }).click()
+  await page.getByRole('slider', { name: 'Voto minimo' }).fill('8')
+  await expect(page.getByText('Parasite')).toBeVisible()
+  await expect(page.getByText('Train to Busan')).toHaveCount(0)
+  await expect(page.getByText('Il tempo delle mele')).toHaveCount(0)
+  await expectNoCrash(page)
+})
+
 // ── La Sala mostra la tua roba ────────────────────────────────────────────
 // Mostrava solo sezioni "extra" — un suggerimento casuale, le saghe da finire,
 // i ricordi — tutte condizionali e tutte capaci di essere vuote insieme: con
@@ -341,6 +385,43 @@ test('"Continua la saga" propone il primo capitolo non visto, non salta chi è i
   await expect(saga.getByText('Hellbound: Hellraiser II')).toBeVisible()
   // Non deve saltare al capitolo 3 scavalcando il 2 ancora da vedere.
   await expect(page.getByText('Hellraiser III')).toHaveCount(0)
+})
+
+test('"Continua la saga" non propone un capitolo visto, anche con più di 1000 film visti', async ({ page }) => {
+  // Il re leone (1994), segnato come visto anni fa, tornava fra le saghe da
+  // continuare: i visti si leggevano senza pagine, e Supabase ne restituisce al
+  // più 1000, i più recenti. Quelli più vecchi per Ciak non erano visti.
+  await mockAiApi(page)
+  await mockTmdb(page, {
+    detail: movieDetail(11430, 'Il re leone 3', { belongs_to_collection: { id: 94032 } }),
+    collection: collectionDetail(94032, {
+      name: 'Il re leone - Collezione',
+      parts: [
+        movie(8587, 'Il re leone', { release_date: '1994-06-23' }),
+        movie(9732, 'Il re leone II - Il regno di Simba', { release_date: '1998-10-27' }),
+        movie(11430, 'Il re leone 3 - Hakuna Matata', { release_date: '2004-02-10' }),
+        movie(762509, 'Mufasa: Il re leone', { release_date: '2024-12-18' }),
+      ],
+    }),
+  })
+  const visto = (id: string, tmdb_id: number, title: string, quando: string) => ({
+    id, user_id: E2E_USER.id, tmdb_id, media_type: 'movie', title, poster_path: '/p.jpg', status: 'watched',
+    is_favorite: false, personal_rating: null, watched_at: quando, created_at: quando, updated_at: quando,
+  })
+  await mockSupabase(page, {
+    user_titles: [
+      visto('r-3', 11430, 'Il re leone 3 - Hakuna Matata', '2026-10-01T00:00:00Z'),
+      visto('r-2', 9732, 'Il re leone II - Il regno di Simba', '2026-09-30T00:00:00Z'),
+      ...Array.from({ length: 1100 }, (_, i) => visto(`f-${i}`, 50_000 + i, `Riempitivo ${i}`, '2025-01-01T00:00:00Z')),
+      visto('r-1', 8587, 'Il re leone', '2020-01-01T00:00:00Z'),
+    ],
+  })
+
+  await page.goto('/')
+  // Il prossimo da vedere è Mufasa: i tre film del 1994–2004 sono tutti visti.
+  const saga = page.locator('section', { hasText: 'Continua la saga' }).first()
+  await expect(saga.getByText('Mufasa: Il re leone')).toBeVisible()
+  await expect(saga.getByText('Il re leone', { exact: true })).toHaveCount(0)
 })
 
 test('una serie segnata "In corso" a mano compare in "Riprendi a guardare"', async ({ page }) => {

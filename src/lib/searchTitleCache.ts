@@ -36,3 +36,16 @@ export const cacheSaghe = creaCacheLocale<Collection | null>('ciak:saghe-titoli:
     v === null ||
     (typeof v === 'object' && typeof (v as Collection).id === 'number' && typeof (v as Collection).name === 'string'),
 })
+
+// Lingua originale e voto medio di TMDB di un titolo, per i filtri delle liste
+// personali («Lingua», «Voto min», come nella ricerca). Il voto si muove, ma
+// per filtrare basta quello di un mese fa.
+export interface DettagliTitolo {
+  lingua: string | null
+  voto: number | null
+}
+export const cacheDettagli = creaCacheLocale<DettagliTitolo>('ciak:dettagli-titoli:v1', {
+  durataMs: 30 * 24 * 60 * 60 * 1000,
+  valido: (v): v is DettagliTitolo =>
+    !!v && typeof v === 'object' && 'lingua' in v && 'voto' in v,
+})
