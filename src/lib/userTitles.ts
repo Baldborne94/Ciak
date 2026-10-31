@@ -107,47 +107,56 @@ export async function deleteUserTitle(userId: string, id: string): Promise<void>
   if (error) throw new Error(error.message)
 }
 
+// Le liste per stato (visti, da vedere, preferiti) sfogliano tutte le pagine:
+// Supabase ne restituisce al più 1000 righe per richiesta, e con più di 1000
+// film visti quelli segnati da più tempo sparivano. «Continua la saga»
+// riproponeva Il re leone, visto anni prima, e «Stasera» poteva suggerire un
+// film già visto. L'`id` dopo l'ordine vero tiene le pagine stabili: a parità
+// di data, senza, una riga poteva comparire in due pagine e un'altra in nessuna.
 export async function listByStatus(
   userId: string,
   status: TitleStatus,
 ): Promise<UserTitle[]> {
-  const { data, error } = await client()
-    .from(TABLE)
-    .select('*')
-    .eq('user_id', userId)
-    .eq('status', status)
-    .order('updated_at', { ascending: false })
-
-  if (error) throw new Error(error.message)
-  return (data ?? []) as UserTitle[]
+  return fetchAllRows<UserTitle>((from, to) =>
+    client()
+      .from(TABLE)
+      .select('*')
+      .eq('user_id', userId)
+      .eq('status', status)
+      .order('updated_at', { ascending: false })
+      .order('id')
+      .range(from, to),
+  )
 }
 
 // La watchlist "Da vedere" include sia i titoli con stato to_watch sia quelli
 // già visti ma marcati "Da rivedere" (rewatch), così un film visto può tornare
 // in lista senza perdere lo stato "Visto".
 export async function listWatchlist(userId: string): Promise<UserTitle[]> {
-  const { data, error } = await client()
-    .from(TABLE)
-    .select('*')
-    .eq('user_id', userId)
-    .or('status.eq.to_watch,rewatch.eq.true')
-    .order('updated_at', { ascending: false })
-
-  if (error) throw new Error(error.message)
-  return (data ?? []) as UserTitle[]
+  return fetchAllRows<UserTitle>((from, to) =>
+    client()
+      .from(TABLE)
+      .select('*')
+      .eq('user_id', userId)
+      .or('status.eq.to_watch,rewatch.eq.true')
+      .order('updated_at', { ascending: false })
+      .order('id')
+      .range(from, to),
+  )
 }
 
 export async function listFavorites(userId: string): Promise<UserTitle[]> {
-  const { data, error } = await client()
-    .from(TABLE)
-    .select('*')
-    .eq('user_id', userId)
-    .eq('is_favorite', true)
-    .order('personal_rating', { ascending: false, nullsFirst: false })
-    .order('updated_at', { ascending: false })
-
-  if (error) throw new Error(error.message)
-  return (data ?? []) as UserTitle[]
+  return fetchAllRows<UserTitle>((from, to) =>
+    client()
+      .from(TABLE)
+      .select('*')
+      .eq('user_id', userId)
+      .eq('is_favorite', true)
+      .order('personal_rating', { ascending: false, nullsFirst: false })
+      .order('updated_at', { ascending: false })
+      .order('id')
+      .range(from, to),
+  )
 }
 
 // Supabase tronca ogni risposta REST a un massimo di righe (1000 di default):

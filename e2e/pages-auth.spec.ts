@@ -343,6 +343,43 @@ test('"Continua la saga" propone il primo capitolo non visto, non salta chi è i
   await expect(page.getByText('Hellraiser III')).toHaveCount(0)
 })
 
+test('"Continua la saga" non propone un capitolo visto, anche con più di 1000 film visti', async ({ page }) => {
+  // Il re leone (1994), segnato come visto anni fa, tornava fra le saghe da
+  // continuare: i visti si leggevano senza pagine, e Supabase ne restituisce al
+  // più 1000, i più recenti. Quelli più vecchi per Ciak non erano visti.
+  await mockAiApi(page)
+  await mockTmdb(page, {
+    detail: movieDetail(11430, 'Il re leone 3', { belongs_to_collection: { id: 94032 } }),
+    collection: collectionDetail(94032, {
+      name: 'Il re leone - Collezione',
+      parts: [
+        movie(8587, 'Il re leone', { release_date: '1994-06-23' }),
+        movie(9732, 'Il re leone II - Il regno di Simba', { release_date: '1998-10-27' }),
+        movie(11430, 'Il re leone 3 - Hakuna Matata', { release_date: '2004-02-10' }),
+        movie(762509, 'Mufasa: Il re leone', { release_date: '2024-12-18' }),
+      ],
+    }),
+  })
+  const visto = (id: string, tmdb_id: number, title: string, quando: string) => ({
+    id, user_id: E2E_USER.id, tmdb_id, media_type: 'movie', title, poster_path: '/p.jpg', status: 'watched',
+    is_favorite: false, personal_rating: null, watched_at: quando, created_at: quando, updated_at: quando,
+  })
+  await mockSupabase(page, {
+    user_titles: [
+      visto('r-3', 11430, 'Il re leone 3 - Hakuna Matata', '2026-10-01T00:00:00Z'),
+      visto('r-2', 9732, 'Il re leone II - Il regno di Simba', '2026-09-30T00:00:00Z'),
+      ...Array.from({ length: 1100 }, (_, i) => visto(`f-${i}`, 50_000 + i, `Riempitivo ${i}`, '2025-01-01T00:00:00Z')),
+      visto('r-1', 8587, 'Il re leone', '2020-01-01T00:00:00Z'),
+    ],
+  })
+
+  await page.goto('/')
+  // Il prossimo da vedere è Mufasa: i tre film del 1994–2004 sono tutti visti.
+  const saga = page.locator('section', { hasText: 'Continua la saga' }).first()
+  await expect(saga.getByText('Mufasa: Il re leone')).toBeVisible()
+  await expect(saga.getByText('Il re leone', { exact: true })).toHaveCount(0)
+})
+
 test('una serie segnata "In corso" a mano compare in "Riprendi a guardare"', async ({ page }) => {
   // Il bug: «Riprendi a guardare» si costruiva solo dagli episodi tracciati,
   // quindi una serie messa "In corso" col pulsante (senza episodi registrati)
