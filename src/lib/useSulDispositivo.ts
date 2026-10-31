@@ -9,10 +9,14 @@ export function useSulDispositivo() {
   const [offline, setOffline] = useState<FilmOffline[]>([])
   const [senzaRete, setSenzaRete] = useState(typeof navigator !== 'undefined' && !navigator.onLine)
   const [spazioUsato, setSpazioUsato] = useState<number | null>(null)
+  // L'elenco è stato letto almeno una volta: prima, «nessun film salvato» vuol
+  // dire solo «non lo so ancora» (vedi useSerieInCiak).
+  const [offlineLetto, setOfflineLetto] = useState(!offlineDisponibile())
 
   const caricaOffline = useCallback(async () => {
     if (!offlineDisponibile()) return
     setOffline(await elencaFilmOffline())
+    setOfflineLetto(true)
     setSpazioUsato((await spazio())?.usato ?? null)
   }, [])
   useEffect(() => {
@@ -31,5 +35,5 @@ export function useSulDispositivo() {
   // Gli id dei film già salvati per intero. Lo stesso insieme finché l'elenco
   // non cambia: chi tiene le serie in Ciak ci ricalcola il da farsi.
   const scaricati = useMemo(() => new Set(offline.filter((f) => f.stato === 'completo').map((f) => f.id)), [offline])
-  return { offline, senzaRete, spazioUsato, scaricati }
+  return { offline, offlineLetto, senzaRete, spazioUsato, scaricati }
 }

@@ -56,6 +56,9 @@ async function lavora(daLiberare: string[], daCopiare: EpisodioDaCopiare[]) {
       try {
         const film = await fileDallaCartella(ep.id)
         if (film) await copiaFilmInCiak(film, ep.titolo, ep.serie)
+        // Smessa di tenere mentre questo si copiava: la sua copia va via con
+        // le altre, invece di restare a occupare spazio senza una serie.
+        if (film && !leggiSerieInCiak()[ep.cartella]) await eliminaFilm(ep.id)
       } catch (e) {
         // Il permesso da ridare e lo spazio finito valgono per tutti quelli
         // che restano: ci si ferma e lo si dice, invece di provarli uno a uno.
@@ -103,12 +106,15 @@ export function useSerieInCiak(p: {
   // Gli episodi spuntati nel diario: visti anche per liberare le copie.
   vistiNelDiario: Map<string, string>
   offline: FilmOffline[]
+  // L'elenco dei salvati è stato letto (useSulDispositivo): prima non si sa
+  // cosa manca, e la cartella che risponde prima faceva ricopiare tutto.
+  offlineLetto: boolean
   scaricati: Set<string>
   // Quante letture fresche della cartella (useElencoVideoteca): ognuna è il
   // via a copiare gli episodi nuovi.
   letture: number
 }) {
-  const { video, archivio, vistiNelDiario, offline, scaricati, letture } = p
+  const { video, archivio, vistiNelDiario, offline, offlineLetto, scaricati, letture } = p
   const [tenute, setTenute] = useState(leggiSerieInCiak)
   useEffect(() => {
     const cambiate = () => setTenute(leggiSerieInCiak())
@@ -129,13 +135,13 @@ export function useSerieInCiak(p: {
   const via = letture + chiesti
   const [servito, setServito] = useState(0)
   useEffect(() => {
-    if (occupato || stato.copia) return
+    if (occupato || stato.copia || !offlineLetto) return
     const piano = pianoSerieInCiak(gruppi, tenute, scaricati)
     const daCopiare = via > servito && cartellaCollegata() !== null ? piano.daCopiare : []
     if (piano.daLiberare.length === 0 && daCopiare.length === 0) return
     if (daCopiare.length > 0) setServito(via)
     void lavora(piano.daLiberare, daCopiare)
-  }, [gruppi, tenute, scaricati, via, servito, stato])
+  }, [gruppi, tenute, scaricati, offlineLetto, via, servito, stato])
 
   function rigaDi(g: GruppoSerie): RigaInCiak | null {
     const locali = new Set(g.ids.filter(eLocale))

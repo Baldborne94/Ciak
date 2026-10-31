@@ -77,8 +77,8 @@ export default function StreamingPage() {
   // sta creando o cambiando (vedi ModaliSaghe).
   const [copertinaDi, setCopertinaDi] = useState<string | null>(null)
   const [inModifica, setInModifica] = useState<SagaInModifica | null>(null)
-  const { offline, senzaRete, spazioUsato, scaricati } = useSulDispositivo()
-  const inCiak = useSerieInCiak({ video, archivio, vistiNelDiario: elenco.vistiNelDiario, offline, scaricati, letture: elenco.letture })
+  const { offline, offlineLetto, senzaRete, spazioUsato, scaricati } = useSulDispositivo()
+  const inCiak = useSerieInCiak({ video, archivio, vistiNelDiario: elenco.vistiNelDiario, offline, offlineLetto, scaricati, letture: elenco.letture })
 
   const caricaRaccolte = useCallback(async () => {
     if (!user) return
