@@ -83,8 +83,8 @@ Quando i nomi non si somigliano (`Il.Padrino.1972.mkv` e
 `The.Godfather.1972.mp4`) c'è `aggiungi-lingua.bat`: scaricalo nella stessa
 cartella di `prepara-ciak.ps1` e **trascinaci sopra** il video con la lingua
 da aggiungere. Propone i film di Ciak che gli somigliano (anche solo per
-anno), o si cerca scrivendo una parola del titolo; alla fine chiede se
-cancellare il file, che ormai non serve più. Se il file non dice di che lingua
+anno), o si cerca scrivendo una parola del titolo (con `-CancellaOriginali`,
+alla fine chiede se cancellare il file, che ormai non serve più). Se il file non dice di che lingua
 è l'audio e non lo dice nemmeno il nome, lo chiede.
 
 Un video con dei pezzi mancanti (un torrent non finito: il file è già lungo
@@ -99,25 +99,26 @@ In Ciak va solo il film: gli scarti delle release si saltano. Sono le
 anteprime (`….Sample.mp4`), i promo di pochi MB del gruppo che ha fatto la
 release (`ETRG.mp4`, sotto i 5 MB) e le cartelle degli extra (`Featurettes`,
 `Trailers`, `Samples`…). Gli `Extras` e gli speciali delle serie restano: sono
-la stagione 0. Quando il film della stessa cartella è fatto, gli scarti si
-cancellano con l'originale. Quelli già finiti in `E:\Ciak` l'app li nasconde.
+la stagione 0, e quelli di un film l'app li nasconde.
 
-**Gli originali si cancellano definitivamente** (niente Cestino) appena la
-copia in Ciak è controllata: deve durare quanto l'originale. Con loro se ne
-vanno i `.srt` che in Ciak ci sono già e le sottocartelle rimaste vuote
-(`Season 01`, la serie); quelle di primo livello (`FILM`, `SERIE TV`…) restano.
-Al primo lancio vale anche per i video caricati nei giri precedenti. Non si
+**Gli originali restano dove sono**, sul disco, in `E:\Da preparare` dove li
+hai scaricati: lo script li legge e scrive la copia in `E:\Ciak`, e niente va
+altrove (né su Google Drive né in altri servizi). Rilanciandolo, i video già in
+Ciak si saltano.
+
+Per liberare spazio, si possono far cancellare gli originali appena la copia in
+Ciak è controllata (deve durare quanto l'originale):
+`powershell -ExecutionPolicy Bypass -File prepara-ciak.ps1 -CancellaOriginali`.
+Si cancellano **definitivamente** (niente Cestino), con i `.srt` che in Ciak ci
+sono già, gli scarti della release e le sottocartelle rimaste vuote (`Season
+01`, la serie); quelle di primo livello (`FILM`, `SERIE TV`…) restano. Non si
 cancella:
 
-- un originale la cui copia in Ciak è più corta o illeggibile (di prima dei
-  controlli sulla durata): lo script lo dice alla fine; cancella la copia in
-  `E:\Ciak` e rilancia per rifarla;
+- un originale la cui copia in Ciak è più corta o illeggibile: lo script lo
+  dice alla fine; cancella la copia in `E:\Ciak` e rilancia per rifarla;
 - un file aperto da un altro programma, per esempio qBittorrent che lo sta
   ancora condividendo: si riprova al lancio successivo;
 - un file scritto negli ultimi minuti.
-
-Per tenere gli originali:
-`powershell -ExecutionPolicy Bypass -File prepara-ciak.ps1 -TieniOriginali`.
 
 Un video che non è già H.264 a 8 bit (HEVC, 10 bit…) va ricodificato: con la
 scheda video (NVIDIA, Intel o AMD, scelta da sola all'avvio) ci vuole una

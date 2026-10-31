@@ -22,16 +22,17 @@
 # Gli scarti delle release non entrano in Ciak: le anteprime ("...Sample.mp4"),
 # i video promozionali di pochi MB del gruppo che ha fatto la release
 # ("ETRG.mp4") e gli extra dei film (Featurettes, Trailers, Samples...). In
-# Ciak va solo il film. Quando il film della stessa cartella e' fatto, gli
-# scarti si cancellano con l'originale (non con -TieniOriginali).
+# Ciak va solo il film. Con -CancellaOriginali, quando il film della stessa
+# cartella e' fatto, gli scarti si cancellano con l'originale.
 #
 # Le sottocartelle si ricopiano uguali (FILM, SERIE TV\South Park\Season 01...):
 # sono le schede e le serie di Ciak. I video gia' presenti in Ciak si saltano,
 # quindi si puo' rilanciare quando si vuole: fa solo quelli nuovi.
 #
-# Gli originali, una volta che la copia in Ciak e' intera (dura quanto
-# l'originale), si cancellano definitivamente insieme ai loro .srt, cosi' il
-# disco non si riempie. -TieniOriginali li lascia dove sono.
+# Gli originali restano dove sono, sul disco, dove li si e' scaricati: niente
+# va altrove. Con -CancellaOriginali, una volta che la copia in Ciak e' intera
+# (dura quanto l'originale), si cancellano definitivamente insieme ai loro
+# .srt, per non riempire il disco.
 #
 # Le lingue dell'audio: il browser suona solo la prima traccia di un MP4 e
 # non lascia passare alle altre. Le altre si salvano accanto al video, una per
@@ -59,7 +60,9 @@ param(
   [string]$Encoder = 'auto',
   # Un file scritto da meno minuti di cosi' e' probabilmente ancora in download.
   [int]$MinutiDiCalma = 5,
-  # Lascia gli originali dove sono invece di cancellarli.
+  # Cancella gli originali quando la copia in Ciak e' intera. Senza, restano
+  # dove sono. -TieniOriginali, di prima, si accetta ancora: e' quel che fa gia'.
+  [switch]$CancellaOriginali,
   [switch]$TieniOriginali,
   # Non converte niente: prepara le tracce audio dei video gia' in Ciak.
   [switch]$SoloTracceAudio,
@@ -72,6 +75,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$Cancella = $CancellaOriginali -and -not $TieniOriginali
 # La videoteca: la cartella Ciak in radice di un disco che non sia C: (il disco
 # esterno). Prima quello da cui parte lo script, che di solito sta in E:\Ciak:
 # con due dischi che hanno una cartella Ciak vince quello giusto.
@@ -96,7 +100,7 @@ $Destinazione = (Resolve-Path -LiteralPath $Destinazione).Path.TrimEnd('\', '/')
 # Non dentro Ciak, dove si vedrebbero gli MKV ancora da convertire.
 if (-not $Origine) { $Origine = Join-Path (Split-Path $Destinazione -Parent) 'Da preparare' }
 # Si stampa all'avvio: dice subito se sul PC c'e' la versione di GitHub.
-$Versione = '2026-10-14a'
+$Versione = '2026-10-31a'
 $EstensioniVideo = @('.mp4', '.m4v', '.mkv', '.avi', '.mov', '.webm', '.wmv', '.ts', '.m2ts', '.flv', '.mpg', '.mpeg')
 # Gli scarti: un video sotto questa misura e' il promo di una release, non un
 # film ne' un episodio; le cartelle degli extra dei film (gli "Extras" e gli
@@ -787,7 +791,7 @@ New-Item -ItemType Directory -Force -Path $Lavoro | Out-Null
 Write-Host "prepara-ciak, versione $Versione"
 Write-Host "Da:  $Origine"
 Write-Host "A:   $Destinazione"
-if ($TieniOriginali) { Write-Host 'Originali: restano dove sono' } else { Write-Host "Originali: cancellati quando la copia in Ciak e' intera" }
+if ($Cancella) { Write-Host "Originali: cancellati quando la copia in Ciak e' intera" } else { Write-Host 'Originali: restano dove sono' }
 if ($Encoder -eq 'libx264') { Write-Host 'Ricodifica: con la CPU (nessuna scheda video utilizzabile trovata)' } else { Write-Host "Ricodifica: con la scheda video ($Encoder)" }
 Write-Host ''
 
@@ -900,7 +904,7 @@ if ($AggiungiLingua) {
   } else {
     Write-Host "Fatto: $(($aggiunte | ForEach-Object { NomeLingua $_ }) -join ', ') nel menu Audio di Ciak." -ForegroundColor Green
   }
-  if (-not $TieniOriginali -and -not $env:CIAK_SENZA_PAUSA) {
+  if ($Cancella -and -not $env:CIAK_SENZA_PAUSA) {
     if ((Read-Host "Cancello $nomeFonte, che ora non serve piu'? (s/N)") -match '^s') {
       try { Remove-Item -LiteralPath $fonte -Force; Write-Host 'Cancellato.' } catch { Write-Host "Non riesco: $($_.Exception.Message)" -ForegroundColor DarkYellow }
     }
@@ -943,7 +947,7 @@ foreach ($f in $video) {
     # controlli sulla durata) e' proprio il motivo per tenerlo.
     # Si scrive a schermo: la copia va riletta dal disco, e centinaia di
     # controlli muti sembravano uno script bloccato.
-    if (-not $TieniOriginali -and -not $recente) {
+    if ($Cancella -and -not $recente) {
       Write-Host "[$n/$($video.Count)] $relativo\$($f.Name): gia' in Ciak, controllo la copia..."
       $durataCopia = Durata $dest
       $durataOrig = Durata $f.FullName
@@ -980,7 +984,7 @@ foreach ($f in $video) {
         $saltati++
         Write-Host "   le sue lingue il film le ha gia'" -ForegroundColor DarkGray
       }
-      if (-not $TieniOriginali) { CancellaOriginale $f $nome (Split-Path $gemello.file -Parent) $relativo }
+      if ($Cancella) { CancellaOriginale $f $nome (Split-Path $gemello.file -Parent) $relativo }
       continue
     }
     $json = & ffprobe -v error -show_entries 'format=duration:stream=index,codec_type,codec_name,pix_fmt,channels,color_transfer:stream_disposition=attached_pic,forced,hearing_impaired:stream_tags:stream_side_data=dv_profile' -of json -- $f.FullName | Out-String
@@ -1110,7 +1114,7 @@ foreach ($f in $video) {
 
     $fatti++
     Write-Host "   fatto" -ForegroundColor Green
-    if (-not $TieniOriginali) { CancellaOriginale $f $nome $cartellaDest $relativo }
+    if ($Cancella) { CancellaOriginale $f $nome $cartellaDest $relativo }
   } catch {
     $errori++
     $elencoErrori += "$relativo\$($f.Name)`r`n   $($_.Exception.Message)"
@@ -1139,7 +1143,7 @@ if ($elencoErrori.Count -gt 0) {
 # Gli scarti accanto a un film fatto (o nella sua cartella degli extra) se ne
 # vanno con lui: altrimenti la cartella non si svuoterebbe mai.
 $scartiCancellati = 0
-if (-not $TieniOriginali) {
+if ($Cancella) {
   foreach ($f in $scarti) {
     $cartella = $f.DirectoryName
     $padre = Split-Path $cartella -Parent
