@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { logFailure } from './logFailure'
 import { dimenticaCollezione } from './memoriaCollezione'
+import { fetchAllRows } from './paged'
 import type { DiaryEntry, MediaType } from './types'
 
 function client() {
@@ -305,15 +306,32 @@ export async function countDiaryViewings(
   return count ?? 0
 }
 
+// Tutte le pagine: Supabase ne restituisce al più 1000 righe per richiesta, e
+// oltre le 1000 visioni le più vecchie sparivano dal diario (e un'importazione
+// da Letterboxd le avrebbe duplicate). L'id tiene stabili le pagine a parità di data.
 export async function listDiary(userId: string): Promise<DiaryEntry[]> {
-  const { data, error } = await client()
-    .from('user_diary')
-    .select('*')
-    .eq('user_id', userId)
-    .order('watched_on', { ascending: false })
-    .order('created_at', { ascending: false })
-  if (error) throw new Error(error.message)
-  return (data ?? []) as DiaryEntry[]
+  return fetchAllRows<DiaryEntry>((from, to) =>
+    client()
+      .from('user_diary')
+      .select('*')
+      .eq('user_id', userId)
+      .order('watched_on', { ascending: false })
+      .order('created_at', { ascending: false })
+      .order('id')
+      .range(from, to),
+  )
+}
+
+// Molte visioni in una volta (l'importazione da Letterboxd), a blocchi. Il voto
+// del titolo lo scrive chi importa: qui niente sincronizzazioni una per una.
+export async function importaVisioni(righe: Omit<DiaryEntry, 'id' | 'created_at'>[], fatte: (n: number) => void = () => {}): Promise<void> {
+  for (let i = 0; i < righe.length; i += 500) {
+    const blocco = righe.slice(i, i + 500)
+    const { error } = await client().from('user_diary').insert(blocco)
+    if (error) throw new Error(error.message)
+    fatte(i + blocco.length)
+  }
+  dimenticaCollezione()
 }
 
 // Voto più recente (per titolo) tra tutte le visioni votate nel diario, chiave

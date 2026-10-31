@@ -15,6 +15,18 @@ export async function getTrending(): Promise<MediaItem[]> {
     .map((r) => normalise(r))
 }
 
+// I film per nome e anno, nella lingua chiesta: per abbinare un titolo
+// importato (da Letterboxd) al suo id di TMDB. Solo film, non serie.
+export async function cercaFilm(query: string, anno: number | null, lingua: 'it-IT' | 'en-US'): Promise<MediaItem[]> {
+  const data = await tmdbFetch<{ results: RawMedia[] }>('/search/movie', {
+    query,
+    include_adult: 'false',
+    language: lingua,
+    ...(anno ? { year: String(anno) } : {}),
+  })
+  return (data.results ?? []).map((r) => normalise(r, 'movie'))
+}
+
 export async function searchMulti(query: string): Promise<MediaItem[]> {
   if (!query.trim()) return []
 

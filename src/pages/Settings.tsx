@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import ScegliPassword from '../components/ScegliPassword'
+import ImportaLetterboxd from '../components/ImportaLetterboxd'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { tmdbConfigurato } from '../lib/tmdb'
 import { useAuth } from '../lib/auth'
@@ -378,6 +379,17 @@ function PushSettings() {
 // Si entra solo con email e password. Chi entrava con Google la password non
 // l'ha mai scelta: la sceglie qui, da dentro, sullo stesso account (diario,
 // liste e voti restano). Serve anche a cambiarla.
+// Da Letterboxd: non ha un'API pubblica, ma ti lascia scaricare i tuoi dati.
+function LetterboxdSettings() {
+  const { user } = useAuth()
+  return (
+    <section className="rounded-xl border border-theatre-800 bg-theatre-900/60 p-5 md:col-span-2">
+      <h2 className="mb-3 font-display text-xl tracking-wide text-zinc-100">📥 Importa da Letterboxd</h2>
+      {user ? <ImportaLetterboxd userId={user.id} /> : <p className="text-sm text-zinc-400">Accedi per importare i tuoi dati di Letterboxd.</p>}
+    </section>
+  )
+}
+
 function AccessoSettings() {
   const { user, cambiaPassword } = useAuth()
   if (!user) return null
@@ -410,6 +422,8 @@ export default function Settings() {
         <PushSettings />
 
         <BackupSettings />
+
+        <LetterboxdSettings />
 
         <GeneriSettings />
 
