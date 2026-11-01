@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { MediaItem, TitleStatus } from '../lib/types'
-import { posterUrl, displayTitle } from '../lib/tmdb'
+import { posterUrl, displayTitle, titoloOriginale } from '../lib/tmdb'
 import { useLibrary } from '../lib/libraryCtx'
 import { useAuth } from '../lib/auth'
 import { upsertUserTitle, refFromMedia } from '../lib/userTitles'
@@ -145,6 +145,7 @@ export default function MediaCard({
   const year = item.releaseDate ? item.releaseDate.slice(0, 4) : '—'
   // Original title when readable; localized (IT/EN) for Japanese etc.
   const display = displayTitle(item)
+  const originale = titoloOriginale(item)
   const voto = useVotoDaMostrare(item)
 
   // Outer wrapper is NOT overflow-hidden so the quick-actions popover can spill
@@ -185,6 +186,12 @@ export default function MediaCard({
           <h3 className="line-clamp-1 text-sm font-semibold text-zinc-100" title={display}>
             {display}
           </h3>
+          {/* Sotto l'italiano, l'originale: è quello che si cerca altrove. */}
+          {originale && (
+            <p className="line-clamp-1 text-xs italic text-zinc-400" title={originale} lang={item.originalLanguage ?? undefined}>
+              {originale}
+            </p>
+          )}
           <p className="mt-0.5 text-xs text-zinc-500">
             {item.mediaType === 'tv' ? 'Serie TV' : 'Film'} · {year}
           </p>

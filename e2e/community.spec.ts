@@ -108,3 +108,13 @@ test('«Da recuperare» mostra anche la classifica completa, coi già visti, e f
   await page.getByLabel('Genere').selectOption({ label: 'Horror' })
   await expect.poll(() => calls.discover.at(-1)?.genres).toBe('27')
 })
+
+test('nella scheda il titolo originale sta sotto quello italiano', async ({ page }) => {
+  await mockTmdb(page, { detail: movieDetail(110420, 'La canzone del mare', { original_title: 'Song of the Sea' }) })
+  await mockSupabase(page, { user_titles: [] })
+
+  await page.goto('/title/movie/110420')
+
+  await expect(page.getByRole('heading', { level: 1, name: 'La canzone del mare' })).toBeVisible()
+  await expect(page.getByText('Song of the Sea', { exact: true })).toBeVisible()
+})

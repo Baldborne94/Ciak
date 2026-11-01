@@ -17,6 +17,7 @@ import PremiVinti from '../components/PremiVinti'
 import {
   backdropUrl,
   displayTitle,
+  titoloOriginale,
   getDetail,
   logoUrl,
   posterUrl,
@@ -163,6 +164,7 @@ export default function TitleDetail() {
   const backdrop = backdropUrl(detail.backdropPath)
   const poster = posterUrl(detail.posterPath, 'w500')
   const year = detail.releaseDate ? detail.releaseDate.slice(0, 4) : '—'
+  const originale = titoloOriginale(detail)
 
   return (
     <div className="space-y-10">
@@ -202,9 +204,10 @@ export default function TitleDetail() {
             <h1 className="mt-1 font-display text-4xl tracking-wide text-zinc-100 sm:text-5xl">
               {displayTitle(detail)}
             </h1>
-            {detail.title && detail.title !== displayTitle(detail) && (
-              <p className="mt-1 text-lg text-zinc-400">
-                🇮🇹 {detail.title}
+            {/* Il titolo originale sotto quello italiano, sempre che dica altro. */}
+            {originale && (
+              <p className="mt-1 text-lg italic text-zinc-400" lang={detail.originalLanguage ?? undefined}>
+                {originale}
               </p>
             )}
             {detail.tagline && (
@@ -420,9 +423,6 @@ export default function TitleDetail() {
           📋 Scheda tecnica
         </h2>
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-          {detail.originalTitle && detail.originalTitle !== displayTitle(detail) && (
-            <Info label="Titolo originale" value={detail.originalTitle} />
-          )}
           {detail.originalLanguage && (
             <Info
               label="Lingua originale"

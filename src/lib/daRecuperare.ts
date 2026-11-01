@@ -10,15 +10,17 @@ function chiave(mediaType: string, tmdbId: number): string {
   return `${mediaType}-${tmdbId}`
 }
 
-// Tutto ciò che l'utente ha già in archivio, in qualunque stato. Anche gli
-// abbandonati e i «da vedere»: un film che hai già in lista non è un
-// suggerimento, è una cosa che sai già.
+// Ciò che non ti manca più: i visti, e gli abbandonati (li hai provati e
+// lasciati). Un titolo «da vedere» o «in corso» invece ti manca ancora, e
+// resta: la lista dei più belli che non hai visto deve dirti anche che quello
+// che hai messo in lista mesi fa è lì che aspetta. Il suo badge lo distingue.
 //
 // I tipi di Ciak (anime, cartoon) corrispondono a `tv` su TMDB: senza questa
 // traduzione un anime già visto tornerebbe fra i suggerimenti.
 export function chiaviConosciute(titoli: UserTitle[]): Set<string> {
   const s = new Set<string>()
   for (const t of titoli) {
+    if (t.status !== 'watched' && t.status !== 'abandoned') continue
     const tmdb = t.media_type === 'movie' ? 'movie' : 'tv'
     s.add(chiave(tmdb, t.tmdb_id))
   }
