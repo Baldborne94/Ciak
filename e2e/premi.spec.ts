@@ -48,10 +48,10 @@ test('le liste dei premi dicono quanti ne hai visti e quali ti mancano', async (
 
   await page.goto('/premi')
 
-  await expect(page.getByRole('heading', { name: 'Oscar al miglior film' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Oscar · Miglior film' })).toBeVisible()
   await expect(page.getByText('Ne hai visti 1 su 2')).toBeVisible()
   // Il più recente per primo, con l'anno del premio.
-  const voci = page.getByRole('list', { name: 'Vincitori: Oscar al miglior film' }).getByRole('listitem')
+  const voci = page.getByRole('list', { name: 'Vincitori: Oscar · Miglior film' }).getByRole('listitem')
   await expect(voci.first()).toContainText('2024')
   await expect(voci.first().getByAltText('Oppenheimer')).toBeVisible()
 
@@ -59,7 +59,8 @@ test('le liste dei premi dicono quanti ne hai visti e quali ti mancano', async (
   await expect(page.getByAltText('Il padrino')).toHaveCount(0)
   await expect(page.getByAltText('Oppenheimer')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Palma d’oro' }).click()
+  await page.getByRole('button', { name: 'Cannes' }).click()
+  await expect(page.getByRole('heading', { name: 'Cannes · Palma d’oro' })).toBeVisible()
   await expect(page.getByAltText('Parasite')).toBeVisible()
   await expect(page.getByText('Ne hai visti 0 su 2')).toBeVisible()
   expect(richieste.some((q) => q.includes('wd:Q179808'))).toBe(true)
@@ -129,4 +130,47 @@ test('la classifica degli anime chiede animazione giapponese, e l anime già vis
   await expect(page.getByText('✓ Visto')).toHaveCount(1)
   await expect.poll(() => calls.discover.at(-1)?.genres).toBe('16')
   expect(lingue).toContain('ja')
+})
+
+test('nelle categorie a una persona si vede chi ha vinto, e la categoria resta nell indirizzo', async ({ page }) => {
+  await mockTmdb(page, { detailOf: (_t, id) => movieDetail(id, id === 155 ? 'Il cavaliere oscuro' : `Titolo ${id}`) })
+  await mockSupabase(page, { user_titles: [] })
+  await page.route('https://query.wikidata.org/sparql**', async (route) => {
+    const q = new URL(route.request().url()).searchParams.get('query') ?? ''
+    const bindings = q.includes('Academy Award for Best Supporting Actor"')
+      ? [{ film: { value: 'http://www.wikidata.org/entity/Q163872' }, tmdb: { value: '155' }, anno: { value: '2009' }, titolo: { value: 'Il cavaliere oscuro' }, persona: { value: 'Heath Ledger' } }]
+      : []
+    await route.fulfill({ json: { results: { bindings } } })
+  })
+
+  await page.goto('/premi')
+  await page.getByLabel('Categoria').selectOption({ label: 'Miglior attore non protagonista' })
+
+  await expect(page).toHaveURL(/categoria=oscar-attore-np/)
+  await expect(page.getByText('Heath Ledger')).toBeVisible()
+  await expect(page.getByAltText('Il cavaliere oscuro')).toBeVisible()
+
+  // Una categoria che su Wikidata non ha film lo dice.
+  await page.getByLabel('Categoria').selectOption({ label: 'Miglior sonoro' })
+  await expect(page.getByText('Lista non trovata')).toBeVisible()
+})
+
+test('la scheda di un film dice quali premi ha vinto, e chi li ha vinti', async ({ page }) => {
+  await mockTmdb(page, {
+    detail: movieDetail(872585, 'Oppenheimer'),
+    wikidata: (q) =>
+      q.includes('wdt:P4947 "872585"')
+        ? [
+            { premio: { value: 'http://www.wikidata.org/entity/Q102427' }, premioLabel: { value: 'Oscar al miglior film' }, anno: { value: '2024' } },
+            { premio: { value: 'http://www.wikidata.org/entity/Q106291' }, premioLabel: { value: 'Oscar alla migliore fotografia' }, anno: { value: '2024' }, chiLabel: { value: 'Hoyte van Hoytema' }, voce: { value: 'Academy Award for Best Cinematography' } },
+          ]
+        : [],
+  })
+  await mockSupabase(page, { user_titles: [] })
+
+  await page.goto('/title/movie/872585')
+
+  const sezione = page.locator('section', { has: page.getByRole('heading', { name: /Premi vinti/ }) })
+  await expect(sezione.getByText('Oscar al miglior film')).toBeVisible()
+  await expect(sezione.getByText('Hoyte van Hoytema')).toBeVisible()
 })

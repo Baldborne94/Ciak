@@ -13,6 +13,7 @@ import SeasonsSection from '../components/SeasonsSection'
 import DoveGuardarlo from '../components/DoveGuardarlo'
 import RecensioniUtenti from '../components/RecensioniUtenti'
 import ListeUtenti from '../components/ListeUtenti'
+import PremiVinti from '../components/PremiVinti'
 import {
   backdropUrl,
   displayTitle,
@@ -569,6 +570,7 @@ export default function TitleDetail() {
         </section>
       )}
 
+      <PremiVinti type={detail.mediaType} id={detail.id} />
       <RecensioniUtenti type={detail.mediaType} id={detail.id} />
       <ListeUtenti type={detail.mediaType} id={detail.id} />
 

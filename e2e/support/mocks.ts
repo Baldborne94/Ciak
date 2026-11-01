@@ -54,6 +54,9 @@ export interface TmdbOverrides {
   reviews?: (language: string) => unknown[]
   lists?: (language: string) => unknown[]
   list?: (id: number, page: number, language: string) => Record<string, unknown>
+  // Le righe SPARQL che Wikidata manda per una query (premi). Senza, nessun
+  // premio: ma la richiesta resta intercettata, perché i test non escano in rete.
+  wikidata?: (query: string) => unknown[]
 }
 
 // Conta le chiamate a discover per verificare, ad esempio, che cambiare
@@ -64,6 +67,11 @@ export interface TmdbCalls {
 
 export async function mockTmdb(page: Page, over: TmdbOverrides = {}): Promise<TmdbCalls> {
   const calls: TmdbCalls = { discover: [] }
+
+  await page.route('https://query.wikidata.org/sparql**', async (route) => {
+    const query = new URL(route.request().url()).searchParams.get('query') ?? ''
+    await route.fulfill({ json: { results: { bindings: over.wikidata?.(query) ?? [] } } })
+  })
 
   await page.route(PROXY, async (route: Route) => {
     const url = new URL(route.request().url())

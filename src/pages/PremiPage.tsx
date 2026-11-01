@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaCard from '../components/MediaCard'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { FilterBar, FilterGroup, ChipGroup } from '../components/FilterBar'
+import { FilterBar, FilterGroup, ChipGroup, filterSelectClass } from '../components/FilterBar'
 import { useLibrary } from '../lib/libraryCtx'
 import { usePremi } from '../lib/usePremi'
-import { PREMI, type Premio } from '../lib/premi'
+import { GRUPPI, trovaCategoria } from '../lib/premi'
 import type { MediaItem } from '../lib/types'
 
 // I vincitori dei grandi premi, anno per anno, con quanti ne hai visti: la
@@ -24,12 +25,24 @@ const ORDINI: { value: 'recenti' | 'vecchi'; label: string }[] = [
 ]
 
 export default function PremiPage() {
-  const [premio, setPremio] = useState<Premio>('oscar')
+  // La categoria sta nell'indirizzo: «Oscar per la fotografia» si può
+  // aprire da un link, e tornando indietro si ritrova.
+  const [params, setParams] = useSearchParams()
+  const { gruppo, categoria } = trovaCategoria(params.get('categoria'))
+  const premio = categoria.id
+  const scegli = (id: string) =>
+    setParams(
+      (p) => {
+        p.set('categoria', id)
+        return p
+      },
+      { replace: true },
+    )
+  const scelto = { nome: `${gruppo.nome} · ${categoria.nome}`, dove: gruppo.dove }
   const [visione, setVisione] = useState<Visione>('tutti')
   const [ordine, setOrdine] = useState<'recenti' | 'vecchi'>('recenti')
   const { vincitori, film, errore, mancanti } = usePremi(premio)
   const { lookup } = useLibrary()
-  const scelto = PREMI.find((p) => p.id === premio) ?? PREMI[0]
 
   const visto = useCallback((tmdbId: number) => lookup('movie', tmdbId)?.status === 'watched', [lookup])
   const quantiVisti = (vincitori ?? []).filter((v) => visto(v.tmdbId)).length
@@ -45,8 +58,17 @@ export default function PremiPage() {
 
       <FilterBar>
         <FilterGroup label="Premio">
-          <ChipGroup options={PREMI.map((p) => ({ value: p.id, label: p.nome }))} value={premio} onChange={setPremio} />
+          <ChipGroup options={GRUPPI.map((g) => ({ value: g.id, label: g.nome }))} value={gruppo.id} onChange={(id) => scegli(GRUPPI.find((g) => g.id === id)!.categorie[0].id)} />
         </FilterGroup>
+        {gruppo.categorie.length > 1 && (
+          <FilterGroup label="Categoria">
+            <select aria-label="Categoria" value={categoria.id} onChange={(e) => scegli(e.target.value)} className={filterSelectClass}>
+              {gruppo.categorie.map((c) => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+          </FilterGroup>
+        )}
         <FilterGroup label="Mostra">
           <ChipGroup options={VISIONE} value={visione} onChange={setVisione} />
         </FilterGroup>
@@ -77,7 +99,13 @@ export default function PremiPage() {
             </div>
           </div>
 
-          {righe.length === 0 ? (
+          {vincitori.length === 0 ? (
+            <EmptyState
+              icon="🔎"
+              title="Lista non trovata"
+              message="Wikidata non ha film con una scheda TMDB per questa categoria. Prova un’altra categoria."
+            />
+          ) : righe.length === 0 ? (
             <EmptyState
               icon="🏅"
               title={visione === 'mancano' ? 'Li hai visti tutti' : 'Nessun film'}
@@ -90,6 +118,8 @@ export default function PremiPage() {
                 return (
                   <li key={v.qid}>
                     <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-projector/80">{v.anno ?? 'Anno ?'}</p>
+                    {/* Nei premi a una persona, chi l'ha vinto: il film da solo non lo dice. */}
+                    {v.persone.length > 0 && <p className="mb-1 line-clamp-1 text-xs text-zinc-400">{v.persone.join(', ')}</p>}
                     {item ? (
                       <MediaCard item={item} priority={i < 5} />
                     ) : (

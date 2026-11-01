@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { getFilmPerId } from './tmdb'
 import { logFailure } from './logFailure'
 import { mapLimit } from './mapLimit'
-import { scaricaVincitori, usaCache, PREMI, type CacheVincitori, type Premio, type Vincitore } from './premi'
+import { scaricaVincitori, trovaCategoria, usaCache, type CacheVincitori, type Premio, type Vincitore } from './premi'
 import type { MediaItem } from './types'
 
 // I vincitori di un premio, con la loro card di TMDB. La lista arriva da
@@ -36,10 +36,10 @@ const carte = new Map<number, MediaItem>()
 // Una sola richiesta a Wikidata per premio, anche se la pagina la chiede due
 // volte di fila (si torna su un premio prima che la prima abbia risposto).
 const inCorso = new Map<Premio, Promise<Vincitore[]>>()
-function chiediAWikidata(premio: Premio, qid: string): Promise<Vincitore[]> {
+function chiediAWikidata(premio: Premio): Promise<Vincitore[]> {
   let p = inCorso.get(premio)
   if (!p) {
-    p = scaricaVincitori(qid)
+    p = scaricaVincitori(trovaCategoria(premio).categoria)
       .then((v) => {
         salvaCache(premio, v)
         return v
@@ -61,11 +61,10 @@ export function usePremi(premio: Premio) {
     setVincitori(null)
     setErrore(null)
     setMancanti(0)
-    const qid = PREMI.find((p) => p.id === premio)?.qid ?? ''
     const salvata = leggiCache(premio)
     const lista = usaCache(salvata, Date.now(), navigator.onLine)
       ? Promise.resolve(salvata!.vincitori)
-      : chiediAWikidata(premio, qid).catch((e: Error) => {
+      : chiediAWikidata(premio).catch((e: Error) => {
           // Wikidata non risponde: meglio la lista della settimana scorsa.
           if (salvata) return salvata.vincitori
           throw e
