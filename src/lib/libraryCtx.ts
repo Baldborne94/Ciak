@@ -26,3 +26,13 @@ export function useLibrary() {
 export function libKey(mediaType: string, tmdbId: number): string {
   return `${mediaType}:${tmdbId}`
 }
+
+// Cerca un titolo nell'indice della collezione. Le card parlano la lingua di
+// TMDB (`tv`), l'archivio quella di Ciak: un anime o un cartone si salva come
+// `anime` o `cartoon`. Senza il ripiego, un anime già visto restava senza
+// «✓ Visto» in ogni griglia del catalogo.
+export function cercaInIndice<T>(index: Map<string, T>, mediaType: string, tmdbId: number): T | undefined {
+  const diretto = index.get(libKey(mediaType, tmdbId))
+  if (diretto || mediaType !== 'tv') return diretto
+  return index.get(libKey('anime', tmdbId)) ?? index.get(libKey('cartoon', tmdbId))
+}

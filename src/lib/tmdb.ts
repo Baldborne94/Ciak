@@ -26,11 +26,10 @@ export {
   resolveKeywordIds,
   discoverByGenre,
   discoverByGenres,
-  discoverMigliori,
   getRecentReleases,
   type DiscoverFilters,
-  type FiltriMigliori,
 } from './tmdb/browse'
+export { discoverMigliori, getFilmPerId, parametriMigliori, type FiltriMigliori } from './tmdb/classifiche'
 export {
   fetchTitleFacts,
   fetchGenreIds,

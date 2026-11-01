@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAuth } from './auth'
 import { listAll } from './userTitles'
-import { LibraryCtx, libKey, type LibraryEntry } from './libraryCtx'
+import { cercaInIndice, LibraryCtx, libKey, type LibraryEntry } from './libraryCtx'
 
 // Loads the user's collection once (per user) and keeps it in a Map for O(1)
 // lookups from MediaCard. `refresh()` lets mutation points (TitleActions) keep
@@ -53,7 +53,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      lookup: (mediaType: string, tmdbId: number) => index.get(libKey(mediaType, tmdbId)),
+      lookup: (mediaType: string, tmdbId: number) => cercaInIndice(index, mediaType, tmdbId),
       refresh: load,
     }),
     [index, load],

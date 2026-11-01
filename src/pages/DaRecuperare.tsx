@@ -5,7 +5,7 @@ import { EmptyState, ErrorState, Loader } from '../components/States'
 import { FilterBar, FilterGroup, ChipGroup, filterSelectClass } from '../components/FilterBar'
 import { useAuth } from '../lib/auth'
 import { listAll } from '../lib/userTitles'
-import { discoverMigliori, getGenres } from '../lib/tmdb'
+import { discoverMigliori, getGenres, type FiltriMigliori } from '../lib/tmdb'
 import { logFailure } from '../lib/logFailure'
 import {
   chiaviConosciute,
@@ -28,9 +28,15 @@ const MOSTRA: { value: Mostra; label: string }[] = [
 ]
 const NESSUNA = new Set<string>()
 
-const TIPI: { value: TmdbType; label: string }[] = [
-  { value: 'movie', label: 'Film' },
-  { value: 'tv', label: 'Serie TV' },
+// Cosa si classifica. Anime e cartoni sono serie animate distinte dalla lingua
+// originale, come nella ricerca; i film d'animazione (Ghibli, Pixar) sono film.
+type Categoria = 'movie' | 'tv' | 'animazione' | 'anime' | 'cartoni'
+const CATEGORIE: { value: Categoria; label: string; tipo: TmdbType; filtri: Pick<FiltriMigliori, 'animazione' | 'lingua'> }[] = [
+  { value: 'movie', label: 'Film', tipo: 'movie', filtri: {} },
+  { value: 'tv', label: 'Serie TV', tipo: 'tv', filtri: {} },
+  { value: 'animazione', label: 'Film d’animazione', tipo: 'movie', filtri: { animazione: true } },
+  { value: 'anime', label: 'Anime', tipo: 'tv', filtri: { animazione: true, lingua: 'ja' } },
+  { value: 'cartoni', label: 'Cartoni', tipo: 'tv', filtri: { animazione: true, lingua: 'en' } },
 ]
 
 // Quanti voti servono perché un titolo conti. Ordinando per voto medio senza
@@ -58,7 +64,9 @@ export default function DaRecuperare() {
   const [ancora, setAncora] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [tipo, setTipo] = useState<TmdbType>('movie')
+  const [categoria, setCategoria] = useState<Categoria>('movie')
+  const scelta = CATEGORIE.find((c) => c.value === categoria) ?? CATEGORIE[0]
+  const tipo = scelta.tipo
   const [mostra, setMostra] = useState<Mostra>('mancano')
   const [genere, setGenere] = useState<Genere>('tutti')
   const [generi, setGeneri] = useState<Genre[]>([])
@@ -106,8 +114,9 @@ export default function DaRecuperare() {
       votiMinimi,
       genreIds: genere === 'miei' ? mieiGeneri : genere === 'tutti' ? [] : [genere],
       ...intervallo,
+      ...scelta.filtri,
     }
-  }, [genere, mieiGeneri, decennio, votiMinimi])
+  }, [genere, mieiGeneri, decennio, votiMinimi, scelta])
 
   const carica = useCallback(
     (page: number) => discoverMigliori(tipo, filtri, page),
@@ -172,7 +181,7 @@ export default function DaRecuperare() {
 
       <FilterBar>
         <FilterGroup label="Tipo">
-          <ChipGroup options={TIPI} value={tipo} onChange={setTipo} />
+          <ChipGroup options={CATEGORIE} value={categoria} onChange={setCategoria} />
         </FilterGroup>
         <FilterGroup label="Mostra">
           <ChipGroup options={MOSTRA} value={mostra} onChange={setMostra} />
@@ -189,7 +198,7 @@ export default function DaRecuperare() {
           >
             <option value="tutti">Tutti i generi</option>
             <option value="miei">I generi che guardo</option>
-            {generi.map((g) => (
+            {generi.filter((g) => !(scelta.filtri.animazione && g.id === 16)).map((g) => (
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </select>

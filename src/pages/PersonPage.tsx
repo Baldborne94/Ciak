@@ -6,6 +6,8 @@ import { getPersonDetail, profileUrl } from '../lib/tmdb'
 import EntityFavoriteButton from '../components/EntityFavoriteButton'
 import { FilterBar, ChipGroup, RatingSlider, filterSelectClass } from '../components/FilterBar'
 import { YEARS } from '../lib/filters'
+import { useLibrary } from '../lib/libraryCtx'
+import { avanzamento, perVisione, type Visione } from '../lib/filmografia'
 import type { MediaItem, PersonDetail } from '../lib/types'
 
 type CreditKind = 'all' | 'movie' | 'tv'
@@ -13,6 +15,12 @@ const KIND_OPTS: { value: CreditKind; label: string }[] = [
   { value: 'all', label: 'Tutti' },
   { value: 'movie', label: 'Film' },
   { value: 'tv', label: 'Serie TV' },
+]
+
+const VISIONE_OPTS: { value: Visione; label: string }[] = [
+  { value: 'tutti', label: 'Tutti' },
+  { value: 'mancano', label: 'Mi mancano' },
+  { value: 'visti', label: 'Visti' },
 ]
 
 function calcAge(birthday: string): number {
@@ -31,12 +39,15 @@ export default function PersonPage() {
   const [minVote, setMinVote] = useState(0)
   const [year, setYear] = useState('')
   const [sort, setSort] = useState<'popularity' | 'date_desc' | 'date_asc' | 'rating_desc'>('popularity')
+  const [visione, setVisione] = useState<Visione>('tutti')
+  const { lookup } = useLibrary()
+  const visto = useMemo(() => (i: MediaItem) => lookup(i.mediaType, i.id)?.status === 'watched', [lookup])
 
   useEffect(() => {
     if (!id) return
     setLoading(true)
     // Reset filters when navigating to a different person.
-    setKind('all'); setMinVote(0); setYear(''); setSort('popularity')
+    setKind('all'); setMinVote(0); setYear(''); setSort('popularity'); setVisione('tutti')
     getPersonDetail(Number(id))
       .then(setPerson)
       .catch((e: Error) => setError(e.message))
@@ -44,7 +55,7 @@ export default function PersonPage() {
   }, [id])
 
   const filteredCredits = useMemo(() => {
-    const credits = person?.credits ?? []
+    const credits = perVisione(person?.credits ?? [], visione, visto)
     const list = credits.filter((c: MediaItem) => {
       if (kind !== 'all' && c.mediaType !== kind) return false
       if (c.voteAverage < minVote) return false
@@ -63,7 +74,14 @@ export default function PersonPage() {
     if (sort === 'date_asc') return [...list].sort((a, b) => byDate(a, b, 'asc'))
     if (sort === 'rating_desc') return [...list].sort((a, b) => b.voteAverage - a.voteAverage)
     return list
-  }, [person, kind, minVote, year, sort])
+  }, [person, kind, minVote, year, sort, visione, visto])
+
+  // Sul tipo scelto (film o serie), così «12 su 34» parla dei film di un
+  // regista e non mescola le sue apparizioni in tv.
+  const fatti = useMemo(
+    () => avanzamento((person?.credits ?? []).filter((c) => kind === 'all' || c.mediaType === kind), visto),
+    [person, kind, visto],
+  )
 
   if (loading) return <Loader label="Carico il profilo…" />
   if (error) return <ErrorState title="Profilo non disponibile" message={error} />
@@ -133,8 +151,28 @@ export default function PersonPage() {
             🎬 Filmografia ({filteredCredits.length}{filteredCredits.length !== credits.length ? ` di ${credits.length}` : ''})
           </h2>
 
+          {fatti.totale > 0 && (
+            <div className="mb-4 max-w-md">
+              <p className="text-sm text-zinc-300">
+                ✓ Ne hai visti <strong>{fatti.visti}</strong> su {fatti.totale}
+                {fatti.visti === fatti.totale ? ' — filmografia completa!' : ''}
+              </p>
+              <div
+                role="progressbar"
+                aria-label="Filmografia vista"
+                aria-valuemin={0}
+                aria-valuemax={fatti.totale}
+                aria-valuenow={fatti.visti}
+                className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-theatre-800"
+              >
+                <div className="h-full bg-emerald-500" style={{ width: `${(fatti.visti / fatti.totale) * 100}%` }} />
+              </div>
+            </div>
+          )}
+
           <FilterBar>
             <ChipGroup options={KIND_OPTS} value={kind} onChange={setKind} />
+            <ChipGroup options={VISIONE_OPTS} value={visione} onChange={setVisione} />
             <RatingSlider value={minVote} onChange={setMinVote} />
             <select aria-label="Filtra per anno" value={year} onChange={(e) => setYear(e.target.value)} className={filterSelectClass}>
               <option value="">Anno: qualsiasi</option>
@@ -153,7 +191,10 @@ export default function PersonPage() {
           </FilterBar>
 
           {filteredCredits.length === 0 ? (
-            <EmptyState title="Nessun titolo" message="Nessun titolo con i filtri attuali." />
+            <EmptyState
+              title={visione === 'mancano' ? 'Non ti manca niente' : 'Nessun titolo'}
+              message={visione === 'mancano' ? 'Con questi filtri hai visto tutto quello che è uscito.' : 'Nessun titolo con i filtri attuali.'}
+            />
           ) : (
             <MediaGrid items={filteredCredits} />
           )}

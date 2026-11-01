@@ -143,6 +143,13 @@ Due guardie automatiche, oltre ai test veri e propri:
   la richiesta torna 400. Un proxy che serve tutto è un proxy che useranno al
   posto nostro.
 
+- Le **liste dei premi** (`src/lib/premi.ts`, pagina `/premi`) vengono da
+  **Wikidata**, interrogato dal browser (SPARQL, libero e senza chiave): TMDB
+  non sa nulla dei premi, e una lista scritta a mano invecchierebbe ogni anno.
+  Wikidata dà l'anno e l'id TMDB, la card la dà TMDB. La risposta si tiene una
+  settimana in `localStorage`; negli E2E `query.wikidata.org` è intercettato
+  come TMDB.
+
 ## Struttura
 
 ```
