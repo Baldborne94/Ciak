@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import {
   CATEGORIE,
+  codiceDelPremio,
+  leggiVoce,
+  scaricaVincitori,
+  urlVoce,
   DURATA_CACHE,
   leggiPremiDelTitolo,
   leggiRisposta,
@@ -9,6 +13,9 @@ import {
   trovaCategoria,
   usaCache,
 } from './premi'
+
+vi.mock('./logFailure', () => ({ logFailure: () => vi.fn() }))
+afterEach(() => vi.restoreAllMocks())
 
 // Le liste dei premi arrivano da Wikidata in righe SPARQL: qui si decide cosa
 // diventa un vincitore, in che ordine, e quando si richiede.
@@ -51,21 +58,16 @@ describe('leggiRisposta', () => {
 })
 
 describe('querySparql', () => {
-  it('un premio verificato si chiede per codice, solo per chi ha una scheda TMDB', () => {
-    const q = querySparql(trovaCategoria('palma').categoria)
+  it('chiede il premio per codice, sul film o sulla persona, solo per chi ha una scheda TMDB', () => {
+    const q = querySparql('Q179808')
     expect(q).toContain('VALUES ?premio { wd:Q179808 }')
     expect(q).toContain('wdt:P4947 ?tmdb')
-  })
-
-  it('gli altri per la voce di Wikipedia, e anche quando il premio è sulla persona', () => {
-    const q = querySparql(trovaCategoria('oscar-fotografia').categoria)
-    expect(q).toContain('schema:name "Academy Award for Best Cinematography"@en')
     // Il premio a un direttore della fotografia sta su di lui, col film in P1686.
     expect(q).toContain('pq:P1686 ?film')
   })
 
-  it('una virgoletta nel nome non può chiudere la stringa della query', () => {
-    expect(querySparql({ id: 'x', nome: 'x', voce: 'a"b' })).toContain('"ab"@en')
+  it('niente nella query che non sia un codice Wikidata', () => {
+    expect(() => querySparql('Q1 } DELETE')).toThrow()
   })
 
   it('ogni categoria ha un modo di essere trovata, e un id unico', () => {
@@ -126,5 +128,44 @@ describe('premi vinti da un titolo', () => {
   it('film e serie hanno due proprietà diverse per l id TMDB', () => {
     expect(queryPremiDelTitolo('movie', 872585)).toContain('wdt:P4947 "872585"')
     expect(queryPremiDelTitolo('tv', 1396)).toContain('wdt:P4983 "1396"')
+  })
+})
+
+describe('il codice del premio dalla voce di Wikipedia', () => {
+  it('lo chiede all API di Wikidata, che risponde in un attimo', () => {
+    const u = new URL(urlVoce('Academy Award for Best Supporting Actor'))
+    expect(u.host).toBe('www.wikidata.org')
+    expect(u.searchParams.get('action')).toBe('wbgetentities')
+    expect(u.searchParams.get('titles')).toBe('Academy Award for Best Supporting Actor')
+    expect(u.searchParams.get('origin')).toBe('*')
+  })
+
+  it('legge il codice, e una voce che non esiste non ne ha', () => {
+    expect(leggiVoce({ entities: { Q106291: { id: 'Q106291' } } })).toBe('Q106291')
+    expect(leggiVoce({ entities: { '-1': { missing: '' } } })).toBeNull()
+    expect(leggiVoce({})).toBeNull()
+  })
+
+  it('un premio verificato non chiede niente; gli altri una volta, poi i vincitori per codice', async () => {
+    const f = vi.spyOn(globalThis, 'fetch')
+    expect(await codiceDelPremio(trovaCategoria('palma').categoria)).toBe('Q179808')
+    expect(f).not.toHaveBeenCalled()
+
+    f.mockResolvedValueOnce(new Response(JSON.stringify({ entities: { Q106800: { id: 'Q106800' } } })))
+    f.mockResolvedValueOnce(new Response(JSON.stringify({ results: { bindings: [] } })))
+    await scaricaVincitori(trovaCategoria('oscar-animazione').categoria)
+    expect(f).toHaveBeenCalledTimes(2)
+    expect(decodeURIComponent(String(f.mock.calls[1][0]))).toContain('wd:Q106800')
+  })
+
+  it('una voce sconosciuta dà una lista vuota, senza interrogare SPARQL', async () => {
+    const f = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ entities: { '-1': { missing: '' } } })))
+    expect(await scaricaVincitori({ id: 'x', nome: 'x', voce: 'Premio inesistente' })).toEqual([])
+    expect(f).toHaveBeenCalledTimes(1)
+  })
+
+  it('un errore di rete diventa una frase che si capisce', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+    await expect(scaricaVincitori(trovaCategoria('oscar').categoria)).rejects.toThrow('non raggiungibile')
   })
 })
