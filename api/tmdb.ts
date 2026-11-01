@@ -22,6 +22,10 @@ const CONSENTITI: RegExp[] = [
   /^\/discover\/(movie|tv)$/,
   /^\/(movie|tv)\/\d+$/,
   /^\/(movie|tv)\/\d+\/(recommendations|similar|videos|credits|alternative_titles|keywords|external_ids|images)$/,
+  // Le recensioni degli utenti di TMDB, e le liste pubbliche che contengono un
+  // titolo (vedi tmdb/community).
+  /^\/(movie|tv)\/\d+\/(reviews|lists)$/,
+  /^\/list\/\d+$/,
   /^\/(movie|tv)\/\d+\/watch\/providers$/,
   /^\/tv\/\d+\/season\/\d+$/,
   /^\/person\/\d+$/,

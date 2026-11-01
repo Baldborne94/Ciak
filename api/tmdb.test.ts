@@ -8,6 +8,9 @@ describe('percorsoConsentito', () => {
   it('accetta i percorsi che l app usa davvero', () => {
     const buoni = [
       '/trending/all/week',
+      '/movie/8587/reviews',
+      '/tv/2190/lists',
+      '/list/8228510',
       '/search/multi',
       '/search/keyword',
       '/genre/movie/list',
@@ -46,8 +49,12 @@ describe('percorsoConsentito', () => {
     // Non è cattiveria: un proxy che serve tutto è un proxy che qualcun altro
     // userà al posto nostro.
     expect(percorsoConsentito('/account/1/favorite')).toBe(false)
+    // Le liste si leggono, non si scrivono: /list/{id}/items è un'altra cosa.
+    expect(percorsoConsentito('/list/8228510/items')).toBe(false)
+    expect(percorsoConsentito('/list/abc')).toBe(false)
     expect(percorsoConsentito('/authentication/token/new')).toBe(false)
-    expect(percorsoConsentito('/movie/550/lists')).toBe(false)
+    // Votare un titolo a nome dell'account TMDB: Ciak non lo fa.
+    expect(percorsoConsentito('/movie/550/rating')).toBe(false)
     expect(percorsoConsentito('')).toBe(false)
   })
 

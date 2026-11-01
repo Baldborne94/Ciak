@@ -5,7 +5,7 @@ import { EmptyState, ErrorState, Loader } from '../components/States'
 import { FilterBar, FilterGroup, ChipGroup, filterSelectClass } from '../components/FilterBar'
 import { useAuth } from '../lib/auth'
 import { listAll } from '../lib/userTitles'
-import { discoverMigliori } from '../lib/tmdb'
+import { discoverMigliori, getGenres } from '../lib/tmdb'
 import { logFailure } from '../lib/logFailure'
 import {
   chiaviConosciute,
@@ -13,13 +13,20 @@ import {
   intervalloDecennio,
   raccogliNonVisti,
 } from '../lib/daRecuperare'
-import type { MediaItem, TmdbType, UserTitle } from '../lib/types'
+import type { Genre, MediaItem, TmdbType, UserTitle } from '../lib/types'
 
-type Ambito = 'tutti' | 'miei'
-const AMBITI: { value: Ambito; label: string }[] = [
-  { value: 'tutti', label: 'Tutti i generi' },
-  { value: 'miei', label: 'I generi che guardo' },
+// Il genere: tutti, i tre che frequenti di più, o uno scelto dall'elenco di TMDB.
+type Genere = 'tutti' | 'miei' | number
+
+// «Che mi mancano» toglie l'archivio; «Classifica completa» è la classifica di
+// tutti, coi già visti segnati dal loro badge: serve a vedere a che punto sei,
+// non solo cosa resta.
+type Mostra = 'mancano' | 'tutti'
+const MOSTRA: { value: Mostra; label: string }[] = [
+  { value: 'mancano', label: 'Che mi mancano' },
+  { value: 'tutti', label: 'Classifica completa' },
 ]
+const NESSUNA = new Set<string>()
 
 const TIPI: { value: TmdbType; label: string }[] = [
   { value: 'movie', label: 'Film' },
@@ -52,7 +59,9 @@ export default function DaRecuperare() {
   const [error, setError] = useState<string | null>(null)
 
   const [tipo, setTipo] = useState<TmdbType>('movie')
-  const [ambito, setAmbito] = useState<Ambito>('tutti')
+  const [mostra, setMostra] = useState<Mostra>('mancano')
+  const [genere, setGenere] = useState<Genere>('tutti')
+  const [generi, setGeneri] = useState<Genre[]>([])
   const [decennio, setDecennio] = useState<number | 'all'>('all')
   const [votiMinimi, setVotiMinimi] = useState(1000)
 
@@ -71,17 +80,34 @@ export default function DaRecuperare() {
       .finally(() => setCollezioneLetta(true))
   }, [user])
 
+  // I generi di film e di serie hanno id diversi: cambiando tipo, uno scelto
+  // dall'elenco dell'altro non vale più e si torna a «Tutti».
+  useEffect(() => {
+    let vivo = true
+    getGenres(tipo)
+      .then((g) => {
+        if (!vivo) return
+        setGeneri(g)
+        setGenere((prima) => (typeof prima === 'number' && !g.some((x) => x.id === prima) ? 'tutti' : prima))
+      })
+      .catch(logFailure('generi per «Da recuperare»'))
+    return () => {
+      vivo = false
+    }
+  }, [tipo])
+
   const conosciute = useMemo(() => chiaviConosciute(collezione), [collezione])
+  const escluse = mostra === 'mancano' ? conosciute : NESSUNA
   const mieiGeneri = useMemo(() => generiPreferiti(collezione), [collezione])
 
   const filtri = useMemo(() => {
     const intervallo = decennio === 'all' ? {} : intervalloDecennio(decennio)
     return {
       votiMinimi,
-      genreIds: ambito === 'miei' ? mieiGeneri : [],
+      genreIds: genere === 'miei' ? mieiGeneri : genere === 'tutti' ? [] : [genere],
       ...intervallo,
     }
-  }, [ambito, mieiGeneri, decennio, votiMinimi])
+  }, [genere, mieiGeneri, decennio, votiMinimi])
 
   const carica = useCallback(
     (page: number) => discoverMigliori(tipo, filtri, page),
@@ -97,7 +123,7 @@ export default function DaRecuperare() {
     let annullato = false
     setLoading(true)
     setError(null)
-    raccogliNonVisti(carica, conosciute)
+    raccogliNonVisti(carica, escluse)
       .then(({ items: trovati, prossimaPagina }) => {
         if (annullato) return
         setItems(trovati)
@@ -112,13 +138,13 @@ export default function DaRecuperare() {
     return () => {
       annullato = true
     }
-  }, [carica, conosciute, collezioneLetta])
+  }, [carica, escluse, collezioneLetta])
 
   async function caricaAltri() {
     if (prossima === null) return
     setAncora(true)
     try {
-      const { items: nuovi, prossimaPagina } = await raccogliNonVisti(carica, conosciute, {
+      const { items: nuovi, prossimaPagina } = await raccogliNonVisti(carica, escluse, {
         da: prossima,
       })
       setItems((prev) => [...prev, ...nuovi])
@@ -130,22 +156,43 @@ export default function DaRecuperare() {
     }
   }
 
-  const senzaGeneriPropri = ambito === 'miei' && mieiGeneri.length === 0
+  const senzaGeneriPropri = genere === 'miei' && mieiGeneri.length === 0
 
   return (
     <div>
       <PageHeader
         eyebrow="Da recuperare"
-        title="I più belli che ti mancano"
-        subtitle="I titoli col voto più alto su TMDB, meno tutto quello che hai già in archivio."
+        title={mostra === 'mancano' ? 'I più belli che ti mancano' : 'I più belli di sempre'}
+        subtitle={
+          mostra === 'mancano'
+            ? 'I titoli col voto più alto su TMDB, meno tutto quello che hai già in archivio.'
+            : 'La classifica completa del pubblico di TMDB: quelli che hai già portano il loro segno.'
+        }
       />
 
       <FilterBar>
         <FilterGroup label="Tipo">
           <ChipGroup options={TIPI} value={tipo} onChange={setTipo} />
         </FilterGroup>
-        <FilterGroup label="Ambito">
-          <ChipGroup options={AMBITI} value={ambito} onChange={setAmbito} />
+        <FilterGroup label="Mostra">
+          <ChipGroup options={MOSTRA} value={mostra} onChange={setMostra} />
+        </FilterGroup>
+        <FilterGroup label="Genere">
+          <select
+            aria-label="Genere"
+            value={String(genere)}
+            onChange={(e) => {
+              const v = e.target.value
+              setGenere(v === 'tutti' || v === 'miei' ? v : Number(v))
+            }}
+            className={filterSelectClass}
+          >
+            <option value="tutti">Tutti i generi</option>
+            <option value="miei">I generi che guardo</option>
+            {generi.map((g) => (
+              <option key={g.id} value={g.id}>{g.name}</option>
+            ))}
+          </select>
         </FilterGroup>
         <FilterGroup label="Decennio">
           <select
@@ -184,6 +231,8 @@ export default function DaRecuperare() {
         <Loader label="Cerco quelli che ti mancano…" />
       ) : error ? (
         <ErrorState title="Suggerimenti non disponibili" message={error} />
+      ) : items.length === 0 && mostra === 'tutti' ? (
+        <EmptyState icon="🔎" title="Nessun titolo" message="Con questi filtri TMDB non ha niente da classificare. Prova un altro genere o un altro decennio." />
       ) : items.length === 0 ? (
         <EmptyState
           icon="🏆"

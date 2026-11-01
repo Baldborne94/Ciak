@@ -15,6 +15,7 @@ const TasteProfile = lazy(() => import('./pages/TasteProfile'))
 const ListsPage = lazy(() => import('./pages/ListsPage'))
 const CustomListPage = lazy(() => import('./pages/CustomListPage'))
 const PublicListPage = lazy(() => import('./pages/PublicListPage'))
+const ListaTmdbPage = lazy(() => import('./pages/ListaTmdbPage'))
 const PublicWatchlistPage = lazy(() => import('./pages/PublicWatchlistPage'))
 const DiaryPage = lazy(() => import('./pages/DiaryPage'))
 const StreamingPage = lazy(() => import('./pages/StreamingPage'))
@@ -49,6 +50,7 @@ export default function App() {
         <Route path="guida" element={<GuidePage />} />
         {/* Viste pubbliche condivise: niente login richiesto. */}
         <Route path="lista/:id" element={<PublicListPage />} />
+        <Route path="lista-tmdb/:id" element={<ListaTmdbPage />} />
         <Route path="watchlist/:userId" element={<PublicWatchlistPage />} />
         {/* Consiglio ricevuto da un altro utente: il link gira fuori dall'app. */}
         <Route path="consiglia/:mediaType/:id" element={<SharedTitlePage />} />

@@ -159,7 +159,9 @@ strumenti/       script per il PC dell'utente (preparare i video per la cartella
 `src/lib/tmdb.ts` è una **facciata**: ri-esporta e basta. Il codice vero sta in
 `src/lib/tmdb/` — `client` (la richiesta al proxy), `raw` (le forme che TMDB
 manda e la loro normalizzazione), `titles` (quale titolo è leggibile),
-`discover`, `browse`, `detail`, `people`, `collections`, `companies`.
+`discover`, `browse`, `detail`, `people`, `collections`, `companies`,
+`community` (recensioni e liste pubbliche degli utenti: Letterboxd non ha
+un'API pubblica, TMDB sì).
 
 Una funzione nuova va nel modulo giusto e si ri-esporta dalla facciata, così le
 pagine continuano a importare da `../lib/tmdb`. Il file era arrivato a 1376

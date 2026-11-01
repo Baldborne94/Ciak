@@ -43,6 +43,7 @@ export {
   getSeasonEpisodeNames,
   getRecommendations,
 } from './tmdb/detail'
+export { getRecensioni, getListeConTitolo, getListaTmdb, type Recensione, type ListaUtente, type ListaTmdb } from './tmdb/community'
 export { searchPerson, getPersonDetail, resolvePeople } from './tmdb/people'
 export {
   searchCollection,

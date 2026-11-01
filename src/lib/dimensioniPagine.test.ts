@@ -15,7 +15,6 @@ const TETTO = 600
 const ECCEZIONI: Record<string, number> = {
   'Search.tsx': 831,
   'DiaryPage.tsx': 717,
-  'TitleDetail.tsx': 709,
 }
 
 const righe = (nome: string) => readFileSync(new URL(nome, dir), 'utf8').split('\n').length
