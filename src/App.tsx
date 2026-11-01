@@ -15,6 +15,7 @@ const TasteProfile = lazy(() => import('./pages/TasteProfile'))
 const ListsPage = lazy(() => import('./pages/ListsPage'))
 const CustomListPage = lazy(() => import('./pages/CustomListPage'))
 const PublicListPage = lazy(() => import('./pages/PublicListPage'))
+const ListaTmdbPage = lazy(() => import('./pages/ListaTmdbPage'))
 const PublicWatchlistPage = lazy(() => import('./pages/PublicWatchlistPage'))
 const DiaryPage = lazy(() => import('./pages/DiaryPage'))
 const StreamingPage = lazy(() => import('./pages/StreamingPage'))
@@ -22,6 +23,7 @@ const StreamingPlayerPage = lazy(() => import('./pages/StreamingPlayerPage'))
 const StatsPage = lazy(() => import('./pages/StatsPage'))
 const UpcomingPage = lazy(() => import('./pages/UpcomingPage'))
 const DaRecuperare = lazy(() => import('./pages/DaRecuperare'))
+const PremiPage = lazy(() => import('./pages/PremiPage'))
 const GenrePage = lazy(() => import('./pages/GenrePage'))
 const PersonPage = lazy(() => import('./pages/PersonPage'))
 const StudioPage = lazy(() => import('./pages/StudioPage'))
@@ -49,6 +51,8 @@ export default function App() {
         <Route path="guida" element={<GuidePage />} />
         {/* Viste pubbliche condivise: niente login richiesto. */}
         <Route path="lista/:id" element={<PublicListPage />} />
+        <Route path="lista-tmdb/:id" element={<ListaTmdbPage />} />
+        <Route path="premi" element={<PremiPage />} />
         <Route path="watchlist/:userId" element={<PublicWatchlistPage />} />
         {/* Consiglio ricevuto da un altro utente: il link gira fuori dall'app. */}
         <Route path="consiglia/:mediaType/:id" element={<SharedTitlePage />} />

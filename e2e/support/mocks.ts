@@ -49,6 +49,11 @@ export interface TmdbOverrides {
   searchPerson?: unknown[]
   searchCompany?: unknown[]
   searchCollection?: unknown[]
+  // Le recensioni e le liste degli utenti di TMDB (tmdb/community), e una
+  // lista aperta: per lingua, perché l'app le chiede in italiano e in inglese.
+  reviews?: (language: string) => unknown[]
+  lists?: (language: string) => unknown[]
+  list?: (id: number, page: number, language: string) => Record<string, unknown>
 }
 
 // Conta le chiamate a discover per verificare, ad esempio, che cambiare
@@ -134,6 +139,15 @@ export async function mockTmdb(page: Page, over: TmdbOverrides = {}): Promise<Tm
     if (path.startsWith('/search/person')) return json({ results: over.searchPerson ?? [] })
     if (path.startsWith('/search/company')) return json({ results: over.searchCompany ?? [] })
     if (path.startsWith('/search/collection')) return json({ results: over.searchCollection ?? [] })
+
+    const lingua = url.searchParams.get('language') ?? 'it-IT'
+    if (/^\/(movie|tv)\/\d+\/reviews$/.test(path)) return json({ results: over.reviews?.(lingua) ?? [] })
+    if (/^\/(movie|tv)\/\d+\/lists$/.test(path)) return json({ results: over.lists?.(lingua) ?? [] })
+    const listMatch = /^\/list\/(\d+)$/.exec(path)
+    if (listMatch) {
+      const p = Number(url.searchParams.get('page') ?? '1')
+      return json(over.list?.(Number(listMatch[1]), p, lingua) ?? { name: 'Lista vuota', items: [], item_count: 0, total_pages: 1 })
+    }
 
     // Qualsiasi altro endpoint TMDB: risposta vuota ma valida.
     return json({ results: [], genres: [], total_pages: 1 })
