@@ -195,7 +195,7 @@ describe('la facciata di tmdb', () => {
     // facciata durante uno spostamento, questo test lo dice invece di lasciare
     // che se ne accorga una pagina a runtime.
     const attesi = [
-      'altriTitoli', 'backdropUrl', 'discoverByCompany', 'discoverByGenre', 'discoverByGenres',
+      'altriTitoli', 'backdropUrl', 'cercaFilm', 'discoverByCompany', 'discoverByGenre', 'discoverByGenres',
       'discoverMigliori',
       'displayTitle', 'fallbackReadableTitle', 'fetchAlternativeTitles', 'fetchGenreIds', 'fetchOriginalTitle', 'fetchReadableTitle',
       'fetchTitleFacts', 'fetchTitoloEPoster',

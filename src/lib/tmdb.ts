@@ -15,6 +15,7 @@ export { altriTitoli, isReadableTitle, fallbackReadableTitle, displayTitle } fro
 export { type BrowseSort } from './tmdb/discover'
 export {
   getTrending,
+  cercaFilm,
   searchMulti,
   getGenres,
   getAnime,

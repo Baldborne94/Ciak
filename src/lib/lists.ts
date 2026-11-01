@@ -126,6 +126,29 @@ export async function addToList(
   if (touchErr) throw new Error(touchErr.message)
 }
 
+// Molti titoli in una lista in una volta (l'importazione da Letterboxd). Quelli
+// che ci sono già restano come sono.
+export async function aggiungiTitoliAllaLista(userId: string, listId: string, titoli: ListItemRef[]): Promise<void> {
+  for (let i = 0; i < titoli.length; i += 500) {
+    const { error } = await client()
+      .from('user_list_items')
+      .upsert(
+        titoli.slice(i, i + 500).map((t) => ({
+          list_id: listId,
+          user_id: userId,
+          tmdb_id: t.tmdbId,
+          media_type: t.mediaType,
+          title: t.title,
+          poster_path: t.posterPath,
+        })),
+        { onConflict: 'list_id,tmdb_id,media_type', ignoreDuplicates: true },
+      )
+    if (error) throw new Error(error.message)
+  }
+  const { error } = await client().from('user_lists').update({ updated_at: new Date().toISOString() }).eq('id', listId)
+  if (error) throw new Error(error.message)
+}
+
 export async function removeFromList(
   listId: string,
   tmdbId: number,

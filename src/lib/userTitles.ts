@@ -101,6 +101,23 @@ export async function upsertUserTitle(
   return data as UserTitle
 }
 
+// Molte righe intere in una volta (l'importazione da Letterboxd): a blocchi,
+// perché una richiesta sola con migliaia di righe è lenta e rischia di
+// fallire tutta per una. Le righe sono già fuse con quelle esistenti (vedi
+// letterboxdPiano): qui si scrivono e basta.
+export async function importaTitoli(
+  righe: Omit<UserTitle, 'id' | 'created_at' | 'updated_at'>[],
+  fatte: (n: number) => void = () => {},
+): Promise<void> {
+  for (let i = 0; i < righe.length; i += 500) {
+    const blocco = righe.slice(i, i + 500)
+    const { error } = await client().from(TABLE).upsert(blocco, { onConflict: 'user_id,tmdb_id,media_type' })
+    if (error) throw new Error(error.message)
+    fatte(i + blocco.length)
+  }
+  dimenticaCollezione()
+}
+
 export async function deleteUserTitle(userId: string, id: string): Promise<void> {
   const { error } = await client().from(TABLE).delete().eq('user_id', userId).eq('id', id)
   dimenticaCollezione()
