@@ -146,9 +146,14 @@ Due guardie automatiche, oltre ai test veri e propri:
 - Le **liste dei premi** (`src/lib/premi.ts`, pagina `/premi`) vengono da
   **Wikidata**, interrogato dal browser (SPARQL, libero e senza chiave): TMDB
   non sa nulla dei premi, e una lista scritta a mano invecchierebbe ogni anno.
-  Wikidata dà l'anno e l'id TMDB, la card la dà TMDB. La risposta si tiene una
-  settimana in `localStorage`; negli E2E `query.wikidata.org` è intercettato
-  come TMDB.
+  Wikidata dà l'anno e l'id TMDB, la card la dà TMDB. Una categoria si trova
+  per codice Q solo se verificato, altrimenti per il titolo della sua voce
+  sulla Wikipedia inglese (stabile e unico): un codice indovinato a memoria
+  porta a una lista sbagliata. I premi a una persona (attori, regia,
+  fotografia) stanno sulla persona, col film in «per l'opera» (P1686). La
+  scheda di un titolo mostra i suoi premi (`PremiVinti`). La lista si tiene
+  una settimana in `localStorage`; negli E2E `mockTmdb` intercetta anche
+  `query.wikidata.org` (opzione `wikidata`).
 
 ## Struttura
 

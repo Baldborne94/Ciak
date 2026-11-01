@@ -45,13 +45,16 @@ describe('chiaviConosciute', () => {
     expect(s.has('tv-42')).toBe(false)
   })
 
-  it('conta anche gli abbandonati e i «da vedere»', () => {
-    // Un film già in lista non è un suggerimento: è una cosa che sai già.
+  it('toglie i visti e gli abbandonati, non quelli ancora da vedere', () => {
+    // Un film messo in lista e mai visto ti manca ancora: deve restare fra
+    // «Che mi mancano», col suo badge «In lista».
     const s = chiaviConosciute([
       titolo({ tmdb_id: 1, status: 'to_watch' }),
       titolo({ tmdb_id: 2, status: 'abandoned' }),
+      titolo({ tmdb_id: 3, status: 'in_progress' }),
+      titolo({ tmdb_id: 4, status: 'watched' }),
     ])
-    expect(s.size).toBe(2)
+    expect([...s].sort()).toEqual(['movie-2', 'movie-4'])
   })
 })
 

@@ -68,6 +68,17 @@ export function displayTitle(item: {
   return item.title || item.originalTitle || 'Senza titolo'
 }
 
+// Il titolo originale da scrivere sotto quello italiano, se dice qualcosa di
+// diverso: «Song of the Sea» sotto «La canzone del mare», «千と千尋の神隠し»
+// sotto «La città incantata». Non si ripete quando coincide (Oppenheimer), a
+// parte maiuscole, accenti e punteggiatura.
+export function titoloOriginale(item: { title: string; originalTitle: string | null; originalLanguage?: string | null }): string | null {
+  const originale = item.originalTitle?.trim()
+  if (!originale) return null
+  const piano = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+  return piano(originale) === piano(displayTitle(item)) ? null : originale
+}
+
 // Il nome leggibile di una persona: come per i titoli, un nome in uno script
 // non latino (registi/attori coreani, giapponesi, russi…) va mostrato nella
 // sua versione leggibile quando esiste. TMDB la tiene di solito in

@@ -174,7 +174,7 @@ export default function DaRecuperare() {
         title={mostra === 'mancano' ? 'I più belli che ti mancano' : 'I più belli di sempre'}
         subtitle={
           mostra === 'mancano'
-            ? 'I titoli col voto più alto su TMDB, meno tutto quello che hai già in archivio.'
+            ? 'I titoli col voto più alto su TMDB, meno quelli che hai già visto. Quelli in lista restano, col loro segno.'
             : 'La classifica completa del pubblico di TMDB: quelli che hai già portano il loro segno.'
         }
       />
@@ -246,7 +246,7 @@ export default function DaRecuperare() {
         <EmptyState
           icon="🏆"
           title="Li hai visti tutti"
-          message="Con questi filtri non è rimasto niente che tu non abbia già in archivio. Prova un altro decennio, o allarga la selezione ai meno noti."
+          message="Con questi filtri non è rimasto niente che tu non abbia già visto. Prova un altro decennio, o allarga la selezione ai meno noti."
         />
       ) : (
         <>

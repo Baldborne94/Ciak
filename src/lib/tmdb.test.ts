@@ -207,7 +207,7 @@ describe('la facciata di tmdb', () => {
       'isReadableTitle', 'logoUrl', 'parametriMigliori', 'posterUrl', 'profileUrl',
       'resolveKeywordIds', 'resolvePeople', 'resolveSagaIds', 'resolveSagas',
       'resolveStudios', 'resolveSuggestions', 'searchCollection',
-      'searchCompany', 'searchMulti', 'searchPerson', 'tmdbConfigurato',
+      'searchCompany', 'searchMulti', 'searchPerson', 'titoloOriginale', 'tmdbConfigurato',
     ]
     const modulo = await import('./tmdb')
     expect(Object.keys(modulo).sort()).toEqual(attesi)

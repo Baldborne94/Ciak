@@ -105,3 +105,31 @@ test('la soglia dei voti arriva davvero a TMDB', async ({ page }) => {
   await expect.poll(() => viste).toContain('3000')
   expect(calls.discover.at(-1)?.sortBy).toBe('vote_average.desc')
 })
+
+test('un film messo in lista ma non ancora visto resta fra quelli che mancano, col suo segno', async ({ page }) => {
+  await mockTmdb(page, {
+    discover: () => [movie(101, 'Il Padrino'), movie(102, 'Quarto Potere')],
+  })
+  await mockSupabase(page, {
+    user_titles: [inArchivio(101, 'Il Padrino'), inArchivio(102, 'Quarto Potere', { status: 'to_watch', watched_at: null })],
+  })
+
+  await page.goto('/da-recuperare')
+
+  await expect(page.getByAltText('Quarto Potere')).toBeVisible()
+  await expect(page.getByText('🎟️ In lista')).toHaveCount(1)
+  await expect(page.getByText('Il Padrino')).toHaveCount(0)
+})
+
+test('sotto il titolo italiano c è l originale', async ({ page }) => {
+  await mockTmdb(page, {
+    discover: () => [movie(110420, 'La canzone del mare', { original_title: 'Song of the Sea' }), movie(872585, 'Oppenheimer')],
+  })
+  await mockSupabase(page, { user_titles: [] })
+
+  await page.goto('/da-recuperare')
+
+  await expect(page.getByText('Song of the Sea')).toBeVisible()
+  // Uguale all'italiano: non si ripete.
+  await expect(page.getByText('Oppenheimer', { exact: true })).toHaveCount(1)
+})

@@ -11,7 +11,7 @@
 // mette nel modulo giusto e la ri-esporta da qui.
 export { tmdbConfigurato } from './tmdb/client'
 export { posterUrl, backdropUrl, profileUrl, logoUrl, getImmaginiTitolo } from './tmdb/images'
-export { altriTitoli, isReadableTitle, fallbackReadableTitle, displayTitle } from './tmdb/titles'
+export { altriTitoli, isReadableTitle, fallbackReadableTitle, displayTitle, titoloOriginale } from './tmdb/titles'
 export { type BrowseSort } from './tmdb/discover'
 export {
   getTrending,
