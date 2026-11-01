@@ -1,3 +1,5 @@
+import { logFailure } from './logFailure'
+
 // Le liste dei premi: Oscar in tutte le categorie, i festival, i Golden Globe,
 // i BAFTA e i David. TMDB non sa nulla dei premi; Wikidata sì, ed è libero
 // (CC0), senza chiave, aperto ai browser (CORS) e aggiornato da sé: il
@@ -138,23 +140,30 @@ export interface Vincitore {
 
 export const WIKIDATA_SPARQL = 'https://query.wikidata.org/sparql'
 
-// La stringa dentro una query SPARQL: niente virgolette che la chiudano prima.
-const letterale = (s: string) => `"${s.replace(/["\\]/g, '')}"@en`
+export const WIKIDATA_API = 'https://www.wikidata.org/w/api.php'
 
-function trovaPremio(c: Categoria): string {
-  if (c.qid) return `VALUES ?premio { wd:${c.qid} }`
-  const voce = letterale(c.voce ?? '')
-  return `{ ?articolo schema:about ?premio ; schema:isPartOf <https://en.wikipedia.org/> ; schema:name ${voce} . }
-  UNION { ?premio rdfs:label ${voce} . }`
+// Il premio della voce di Wikipedia, con l'API di Wikidata: una richiesta
+// lampo. Cercarlo per nome dentro la query dei vincitori faceva scorrere a
+// Wikidata tutti i premi esistenti prima di trovarlo: oltre un minuto, e la
+// pagina restava su «Cerco i vincitori…».
+export function urlVoce(voce: string): string {
+  const q = new URLSearchParams({ action: 'wbgetentities', sites: 'enwiki', titles: voce, props: 'info', format: 'json', origin: '*' })
+  return `${WIKIDATA_API}?${q}`
+}
+
+export function leggiVoce(json: { entities?: Record<string, { id?: string; missing?: string }> }): string | null {
+  const trovato = Object.values(json.entities ?? {}).find((e) => e.id && /^Q\d+$/.test(e.id) && e.missing === undefined)
+  return trovato?.id ?? null
 }
 
 // Due modi in cui Wikidata registra un premio: sul film (miglior film), o
 // sulla persona che l'ha vinto, col film in «per l'opera» (P1686: attori,
 // regia, fotografia…). Solo i film con un id TMDB: un titolo a cui su
 // Wikidata manca l'id si perde, ed è il prezzo di non mantenere a mano la lista.
-export function querySparql(c: Categoria): string {
+export function querySparql(qid: string): string {
+  if (!/^Q\d+$/.test(qid)) throw new Error(`Codice Wikidata non valido: ${qid}`)
   return `SELECT ?film ?tmdb ?anno ?titolo ?persona WHERE {
-  ${trovaPremio(c)}
+  VALUES ?premio { wd:${qid} }
   { ?film p:P166 ?st . ?st ps:P166 ?premio . }
   UNION
   { ?chi p:P166 ?st . ?st ps:P166 ?premio . ?st pq:P1686 ?film .
@@ -199,15 +208,62 @@ export function leggiRisposta(json: RispostaSparql): Vincitore[] {
   return [...visti.values()].sort((a, b) => (b.anno ?? -Infinity) - (a.anno ?? -Infinity))
 }
 
+// Wikidata da sé interrompe una query dopo un minuto, e risponde con un errore
+// senza le intestazioni CORS: il browser vede solo «Failed to fetch». Meglio
+// fermarsi prima e dirlo in italiano.
+export const ATTESA_MASSIMA = 30_000
+
+async function chiedi(url: string, accept: string): Promise<Response> {
+  const ferma = new AbortController()
+  const timer = setTimeout(() => ferma.abort(), ATTESA_MASSIMA)
+  try {
+    const r = await fetch(url, { headers: { Accept: accept }, signal: ferma.signal })
+    if (!r.ok) throw new Error(`Wikidata ha risposto ${r.status}`)
+    return r
+  } catch (e) {
+    if (ferma.signal.aborted) throw new Error('non ha risposto in tempo')
+    if (e instanceof TypeError) throw new Error('non raggiungibile: rete assente o richiesta respinta')
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function sparql(query: string): Promise<RispostaSparql> {
-  const url = `${WIKIDATA_SPARQL}?format=json&query=${encodeURIComponent(query)}`
-  const r = await fetch(url, { headers: { Accept: 'application/sparql-results+json' } })
-  if (!r.ok) throw new Error(`Wikidata ha risposto ${r.status}`)
+  const r = await chiedi(`${WIKIDATA_SPARQL}?format=json&query=${encodeURIComponent(query)}`, 'application/sparql-results+json')
   return (await r.json()) as RispostaSparql
 }
 
+// Il codice di una voce non cambia: trovato una volta, resta (in memoria e
+// nel dispositivo), e le visite dopo vanno dritte ai vincitori.
+const chiaveVoce = (voce: string) => `ciak-premio-voce-${voce}`
+
+export async function codiceDelPremio(c: Categoria): Promise<string | null> {
+  if (c.qid) return c.qid
+  if (!c.voce) return null
+  try {
+    const salvato = localStorage.getItem(chiaveVoce(c.voce))
+    if (salvato) return salvato
+  } catch (e) {
+    // localStorage negato (navigazione privata): si chiede a Wikidata.
+    logFailure('Codice del premio salvato illeggibile')(e)
+  }
+  const r = await chiedi(urlVoce(c.voce), 'application/json')
+  const qid = leggiVoce(await r.json())
+  if (qid) {
+    try {
+      localStorage.setItem(chiaveVoce(c.voce), qid)
+    } catch (e) {
+      logFailure('Codice del premio non salvato')(e)
+    }
+  }
+  return qid
+}
+
+// Una voce che Wikipedia non conosce dà una lista vuota («Lista non trovata»).
 export async function scaricaVincitori(c: Categoria): Promise<Vincitore[]> {
-  return leggiRisposta(await sparql(querySparql(c)))
+  const qid = await codiceDelPremio(c)
+  return qid ? leggiRisposta(await sparql(querySparql(qid))) : []
 }
 
 // Una settimana: i premi cambiano una volta l'anno, e Wikidata chiede di non
