@@ -133,11 +133,16 @@ test('la classifica degli anime chiede animazione giapponese, e l anime già vis
 })
 
 test('nelle categorie a una persona si vede chi ha vinto, e la categoria resta nell indirizzo', async ({ page }) => {
-  await mockTmdb(page, { detailOf: (_t, id) => movieDetail(id, id === 155 ? 'Il cavaliere oscuro' : `Titolo ${id}`) })
+  await mockTmdb(page, {
+    detailOf: (_t, id) => movieDetail(id, id === 155 ? 'Il cavaliere oscuro' : `Titolo ${id}`),
+    wikidataVoci: { 'Academy Award for Best Supporting Actor': 'Q106291' },
+  })
   await mockSupabase(page, { user_titles: [] })
   await page.route('https://query.wikidata.org/sparql**', async (route) => {
     const q = new URL(route.request().url()).searchParams.get('query') ?? ''
-    const bindings = q.includes('Academy Award for Best Supporting Actor"')
+    // Il premio arriva per codice, già trovato dalla voce: è ciò che tiene
+    // la query rapida.
+    const bindings = q.includes('VALUES ?premio { wd:Q106291 }')
       ? [{ film: { value: 'http://www.wikidata.org/entity/Q163872' }, tmdb: { value: '155' }, anno: { value: '2009' }, titolo: { value: 'Il cavaliere oscuro' }, persona: { value: 'Heath Ledger' } }]
       : []
     await route.fulfill({ json: { results: { bindings } } })

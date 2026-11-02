@@ -149,11 +149,14 @@ Due guardie automatiche, oltre ai test veri e propri:
   Wikidata dà l'anno e l'id TMDB, la card la dà TMDB. Una categoria si trova
   per codice Q solo se verificato, altrimenti per il titolo della sua voce
   sulla Wikipedia inglese (stabile e unico): un codice indovinato a memoria
-  porta a una lista sbagliata. I premi a una persona (attori, regia,
+  porta a una lista sbagliata. La voce si traduce in codice con l'API di
+  Wikidata (`wbgetentities`, istantanea, poi salvata), e la query SPARQL parte
+  **sempre** da un codice: cercare il premio per nome dentro la query faceva
+  scorrere a Wikidata tutti i premi, oltre il suo minuto di tempo massimo. I premi a una persona (attori, regia,
   fotografia) stanno sulla persona, col film in «per l'opera» (P1686). La
   scheda di un titolo mostra i suoi premi (`PremiVinti`). La lista si tiene
   una settimana in `localStorage`; negli E2E `mockTmdb` intercetta anche
-  `query.wikidata.org` (opzione `wikidata`).
+  Wikidata (opzioni `wikidata` e `wikidataVoci`).
 
 ## Struttura
 

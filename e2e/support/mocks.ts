@@ -57,6 +57,9 @@ export interface TmdbOverrides {
   // Le righe SPARQL che Wikidata manda per una query (premi). Senza, nessun
   // premio: ma la richiesta resta intercettata, perché i test non escano in rete.
   wikidata?: (query: string) => unknown[]
+  // Il codice Q dei premi per voce di Wikipedia (l'API di Wikidata). Una voce
+  // che non c'è risulta inesistente, come su Wikidata.
+  wikidataVoci?: Record<string, string>
 }
 
 // Conta le chiamate a discover per verificare, ad esempio, che cambiare
@@ -71,6 +74,11 @@ export async function mockTmdb(page: Page, over: TmdbOverrides = {}): Promise<Tm
   await page.route('https://query.wikidata.org/sparql**', async (route) => {
     const query = new URL(route.request().url()).searchParams.get('query') ?? ''
     await route.fulfill({ json: { results: { bindings: over.wikidata?.(query) ?? [] } } })
+  })
+  await page.route('https://www.wikidata.org/w/api.php**', async (route) => {
+    const voce = new URL(route.request().url()).searchParams.get('titles') ?? ''
+    const qid = over.wikidataVoci?.[voce]
+    await route.fulfill({ json: { entities: qid ? { [qid]: { id: qid } } : { '-1': { site: 'enwiki', title: voce, missing: '' } } } })
   })
 
   await page.route(PROXY, async (route: Route) => {
