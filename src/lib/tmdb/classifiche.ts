@@ -14,8 +14,10 @@ export interface FiltriMigliori {
   al?: string
   // Quanti voti servono perché un titolo sia preso sul serio.
   votiMinimi?: number
-  // Solo l'animazione (genere 16), e la lingua originale: è così che Ciak
-  // distingue gli anime (giapponese) dai cartoni (inglese), come nella ricerca.
+  // true: solo l'animazione (genere 16); con la lingua originale è così che
+  // Ciak distingue gli anime (giapponese) dai cartoni (inglese), come nella
+  // ricerca. false: niente animazione, perché «Serie TV» mescolata ad anime e
+  // cartoni confondeva. Assente: tutto.
   animazione?: boolean
   lingua?: string
 }
@@ -33,6 +35,7 @@ export function parametriMigliori(type: TmdbType, filtri: FiltriMigliori, page: 
   const generi = (filtri.genreIds ?? []).filter((g) => g !== 16).slice(0, 3).join('|')
   if (filtri.animazione) params.with_genres = generi ? `16,${generi}` : '16'
   else if (generi) params.with_genres = generi
+  if (filtri.animazione === false) params.without_genres = '16'
   if (filtri.lingua) params.with_original_language = filtri.lingua
   if (filtri.dal) params[`${campoData}.gte`] = filtri.dal
   if (filtri.al) params[`${campoData}.lte`] = filtri.al

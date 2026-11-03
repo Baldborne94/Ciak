@@ -24,4 +24,10 @@ describe('parametriMigliori', () => {
     expect(film).toMatchObject({ with_genres: '27', 'primary_release_date.gte': '1970-01-01', 'primary_release_date.lte': '1979-12-31' })
     expect(parametriMigliori('tv', { dal: '1990-01-01' }, 1)['first_air_date.gte']).toBe('1990-01-01')
   })
+
+  it('Film e Serie TV senza animazione: anime e cartoni hanno le loro voci', () => {
+    expect(parametriMigliori('tv', { animazione: false }, 1).without_genres).toBe('16')
+    expect(parametriMigliori('tv', {}, 1).without_genres).toBeUndefined()
+    expect(parametriMigliori('tv', { animazione: true }, 1).without_genres).toBeUndefined()
+  })
 })

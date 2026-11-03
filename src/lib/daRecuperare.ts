@@ -47,6 +47,27 @@ export function generiPreferiti(titoli: UserTitle[], quanti = 3): number[] {
     .map(([id]) => id)
 }
 
+// Quanti voti servono perché un titolo conti, per livello e per categoria.
+// Ordinando per voto medio senza una soglia, in cima finiscono i titoli con
+// nove voti a dieci: cortometraggi sconosciuti, non capolavori. Ma la soglia
+// giusta dipende da cosa si classifica: un film celebre ha decine di migliaia
+// di voti su TMDB, un cartone amatissimo qualche centinaio. Con la soglia dei
+// film (1000) Samurai Jack e le Tartarughe Ninja non comparivano mai.
+export type LivelloSoglia = 'celebrati' | 'equilibrata' | 'meno-noti'
+export type CategoriaClassifica = 'movie' | 'tv' | 'animazione' | 'anime' | 'cartoni'
+
+const SOGLIE: Record<CategoriaClassifica, Record<LivelloSoglia, number>> = {
+  movie: { celebrati: 3000, equilibrata: 1000, 'meno-noti': 300 },
+  tv: { celebrati: 1500, equilibrata: 500, 'meno-noti': 150 },
+  animazione: { celebrati: 2000, equilibrata: 600, 'meno-noti': 150 },
+  anime: { celebrati: 800, equilibrata: 250, 'meno-noti': 50 },
+  cartoni: { celebrati: 500, equilibrata: 150, 'meno-noti': 30 },
+}
+
+export function sogliaVoti(categoria: CategoriaClassifica, livello: LivelloSoglia): number {
+  return SOGLIE[categoria][livello]
+}
+
 // Gli estremi di un decennio, nella forma che TMDB accetta.
 export function intervalloDecennio(decennio: number): { dal: string; al: string } {
   return { dal: `${decennio}-01-01`, al: `${decennio + 9}-12-31` }

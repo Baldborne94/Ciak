@@ -100,7 +100,7 @@ test('la soglia dei voti arriva davvero a TMDB', async ({ page }) => {
 
   await page.goto('/da-recuperare')
   await expect(page.getByText('Il Padrino').first()).toBeVisible()
-  await page.getByLabel('Selezione').selectOption('3000')
+  await page.getByLabel('Selezione').selectOption({ label: 'Solo i celebrati' })
 
   await expect.poll(() => viste).toContain('3000')
   expect(calls.discover.at(-1)?.sortBy).toBe('vote_average.desc')
@@ -132,4 +132,44 @@ test('sotto il titolo italiano c è l originale', async ({ page }) => {
   await expect(page.getByText('Song of the Sea')).toBeVisible()
   // Uguale all'italiano: non si ripete.
   await expect(page.getByText('Oppenheimer', { exact: true })).toHaveCount(1)
+})
+
+test('i cartoni usano una soglia di voti alla loro scala', async ({ page }) => {
+  // Con la soglia dei film (1000 voti) Samurai Jack e le Tartarughe Ninja,
+  // che su TMDB ne hanno qualche centinaio, non comparivano mai.
+  const viste: string[] = []
+  await mockTmdb(page, { discover: () => [tv(2723, 'Samurai Jack')] })
+  await mockSupabase(page, { user_titles: [] })
+  await page.route('**/api/tmdb*', async (route) => {
+    const p = new URL(route.request().url()).searchParams
+    if (p.get('path') === '/discover/tv' && p.get('language') !== 'en-US') viste.push(p.get('vote_count.gte') ?? '')
+    await route.fallback()
+  })
+
+  await page.goto('/da-recuperare')
+  await page.getByRole('button', { name: 'Cartoni' }).click()
+  await expect(page.getByAltText('Samurai Jack')).toBeVisible()
+  await expect.poll(() => viste.at(-1)).toBe('150')
+
+  await page.getByLabel('Selezione').selectOption({ label: 'Anche i meno noti' })
+  await expect.poll(() => viste.at(-1)).toBe('30')
+})
+
+test('«Serie TV» non mescola anime e cartoni, che sulle card si chiamano col loro nome', async ({ page }) => {
+  const senza: string[] = []
+  await mockTmdb(page, { discover: () => [tv(46261, 'Konosuba', { genre_ids: [16, 35], original_language: 'ja' }), tv(1, 'The Rookie', { genre_ids: [80] })] })
+  await mockSupabase(page, { user_titles: [] })
+  await page.route('**/api/tmdb*', async (route) => {
+    const p = new URL(route.request().url()).searchParams
+    if (p.get('path') === '/discover/tv' && p.get('language') !== 'en-US') senza.push(p.get('without_genres') ?? '')
+    await route.fallback()
+  })
+
+  await page.goto('/da-recuperare')
+  await page.getByRole('button', { name: 'Serie TV' }).click()
+  await expect.poll(() => senza.at(-1)).toBe('16')
+
+  // Il finto TMDB non filtra: qui conta che la card dica cosa è.
+  await expect(page.getByText(/^Anime · /)).toBeVisible()
+  await expect(page.getByText(/^Serie TV · /)).toBeVisible()
 })
