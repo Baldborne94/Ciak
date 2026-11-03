@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { MediaItem, TitleStatus } from '../lib/types'
 import { posterUrl, displayTitle, titoloOriginale } from '../lib/tmdb'
+import { etichettaTipo } from '../lib/etichettaTipo'
 import { useLibrary } from '../lib/libraryCtx'
 import { useAuth } from '../lib/auth'
 import { upsertUserTitle, refFromMedia } from '../lib/userTitles'
@@ -193,7 +194,7 @@ export default function MediaCard({
             </p>
           )}
           <p className="mt-0.5 text-xs text-zinc-500">
-            {item.mediaType === 'tv' ? 'Serie TV' : 'Film'} · {year}
+            {etichettaTipo(item)} · {year}
           </p>
         </div>
       </Link>

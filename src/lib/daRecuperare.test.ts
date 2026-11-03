@@ -5,6 +5,7 @@ import {
   generiPreferiti,
   intervalloDecennio,
   raccogliNonVisti,
+  sogliaVoti,
 } from './daRecuperare'
 import type { MediaItem, MediaType, UserTitle } from './types'
 
@@ -178,5 +179,27 @@ describe('raccogliNonVisti', () => {
 
     expect(out.items).toEqual([])
     expect(c.chiamate).toHaveLength(4)
+  })
+})
+
+describe('sogliaVoti', () => {
+  it('i film tengono la soglia di sempre', () => {
+    expect(sogliaVoti('movie', 'celebrati')).toBe(3000)
+    expect(sogliaVoti('movie', 'equilibrata')).toBe(1000)
+    expect(sogliaVoti('movie', 'meno-noti')).toBe(300)
+  })
+
+  it('i cartoni hanno una soglia alla loro scala, o non ne compare quasi nessuno', () => {
+    // Samurai Jack e le Tartarughe Ninja hanno qualche centinaio di voti su
+    // TMDB: con i 1000 dei film restavano fuori anche dalla classifica completa.
+    expect(sogliaVoti('cartoni', 'equilibrata')).toBeLessThan(300)
+    expect(sogliaVoti('cartoni', 'meno-noti')).toBeLessThanOrEqual(30)
+  })
+
+  it('in ogni categoria i livelli vanno dal più severo al più largo', () => {
+    for (const c of ['movie', 'tv', 'animazione', 'anime', 'cartoni'] as const) {
+      expect(sogliaVoti(c, 'celebrati')).toBeGreaterThan(sogliaVoti(c, 'equilibrata'))
+      expect(sogliaVoti(c, 'equilibrata')).toBeGreaterThan(sogliaVoti(c, 'meno-noti'))
+    }
   })
 })

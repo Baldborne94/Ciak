@@ -12,6 +12,9 @@ import {
   generiPreferiti,
   intervalloDecennio,
   raccogliNonVisti,
+  sogliaVoti,
+  type CategoriaClassifica,
+  type LivelloSoglia,
 } from '../lib/daRecuperare'
 import type { Genre, MediaItem, TmdbType, UserTitle } from '../lib/types'
 
@@ -30,23 +33,23 @@ const NESSUNA = new Set<string>()
 
 // Cosa si classifica. Anime e cartoni sono serie animate distinte dalla lingua
 // originale, come nella ricerca; i film d'animazione (Ghibli, Pixar) sono film.
-type Categoria = 'movie' | 'tv' | 'animazione' | 'anime' | 'cartoni'
+type Categoria = CategoriaClassifica
 const CATEGORIE: { value: Categoria; label: string; tipo: TmdbType; filtri: Pick<FiltriMigliori, 'animazione' | 'lingua'> }[] = [
-  { value: 'movie', label: 'Film', tipo: 'movie', filtri: {} },
-  { value: 'tv', label: 'Serie TV', tipo: 'tv', filtri: {} },
+  // Film e Serie TV senza animazione: anime e cartoni hanno le loro voci.
+  { value: 'movie', label: 'Film', tipo: 'movie', filtri: { animazione: false } },
+  { value: 'tv', label: 'Serie TV', tipo: 'tv', filtri: { animazione: false } },
   { value: 'animazione', label: 'Film d’animazione', tipo: 'movie', filtri: { animazione: true } },
   { value: 'anime', label: 'Anime', tipo: 'tv', filtri: { animazione: true, lingua: 'ja' } },
   { value: 'cartoni', label: 'Cartoni', tipo: 'tv', filtri: { animazione: true, lingua: 'en' } },
 ]
 
-// Quanti voti servono perché un titolo conti. Ordinando per voto medio senza
-// una soglia, in cima finiscono i film con nove voti a dieci: cortometraggi
-// sconosciuti, non capolavori. Più alta la soglia, più il risultato somiglia
-// a un canone condiviso; più bassa, più si scende nel poco battuto.
-const SOGLIE = [
-  { value: 3000, label: 'Solo i celebrati' },
-  { value: 1000, label: 'Equilibrata' },
-  { value: 300, label: 'Anche i meno noti' },
+// Più alta la soglia dei voti, più il risultato somiglia a un canone
+// condiviso; più bassa, più si scende nel poco battuto. Il numero dipende
+// dalla categoria (sogliaVoti).
+const LIVELLI: { value: LivelloSoglia; label: string }[] = [
+  { value: 'celebrati', label: 'Solo i celebrati' },
+  { value: 'equilibrata', label: 'Equilibrata' },
+  { value: 'meno-noti', label: 'Anche i meno noti' },
 ]
 
 const DECENNI = [2020, 2010, 2000, 1990, 1980, 1970, 1960, 1950]
@@ -71,7 +74,8 @@ export default function DaRecuperare() {
   const [genere, setGenere] = useState<Genere>('tutti')
   const [generi, setGeneri] = useState<Genre[]>([])
   const [decennio, setDecennio] = useState<number | 'all'>('all')
-  const [votiMinimi, setVotiMinimi] = useState(1000)
+  const [livello, setLivello] = useState<LivelloSoglia>('equilibrata')
+  const votiMinimi = sogliaVoti(categoria, livello)
 
   useEffect(() => {
     if (!user) {
@@ -198,7 +202,8 @@ export default function DaRecuperare() {
           >
             <option value="tutti">Tutti i generi</option>
             <option value="miei">I generi che guardo</option>
-            {generi.filter((g) => !(scelta.filtri.animazione && g.id === 16)).map((g) => (
+            {/* L'animazione è un tipo, non un genere da scegliere qui. */}
+            {generi.filter((g) => g.id !== 16).map((g) => (
               <option key={g.id} value={g.id}>{g.name}</option>
             ))}
           </select>
@@ -219,11 +224,11 @@ export default function DaRecuperare() {
         <FilterGroup label="Selezione">
           <select
             aria-label="Selezione"
-            value={votiMinimi}
-            onChange={(e) => setVotiMinimi(Number(e.target.value))}
+            value={livello}
+            onChange={(e) => setLivello(e.target.value as LivelloSoglia)}
             className={filterSelectClass}
           >
-            {SOGLIE.map((s) => (
+            {LIVELLI.map((s) => (
               <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
