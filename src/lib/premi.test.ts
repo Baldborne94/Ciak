@@ -51,6 +51,11 @@ describe('leggiRisposta', () => {
     expect(v.find((x) => x.qid === 'Q6')?.persone).toEqual(['Anna', 'Bruno'])
   })
 
+  it('un premio sul film stesso non ha persona (la query la manda vuota)', () => {
+    const v = leggiRisposta({ results: { bindings: [riga('Q1', '238', '1973', 'Il padrino', '')] } })
+    expect(v[0].persone).toEqual([])
+  })
+
   it('scarta le righe senza un id TMDB valido', () => {
     expect(leggiRisposta({ results: { bindings: [riga('Q1', 'abc', '2000'), riga('Q2', '0', '2001')] } })).toEqual([])
     expect(leggiRisposta({})).toEqual([])
@@ -62,8 +67,26 @@ describe('querySparql', () => {
     const q = querySparql('Q179808')
     expect(q).toContain('VALUES ?premio { wd:Q179808 }')
     expect(q).toContain('wdt:P4947 ?tmdb')
-    // Il premio a un direttore della fotografia sta su di lui, col film in P1686.
-    expect(q).toContain('pq:P1686 ?film')
+    // Il premio a un direttore della fotografia sta su di lui, col film in
+    // P1686; senza, il premio è sul film stesso.
+    expect(q).toContain('OPTIONAL { ?st pq:P1686 ?opera . }')
+    expect(q).toContain('BIND(COALESCE(?opera, ?chi) AS ?film)')
+  })
+
+  it('parte dalle dichiarazioni di quel premio, in un ordine che Wikidata non può rimescolare', () => {
+    // Lasciato all'ottimizzatore, con un UNION, partiva da tutti i «per
+    // l'opera» del mondo: oltre il tempo massimo anche col codice del premio.
+    const q = querySparql('Q106800')
+    expect(q).toContain('hint:Query hint:optimizer "None"')
+    expect(q).not.toContain('UNION')
+    expect(q.indexOf('?st ps:P166 ?premio')).toBeLessThan(q.indexOf('?chi p:P166 ?st'))
+    expect(q.indexOf('?chi p:P166 ?st')).toBeLessThan(q.indexOf('pq:P1686'))
+  })
+
+  it('la scheda di un titolo parte dal titolo, anche lei in ordine fisso', () => {
+    const q = queryPremiDelTitolo('movie', 550)
+    expect(q).toContain('hint:Query hint:optimizer "None"')
+    expect(q.indexOf('wdt:P4947 "550"')).toBeLessThan(q.indexOf('ps:P166 ?premio'))
   })
 
   it('niente nella query che non sia un codice Wikidata', () => {
