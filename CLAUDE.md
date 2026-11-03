@@ -152,7 +152,10 @@ Due guardie automatiche, oltre ai test veri e propri:
   porta a una lista sbagliata. La voce si traduce in codice con l'API di
   Wikidata (`wbgetentities`, istantanea, poi salvata), e la query SPARQL parte
   **sempre** da un codice: cercare il premio per nome dentro la query faceva
-  scorrere a Wikidata tutti i premi, oltre il suo minuto di tempo massimo. I premi a una persona (attori, regia,
+  scorrere a Wikidata tutti i premi, oltre il suo minuto di tempo massimo.
+  Anche col codice, l'ordine della query è scritto a mano con
+  `hint:Query hint:optimizer "None"` e senza `UNION`: lasciato
+  all'ottimizzatore, partiva da tutti i «per l'opera» del mondo. I premi a una persona (attori, regia,
   fotografia) stanno sulla persona, col film in «per l'opera» (P1686). La
   scheda di un titolo mostra i suoi premi (`PremiVinti`). La lista si tiene
   una settimana in `localStorage`; negli E2E `mockTmdb` intercetta anche

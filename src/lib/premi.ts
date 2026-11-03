@@ -162,15 +162,23 @@ export function leggiVoce(json: { entities?: Record<string, { id?: string; missi
 // Wikidata manca l'id si perde, ed è il prezzo di non mantenere a mano la lista.
 export function querySparql(qid: string): string {
   if (!/^Q\d+$/.test(qid)) throw new Error(`Codice Wikidata non valido: ${qid}`)
+  // L'ordine è scritto a mano e l'ottimizzatore spento (hint:optimizer
+  // "None"): si parte dalle poche dichiarazioni di QUEL premio, e per
+  // ognuna si guarda chi l'ha ricevuto e per quale opera. Con un UNION e
+  // l'ordine lasciato a Wikidata, la query partiva da tutti i «per l'opera»
+  // del mondo e superava il tempo massimo anche col codice del premio.
+  // Senza «per l'opera» il premio è sul film stesso (miglior film).
   return `SELECT ?film ?tmdb ?anno ?titolo ?persona WHERE {
+  hint:Query hint:optimizer "None" .
   VALUES ?premio { wd:${qid} }
-  { ?film p:P166 ?st . ?st ps:P166 ?premio . }
-  UNION
-  { ?chi p:P166 ?st . ?st ps:P166 ?premio . ?st pq:P1686 ?film .
-    OPTIONAL { ?chi rdfs:label ?chiIt . FILTER(LANG(?chiIt) = "it") }
-    OPTIONAL { ?chi rdfs:label ?chiEn . FILTER(LANG(?chiEn) = "en") }
-    BIND(COALESCE(?chiIt, ?chiEn) AS ?persona) }
+  ?st ps:P166 ?premio .
+  ?chi p:P166 ?st .
+  OPTIONAL { ?st pq:P1686 ?opera . }
+  BIND(COALESCE(?opera, ?chi) AS ?film)
   ?film wdt:P4947 ?tmdb .
+  OPTIONAL { ?chi rdfs:label ?chiIt . FILTER(LANG(?chiIt) = "it") }
+  OPTIONAL { ?chi rdfs:label ?chiEn . FILTER(LANG(?chiEn) = "en") }
+  BIND(IF(BOUND(?opera), COALESCE(?chiIt, ?chiEn, ""), "") AS ?persona)
   OPTIONAL { ?st pq:P585 ?data . }
   BIND(YEAR(?data) AS ?anno)
   OPTIONAL { ?film rdfs:label ?it . FILTER(LANG(?it) = "it") }
@@ -297,11 +305,14 @@ export interface PremioVinto {
 // P4947 è l'id TMDB dei film, P4983 quello delle serie.
 export function queryPremiDelTitolo(tipo: 'movie' | 'tv', tmdbId: number): string {
   const proprieta = tipo === 'movie' ? 'P4947' : 'P4983'
+  // Come per le liste: ordine scritto a mano, dal titolo ai suoi premi.
   return `SELECT ?premio ?premioLabel ?anno ?chiLabel ?voce WHERE {
+  hint:Query hint:optimizer "None" .
   ?film wdt:${proprieta} "${Math.trunc(tmdbId)}" .
-  { ?film p:P166 ?st . ?st ps:P166 ?premio . }
+  { ?film p:P166 ?st . }
   UNION
-  { ?chi p:P166 ?st . ?st ps:P166 ?premio . ?st pq:P1686 ?film . }
+  { ?st pq:P1686 ?film . ?chi p:P166 ?st . }
+  ?st ps:P166 ?premio .
   OPTIONAL { ?st pq:P585 ?data . }
   BIND(YEAR(?data) AS ?anno)
   OPTIONAL { ?articolo schema:about ?premio ; schema:isPartOf <https://en.wikipedia.org/> ; schema:name ?voce . }
