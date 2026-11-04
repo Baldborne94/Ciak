@@ -34,7 +34,22 @@ describe('leggiRisposta', () => {
       results: { bindings: [riga('Q1', '238', '1973', 'Il padrino'), riga('Q2', '872585', '2024', 'Oppenheimer'), riga('Q3', '99', undefined, 'Senza data')] },
     })
     expect(v.map((x) => x.titolo)).toEqual(['Oppenheimer', 'Il padrino', 'Senza data'])
-    expect(v[0]).toEqual({ qid: 'Q2', tmdbId: 872585, anno: 2024, titolo: 'Oppenheimer', persone: [] })
+    expect(v[0]).toEqual({ qid: 'Q2', tmdbId: 872585, anno: 2024, annoUscita: null, titolo: 'Oppenheimer', persone: [] })
+  })
+
+  it('senza l anno del premio tiene quello d uscita, e lo usa per ordinare', () => {
+    // Hamnet (2025) era in fondo alla lista con «Anno ?», dopo i film del 1930.
+    const v = leggiRisposta({
+      results: {
+        bindings: [
+          riga('Q1', '238', '1973', 'Il padrino'),
+          { ...riga('Q9', '858024', undefined, 'Hamnet'), annoUscita: { value: '2025' } },
+          { ...riga('Q9', '858024', undefined, 'Hamnet'), annoUscita: { value: '2026' } },
+        ],
+      },
+    })
+    expect(v.map((x) => x.titolo)).toEqual(['Hamnet', 'Il padrino'])
+    expect(v[0]).toMatchObject({ anno: null, annoUscita: 2025 })
   })
 
   it('un film su più righe resta uno, con l anno più vecchio', () => {
@@ -89,6 +104,14 @@ describe('querySparql', () => {
     expect(q.indexOf('wdt:P4947 "550"')).toBeLessThan(q.indexOf('ps:P166 ?premio'))
   })
 
+  it('la data, se manca sul premio, si prende dalla cerimonia; e c è l anno d uscita', () => {
+    const q = querySparql('Q102427')
+    expect(q).toContain('pq:P805 ?cerimonia')
+    expect(q).toContain('COALESCE(?data, ?dataCerimonia)')
+    expect(q).toContain('wdt:P577 ?uscita')
+    expect(queryPremiDelTitolo('movie', 1)).toContain('pq:P805 ?cerimonia')
+  })
+
   it('niente nella query che non sia un codice Wikidata', () => {
     expect(() => querySparql('Q1 } DELETE')).toThrow()
   })
@@ -117,9 +140,11 @@ describe('usaCache', () => {
     expect(usaCache({ salvato: 0, vincitori: [] }, adesso, false)).toBe(true)
     expect(usaCache(null, adesso, false)).toBe(false)
   })
-  it('una copia del formato di prima, senza i vincitori per persona, si rinnova', () => {
-    const vecchia = { salvato: adesso, vincitori: [{ qid: 'Q1', tmdbId: 1, anno: 2000, titolo: 'X' }] }
-    expect(usaCache(vecchia as never, adesso, true)).toBe(false)
+  it('una copia di un formato precedente si rinnova', () => {
+    const senzaPersone = { salvato: adesso, vincitori: [{ qid: 'Q1', tmdbId: 1, anno: 2000, titolo: 'X' }] }
+    expect(usaCache(senzaPersone as never, adesso, true)).toBe(false)
+    const senzaUscita = { salvato: adesso, vincitori: [{ qid: 'Q1', tmdbId: 1, anno: null, titolo: 'X', persone: [] }] }
+    expect(usaCache(senzaUscita as never, adesso, true)).toBe(false)
   })
 })
 

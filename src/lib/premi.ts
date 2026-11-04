@@ -131,8 +131,11 @@ export interface Vincitore {
   // L'elemento di Wikidata: un film compare una volta, anche se ha due id TMDB.
   qid: string
   tmdbId: number
-  // L'anno del premio (la cerimonia, per gli Oscar); null se Wikidata non lo dice.
+  // L'anno del premio (la cerimonia, per gli Oscar); null se Wikidata non lo
+  // dice né sul premio né sulla cerimonia.
   anno: number | null
+  // L'anno d'uscita del film: si mostra, dichiarato, quando manca l'altro.
+  annoUscita: number | null
   titolo: string
   // Chi l'ha vinto, nei premi a una persona (attori, regia, fotografia…).
   persone: string[]
@@ -168,7 +171,7 @@ export function querySparql(qid: string): string {
   // l'ordine lasciato a Wikidata, la query partiva da tutti i «per l'opera»
   // del mondo e superava il tempo massimo anche col codice del premio.
   // Senza «per l'opera» il premio è sul film stesso (miglior film).
-  return `SELECT ?film ?tmdb ?anno ?titolo ?persona WHERE {
+  return `SELECT ?film ?tmdb ?anno ?annoUscita ?titolo ?persona WHERE {
   hint:Query hint:optimizer "None" .
   VALUES ?premio { wd:${qid} }
   ?st ps:P166 ?premio .
@@ -180,7 +183,13 @@ export function querySparql(qid: string): string {
   OPTIONAL { ?chi rdfs:label ?chiEn . FILTER(LANG(?chiEn) = "en") }
   BIND(IF(BOUND(?opera), COALESCE(?chiIt, ?chiEn, ""), "") AS ?persona)
   OPTIONAL { ?st pq:P585 ?data . }
-  BIND(YEAR(?data) AS ?anno)
+  # Molte dichiarazioni recenti non hanno la data, ma rimandano alla cerimonia
+  # («98ª edizione degli Oscar», P805), che la data ce l'ha.
+  OPTIONAL { ?st pq:P805 ?cerimonia . ?cerimonia wdt:P585 ?dataCerimonia . }
+  BIND(YEAR(COALESCE(?data, ?dataCerimonia)) AS ?anno)
+  # Ultimo ripiego: l'anno d'uscita del film, che la pagina dice per quello che è.
+  OPTIONAL { ?film wdt:P577 ?uscita . }
+  BIND(YEAR(?uscita) AS ?annoUscita)
   OPTIONAL { ?film rdfs:label ?it . FILTER(LANG(?it) = "it") }
   OPTIONAL { ?film rdfs:label ?en . FILTER(LANG(?en) = "en") }
   BIND(COALESCE(?it, ?en, "") AS ?titolo)
@@ -193,6 +202,11 @@ interface RispostaSparql {
 
 const qidDi = (uri: string | undefined) => uri?.split('/').pop() ?? ''
 
+function numero(valore: string | undefined): number | null {
+  const n = valore ? Number(valore) : NaN
+  return Number.isFinite(n) ? n : null
+}
+
 // Dal più recente al più vecchio; quelli senza anno in fondo.
 export function leggiRisposta(json: RispostaSparql): Vincitore[] {
   const visti = new Map<string, Vincitore>()
@@ -200,8 +214,8 @@ export function leggiRisposta(json: RispostaSparql): Vincitore[] {
     const qid = qidDi(b.film?.value)
     const tmdbId = Number(b.tmdb?.value)
     if (!qid || !Number.isInteger(tmdbId) || tmdbId <= 0) continue
-    const letto = b.anno?.value ? Number(b.anno.value) : null
-    const anno = Number.isFinite(letto) ? letto : null
+    const anno = numero(b.anno?.value)
+    const annoUscita = numero(b.annoUscita?.value)
     const persona = b.persona?.value
     const prima = visti.get(qid)
     if (prima) {
@@ -209,11 +223,16 @@ export function leggiRisposta(json: RispostaSparql): Vincitore[] {
       // ripetuto con due date. Si uniscono i nomi e vale la data più vecchia.
       if (persona && !prima.persone.includes(persona)) prima.persone.push(persona)
       if (anno !== null && (prima.anno === null || anno < prima.anno)) prima.anno = anno
+      // Più date d'uscita (paese per paese): vale la prima.
+      if (annoUscita !== null && (prima.annoUscita === null || annoUscita < prima.annoUscita)) prima.annoUscita = annoUscita
       continue
     }
-    visti.set(qid, { qid, tmdbId, anno, titolo: b.titolo?.value ?? '', persone: persona ? [persona] : [] })
+    visti.set(qid, { qid, tmdbId, anno, annoUscita, titolo: b.titolo?.value ?? '', persone: persona ? [persona] : [] })
   }
-  return [...visti.values()].sort((a, b) => (b.anno ?? -Infinity) - (a.anno ?? -Infinity))
+  // Senza l'anno del premio si ordina con quello d'uscita, invece di finire
+  // tutti in fondo: un vincitore del 2025 non va dopo quelli del 1930.
+  const chiave = (v: Vincitore) => v.anno ?? v.annoUscita ?? -Infinity
+  return [...visti.values()].sort((a, b) => chiave(b) - chiave(a))
 }
 
 // Wikidata da sé interrompe una query dopo un minuto, e risponde con un errore
@@ -287,7 +306,9 @@ export interface CacheVincitori {
 // si usa anche se vecchia (e se manca, si chiede comunque e si vedrà l'errore).
 // Una copia senza `persone` è del formato di prima: si rinnova.
 export function usaCache(c: CacheVincitori | null, adesso: number, online: boolean): boolean {
-  if (!c || !c.vincitori.every((v) => Array.isArray(v.persone))) return false
+  // Una copia di un formato precedente (senza persone, senza anno d'uscita)
+  // si rinnova, invece di mostrare per una settimana dati incompleti.
+  if (!c || !c.vincitori.every((v) => Array.isArray(v.persone) && 'annoUscita' in v)) return false
   return !online || adesso - c.salvato < DURATA_CACHE
 }
 
@@ -314,7 +335,10 @@ export function queryPremiDelTitolo(tipo: 'movie' | 'tv', tmdbId: number): strin
   { ?st pq:P1686 ?film . ?chi p:P166 ?st . }
   ?st ps:P166 ?premio .
   OPTIONAL { ?st pq:P585 ?data . }
-  BIND(YEAR(?data) AS ?anno)
+  # Molte dichiarazioni recenti non hanno la data, ma rimandano alla cerimonia
+  # («98ª edizione degli Oscar», P805), che la data ce l'ha.
+  OPTIONAL { ?st pq:P805 ?cerimonia . ?cerimonia wdt:P585 ?dataCerimonia . }
+  BIND(YEAR(COALESCE(?data, ?dataCerimonia)) AS ?anno)
   OPTIONAL { ?articolo schema:about ?premio ; schema:isPartOf <https://en.wikipedia.org/> ; schema:name ?voce . }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "it,en". }
 }`
@@ -330,8 +354,7 @@ export function leggiPremiDelTitolo(json: RispostaSparql): PremioVinto[] {
     const nome = b.premioLabel?.value ?? ''
     // Senza un nome leggibile Wikidata ripete il codice (Q123): non dice nulla.
     if (!qid || !nome || /^Q\d+$/.test(nome)) continue
-    const letto = b.anno?.value ? Number(b.anno.value) : null
-    const anno = Number.isFinite(letto) ? letto : null
+    const anno = numero(b.anno?.value)
     const chiave = `${qid}-${anno ?? ''}`
     const persona = b.chiLabel?.value
     const maggiore = QID_MAGGIORI.has(qid) || VOCI_MAGGIORI.has(b.voce?.value)

@@ -6,7 +6,7 @@ import { EmptyState, ErrorState, Loader } from '../components/States'
 import { FilterBar, FilterGroup, ChipGroup, filterSelectClass } from '../components/FilterBar'
 import { useLibrary } from '../lib/libraryCtx'
 import { usePremi } from '../lib/usePremi'
-import { GRUPPI, trovaCategoria } from '../lib/premi'
+import { GRUPPI, trovaCategoria, type Vincitore } from '../lib/premi'
 import type { MediaItem } from '../lib/types'
 
 // I vincitori dei grandi premi, anno per anno, con quanti ne hai visti: la
@@ -23,6 +23,14 @@ const ORDINI: { value: 'recenti' | 'vecchi'; label: string }[] = [
   { value: 'recenti', label: 'Più recenti' },
   { value: 'vecchi', label: 'Dal primo' },
 ]
+
+// L'anno del premio; se Wikidata non lo sa, l'anno d'uscita del film, detto
+// per quello che è (per gli Oscar il premio arriva l'anno dopo).
+function annoDaMostrare(v: Vincitore, item: MediaItem | undefined): string {
+  if (v.anno) return String(v.anno)
+  const uscita = v.annoUscita ?? (item?.releaseDate ? Number(item.releaseDate.slice(0, 4)) : null)
+  return uscita ? `Uscito nel ${uscita}` : 'Anno non indicato'
+}
 
 export default function PremiPage() {
   // La categoria sta nell'indirizzo: «Oscar per la fotografia» si può
@@ -117,7 +125,7 @@ export default function PremiPage() {
                 const item: MediaItem | undefined = film.get(v.tmdbId)
                 return (
                   <li key={v.qid}>
-                    <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-projector/80">{v.anno ?? 'Anno ?'}</p>
+                    <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-projector/80">{annoDaMostrare(v, item)}</p>
                     {/* Nei premi a una persona, chi l'ha vinto: il film da solo non lo dice. */}
                     {v.persone.length > 0 && <p className="mb-1 line-clamp-1 text-xs text-zinc-400">{v.persone.join(', ')}</p>}
                     {item ? (
