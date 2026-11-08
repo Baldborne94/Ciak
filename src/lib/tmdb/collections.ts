@@ -63,6 +63,14 @@ export async function getCollection(id: number): Promise<CollectionDetail> {
   }
 }
 
+// La saga di un film, o null se non ne ha. A differenza di getMovieCollectionId
+// un errore resta un errore: chi salva il risultato (le Saghe da completare)
+// non deve scambiare un TMDB che non risponde per «nessuna saga».
+export async function sagaDelFilm(movieId: number): Promise<number | null> {
+  const raw = await tmdbFetch<{ belongs_to_collection?: { id: number } | null }>(`/movie/${movieId}`)
+  return raw.belongs_to_collection?.id ?? null
+}
+
 // Lightweight collection-membership lookup for a movie (no heavy appends).
 export async function getMovieCollectionId(movieId: number): Promise<number | null> {
   try {

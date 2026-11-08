@@ -1,5 +1,6 @@
 import webpush from 'web-push'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { urlTmdb } from './tmdb'
 
 // Daily cron (Vercel): find alerts whose title has been released but the user
 // hasn't received a push yet, send a Web Push to each of their devices, then
@@ -53,6 +54,60 @@ export function cronAuthError(
   return null
 }
 
+// La data d'uscita che TMDB dà oggi, se è una data vera.
+export function dataDaTmdb(raw: { release_date?: string | null; first_air_date?: string | null }, tipo: string): string | null {
+  const d = tipo === 'movie' ? raw.release_date : raw.first_air_date
+  return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null
+}
+
+// Si aggiorna solo se TMDB dà una data, e diversa: una data che TMDB toglie
+// (succede, fra un annuncio e l'altro) non cancella quella che si sapeva.
+export function dataDaSalvare(salvata: string | null, daTmdb: string | null): string | null {
+  return daTmdb && daTmdb !== salvata ? daTmdb : null
+}
+
+// Quanti avvisi in attesa si rileggono per giro: il cron ha pochi secondi.
+const RILETTI_PER_GIRO = 80
+
+// Le date cambiano (un film rinviato) e un film annunciato spesso non ne ha:
+// senza rileggerle, un avviso salvato senza data non suonava mai, e uno con la
+// data vecchia suonava il giorno sbagliato. Prima di cercare gli usciti, si
+// chiede a TMDB la data di oggi degli avvisi ancora in attesa.
+async function aggiornaDate(db: SupabaseClient, chiave: string, oggi: string): Promise<number> {
+  const { data, error } = await db
+    .from('user_alerts')
+    .select('id, media_type, tmdb_id, release_date')
+    .eq('push_notified', false)
+    .or(`release_date.is.null,release_date.gt.${oggi}`)
+    .order('release_date', { ascending: true, nullsFirst: true })
+    .limit(RILETTI_PER_GIRO)
+  if (error) throw new Error(error.message)
+  const righe = (data ?? []) as { id: string; media_type: string; tmdb_id: number; release_date: string | null }[]
+  let aggiornati = 0
+  let falliti = 0
+  for (let i = 0; i < righe.length; i += 8) {
+    await Promise.all(
+      righe.slice(i, i + 8).map(async (r) => {
+        const tipo = r.media_type === 'movie' ? 'movie' : 'tv'
+        try {
+          const risposta = await fetch(urlTmdb(`/${tipo}/${r.tmdb_id}`, {}, chiave))
+          if (!risposta.ok) throw new Error(`TMDB ${risposta.status}`)
+          const nuova = dataDaSalvare(r.release_date, dataDaTmdb(await risposta.json(), tipo))
+          if (!nuova) return
+          const { error: e } = await db.from('user_alerts').update({ release_date: nuova }).eq('id', r.id)
+          if (e) throw new Error(e.message)
+          aggiornati++
+        } catch {
+          falliti++
+        }
+      }),
+    )
+  }
+  // Una riga col totale, non una per avviso.
+  if (falliti > 0) console.error(`[check-releases] date degli avvisi: ${falliti} su ${righe.length} non rilette`)
+  return aggiornati
+}
+
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   // Vercel invia da sé questa intestazione ai cron quando CRON_SECRET è fra le
   // variabili d'ambiente del progetto.
@@ -81,6 +136,18 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   const db = createClient(supabaseUrl, serviceKey)
   const today = new Date().toISOString().slice(0, 10)
 
+  // Senza chiave TMDB si va avanti con le date salvate: meglio avvisi coi dati
+  // di ieri che nessun avviso.
+  const chiaveTmdb = process.env.TMDB_API_KEY
+  let dateAggiornate = 0
+  if (chiaveTmdb) {
+    try {
+      dateAggiornate = await aggiornaDate(db, chiaveTmdb, today)
+    } catch (e) {
+      console.error('[check-releases] date degli avvisi non rilette:', e instanceof Error ? e.message : e)
+    }
+  }
+
   // Alerts released and not yet pushed.
   const { data: alerts, error: aErr } = await db
     .from('user_alerts')
@@ -94,7 +161,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
   }
   const rows = (alerts ?? []) as AlertRow[]
   if (rows.length === 0) {
-    res.status(200).json({ sent: 0, alerts: 0 })
+    res.status(200).json({ sent: 0, alerts: 0, dateAggiornate })
     return
   }
 
@@ -150,5 +217,5 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
     await db.from('push_subscriptions').delete().in('endpoint', staleEndpoints)
   }
 
-  res.status(200).json({ alerts: rows.length, sent, removedStale: staleEndpoints.length })
+  res.status(200).json({ alerts: rows.length, sent, removedStale: staleEndpoints.length, dateAggiornate })
 }
