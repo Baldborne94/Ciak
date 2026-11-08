@@ -206,7 +206,7 @@ describe('la facciata di tmdb', () => {
       'getSagaContinuations', 'getSearchTitles', 'getSeason', 'getSeasonEpisodeNames', 'getTitleDetails', 'getTitleGenres', 'getTitleSagas', 'getTrending', 'getUpcoming',
       'isReadableTitle', 'logoUrl', 'parametriMigliori', 'posterUrl', 'profileUrl',
       'resolveKeywordIds', 'resolvePeople', 'resolveSagaIds', 'resolveSagas',
-      'resolveStudios', 'resolveSuggestions', 'searchCollection',
+      'resolveStudios', 'resolveSuggestions', 'sagaDelFilm', 'searchCollection',
       'searchCompany', 'searchMulti', 'searchPerson', 'titoloOriginale', 'tmdbConfigurato',
     ]
     const modulo = await import('./tmdb')

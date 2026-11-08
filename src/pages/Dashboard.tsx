@@ -317,7 +317,15 @@ export default function Dashboard() {
         {/* Continue the saga — next unwatched film in sagas you've started */}
         {user && visibleSagas.length > 0 && (
           <section>
-            <SectionTitle icon="🎬" title="Continua la saga" />
+            <SectionTitle
+              icon="🎬"
+              title="Continua la saga"
+              action={
+                <Link to="/saghe" className="text-sm text-projector/80 hover:text-projector">
+                  Tutte le saghe →
+                </Link>
+              }
+            />
             <p className="-mt-3 mb-4 text-sm text-zinc-500">
               Il prossimo capitolo delle saghe che hai iniziato ma non ancora finito.
               <span className="text-zinc-600"> · passa il mouse e tocca ✕ per non vederla più.</span>

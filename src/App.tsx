@@ -24,6 +24,7 @@ const StatsPage = lazy(() => import('./pages/StatsPage'))
 const UpcomingPage = lazy(() => import('./pages/UpcomingPage'))
 const DaRecuperare = lazy(() => import('./pages/DaRecuperare'))
 const PremiPage = lazy(() => import('./pages/PremiPage'))
+const SaghePage = lazy(() => import('./pages/SaghePage'))
 const GenrePage = lazy(() => import('./pages/GenrePage'))
 const PersonPage = lazy(() => import('./pages/PersonPage'))
 const StudioPage = lazy(() => import('./pages/StudioPage'))
@@ -162,6 +163,14 @@ export default function App() {
         {/* «Da recuperare»: i più votati che non hai ancora in archivio.
             Richiede il login perché la sottrazione è la funzione: senza la tua
             collezione sarebbe solo la classifica di TMDB. */}
+        <Route
+          path="saghe"
+          element={
+            <RequireAuth>
+              <SaghePage />
+            </RequireAuth>
+          }
+        />
         <Route
           path="da-recuperare"
           element={

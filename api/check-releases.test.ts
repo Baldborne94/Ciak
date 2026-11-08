@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cronAuthError } from './check-releases'
+import { cronAuthError, dataDaSalvare, dataDaTmdb } from './check-releases'
 
 // Questo endpoint scrive nel database con la chiave service_role (aggira la
 // RLS) e manda notifiche a tutti gli utenti. L'autorizzazione è l'unica cosa
@@ -45,5 +45,23 @@ describe('cronAuthError', () => {
   it('il messaggio a segreto mancante dice cosa configurare', () => {
     // Se il cron smette di partire, il motivo dev'essere leggibile subito.
     expect(cronAuthError(undefined, undefined)?.error).toContain('CRON_SECRET')
+  })
+})
+
+describe('le date degli avvisi si rileggono da TMDB', () => {
+  it('prende la data giusta per il tipo, e solo se è una data', () => {
+    expect(dataDaTmdb({ release_date: '2026-12-18' }, 'movie')).toBe('2026-12-18')
+    expect(dataDaTmdb({ first_air_date: '2027-03-01', release_date: 'x' }, 'tv')).toBe('2027-03-01')
+    expect(dataDaTmdb({ release_date: '' }, 'movie')).toBeNull()
+    expect(dataDaTmdb({}, 'movie')).toBeNull()
+  })
+
+  it('aggiorna un avviso senza data o rinviato, non tocca quello uguale né cancella una data', () => {
+    // Il caso che mancava: un capitolo annunciato salvato senza data non
+    // avvisava mai, anche dopo che TMDB l'aveva fissata.
+    expect(dataDaSalvare(null, '2026-12-18')).toBe('2026-12-18')
+    expect(dataDaSalvare('2026-05-01', '2026-12-18')).toBe('2026-12-18')
+    expect(dataDaSalvare('2026-12-18', '2026-12-18')).toBeNull()
+    expect(dataDaSalvare('2026-12-18', null)).toBeNull()
   })
 })

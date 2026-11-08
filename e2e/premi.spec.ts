@@ -179,3 +179,21 @@ test('la scheda di un film dice quali premi ha vinto, e chi li ha vinti', async 
   await expect(sezione.getByText('Oscar al miglior film')).toBeVisible()
   await expect(sezione.getByText('Hoyte van Hoytema')).toBeVisible()
 })
+
+test('senza l anno del premio si vede quello d uscita, detto per quello che è', async ({ page }) => {
+  await mockTmdb(page, { detailOf: (_t, id) => movieDetail(id, id === 858024 ? 'Hamnet' : `Titolo ${id}`) })
+  await mockSupabase(page, { user_titles: [] })
+  await page.route('https://query.wikidata.org/sparql**', async (route) => {
+    const q = new URL(route.request().url()).searchParams.get('query') ?? ''
+    const bindings = q.includes('wd:Q102427')
+      ? [{ film: { value: 'http://www.wikidata.org/entity/Q9' }, tmdb: { value: '858024' }, annoUscita: { value: '2025' }, titolo: { value: 'Hamnet' } }]
+      : []
+    await route.fulfill({ json: { results: { bindings } } })
+  })
+
+  await page.goto('/premi')
+
+  const voce = page.getByRole('list', { name: 'Vincitori: Oscar · Miglior film' }).getByRole('listitem').first()
+  await expect(voce).toContainText('Uscito nel 2025')
+  await expect(page.getByText('Anno ?')).toHaveCount(0)
+})

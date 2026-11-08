@@ -55,6 +55,7 @@ export {
   getTitleDetails,
   getTitleSagas,
   getSagaContinuations,
+  sagaDelFilm,
   getRelatedCollections,
   type SagaContinuation,
 } from './tmdb/collections'

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
@@ -181,7 +182,11 @@ export default function DaRecuperare() {
             ? 'I titoli col voto più alto su TMDB, meno quelli che hai già visto. Quelli in lista restano, col loro segno.'
             : 'La classifica completa del pubblico di TMDB: quelli che hai già portano il loro segno.'
         }
-      />
+      >
+        <Link to="/saghe" className="btn-ghost whitespace-nowrap text-sm">
+          📚 Saghe da completare
+        </Link>
+      </PageHeader>
 
       <FilterBar>
         <FilterGroup label="Tipo">
