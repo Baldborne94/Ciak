@@ -7,17 +7,17 @@ import { EmptyState, ErrorState, Loader } from '../components/States'
 import { useAuth } from '../lib/auth'
 import { backfillGenreIds, getIdentity, listAll, saveIdentity } from '../lib/userTitles'
 import { listDiary } from '../lib/diary'
-import { getGenres, posterUrl } from '../lib/tmdb'
+import { getGenres, getTitleDetails, posterUrl } from '../lib/tmdb'
+import { contaPerTipo, serieDaRiconoscere } from '../lib/tipiGusti'
 import { useIdentityCtx } from '../lib/identityCtx'
 import { analyzeTaste, buildIdentity, personaById, type TasteInput } from '../lib/cinephileIdentity'
 import type { DiaryEntry, MediaType, UserTitle } from '../lib/types'
 
-const TYPE_LABELS: Record<string, string> = {
-  movie: 'Film',
-  tv: 'Serie TV',
-  anime: 'Anime',
-  cartoon: 'Cartoni',
-}
+// Quanti titoli col voto più alto si mostrano prima di «Mostra altri», e
+// quanti in più a ogni tocco: con 141 titoli da 5 stelle i primi dieci
+// nascondevano quasi tutto.
+const MIGLIORI_PRIMA = 24
+const MIGLIORI_IN_PIU = 48
 
 function Bar({ label, value, max, suffix }: { label: string; value: number; max: number; suffix?: string }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0
@@ -279,6 +279,25 @@ export default function TasteProfile() {
     }
   }, [user])
 
+  // La lingua originale delle serie animate, per dire Anime o Cartoni (vedi
+  // tipiGusti): non è nella scheda salvata, arriva da TMDB e resta in cache.
+  const [lingue, setLingue] = useState<Map<string, string | null>>(new Map())
+  useEffect(() => {
+    const refs = serieDaRiconoscere(rows.filter((r) => r.status === 'watched' || r.is_favorite))
+    if (refs.length === 0) return
+    let vivo = true
+    getTitleDetails(refs)
+      .then(({ dettagli, falliti }) => {
+        if (falliti > 0) logFailure(`Profilo, anime e cartoni: ${falliti} serie su ${refs.length} senza lingua`)(null)
+        if (vivo) setLingue(new Map([...dettagli].map(([k, d]) => [k, d.lingua])))
+      })
+      .catch(logFailure('Profilo, lingua delle serie animate'))
+    return () => {
+      vivo = false
+    }
+  }, [rows])
+  const [migliori, setMigliori] = useState(MIGLIORI_PRIMA)
+
   const stats = useMemo(() => {
     const watched = rows.filter((r) => r.status === 'watched')
     const favs = rows.filter((r) => r.is_favorite)
@@ -343,11 +362,7 @@ export default function TasteProfile() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 8)
 
-    const typeCounts = new Map<string, number>()
-    for (const r of taste) typeCounts.set(r.media_type, (typeCounts.get(r.media_type) ?? 0) + 1)
-    const types = [...typeCounts.entries()]
-      .map(([t, count]) => ({ label: TYPE_LABELS[t] ?? t, count }))
-      .sort((a, b) => b.count - a.count)
+    const types = contaPerTipo(taste, lingue)
 
     const ratingDist = [5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5].map((star) => ({
       star,
@@ -367,10 +382,9 @@ export default function TasteProfile() {
           Number(b.isFavorite) - Number(a.isFavorite) ||
           b.when.localeCompare(a.when),
       )
-      .slice(0, 10)
 
     return { watched, rated, favs, topGenres, types, ratingDist, avg, topRated }
-  }, [rows, diary, genreMap])
+  }, [rows, diary, genreMap, lingue])
 
   if (loading) return <Loader label="Analizzo i tuoi gusti…" />
   if (error) return <ErrorState title="Profilo non disponibile" message={error} />
@@ -467,10 +481,11 @@ export default function TasteProfile() {
           {/* Il criterio dichiarato: con molti 5 stelle "i dieci col voto più
               alto" non significa niente se non si dice come si scelgono. */}
           <p className="mb-4 text-xs text-zinc-500">
+            {stats.ratingDist[0].count > 0 && `${stats.ratingDist[0].count} a cinque stelle su ${stats.topRated.length} votati. `}
             A parità di voto vengono prima i preferiti, poi i visti più di recente.
           </p>
           <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-            {stats.topRated.map((r) => {
+            {stats.topRated.slice(0, migliori).map((r) => {
               const poster = posterUrl(r.poster_path)
               const type = r.media_type === 'movie' ? 'movie' : 'tv'
               return (
@@ -494,6 +509,13 @@ export default function TasteProfile() {
               )
             })}
           </div>
+          {stats.topRated.length > migliori && (
+            <div className="mt-6 flex justify-center">
+              <button type="button" onClick={() => setMigliori((n) => n + MIGLIORI_IN_PIU)} className="btn-ghost">
+                Mostra altri ({stats.topRated.length - migliori})
+              </button>
+            </div>
+          )}
         </section>
       )}
     </div>
