@@ -12,12 +12,13 @@ const VTT = 'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nC’era una volta\n'
 
 interface Richieste {
   hls: URL[]
+  mp4: URL[]
   fermate: URL[]
   accessi: unknown[]
 }
 
 async function mockJellyfin(page: Page): Promise<Richieste> {
-  const richieste: Richieste = { hls: [], fermate: [], accessi: [] }
+  const richieste: Richieste = { hls: [], mp4: [], fermate: [], accessi: [] }
   const sorgente = (id: string, contenitore: string, nome: string) => ({
     Id: id,
     Path: `E:\\Ciak\\FILM\\${nome.replace(/\.\w+$/, '')}\\${nome}`,
@@ -60,6 +61,11 @@ async function mockJellyfin(page: Page): Promise<Richieste> {
     if (p === '/Videos/ActiveEncodings') {
       richieste.fermate.push(url)
       return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*' } })
+    }
+    // La conversione in un MP4 solo, per «Salva in Ciak».
+    if (p.endsWith('/stream.mp4')) {
+      richieste.mp4.push(url)
+      return route.fulfill({ body: Buffer.alloc(4096), contentType: 'video/mp4', headers: { 'Access-Control-Allow-Origin': '*' } })
     }
     // Il file vero e proprio: resta «in caricamento» per tutto il test.
     if (p.endsWith('/stream')) return
@@ -169,4 +175,38 @@ test('col PC spento lo si dice, invece di una pagina vuota', async ({ page }) =>
   await page.route(`${SERVER}/**`, (route) => route.abort('connectionrefused'))
   await page.getByRole('button', { name: '🔄 Aggiorna' }).click()
   await expect(page.getByText(/il PC è acceso, con Jellyfin aperto/)).toBeVisible()
+})
+
+test('salvato in Ciak, un MKV del server di casa si guarda anche col PC spento', async ({ page }) => {
+  await mockSupabase(page)
+  const richieste = await mockJellyfin(page)
+  await collega(page)
+  await page.getByRole('button', { name: /The Secret of Kells \(2009\)/ }).click()
+
+  // Il browser non legge l'MKV: Jellyfin lo manda già convertito in MP4,
+  // nella lingua che si sente, coi sottotitoli che conosce.
+  await expect(page.getByText(/Jellyfin lo converte in MP4 mentre lo scarica/)).toBeVisible()
+  await expect(page.getByText(/Italiano · dalla cartella/)).toBeVisible()
+  await page.getByRole('button', { name: /Salva in Ciak/ }).click()
+  await expect(page.getByText(/Salvato in Ciak.*col server di casa spento/)).toBeVisible()
+  expect(richieste.mp4).toHaveLength(1)
+  expect(richieste.mp4[0].pathname).toBe(`/Videos/${MKV}/stream.mp4`)
+  expect(richieste.mp4[0].searchParams.get('AudioStreamIndex')).toBe('2')
+  // Finito lo scaricamento, la conversione si ferma.
+  await expect.poll(() => richieste.fermate.some((u) => u.searchParams.get('playSessionId') === richieste.mp4[0].searchParams.get('PlaySessionId'))).toBe(true)
+
+  // PC spento: il video parte dalla copia, coi suoi sottotitoli, e il server
+  // non si chiama nemmeno.
+  await page.unroute(`${SERVER}/**`)
+  const chiamate: string[] = []
+  await page.route(`${SERVER}/**`, (route) => {
+    chiamate.push(route.request().url())
+    return route.abort('connectionrefused')
+  })
+  await page.goto(`/streaming/jf-${MKV}`)
+  await expect(page.getByText(/Salvato in Ciak/)).toBeVisible()
+  await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
+  await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
+  await expect(page.getByText(/Il server di casa non risponde/)).toHaveCount(0)
+  expect(chiamate.filter((u) => u.includes(MKV))).toEqual([])
 })

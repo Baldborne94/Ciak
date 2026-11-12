@@ -73,6 +73,14 @@ export function useFileDelDisco(fileId: string, valido: boolean, riaperto: numbe
       }),
     [fileId],
   )
+  // Com'era la copia quando si è aperto il video: per un video del server di
+  // casa decide da dove leggerlo (la copia, anche col PC spento, o il server).
+  // Una copia finita a metà visione non cambia il flusso sotto gli occhi; una
+  // eliminata sì, e si torna al server.
+  const [scaricatoAllApertura, setScaricatoAllApertura] = useState<boolean | undefined>(undefined)
+  useEffect(() => {
+    if (locale !== undefined) setScaricatoAllApertura((prima) => (locale === null ? false : (prima ?? locale.stato === 'completo')))
+  }, [locale])
   // Il suo file, quando non c'è quello del disco: dalla cache, rilasciato
   // uscendo come quello scelto.
   const [urlSalvato, setUrlSalvato] = useState<string | null>(null)
@@ -127,6 +135,7 @@ export function useFileDelDisco(fileId: string, valido: boolean, riaperto: numbe
     locale,
     setLocale,
     scaricato,
+    scaricatoAllApertura,
     // Da dove legge il <video>: il file del disco o, senza, la copia in Ciak.
     src: urlAperto ?? urlSalvato,
     // La copia salvata quando accanto al video non c'erano sottotitoli: il

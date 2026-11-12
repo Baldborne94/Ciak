@@ -123,6 +123,10 @@ Due guardie automatiche, oltre ai test veri e propri:
     (l'originale resta). I «visto» si rileggono anche con la cartella da
     riaprire: sul tablet il permesso si ridà solo quando servono episodi nuovi;
   - il **server di casa** (Jellyfin, `src/lib/jellyfin.ts`), id `jf-<id>`.
+    Anche i suoi video si salvano in Ciak (`copiaDaCasa.ts`): il file com'è
+    se il browser lo legge, altrimenti un MP4 che Jellyfin converte mentre lo
+    manda, nella lingua scelta. Salvato prima di aprirlo, il lettore usa la
+    copia e il server non lo chiama nemmeno: col PC spento si guarda lo stesso.
   Un video del disco ha id `loc-<impronta>` dal nome e dalla dimensione del
   file: tutto ciò che è legato all'id (`user_streaming`, punto di ripresa,
   episodio dopo) lo ritrova riaprendolo, senza tabelle nuove. La colonna si

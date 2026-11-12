@@ -177,6 +177,38 @@ export class SpazioFinito extends Error {
   }
 }
 
+// Il salvataggio comune: la scheda «in corso», i file, poi la scheda
+// «completo». Se qualcosa va storto non resta niente a metà.
+async function salvaInCache(
+  film: { id: string; titolo: string; file: string; serie?: string | null },
+  sottotitoli: SottotitoloOffline[],
+  scrivi: (cache: Cache) => Promise<void>,
+  // Nota prima per un file del disco; null per la rete, si misura alla fine.
+  dimensione: number | null,
+  nomiVicini: string[] = [],
+): Promise<void> {
+  if (!offlineDisponibile()) throw new Error('Questo browser non può salvare film sul dispositivo.')
+  const cache = await caches.open(CACHE_FILM)
+  void chiediPersistenza()
+  const scheda = { ...film, vicini: nomiVicini }
+  await scriviInfo(cache, { ...scheda, dimensione, stato: 'in-corso', sottotitoli })
+  avvisa({ id: film.id, stato: 'in-corso' })
+  try {
+    await scrivi(cache)
+  } catch (e) {
+    for (const nome of nomiVicini) await cache.delete(urlVicino(film.id, nome))
+    await cache.delete(urlFilm(film.id))
+    await cache.delete(urlInfo(film.id))
+    avvisa({ id: film.id, stato: 'errore' })
+    // Il caso tipico: il film non ci sta nello spazio che il browser concede.
+    if (e instanceof DOMException && e.name === 'QuotaExceededError') throw new SpazioFinito()
+    throw new Error(e instanceof Error ? e.message : 'Salvataggio non riuscito.')
+  }
+  const finale = dimensione ?? (await (await cache.match(urlFilm(film.id)))?.blob())?.size ?? null
+  await scriviInfo(cache, { ...scheda, dimensione: finale, stato: 'completo', scaricatoIl: Date.now(), sottotitoli })
+  avvisa({ id: film.id, stato: 'completo' })
+}
+
 // Un film che è già sul dispositivo (aperto dal disco, vedi filmLocali): si
 // copia nella cache del lettore così com'è, senza rete, e da lì parte anche
 // dopo aver chiuso Ciak o staccato il disco. `vicini` sono i file accanto da
@@ -188,27 +220,33 @@ export async function salvaFileSulDispositivo(
   sottotitoli: SottotitoloOffline[],
   vicini: File[] = [],
 ): Promise<void> {
-  if (!offlineDisponibile()) throw new Error('Questo browser non può salvare film sul dispositivo.')
-  const cache = await caches.open(CACHE_FILM)
-  void chiediPersistenza()
-  const nomiVicini = vicini.map((f) => f.name)
-  const scheda = { ...film, dimensione: contenuto.size + vicini.reduce((t, f) => t + f.size, 0), vicini: nomiVicini }
-  await scriviInfo(cache, { ...scheda, stato: 'in-corso', sottotitoli })
-  avvisa({ id: film.id, stato: 'in-corso' })
-  try {
-    await cache.put(urlFilm(film.id), new Response(contenuto, { headers: { 'Content-Type': contenuto.type || 'video/mp4' } }))
-    for (const f of vicini) await cache.put(urlVicino(film.id, f.name), new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream' } }))
-  } catch (e) {
-    for (const nome of nomiVicini) await cache.delete(urlVicino(film.id, nome))
-    await cache.delete(urlFilm(film.id))
-    await cache.delete(urlInfo(film.id))
-    avvisa({ id: film.id, stato: 'errore' })
-    // Il caso tipico: il film non ci sta nello spazio che il browser concede.
-    if (e instanceof DOMException && e.name === 'QuotaExceededError') throw new SpazioFinito()
-    throw new Error(e instanceof Error ? e.message : 'Salvataggio non riuscito.')
-  }
-  await scriviInfo(cache, { ...scheda, stato: 'completo', scaricatoIl: Date.now(), sottotitoli })
-  avvisa({ id: film.id, stato: 'completo' })
+  await salvaInCache(
+    film,
+    sottotitoli,
+    async (cache) => {
+      await cache.put(urlFilm(film.id), new Response(contenuto, { headers: { 'Content-Type': contenuto.type || 'video/mp4' } }))
+      for (const f of vicini) await cache.put(urlVicino(film.id, f.name), new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream' } }))
+    },
+    contenuto.size + vicini.reduce((t, f) => t + f.size, 0),
+    vicini.map((f) => f.name),
+  )
+}
+
+// Un film che arriva dalla rete (il server di casa, vedi copiaDaCasa): la
+// risposta scorre dritta nella cache, senza passare tutta dalla memoria, che
+// per un film da gigabyte sul tablet non basterebbe. La dimensione si sa solo
+// alla fine: una conversione al volo non la dice prima.
+export async function salvaRispostaSulDispositivo(
+  film: { id: string; titolo: string; file: string; serie?: string | null },
+  risposta: Response,
+  sottotitoli: SottotitoloOffline[],
+): Promise<void> {
+  await salvaInCache(
+    film,
+    sottotitoli,
+    (cache) => cache.put(urlFilm(film.id), risposta),
+    null,
+  )
 }
 
 // Il file di un film salvato, per il <video>. Un blob dalla cache del browser
