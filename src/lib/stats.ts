@@ -35,13 +35,17 @@ export interface YearInFilm {
   avgRating: number | null
   movies: number
   series: number
+  anime: number
+  cartoni: number
   fiveStars: number // quanti capolavori personali (voto pieno) quell'anno
 }
 
 export interface CinemaStats {
   totalTitles: number
   movies: number
-  series: number
+  series: number // serie TV dal vero: anime e cartoni stanno a parte
+  anime: number
+  cartoni: number
   filmHours: number // ore stimate dai film
   seriesHours: number // ore stimate dagli episodi segnati × durata episodio
   ratedCount: number
@@ -60,6 +64,8 @@ export interface CinemaStats {
 interface WatchedRef {
   tmdbId: number
   type: TmdbType
+  // Il tipo salvato in Ciak (movie, tv, anime, cartoon): `type` è quello di TMDB.
+  ciak: string
   title: string
   rating: number | null
   // anno di visione (dal diario) se disponibile, per "il tuo anno in film"
@@ -70,6 +76,25 @@ interface WatchedRef {
 // di prima (era 200): con la lettura leggera e la cache, una collezione normale
 // ci sta dentro tutta.
 const ENRICH_CAP = 3000
+
+// Film, serie, anime o cartone. Un anime o un cartone salvato dal catalogo ha
+// `media_type` «tv» (lo dice TMDB): lo si riconosce come nelle card, dal
+// genere Animazione e dalla lingua originale (giapponese: anime). Finché la
+// lingua non si sa (voce in cache di prima) una serie resta serie.
+export type TipoStatistiche = 'film' | 'serie' | 'anime' | 'cartoni'
+export function tipoStatistiche(ciak: string, f: TitleFacts | undefined): TipoStatistiche {
+  if (ciak === 'movie') return 'film'
+  if (ciak === 'anime') return 'anime'
+  if (ciak === 'cartoon') return 'cartoni'
+  if (!f?.genres.includes('Animazione') || f.lingua === undefined) return 'serie'
+  return f.lingua === 'ja' ? 'anime' : 'cartoni'
+}
+
+// Una serie animata in cache senza la lingua è di prima che la si salvasse:
+// si richiede, una volta, per saperne il tipo.
+export function daRileggere(type: TmdbType, f: TitleFacts): boolean {
+  return type === 'tv' && f.lingua === undefined && f.genres.includes('Animazione')
+}
 
 function toTmdbType(media: string): TmdbType {
   return media === 'movie' ? 'movie' : 'tv'
@@ -139,6 +164,7 @@ export async function computeStats(
     byKey.set(`${type}:${t.tmdb_id}`, {
       tmdbId: t.tmdb_id,
       type,
+      ciak: t.media_type,
       title: t.title,
       rating: t.personal_rating,
       watchedYear: null,
@@ -156,7 +182,7 @@ export async function computeStats(
         existing.watchedYear = year
       }
     } else {
-      byKey.set(key, { tmdbId: d.tmdb_id, type, title: d.title, rating: d.rating, watchedYear: year })
+      byKey.set(key, { tmdbId: d.tmdb_id, type, ciak: d.media_type, title: d.title, rating: d.rating, watchedYear: year })
     }
   }
 
@@ -184,7 +210,10 @@ export async function computeStats(
   // analizzabile: il tetto resta solo come difesa contro casi estremi.
   const toEnrich = refs.slice(0, ENRICH_CAP)
   const facts = getCachedFacts(toEnrich.map((r) => factsKey(r.type, r.tmdbId)))
-  const daChiedere = toEnrich.filter((r) => !facts.has(factsKey(r.type, r.tmdbId)))
+  const daChiedere = toEnrich.filter((r) => {
+    const f = facts.get(factsKey(r.type, r.tmdbId))
+    return !f || daRileggere(r.type, f)
+  })
 
   const aggrega = () => aggregate(refs, toEnrich, facts, episodesByTv, diary, rated, avgRating, ratingHistogram)
 
@@ -254,8 +283,9 @@ function aggregate(
   avgRating: number | null,
   ratingHistogram: { half: number; count: number }[],
 ): CinemaStats {
-  const movies = refs.filter((r) => r.type === 'movie').length
-  const series = refs.length - movies
+  const tipoDi = (r: WatchedRef) => tipoStatistiche(r.ciak, facts.get(factsKey(r.type, r.tmdbId)))
+  const conti = { film: 0, serie: 0, anime: 0, cartoni: 0 }
+  for (const r of refs) conti[tipoDi(r)]++
   const details = toEnrich.map((r) => facts.get(factsKey(r.type, r.tmdbId)) ?? null)
 
   const genreCount = new Map<string, number>()
@@ -303,14 +333,16 @@ function aggregate(
   // globale dei voti, ma riassume volume e composizione dell'anno).
   const yearMap = new Map<
     number,
-    { count: number; sum: number; rated: number; movies: number; series: number; fives: number }
+    { count: number; sum: number; rated: number; movies: number; series: number; anime: number; cartoni: number; fives: number }
   >()
   for (const r of refs) {
     if (!r.watchedYear) continue
-    const y = yearMap.get(r.watchedYear) ?? { count: 0, sum: 0, rated: 0, movies: 0, series: 0, fives: 0 }
+    const y = yearMap.get(r.watchedYear) ?? { count: 0, sum: 0, rated: 0, movies: 0, series: 0, anime: 0, cartoni: 0, fives: 0 }
     y.count++
-    if (r.type === 'movie') y.movies++
-    else y.series++
+    const tipo = tipoDi(r)
+    if (tipo === 'film') y.movies++
+    else if (tipo === 'serie') y.series++
+    else y[tipo]++
     if (r.rating != null) {
       y.sum += r.rating
       y.rated++
@@ -325,14 +357,18 @@ function aggregate(
       avgRating: v.rated ? Math.round((v.sum / v.rated) * 100) / 100 : null,
       movies: v.movies,
       series: v.series,
+      anime: v.anime,
+      cartoni: v.cartoni,
       fiveStars: v.fives,
     }))
     .sort((a, b) => b.year - a.year)
 
   return {
     totalTitles: refs.length,
-    movies,
-    series,
+    movies: conti.film,
+    series: conti.serie,
+    anime: conti.anime,
+    cartoni: conti.cartoni,
     filmHours: Math.round(filmMinutes / 60),
     seriesHours: Math.round(seriesMinutes / 60),
     rhythm: computeWatchRhythm(diary),
