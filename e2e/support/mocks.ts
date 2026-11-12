@@ -37,6 +37,8 @@ export interface TmdbOverrides {
   searchMulti?: RawMedia[]
   discover?: (page: number, params: URLSearchParams) => RawMedia[]
   discoverTotalPages?: number
+  // Quanti film ha ogni studio (total_results di discover con with_companies).
+  filmPerStudio?: Record<number, number>
   detail?: Record<string, unknown>
   // Un dettaglio diverso per titolo (le saghe della videoteca ne leggono molti).
   detailOf?: (mediaType: string, id: number) => Record<string, unknown> | undefined
@@ -117,7 +119,9 @@ export async function mockTmdb(page: Page, over: TmdbOverrides = {}): Promise<Tm
       const results = over.discover
         ? over.discover(p, url.searchParams)
         : browsePage(label, p)
-      return json({ results, total_pages: over.discoverTotalPages ?? 5, page: p })
+      const totalPages = over.discoverTotalPages ?? 5
+      const studio = Number(url.searchParams.get('with_companies'))
+      return json({ results, total_pages: totalPages, total_results: over.filmPerStudio?.[studio] ?? totalPages * 20, page: p })
     }
 
     // Dettaglio film/serie (con append_to_response) e le sue liste correlate.

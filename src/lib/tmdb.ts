@@ -59,4 +59,4 @@ export {
   getRelatedCollections,
   type SagaContinuation,
 } from './tmdb/collections'
-export { searchCompany, getCompany, discoverByCompany, resolveStudios } from './tmdb/companies'
+export { searchCompany, getCompany, discoverByCompany, resolveStudios, studioOmonimoPiuGrande } from './tmdb/companies'

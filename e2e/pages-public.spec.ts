@@ -93,6 +93,33 @@ test('Studio — titoli prodotti', async ({ page }) => {
   await expectNoCrash(page)
 })
 
+test('Studio — dal doppione di «A24» si arriva a quello vero', async ({ page }) => {
+  // TMDB ha due «A24» col logo uguale: un doppione con un film e quello vero.
+  await mockTmdb(page, {
+    company: { id: 9001, name: 'A24', logo_path: null },
+    searchCompany: [
+      { id: 9001, name: 'A24', logo_path: null },
+      { id: 41077, name: 'A24', logo_path: null },
+    ],
+    filmPerStudio: { 9001: 1, 41077: 148 },
+  })
+  await page.goto('/studio/9001')
+  await expect(page.getByRole('note')).toContainText('Su TMDB ci sono più studi chiamati «A24»')
+  await page.getByRole('link', { name: 'Apri quello con 148 film →' }).click()
+  await expect(page).toHaveURL(/\/studio\/41077$/)
+  await expect(page.getByRole('note')).toHaveCount(0)
+
+  // Nella ricerca degli studi i due si distinguono, quello vero per primo.
+  await page.goto('/search')
+  await page.getByRole('button', { name: '🏛️ Studi' }).click()
+  await page.getByPlaceholder(/Cerca uno studio/).fill('A24')
+  const schede = page.locator('a[href^="/studio/"]')
+  await expect(schede.first()).toHaveAttribute('href', '/studio/41077')
+  await expect(schede.first()).toContainText('148 film')
+  await expect(schede.nth(1)).toContainText('1 film')
+  await expectNoCrash(page)
+})
+
 test('Studio — nome in script non latino ripiega sui nomi alternativi', async ({ page }) => {
   // TMDB non traduce i nomi delle compagnie: per uno studio con nome in uno
   // script non latino l'unica fonte di un nome leggibile è /alternative_names.

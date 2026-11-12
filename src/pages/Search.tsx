@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { logFailure } from '../lib/logFailure'
 import { Link, useNavigate, useSearchParams, useLocation, useNavigationType } from 'react-router-dom'
+import StudioCard from '../components/StudioCard'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
@@ -18,7 +19,6 @@ import {
   resolveSagaIds,
   resolvePeople,
   profileUrl,
-  logoUrl,
   posterUrl,
   type BrowseSort,
 } from '../lib/tmdb'
@@ -125,23 +125,6 @@ function PersonCard({ p }: { p: Person }) {
         {p.department ? ROLE_LABEL[p.department] ?? p.department : ''}
       </p>
       {p.knownFor && <p className="line-clamp-1 text-xs text-zinc-500">{p.knownFor}</p>}
-    </Link>
-  )
-}
-
-function StudioCard({ c }: { c: Company }) {
-  const logo = logoUrl(c.logoPath)
-  return (
-    <Link
-      to={`/studio/${c.id}`}
-      className="group flex h-32 flex-col items-center justify-center gap-3 rounded-xl border border-theatre-800 bg-theatre-900 p-4 text-center transition hover:-translate-y-1 hover:border-projector/40"
-    >
-      {logo ? (
-        <img src={logo} alt={c.name} loading="lazy" className="max-h-14 max-w-[80%] rounded bg-white/90 px-3 py-2" />
-      ) : (
-        <span className="text-4xl opacity-40">🏛️</span>
-      )}
-      <p className="line-clamp-1 text-sm font-medium text-zinc-200">{c.name}</p>
     </Link>
   )
 }

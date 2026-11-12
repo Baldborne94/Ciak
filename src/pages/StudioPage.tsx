@@ -3,7 +3,8 @@ import { useParams, Link } from 'react-router-dom'
 import PageHeader from '../components/PageHeader'
 import MediaGrid from '../components/MediaGrid'
 import { EmptyState, ErrorState, Loader } from '../components/States'
-import { discoverByCompany, getCompany, logoUrl } from '../lib/tmdb'
+import { discoverByCompany, getCompany, logoUrl, studioOmonimoPiuGrande } from '../lib/tmdb'
+import { logFailure } from '../lib/logFailure'
 import EntityFavoriteButton from '../components/EntityFavoriteButton'
 import type { Company, MediaItem } from '../lib/types'
 
@@ -16,6 +17,9 @@ export default function StudioPage() {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Lo studio vero quando questo è un doppione col suo stesso nome (vedi
+  // ordinaOmonimi): un «A24» con un film solo, mentre quello vero ne ha 148.
+  const [omonimo, setOmonimo] = useState<Company | null>(null)
 
   const cid = Number(id)
 
@@ -25,7 +29,13 @@ export default function StudioPage() {
     setError(null)
     setItems([])
     setPage(1)
-    getCompany(cid).then(setCompany).catch(() => setCompany(null))
+    setOmonimo(null)
+    getCompany(cid)
+      .then((c) => {
+        setCompany(c)
+        return studioOmonimoPiuGrande(c).then(setOmonimo, logFailure('Omonimi dello studio'))
+      })
+      .catch(() => setCompany(null))
     discoverByCompany(cid, 1)
       .then(({ items: newItems, totalPages: tp }) => {
         setItems(newItems)
@@ -75,6 +85,15 @@ export default function StudioPage() {
             subtitle: null,
           }}
         />
+      )}
+
+      {omonimo && company && (
+        <p role="note" className="mt-6 rounded-xl border border-projector/40 bg-projector/10 p-4 text-sm text-zinc-200">
+          Su TMDB ci sono più studi chiamati «{company.name}», e questo ha pochi titoli.{' '}
+          <Link to={`/studio/${omonimo.id}`} className="font-semibold text-projector hover:underline">
+            Apri quello con {omonimo.film} film →
+          </Link>
+        </p>
       )}
 
       <div className="mt-8" />
