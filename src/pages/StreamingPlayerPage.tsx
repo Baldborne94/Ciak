@@ -14,6 +14,7 @@ import PulsantiEpisodi from '../components/PulsantiEpisodi'
 import ToccoVideo from '../components/ToccoVideo'
 import FileDaRiaprire from '../components/FileDaRiaprire'
 import FileSulDisco from '../components/FileSulDisco'
+import CopiaDaCasa from '../components/CopiaDaCasa'
 import RigaSottotitoli from '../components/RigaSottotitoli'
 import NoteLettore from '../components/NoteLettore'
 import { DIMENSIONI_SOTTOTITOLI, testoSottotitoli } from '../lib/sceltaSottotitoli'
@@ -21,7 +22,7 @@ import { useComandiVisibili } from '../lib/useComandiVisibili'
 import { SALTO_TASTIERA } from '../lib/comandiLettore'
 import { idFileValido, titoloVideo } from '../lib/fileVideo'
 import { ATTESA_AVVIO_MS, rilasciaVideo, senzaAudio, TENTATIVI_MAX, vigilanzaSalto, type Problema } from '../lib/lettore'
-import { salvaSottotitoliOffline } from '../lib/filmOffline'
+import { useSottotitoliCopia } from '../lib/useSottotitoliCopia'
 import { registraErrore } from '../lib/errorLog'
 import { logFailure } from '../lib/logFailure'
 import { filmDaCercare, titoloNoto } from '../lib/sottotitoli'
@@ -81,18 +82,21 @@ function LettoreStreaming() {
   const { fileId = '' } = useParams()
   const stato = useLocation().state as { titolo?: string; file?: string; aperto?: number } | null
   const valido = idFileValido(fileId)
-  // Un video del server di casa (Jellyfin): il file arriva dal server, così
-  // com'è o convertito al volo.
-  const casa = eJellyfin(fileId)
-  const { info: infoCasa, errore: erroreCasa } = useInfoCasa(fileId, casa && valido)
   // Un film del disco (vedi filmLocali): il file scelto, quello della
   // cartella collegata o la copia salvata in Ciak. Si rilegge quando lo si
   // sceglie di nuovo dalla pagina stessa (`stato.aperto` cambia).
   const disco = useFileDelDisco(fileId, valido, stato?.aperto)
   const { loc, aperto, locale } = disco
+  // Un video del server di casa (Jellyfin): il file arriva dal server, così
+  // com'è o convertito al volo; salvato in Ciak prima di aprirlo, dalla copia,
+  // che si vede anche col PC spento. Il server si chiama solo senza copia.
+  const suCasa = eJellyfin(fileId)
+  const copiaDiCasa = suCasa && disco.scaricatoAllApertura === true
+  const casa = suCasa && !copiaDiCasa
+  const { info: infoCasa, errore: erroreCasa } = useInfoCasa(fileId, casa && valido && disco.scaricatoAllApertura === false)
   // Né dal disco né dal server di casa: un vecchio video di Google Drive, che
   // Ciak non usa più (dalla cronologia, da un link salvato).
-  const daDrive = !casa && !loc
+  const daDrive = !suCasa && !loc
   const [errore, setErrore] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const navigate = useNavigate()
@@ -151,19 +155,8 @@ function LettoreStreaming() {
   const subDisco = useSottotitoli(aperto ?? disco.copiaDaSottotitolare, archivioCaricato ? titoloNoto(archivio.voce) : undefined)
   const subCasa = useSottotitoliCasa(fileId, infoCasa)
   const sub = casa ? subCasa : subDisco
-  const usaSalvati = loc && !aperto && !disco.copiaSenzaSottotitoli
-
-  const salvati = usaSalvati ? locale?.sottotitoli : undefined
-  const tracceSalvate = useMemo(
-    () =>
-      (salvati ?? []).map((s) => ({
-        ...s,
-        url: URL.createObjectURL(new Blob([s.vtt], { type: 'text/vtt' })),
-      })),
-    [salvati],
-  )
-  useEffect(() => () => tracceSalvate.forEach((t) => URL.revokeObjectURL(t.url)), [tracceSalvate])
-
+  const usaSalvati = (loc || copiaDiCasa) && !aperto && !disco.copiaSenzaSottotitoli
+  const tracceSalvate = useSottotitoliCopia(fileId, locale, usaSalvati, sub.tracce)
   const tracce = usaSalvati ? tracceSalvate : sub.tracce
 
   const etichettaProssimo = prossimo ? sigla(prossimo) : null
@@ -205,16 +198,6 @@ function LettoreStreaming() {
     const fine = Number.isFinite(v.duration) ? v.duration : Infinity
     v.currentTime = Math.min(fine, Math.max(0, v.currentTime + secondi))
   }, [])
-
-  // I sottotitoli trovati dopo il download, o cambiati, raggiungono la scheda
-  // del film sul dispositivo: offline si vedono quelli.
-  useEffect(() => {
-    if (!locale || usaSalvati || sub.tracce.length === 0) return
-    void salvaSottotitoliOffline(
-      fileId,
-      sub.tracce.map(({ chiave, lingua, etichetta, vtt }) => ({ chiave, lingua, etichetta, vtt })),
-    ).catch(logFailure('Sottotitoli nella scheda del film offline'))
-  }, [fileId, locale, usaSalvati, sub.tracce])
 
   const cc = useSceltaSottotitoli(tracce)
   // La barra dei comandi di Ciak c'è a video fermo, al tocco e col mouse, e
@@ -575,6 +558,17 @@ function LettoreStreaming() {
           onLocale={disco.setLocale}
           sottotitoli={sub.tracce}
           onErrore={setErrore}
+        />
+      )}
+      {suCasa && (
+        <CopiaDaCasa
+          fileId={fileId}
+          titolo={titolo}
+          info={infoCasa}
+          audio={{ indice: infoCasa?.audio[audio.scelta]?.indice ?? null, nome: nomiTracceAudio(audio.tracce)[audio.scelta] ?? null }}
+          sottotitoli={sub.tracce}
+          locale={locale}
+          onLocale={disco.setLocale}
         />
       )}
 

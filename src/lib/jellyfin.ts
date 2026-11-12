@@ -384,6 +384,28 @@ export function flussoHls(fileId: string, info: InfoJellyfin, audio: number | nu
   return `${config.url}/Videos/${id}/master.m3u8?${p.toString()}`
 }
 
+// Il video convertito da Jellyfin in un MP4 solo, da scaricare (vedi
+// copiaDaCasa): come l'HLS, ma tutto di fila invece che a pezzi da 6 secondi,
+// perché la copia in Ciak è un file che il <video> legge senza hls.js.
+export function flussoMp4(fileId: string, info: InfoJellyfin, audio: number | null, sessione: string, config = leggiJellyfin()): string {
+  const id = idJellyfin(fileId)
+  if (!config || !id) return ''
+  const p = new URLSearchParams({
+    MediaSourceId: info.sorgente,
+    api_key: config.token,
+    PlaySessionId: sessione,
+    DeviceId: idDispositivo(),
+    Container: 'mp4',
+    VideoCodec: 'h264',
+    AudioCodec: 'aac',
+    TranscodingMaxAudioChannels: '2',
+    allowVideoStreamCopy: 'true',
+    allowAudioStreamCopy: 'true',
+  })
+  if (audio !== null) p.set('AudioStreamIndex', String(audio))
+  return `${config.url}/Videos/${id}/stream.mp4?${p.toString()}`
+}
+
 export function sottotitoloJellyfin(fileId: string, info: InfoJellyfin, indice: number, config = leggiJellyfin()): string {
   const id = idJellyfin(fileId)
   if (!config || !id) return ''
