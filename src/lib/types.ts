@@ -125,6 +125,8 @@ export interface Company {
   id: number
   name: string
   logoPath: string | null
+  // Quanti film ha su TMDB: si conta solo fra omonimi (vedi ordinaOmonimi).
+  film?: number
 }
 
 // A person (actor / director / composer …) from TMDB.

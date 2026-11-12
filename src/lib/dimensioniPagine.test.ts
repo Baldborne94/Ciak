@@ -13,7 +13,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 const dir = new URL('../pages/', import.meta.url)
 const TETTO = 600
 const ECCEZIONI: Record<string, number> = {
-  'Search.tsx': 831,
+  'Search.tsx': 814,
   'DiaryPage.tsx': 717,
 }
 
