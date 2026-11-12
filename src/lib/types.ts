@@ -294,4 +294,7 @@ export interface TitleFacts {
   runtime: number | null // minuti; per una serie è la durata di un episodio
   year: number | null
   episodes: number | null // quanti episodi ha la serie in totale
+  // Lingua originale: dice se una serie animata è un anime o un cartone.
+  // Assente nelle voci in cache di prima (vedi daRileggere in stats).
+  lingua?: string | null
 }

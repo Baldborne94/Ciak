@@ -7,7 +7,7 @@ import type { TitleFacts } from './types'
 vi.mock('./supabase', () => ({ supabase: { from: vi.fn() }, isSupabaseConfigured: true }))
 vi.mock('./tmdb', () => ({ fetchTitleFacts: vi.fn() }))
 
-import { computeStats } from './stats'
+import { computeStats, daRileggere, tipoStatistiche } from './stats'
 import { supabase } from './supabase'
 import { fetchTitleFacts } from './tmdb'
 
@@ -88,7 +88,7 @@ describe('computeStats', () => {
     expect(s.avgRating).toBe(4.5) // il diario ha la precedenza sui 3 di user_titles
   })
 
-  it('anime e cartoni contano come serie (non film)', async () => {
+  it('anime e cartoni salvati col loro tipo stanno a parte, non fra film e serie', async () => {
     setDb(
       [
         { tmdb_id: 111, media_type: 'anime', title: 'Anime', personal_rating: null },
@@ -98,7 +98,30 @@ describe('computeStats', () => {
     )
     const s = await computeStats('u1')
     expect(s.movies).toBe(0)
-    expect(s.series).toBe(2)
+    expect(s.series).toBe(0)
+    expect(s.anime).toBe(1)
+    expect(s.cartoni).toBe(1)
+  })
+
+  it('una serie animata salvata come «tv» è un anime se giapponese, se no un cartone', async () => {
+    // Konosuba e Gumball arrivano dal catalogo come «tv»: erano contati fra
+    // le serie viste.
+    setDb(
+      [
+        { tmdb_id: 65844, media_type: 'tv', title: 'Konosuba', personal_rating: null },
+        { tmdb_id: 37606, media_type: 'tv', title: 'Gumball', personal_rating: null },
+        { tmdb_id: 1396, media_type: 'tv', title: 'Breaking Bad', personal_rating: null },
+      ],
+      [{ tmdb_id: 65844, media_type: 'tv', title: 'Konosuba', rating: 4, watched_on: '2025-03-01' }],
+    )
+    vi.mocked(fetchTitleFacts).mockImplementation(async (_t, id) =>
+      id === 65844 ? detail({ genres: ['Animazione', 'Commedia'], lingua: 'ja' })
+        : id === 37606 ? detail({ genres: ['Animazione'], lingua: 'en' })
+        : detail({ genres: ['Dramma'], lingua: 'en' }),
+    )
+    const s = await computeStats('u1')
+    expect([s.series, s.anime, s.cartoni]).toEqual([1, 1, 1])
+    expect(s.yearsInFilm[0]).toMatchObject({ year: 2025, anime: 1, series: 0 })
   })
 
   it('istogramma a mezze stelle e media arrotondata a 2 decimali', async () => {
@@ -190,5 +213,57 @@ describe('computeStats', () => {
     expect(s.totalTitles).toBe(2)
     expect(s.enrichedCount).toBe(1)
     expect(s.topGenres).toEqual([{ name: 'Horror', count: 1 }])
+  })
+})
+
+describe('una serie animata in cache senza lingua si rilegge', () => {
+  it('chiede di nuovo a TMDB solo lei, e la conta come anime', async () => {
+    // La cache delle statistiche c'era già prima della lingua: senza
+    // rileggerla, Konosuba resterebbe per sempre fra le serie.
+    const memoria = new Map<string, string>([
+      ['ciak:title-facts:v1', JSON.stringify({
+        'tv-65844': { genres: ['Animazione'], directors: [], cast: [], runtime: 24, year: 2016, episodes: 20 },
+        'tv-1396': { genres: ['Dramma'], directors: [], cast: [], runtime: 47, year: 2008, episodes: 62 },
+      })],
+    ])
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => memoria.get(k) ?? null,
+      setItem: (k: string, v: string) => void memoria.set(k, v),
+      removeItem: (k: string) => void memoria.delete(k),
+    })
+    try {
+      setDb(
+        [
+          { tmdb_id: 65844, media_type: 'tv', title: 'Konosuba', personal_rating: null },
+          { tmdb_id: 1396, media_type: 'tv', title: 'Breaking Bad', personal_rating: null },
+        ],
+        [],
+      )
+      vi.mocked(fetchTitleFacts).mockClear()
+      vi.mocked(fetchTitleFacts).mockResolvedValue(detail({ genres: ['Animazione'], lingua: 'ja' }))
+      const s = await computeStats('u1')
+      expect(vi.mocked(fetchTitleFacts).mock.calls).toEqual([['tv', 65844]])
+      expect([s.series, s.anime]).toEqual([1, 1])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
+describe('tipoStatistiche e daRileggere', () => {
+  const f = (over: Partial<TitleFacts>): TitleFacts => ({ genres: [], directors: [], cast: [], runtime: null, year: null, episodes: null, ...over })
+
+  it('senza la lingua (cache di prima) una serie animata resta serie, e si richiede', () => {
+    const vecchia = f({ genres: ['Animazione'] })
+    expect(tipoStatistiche('tv', vecchia)).toBe('serie')
+    expect(daRileggere('tv', vecchia)).toBe(true)
+    // con la lingua, o se non è animazione, o se è un film, non serve
+    expect(daRileggere('tv', f({ genres: ['Animazione'], lingua: 'ja' }))).toBe(false)
+    expect(daRileggere('tv', f({ genres: ['Dramma'] }))).toBe(false)
+    expect(daRileggere('movie', f({ genres: ['Animazione'] }))).toBe(false)
+  })
+
+  it('un film animato resta un film', () => {
+    expect(tipoStatistiche('movie', f({ genres: ['Animazione'], lingua: 'ja' }))).toBe('film')
   })
 })

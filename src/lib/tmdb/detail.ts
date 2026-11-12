@@ -133,6 +133,7 @@ export async function fetchTitleFacts(type: TmdbType, id: number): Promise<Title
     runtime: raw.runtime ?? raw.episode_run_time?.[0] ?? null,
     year: Number.isFinite(year) && year > 1870 ? year : null,
     episodes: raw.number_of_episodes ?? null,
+    lingua: raw.original_language ?? null,
   }
 }
 

@@ -248,6 +248,16 @@ function YearsInFilm({ stats }: { stats: CinemaStats }) {
               <span className="rounded-full border border-theatre-700 bg-theatre-950/40 px-3 py-1 text-sm text-zinc-300">
                 📺 {y.series} serie
               </span>
+              {y.anime > 0 && (
+                <span className="rounded-full border border-theatre-700 bg-theatre-950/40 px-3 py-1 text-sm text-zinc-300">
+                  🎌 {y.anime} anime
+                </span>
+              )}
+              {y.cartoni > 0 && (
+                <span className="rounded-full border border-theatre-700 bg-theatre-950/40 px-3 py-1 text-sm text-zinc-300">
+                  🧸 {y.cartoni} cartoni
+                </span>
+              )}
               {y.fiveStars > 0 && (
                 <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1 text-sm text-amber-300">
                   ⭐ {y.fiveStars} da 5★
@@ -330,14 +340,17 @@ export default function StatsPage() {
           {/* Le ore totali sommano film ed episodi segnati: prima le serie non
               contavano nulla, e per chi guarda soprattutto serie il totale era
               quasi sempre sbagliato per difetto. */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+          {/* Anime e cartoni a parte: prima stavano dentro «Serie viste». */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
             <StatCard icon="🎬" value={String(stats.movies)} label="Film visti" />
             <StatCard icon="📺" value={String(stats.series)} label="Serie viste" />
+            <StatCard icon="🎌" value={String(stats.anime)} label="Anime visti" />
+            <StatCard icon="🧸" value={String(stats.cartoni)} label="Cartoni visti" />
             <StatCard
               icon="⏱️"
               value={`${stats.filmHours + stats.seriesHours}h`}
               label="Ore guardate"
-              hint={`${stats.filmHours}h di film · ${stats.seriesHours}h di serie`}
+              hint={`${stats.filmHours}h di film · ${stats.seriesHours}h di serie, anime e cartoni`}
             />
             <StatCard icon="📅" value={String(giorniEquivalenti(stats))} label="Giorni interi" />
             <StatCard icon="⭐" value={stats.avgRating != null ? String(stats.avgRating) : '—'} label="Voto medio" />

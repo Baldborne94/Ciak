@@ -129,3 +129,30 @@ test('la pagina compare subito e si riempie mentre analizza', async ({ page }) =
   // …e l'avanzamento è dichiarato invece di lasciare l'utente al buio.
   await expect(page.getByText(/Sto analizzando i tuoi titoli/)).toBeVisible()
 })
+
+test('anime e cartoni hanno i loro totali, anche quelli salvati come serie', async ({ page }) => {
+  // Konosuba e Gumball arrivano dal catalogo come «tv»: genere Animazione e
+  // lingua originale dicono quale dei due sono.
+  await mockTmdb(page, {
+    detailOf: (tipo, id) =>
+      tipo === 'tv' && id === 65844 ? movieDetail(id, 'Konosuba', { genres: [{ id: 16, name: 'Animazione' }], original_language: 'ja' })
+        : tipo === 'tv' && id === 37606 ? movieDetail(id, 'Gumball', { genres: [{ id: 16, name: 'Animazione' }], original_language: 'en' })
+        : movieDetail(id, `Titolo ${id}`, { genres: [{ id: 18, name: 'Dramma' }] }),
+  })
+  await mockSupabase(page, {
+    user_titles: [
+      titolo(1, 'movie', 'Un film'),
+      titolo(1396, 'tv', 'Breaking Bad'),
+      titolo(65844, 'tv', 'Konosuba'),
+      titolo(37606, 'tv', 'Lo straordinario mondo di Gumball'),
+    ],
+  })
+
+  await page.goto('/statistiche')
+
+  const scheda = (etichetta: string) => page.locator('div', { has: page.getByText(etichetta, { exact: true }) }).last()
+  await expect(scheda('Anime visti')).toContainText('1')
+  await expect(scheda('Cartoni visti')).toContainText('1')
+  await expect(scheda('Serie viste')).toContainText('1')
+  await expect(scheda('Film visti')).toContainText('1')
+})
