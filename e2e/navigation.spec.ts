@@ -13,7 +13,8 @@ test('la home si apre e mostra la barra di navigazione', async ({ page }) => {
   await mockTmdb(page)
   await page.goto('/')
 
-  await expect(page.getByRole('link', { name: '🎬 Ciak' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Ciak', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Ciak', exact: true }).locator('img')).toHaveAttribute('src', '/ciak.svg')
   await expect(page.getByRole('link', { name: 'Cerca', exact: true })).toBeVisible()
   // Nessun errore applicativo in pagina.
   await expect(page.getByText('Qualcosa è andato storto')).toHaveCount(0)

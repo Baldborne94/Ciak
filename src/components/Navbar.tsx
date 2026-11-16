@@ -75,7 +75,9 @@ export default function Navbar() {
           il menu compatto, come in verticale. */}
       <nav className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <NavLink to="/" className="group flex shrink-0 items-center gap-2">
-          <span className="text-2xl transition-transform group-hover:rotate-12">🎬</span>
+          {/* L'icona dell'app (public/ciak.svg): la stessa della schermata Home. Decorativa,
+              il nome del link resta «Ciak». */}
+          <img src="/ciak.svg" alt="" width={36} height={36} className="h-9 w-9 transition-transform group-hover:rotate-12" />
           <span className="font-display text-2xl tracking-wide text-projector">
             Ciak
           </span>
