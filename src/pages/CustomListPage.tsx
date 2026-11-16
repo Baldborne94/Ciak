@@ -221,7 +221,7 @@ export default function CustomListPage() {
                 <button
                   onClick={() => remove(it)}
                   aria-label="Rimuovi dalla lista"
-                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-theatre-950/80 text-sm text-zinc-300 opacity-0 transition hover:bg-curtain hover:text-white group-hover:opacity-100"
+                  className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-theatre-950/80 text-sm text-zinc-300 transition hover:bg-curtain hover:text-white focus-visible:opacity-100 group-hover:opacity-100 mouse:opacity-0 tocco:h-9 tocco:w-9 tocco:text-base"
                 >
                   ✕
                 </button>

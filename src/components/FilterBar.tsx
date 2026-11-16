@@ -3,7 +3,9 @@ import type { ReactNode } from 'react'
 // Shared, consistent filter-bar primitives used by Cerca, Genere and Persona.
 // Keeping these in one place means the three pages look and behave the same.
 
-export const filterSelectClass = 'input-cine w-auto py-1.5 text-sm'
+// min-w-0 e max-w-full: una tendina con voci lunghe («Miglior film
+// d'animazione») sul telefono si stringe invece di allargare la pagina.
+export const filterSelectClass = 'input-cine w-auto min-w-0 max-w-full py-1.5 text-sm'
 
 // Bordered container that wraps a row of filter controls.
 export function FilterBar({ children }: { children: ReactNode }) {
@@ -17,8 +19,8 @@ export function FilterBar({ children }: { children: ReactNode }) {
 // A labeled cluster of controls (e.g. "Tipo" + chips, or "Voto min" + slider).
 export function FilterGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs uppercase tracking-wider text-zinc-500">{label}</span>
+    <div className="flex min-w-0 max-w-full items-center gap-2">
+      <span className="shrink-0 text-xs uppercase tracking-wider text-zinc-500">{label}</span>
       {children}
     </div>
   )
