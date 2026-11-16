@@ -22,6 +22,9 @@ const ROTTE = [
   '/genre/movie/27',
   '/title/movie/550',
   '/ai?tab=tonight',
+  // La tendina delle categorie dei premi («Miglior film d'animazione») era più
+  // larga del telefono.
+  '/premi',
 ]
 
 function savedRow(tmdbId: number, title: string, status = 'watched') {

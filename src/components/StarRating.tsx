@@ -36,7 +36,9 @@ export default function StarRating({
 
   return (
     <div
-      className={`inline-flex items-center gap-0.5 leading-none ${SIZES[size]}`}
+      // Col dito le stelle da toccare si ingrandiscono: a 16 px una mezza stella
+      // è larga 8, e nel diario sul telefono non si riusciva a scegliere il voto.
+      className={`inline-flex items-center gap-0.5 leading-none ${SIZES[size]} ${readOnly || size === 'lg' ? '' : 'tocco:gap-1 tocco:text-[1.75rem]'}`}
       onMouseLeave={() => setHover(null)}
     >
       {[1, 2, 3, 4, 5].map((star) => {

@@ -76,8 +76,10 @@ function QuickActions({ item }: { item: MediaItem }) {
         aria-label="Azioni rapide"
         onClick={() => setOpen((v) => !v)}
         disabled={busy}
-        className={`flex h-8 w-8 items-center justify-center rounded-full border border-theatre-700 bg-theatre-950/85 text-lg text-projector shadow-reel backdrop-blur transition hover:bg-theatre-800 ${
-          open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus:opacity-100'
+        // Col mouse compare passandoci sopra; col dito c'è sempre (vedi `mouse:`
+        // in tailwind.config), se no sul telefono non lo si trova.
+        className={`flex h-8 w-8 items-center justify-center rounded-full border border-theatre-700 bg-theatre-950/85 text-lg text-projector shadow-reel backdrop-blur transition hover:bg-theatre-800 tocco:h-9 tocco:w-9 ${
+          open ? 'opacity-100' : 'group-hover:opacity-100 focus:opacity-100 mouse:opacity-0'
         }`}
       >
         {open ? '×' : '+'}

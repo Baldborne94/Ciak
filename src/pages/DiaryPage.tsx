@@ -682,7 +682,7 @@ export default function DiaryPage() {
                       <button
                         onClick={() => remove(e)}
                         aria-label="Rimuovi dal diario"
-                        className="self-start text-zinc-600 opacity-0 transition hover:text-curtain-light group-hover:opacity-100"
+                        className="self-start text-zinc-600 transition hover:text-curtain-light focus-visible:opacity-100 group-hover:opacity-100 mouse:opacity-0 tocco:-mr-2 tocco:-mt-2 tocco:p-2 tocco:text-lg"
                       >
                         ✕
                       </button>

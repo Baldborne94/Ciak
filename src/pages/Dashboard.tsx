@@ -35,7 +35,7 @@ function ContinueCard({
         aria-label="Rimuovi da Riprendi a guardare"
         title="Segna come abbandonata"
         onClick={(e) => { e.preventDefault(); onAbandon(c) }}
-        className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-theatre-950/85 text-sm text-zinc-300 opacity-0 backdrop-blur transition hover:bg-theatre-800 hover:text-curtain-light group-hover/card:opacity-100"
+        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-theatre-950/85 text-sm text-zinc-300 backdrop-blur transition hover:bg-theatre-800 hover:text-curtain-light focus-visible:opacity-100 group-hover/card:opacity-100 mouse:opacity-0 tocco:h-9 tocco:w-9 tocco:text-base"
       >
         ✕
       </button>
@@ -86,7 +86,7 @@ function SagaCard({ saga, onDismiss }: { saga: SagaContinuation; onDismiss: (col
         aria-label="Non mi interessa continuare questa saga"
         title="Non proporre più questa saga"
         onClick={(e) => { e.preventDefault(); onDismiss(saga.collectionId) }}
-        className="absolute right-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-theatre-950/85 text-sm text-zinc-300 opacity-0 backdrop-blur transition hover:bg-theatre-800 hover:text-curtain-light group-hover/card:opacity-100"
+        className="absolute right-1.5 top-1.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-theatre-950/85 text-sm text-zinc-300 backdrop-blur transition hover:bg-theatre-800 hover:text-curtain-light focus-visible:opacity-100 group-hover/card:opacity-100 mouse:opacity-0 tocco:h-9 tocco:w-9 tocco:text-base"
       >
         ✕
       </button>
@@ -328,7 +328,7 @@ export default function Dashboard() {
             />
             <p className="-mt-3 mb-4 text-sm text-zinc-500">
               Il prossimo capitolo delle saghe che hai iniziato ma non ancora finito.
-              <span className="text-zinc-600"> · passa il mouse e tocca ✕ per non vederla più.</span>
+              <span className="text-zinc-600"> · tocca ✕ sulla locandina per non vederla più.</span>
             </p>
             <ScrollRow>
               {visibleSagas.map((s) => (
