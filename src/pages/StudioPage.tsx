@@ -25,6 +25,10 @@ export default function StudioPage() {
 
   useEffect(() => {
     if (!id) return
+    // Passando a un altro studio le risposte di quello di prima, se arrivano
+    // tardi, si buttano: l'avviso del doppione di «A24» compariva anche sulla
+    // pagina dell'A24 vero.
+    let vivo = true
     setLoading(true)
     setError(null)
     setItems([])
@@ -32,17 +36,22 @@ export default function StudioPage() {
     setOmonimo(null)
     getCompany(cid)
       .then((c) => {
+        if (!vivo) return
         setCompany(c)
-        return studioOmonimoPiuGrande(c).then(setOmonimo, logFailure('Omonimi dello studio'))
+        return studioOmonimoPiuGrande(c).then((o) => vivo && setOmonimo(o), logFailure('Omonimi dello studio'))
       })
-      .catch(() => setCompany(null))
+      .catch(() => vivo && setCompany(null))
     discoverByCompany(cid, 1)
       .then(({ items: newItems, totalPages: tp }) => {
+        if (!vivo) return
         setItems(newItems)
         setTotalPages(tp)
       })
-      .catch((e: Error) => setError(e.message))
-      .finally(() => setLoading(false))
+      .catch((e: Error) => vivo && setError(e.message))
+      .finally(() => vivo && setLoading(false))
+    return () => {
+      vivo = false
+    }
   }, [cid, id])
 
   async function loadMore() {

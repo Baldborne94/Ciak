@@ -46,6 +46,8 @@ export interface TmdbOverrides {
   person?: Record<string, unknown>
   personCredits?: Record<string, unknown>
   company?: Record<string, unknown>
+  // Uno studio per id, quando il test ne apre più d'uno (vince su `company`).
+  companies?: Record<number, Record<string, unknown>>
   companyAltNames?: unknown[]
   collection?: Record<string, unknown>
   searchPerson?: unknown[]
@@ -148,9 +150,8 @@ export async function mockTmdb(page: Page, over: TmdbOverrides = {}): Promise<Tm
     }
     const companyMatch = /^\/company\/(\d+)$/.exec(path)
     if (companyMatch) {
-      return json(
-        over.company ?? { id: Number(companyMatch[1]), name: 'Studio Uno', logo_path: null },
-      )
+      const id = Number(companyMatch[1])
+      return json(over.companies?.[id] ?? over.company ?? { id, name: 'Studio Uno', logo_path: null })
     }
     const collectionMatch = /^\/collection\/(\d+)$/.exec(path)
     if (collectionMatch) {
