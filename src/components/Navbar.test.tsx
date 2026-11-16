@@ -76,3 +76,15 @@ describe('Navbar, il menu compatto', () => {
     expect(screen.queryByRole('navigation', { name: 'Menu principale' })).not.toBeInTheDocument()
   })
 })
+
+describe('Navbar, il marchio', () => {
+  it('porta l’icona dell’app, il teschio di ciak.svg, e si chiama ancora «Ciak»', () => {
+    const { container } = monta()
+    const marchio = screen.getByRole('link', { name: 'Ciak' })
+    expect(marchio).toHaveAttribute('href', '/')
+    // Decorativa: alt vuoto, così il nome del link resta quello scritto.
+    const icona = container.querySelector('a[href="/"] img')
+    expect(icona).toHaveAttribute('src', '/ciak.svg')
+    expect(icona).toHaveAttribute('alt', '')
+  })
+})

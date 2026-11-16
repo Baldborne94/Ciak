@@ -96,7 +96,7 @@ test('Studio — titoli prodotti', async ({ page }) => {
 test('Studio — dal doppione di «A24» si arriva a quello vero', async ({ page }) => {
   // TMDB ha due «A24» col logo uguale: un doppione con un film e quello vero.
   await mockTmdb(page, {
-    company: { id: 9001, name: 'A24', logo_path: null },
+    companies: { 9001: { id: 9001, name: 'A24', logo_path: null }, 41077: { id: 41077, name: 'A24', logo_path: null } },
     searchCompany: [
       { id: 9001, name: 'A24', logo_path: null },
       { id: 41077, name: 'A24', logo_path: null },
@@ -107,6 +107,9 @@ test('Studio — dal doppione di «A24» si arriva a quello vero', async ({ page
   await expect(page.getByRole('note')).toContainText('Su TMDB ci sono più studi chiamati «A24»')
   await page.getByRole('link', { name: 'Apri quello con 148 film →' }).click()
   await expect(page).toHaveURL(/\/studio\/41077$/)
+  // Quello vero non manda da nessuna parte: si aspetta che abbia finito di
+  // chiedere gli omonimi, perché un avviso che non c'è non lo si può aspettare.
+  await page.waitForLoadState('networkidle')
   await expect(page.getByRole('note')).toHaveCount(0)
 
   // Nella ricerca degli studi i due si distinguono, quello vero per primo.
