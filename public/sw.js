@@ -10,8 +10,10 @@
 //    sono dati che cambiano e richieste autenticate, non roba da cache muta.
 
 // Cambiare il nome butta la cache vecchia all'attivazione: v4 per il manifest
-// rimasto in v3 (vedi sotto, /manifest.webmanifest).
-const CACHE = 'ciak-v4'
+// rimasto in v3 (vedi sotto, /manifest.webmanifest); v5 per l'icona nuova (il
+// teschio col basco), perché ciak.svg e le PNG non hanno l'impronta nel nome e,
+// servite cache-first, sarebbero rimaste il ciak vecchio per sempre.
+const CACHE = 'ciak-v5'
 // I film salvati in Ciak per vederli offline. Una cache a parte, che
 // sopravvive ai deploy come quella delle immagini: ributtarla vorrebbe dire
 // perdere gigabyte a ogni aggiornamento dell'app. La legge la pagina.

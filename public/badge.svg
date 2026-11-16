@@ -1,14 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
-  <!-- White clapperboard silhouette on transparent — for Android status-bar badge -->
-  <g fill="#ffffff">
-    <rect x="14" y="44" width="68" height="36" rx="4" />
-    <g transform="rotate(-10 16 40)">
-      <rect x="14" y="28" width="68" height="16" rx="2" />
-    </g>
-  </g>
-  <g fill="#0a0a0f">
-    <polygon points="26,30 34,30 30,44 22,44" />
-    <polygon points="42,28 50,28 46,42 38,42" />
-    <polygon points="58,27 66,27 62,41 54,41" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="96" height="96">
+  <!-- La sagoma bianca dell'icona per la barra delle notifiche di Android, che
+       usa solo la trasparenza: teschio col basco, secchiello a strisce. Le
+       mani e i popcorn lì sarebbero rumore. -->
+  <defs>
+    <mask id="buchi">
+      <rect width="512" height="512" fill="#fff" />
+      <!-- occhi e naso del teschio -->
+      <ellipse cx="220" cy="200" rx="30" ry="27" fill="#000" />
+      <ellipse cx="292" cy="200" rx="30" ry="27" fill="#000" />
+      <!-- le strisce del secchiello e lo stacco sotto il bordo -->
+      <path d="M186 262l12 220h28l-6-220Zm84 0v220h28l8-220Z" fill="#000" />
+      <rect x="110" y="244" width="292" height="10" fill="#000" />
+      <!-- lo stacco fra il basco e la testa -->
+      <path d="M152 132c46-20 128-22 196-4" stroke="#000" stroke-width="12" fill="none" stroke-linecap="round" />
+    </mask>
+  </defs>
+  <g fill="#fff" mask="url(#buchi)">
+    <!-- basco -->
+    <path d="M150 130c-4-44 52-74 116-72 70 2 114 30 106 66-3 14-26 17-46 11-46-15-100-17-146 3-18 8-28 6-30-8Z" />
+    <path d="M262 62c0-14 6-24 14-28" stroke="#fff" stroke-width="14" stroke-linecap="round" />
+    <!-- teschio che sbuca -->
+    <path d="M166 250c0-70 38-118 90-118s90 48 90 118Z" />
+    <!-- secchiello -->
+    <path d="M110 254h292l-40 230H150Z" />
+    <rect x="102" y="232" width="308" height="14" rx="7" />
+    <!-- due popcorn che saltano -->
+    <circle cx="96" cy="150" r="26" /><circle cx="118" cy="170" r="22" />
+    <circle cx="414" cy="140" r="26" /><circle cx="394" cy="162" r="22" />
   </g>
 </svg>

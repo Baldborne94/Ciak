@@ -83,3 +83,16 @@ describe('service worker: il manifest dell’app installata', () => {
     expect(await caches.keys()).not.toContain('ciak-v3')
   })
 })
+
+describe('service worker: l’icona nuova', () => {
+  it('un worker nuovo butta la cache dove era rimasta l’icona vecchia', async () => {
+    // ciak.svg e le icone PNG non cambiano nome quando cambiano: servite dalla
+    // cache, il browser avrebbe mostrato il vecchio ciak per sempre.
+    const { gestori, caches } = avviaWorker()
+    await (await caches.open('ciak-v4')).put('/ciak.svg', new Response('<svg/>'))
+    const attese: Promise<unknown>[] = []
+    gestori.activate({ waitUntil: (p: Promise<unknown>) => attese.push(p) })
+    await Promise.all(attese)
+    expect(await caches.keys()).not.toContain('ciak-v4')
+  })
+})
