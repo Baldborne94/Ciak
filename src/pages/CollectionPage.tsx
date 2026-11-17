@@ -158,7 +158,7 @@ export default function CollectionPage() {
       {collection.items.length === 0 ? (
         <EmptyState title="Nessun film nella saga" message="TMDB non ha titoli per questa collezione." />
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
           {orderedItems.map((item, i) => (
             <div key={item.id} className="relative">
               <span className="absolute -left-1 -top-1 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-projector text-sm font-bold text-theatre-950 shadow-reel">
@@ -180,7 +180,7 @@ export default function CollectionPage() {
           <p className="mb-4 text-sm text-zinc-500">
             Prequel, spin-off e saghe dello stesso universo (su TMDB stanno in collezioni separate).
           </p>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
             {related.map((c) => {
               const poster = posterUrl(c.posterPath)
               return (

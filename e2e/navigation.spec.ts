@@ -15,6 +15,8 @@ test('la home si apre e mostra la barra di navigazione', async ({ page }) => {
 
   await expect(page.getByRole('link', { name: 'Ciak', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Ciak', exact: true }).locator('img')).toHaveAttribute('src', '/ciak.svg')
+  // Il nome della finestra e della scheda: solo «Ciak», l'icona c'è già accanto.
+  await expect(page).toHaveTitle('Ciak')
   await expect(page.getByRole('link', { name: 'Cerca', exact: true })).toBeVisible()
   // Nessun errore applicativo in pagina.
   await expect(page.getByText('Qualcosa è andato storto')).toHaveCount(0)

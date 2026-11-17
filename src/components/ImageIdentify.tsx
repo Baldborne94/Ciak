@@ -276,7 +276,7 @@ export default function ImageIdentify() {
           {people.length > 0 && (
             <section>
               <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">🌟 Persone riconosciute</h2>
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
                 {people.map((p, i) => {
                   const photo = p.person ? profileUrl(p.person.profilePath) : null
                   const person = p.person

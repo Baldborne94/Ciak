@@ -70,10 +70,11 @@ export default function Navbar() {
     <header className="sticky top-0 z-30 border-b border-theatre-800/80 bg-theatre-950/80 backdrop-blur">
       {/* La barra completa, con nove voci, vuole circa 1100px: nel contenitore
           delle pagine (1088px) non ci stava a nessuna larghezza, e sotto i
-          1280px «Esci» finiva oltre il bordo. Qui si allarga fino a 1280px e
-          compare solo da xl: un tablet girato in orizzontale (1024-1280px) ha
-          il menu compatto, come in verticale. */}
-      <nav className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+          1280px «Esci» finiva oltre il bordo. Compare solo da xl: un tablet
+          girato in orizzontale (1024-1280px) ha il menu compatto, come in
+          verticale. Larga quanto le pagine (container-cine), così il marchio
+          e «Esci» stanno sopra i bordi del contenuto. */}
+      <nav className="mx-auto flex h-16 w-full max-w-[120rem] items-center justify-between gap-4 px-4 sm:px-6 lg:px-10">
         <NavLink to="/" className="group flex shrink-0 items-center gap-2">
           {/* L'icona dell'app (public/ciak.svg): la stessa della schermata Home. Decorativa,
               il nome del link resta «Ciak». */}
