@@ -160,7 +160,7 @@ function TitlesTab() {
           <option value="title">Titolo (A–Z)</option>
         </select>
       </div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
         {sorted.map((record) => (
           <SavedTitleCard key={record.id} record={record}>
             <FavoriteEditor record={record} onSaved={replace} />
@@ -204,7 +204,7 @@ function EntitiesTab({ type }: { type: 'person' | 'company' }) {
 
   if (type === 'person') {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
         {items.map((e) => {
           const photo = profileUrl(e.image_path)
           return (
@@ -230,7 +230,7 @@ function EntitiesTab({ type }: { type: 'person' | 'company' }) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
       {items.map((e) => {
         const logo = logoUrl(e.image_path)
         return (

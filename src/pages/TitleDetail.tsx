@@ -422,7 +422,7 @@ export default function TitleDetail() {
         <h2 className="mb-4 font-display text-2xl tracking-wide text-zinc-100">
           📋 Scheda tecnica
         </h2>
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {detail.originalLanguage && (
             <Info
               label="Lingua originale"

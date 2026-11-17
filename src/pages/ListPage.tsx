@@ -313,7 +313,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
           {filteredSorted.length === 0 ? (
             <EmptyState title="Nessun titolo" message="Nessun titolo corrisponde al filtro scelto." icon="🔍" />
           ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
               {filteredSorted.map((record) => (
                 <SavedTitleCard key={record.id} record={record}>
                   <GuardaOra

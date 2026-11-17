@@ -120,7 +120,7 @@ export default function PremiPage() {
               message={visione === 'mancano' ? `Hai visto ogni ${scelto.nome}. Prova un altro premio.` : 'Non hai ancora visto nessuno di questi film.'}
             />
           ) : (
-            <ol aria-label={`Vincitori: ${scelto.nome}`} className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <ol aria-label={`Vincitori: ${scelto.nome}`} className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
               {righe.map((v, i) => {
                 const item: MediaItem | undefined = film.get(v.tmdbId)
                 return (

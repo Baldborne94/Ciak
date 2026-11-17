@@ -753,7 +753,7 @@ export default function Search() {
             <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
               🌟 Attori celebri
             </h2>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
               {famousActors.map((p) => <PersonCard key={p.id} p={p} />)}
             </div>
           </div>
@@ -762,7 +762,7 @@ export default function Search() {
             <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
               🏛️ Studi celebri
             </h2>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
               {famousStudios.map((c) => <StudioCard key={c.id} c={c} />)}
             </div>
           </div>
@@ -771,7 +771,7 @@ export default function Search() {
             <h2 className="mb-4 font-display text-xl tracking-wide text-zinc-100">
               📚 Saghe celebri
             </h2>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
               {famousSagas.map((c) => <CollectionCard key={c.id} c={c} />)}
             </div>
           </div>
@@ -786,7 +786,7 @@ export default function Search() {
         filteredPeople.length === 0 ? (
           <EmptyState title="Nessuna persona trovata" message={`Nessun risultato per "${query}" in questo ruolo.`} />
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
             {filteredPeople.map((p) => <PersonCard key={p.id} p={p} />)}
           </div>
         )
@@ -794,7 +794,7 @@ export default function Search() {
         studios.length === 0 ? (
           <EmptyState title="Nessuno studio trovato" message={`Nessun risultato per "${query}".`} />
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {studios.map((c) => <StudioCard key={c.id} c={c} />)}
           </div>
         )
@@ -803,7 +803,7 @@ export default function Search() {
         collections.length === 0 ? (
           <EmptyState title="Nessuna saga trovata" message={`Nessun risultato per "${query}".`} />
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
             {collections.map((c) => <CollectionCard key={c.id} c={c} />)}
           </div>
         )

@@ -484,7 +484,7 @@ export default function TasteProfile() {
             {stats.ratingDist[0].count > 0 && `${stats.ratingDist[0].count} a cinque stelle su ${stats.topRated.length} votati. `}
             A parità di voto vengono prima i preferiti, poi i visti più di recente.
           </p>
-          <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+          <div className="grid grid-cols-3 gap-4 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 2xl:grid-cols-8">
             {stats.topRated.slice(0, migliori).map((r) => {
               const poster = posterUrl(r.poster_path)
               const type = r.media_type === 'movie' ? 'movie' : 'tv'
