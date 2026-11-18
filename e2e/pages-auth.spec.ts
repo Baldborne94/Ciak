@@ -263,6 +263,42 @@ test('la watchlist si cerca anche col titolo originale', async ({ page }) => {
   await expectNoCrash(page)
 })
 
+test('nella watchlist si cerca dall’inizio delle parole, e si vede con quale titolo l’ha trovato', async ({ page }) => {
+  // «long» mostrava «Insieme agli Dei» (in originale «Along with the Gods»)
+  // e South Park senza dire perché.
+  await mockTmdb(page)
+  const inglesi: Record<string, string> = {
+    '/movie/9473': 'South Park: Bigger, Longer & Uncut',
+    '/movie/447993': 'Along with the Gods: The Two Worlds',
+    '/movie/748783': 'Longlegs',
+  }
+  await page.route(TMDB_PROXY, (route) => {
+    const { path, params } = tmdbRequest(route)
+    if (inglesi[path] && params.get('language') === 'en-US') {
+      return route.fulfill({ json: movieDetail(Number(path.split('/')[2]), inglesi[path]) })
+    }
+    return route.fallback()
+  })
+  await mockSupabase(page, {
+    user_titles: [
+      userTitle({ id: 'a', tmdb_id: 9473, title: 'South Park: Il film - Più grosso, più lungo & tutto intero', status: 'to_watch' }),
+      userTitle({ id: 'b', tmdb_id: 447993, title: 'Insieme agli Dei: I Due Mondi', status: 'to_watch' }),
+      userTitle({ id: 'c', tmdb_id: 748783, title: 'Longlegs', status: 'to_watch' }),
+    ],
+  })
+  await page.goto('/lists/watchlist')
+  await expect(page.getByText('Insieme agli Dei: I Due Mondi')).toBeVisible()
+
+  await page.getByRole('searchbox', { name: 'Cerca nella lista' }).fill('long')
+  await expect(page.getByText('Longlegs', { exact: true })).toBeVisible()
+  await expect(page.getByText('Insieme agli Dei: I Due Mondi')).toHaveCount(0)
+  // South Park c'è per il suo titolo originale, e lo dice.
+  await expect(page.getByText('«South Park: Bigger, Longer & Uncut»')).toBeVisible()
+  // Longlegs risponde col suo nome: nessuna riga in più.
+  await expect(page.getByText('«Longlegs»')).toHaveCount(0)
+  await expectNoCrash(page)
+})
+
 test('la watchlist si filtra per genere, anno, lingua e voto, come la ricerca', async ({ page }) => {
   // Anno, lingua e voto arrivano da TMDB (la riga salva solo i generi).
   await mockTmdb(page, {

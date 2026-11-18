@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { corrispondeRicerca, normalizzaRicerca } from './ricercaLista'
+import { corrispondeRicerca, normalizzaRicerca, titoloTrovato } from './ricercaLista'
 
 describe('ricerca nella lista', () => {
   it('trova il titolo italiano, anche solo con l inizio', () => {
@@ -31,5 +31,27 @@ describe('ricerca nella lista', () => {
 
   it('salta i titoli mancanti', () => {
     expect(corrispondeRicerca('sea', [null, undefined, 'Song of the Sea'])).toBe(true)
+  })
+
+  it('cerca dall inizio delle parole, non a metà', () => {
+    // «long» trovava «Insieme agli Dei», il cui originale è «Along with the Gods».
+    expect(corrispondeRicerca('long', ['Insieme agli Dei: I Due Mondi', 'Along with the Gods: The Two Worlds'])).toBe(false)
+    expect(corrispondeRicerca('long', ['Longlegs'])).toBe(true)
+    expect(corrispondeRicerca('zone', ['La canzone del mare'])).toBe(false)
+    expect(corrispondeRicerca('del ma', ['La canzone del mare'])).toBe(true)
+  })
+
+  it('negli alfabeti senza spazi si cerca ovunque, perché lì le parole non si separano', () => {
+    expect(corrispondeRicerca('千尋', ['千と千尋の神隠し'])).toBe(true)
+  })
+})
+
+describe('titoloTrovato', () => {
+  it('dice quale titolo ha risposto, per mostrarlo quando non è quello a schermo', () => {
+    const titoli = ['South Park: Il film - Più grosso, più lungo & tutto intero', 'South Park: Bigger, Longer & Uncut']
+    expect(titoloTrovato('long', titoli)).toBe('South Park: Bigger, Longer & Uncut')
+    expect(titoloTrovato('più grosso', titoli)).toBe(titoli[0])
+    expect(titoloTrovato('xyz', titoli)).toBeNull()
+    expect(titoloTrovato('', titoli)).toBeNull()
   })
 })
