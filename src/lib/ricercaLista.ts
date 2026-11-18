@@ -15,8 +15,27 @@ export function normalizzaRicerca(t: string): string {
     .trim()
 }
 
+// Gli alfabeti che non separano le parole con gli spazi: lì una parola
+// comincia ovunque, e «千尋» va trovato dentro «千と千尋の神隠し».
+const SENZA_SPAZI = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}]/u
+
+// Il testo cercato va trovato all'inizio di una parola, non a metà: «long»
+// trovava «Insieme agli Dei», perché l'originale è «Along with the Gods».
+function contiene(titolo: string, q: string): boolean {
+  const t = normalizzaRicerca(titolo)
+  return SENZA_SPAZI.test(q) ? t.includes(q) : ` ${t}`.includes(` ${q}`)
+}
+
 export function corrispondeRicerca(query: string, titoli: (string | null | undefined)[]): boolean {
   const q = normalizzaRicerca(query)
   if (!q) return true
-  return titoli.some((t) => !!t && normalizzaRicerca(t).includes(q))
+  return titoli.some((t) => !!t && contiene(t, q))
+}
+
+// Il titolo che ha risposto alla ricerca: se non è quello a schermo (l'originale,
+// l'inglese) la lista lo mostra, altrimenti non si capisce perché il titolo c'è.
+export function titoloTrovato(query: string, titoli: (string | null | undefined)[]): string | null {
+  const q = normalizzaRicerca(query)
+  if (!q) return null
+  return titoli.find((t): t is string => !!t && contiene(t, q)) ?? null
 }

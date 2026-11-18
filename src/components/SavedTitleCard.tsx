@@ -7,9 +7,14 @@ import { STATUS_LABELS, type UserTitle } from '../lib/types'
 export default function SavedTitleCard({
   record,
   children,
+  trovatoCome,
 }: {
   record: UserTitle
   children?: React.ReactNode
+  // Il titolo (originale, inglese) con cui la ricerca nella lista l'ha trovato,
+  // quando non è quello a schermo: senza, «long» mostrava South Park senza
+  // dire che in originale è «Bigger, Longer & Uncut».
+  trovatoCome?: string | null
 }) {
   const poster = posterUrl(record.poster_path)
   const type = record.media_type === 'movie' ? 'movie' : 'tv'
@@ -46,6 +51,7 @@ export default function SavedTitleCard({
           <h3 className="line-clamp-2 text-sm font-semibold text-zinc-100">
             {record.title}
           </h3>
+          {trovatoCome && <p className="mt-0.5 line-clamp-2 text-xs italic text-zinc-400">«{trovatoCome}»</p>}
           <p className="mt-0.5 text-xs text-zinc-500">
             {STATUS_LABELS[record.status]}
             {record.personal_rating ? ` · ★ ${record.personal_rating}/5` : ''}

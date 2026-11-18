@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { logFailure } from '../lib/logFailure'
 import PageHeader from '../components/PageHeader'
 import SavedTitleCard from '../components/SavedTitleCard'
@@ -16,7 +16,7 @@ import {
   upsertUserTitle,
 } from '../lib/userTitles'
 import { getGenres, getReleaseYears, getSearchTitles, getTitleDetails } from '../lib/tmdb'
-import { corrispondeRicerca } from '../lib/ricercaLista'
+import { corrispondeRicerca, titoloTrovato } from '../lib/ricercaLista'
 import { NESSUN_FILTRO, chiaveTitolo, filtriAttivi, opzioniLista, passaFiltri, type DatiTitolo, type FiltriLista } from '../lib/filtriLista'
 import { STATUS_LABELS, type TitleStatus, type UserTitle } from '../lib/types'
 
@@ -142,6 +142,10 @@ export default function ListPage({ status }: { status: TitleStatus }) {
   }, [items, releaseYears, dettagli])
   const opzioni = useMemo(() => opzioniLista(items, datiTitoli), [items, datiTitoli])
 
+  const titoliDi = useCallback(
+    (r: UserTitle) => [r.title, ...(searchTitles.get(`${r.media_type === 'tv' ? 'tv' : 'movie'}-${r.tmdb_id}`) ?? [])],
+    [searchTitles],
+  )
   const filteredSorted = useMemo(() => {
     const list = items
       .filter((r) => {
@@ -152,9 +156,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
         return true
       })
       .filter((r) => passaFiltri(r, datiTitoli.get(chiaveTitolo(r)), filtri))
-      .filter((r) =>
-        corrispondeRicerca(search, [r.title, ...(searchTitles.get(`${r.media_type === 'tv' ? 'tv' : 'movie'}-${r.tmdb_id}`) ?? [])]),
-      )
+      .filter((r) => corrispondeRicerca(search, titoliDi(r)))
     const yearOf = (r: UserTitle) => releaseYears.get(`${r.media_type === 'tv' ? 'tv' : 'movie'}-${r.tmdb_id}`) ?? ''
     if (sort === 'title') return [...list].sort((a, b) => a.title.localeCompare(b.title, 'it'))
     if (sort === 'oldest') return [...list].sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -165,7 +167,7 @@ export default function ListPage({ status }: { status: TitleStatus }) {
       return ya.localeCompare(yb)
     })
     return [...list].sort((a, b) => b.created_at.localeCompare(a.created_at)) // recent (default)
-  }, [items, kind, sort, search, releaseYears, searchTitles, datiTitoli, filtri])
+  }, [items, kind, sort, search, releaseYears, titoliDi, datiTitoli, filtri])
 
   useEffect(() => {
     if (!user || !shareable) return
@@ -315,7 +317,11 @@ export default function ListPage({ status }: { status: TitleStatus }) {
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
               {filteredSorted.map((record) => (
-                <SavedTitleCard key={record.id} record={record}>
+                <SavedTitleCard
+                  key={record.id}
+                  record={record}
+                  trovatoCome={titoloTrovato(search, titoliDi(record)) === record.title ? null : titoloTrovato(search, titoliDi(record))}
+                >
                   <GuardaOra
                     videoteca={videoteca}
                     tmdbId={record.tmdb_id}
