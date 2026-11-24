@@ -442,7 +442,7 @@ test('una serie salvata in Ciak copia da sola gli episodi nuovi e toglie quelli 
   // Senza la cartella, l'episodio parte dalla copia, con le sue lingue.
   await page.getByRole('button', { name: 'Scollega la cartella' }).click()
   await page.getByText('South Park', { exact: true }).click()
-  await page.getByRole('list', { name: 'Episodi di South Park sul dispositivo' }).getByRole('button', { name: /S3E2/ }).click()
+  await page.getByRole('list', { name: 'Episodi di South Park sul dispositivo' }).getByRole('button', { name: /S3E2.*Guarda/ }).click()
   await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
   await expect(page.getByRole('button', { name: 'Audio: Inglese. Cambia lingua' })).toBeVisible()
 })
@@ -553,7 +553,7 @@ test('un episodio salvato in Ciak senza sottotitoli li cerca online, e li tiene 
   await page.getByRole('button', { name: 'Scollega la cartella' }).click()
   await page.reload()
   await page.getByText('South Park', { exact: true }).click()
-  await page.getByRole('list', { name: 'Episodi di South Park sul dispositivo' }).getByRole('button', { name: /S3E2/ }).click()
+  await page.getByRole('list', { name: 'Episodi di South Park sul dispositivo' }).getByRole('button', { name: /S3E2.*Guarda/ }).click()
   await expect(page.locator('video')).toHaveAttribute('src', /^blob:/)
   await expect(page.getByText(/Italiano · da OpenSubtitles/)).toBeVisible()
   expect(richieste.filter((r) => r.azione === 'cerca')).toHaveLength(1)

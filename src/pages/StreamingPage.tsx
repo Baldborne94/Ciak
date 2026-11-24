@@ -36,6 +36,7 @@ import { componiVideoteca, type FilmDellElenco } from '../lib/elencoVideoteca'
 import { useElencoVideoteca } from '../lib/useElencoVideoteca'
 import { useInfoTitoli } from '../lib/useInfoTitoli'
 import { useSulDispositivo } from '../lib/useSulDispositivo'
+import { eliminaDalDispositivo } from '../lib/eliminaDalDispositivo'
 import { useSerieInCiak } from '../lib/useSerieInCiak'
 
 // La videoteca: i video della cartella collegata del PC e del server di casa,
@@ -339,6 +340,11 @@ export default function StreamingPage() {
           film={offline}
           spazioUsato={spazioUsato}
           onApri={(f) => navigate(`/streaming/${f.id}`, { state: { titolo: f.titolo, file: f.file } })}
+          onElimina={(copie, serieIntera) =>
+            void eliminaDalDispositivo(copie, { serieIntera }).then(({ falliti }) => {
+              if (falliti > 0) setErrore(`${falliti} copie su ${copie.length} non si sono tolte: riprova.`)
+            })
+          }
         />
       )}
 
