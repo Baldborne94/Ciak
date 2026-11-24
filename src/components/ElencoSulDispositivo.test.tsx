@@ -43,3 +43,43 @@ describe('ElencoSulDispositivo', () => {
     expect(screen.getByRole('button', { name: /Paprika/ })).toBeDisabled()
   })
 })
+
+describe('ElencoSulDispositivo, il cestino', () => {
+  const serie = [
+    film('loc-1', 'South Park · S3E1', { serie: 'South Park' }),
+    film('loc-2', 'South Park · S3E2', { serie: 'South Park' }),
+  ]
+
+  it('toglie una serie intera con un tocco, dopo la conferma che dice cosa va via', async () => {
+    const onElimina = vi.fn()
+    const conferma = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<ElencoSulDispositivo film={[film('loc-p', 'Paprika'), ...serie]} spazioUsato={null} onApri={vi.fn()} onElimina={onElimina} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Elimina «South Park» dal dispositivo' }))
+    expect(conferma.mock.calls[0][0]).toMatch(/Togli «South Park» dal dispositivo\?\nVa via le copie dei 2 episodi salvati in Ciak \(600 MB\)\. I video sul NAS o nella cartella restano\./)
+    expect(onElimina).toHaveBeenCalledWith(serie, true)
+    // Il tocco sul cestino non apre la serie.
+    expect(screen.getByRole('button', { name: /S3E1.*Guarda/ })).not.toBeVisible()
+    conferma.mockRestore()
+  })
+
+  it('senza conferma non toglie niente', async () => {
+    const onElimina = vi.fn()
+    const conferma = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<ElencoSulDispositivo film={[film('loc-p', 'Paprika')]} spazioUsato={null} onApri={vi.fn()} onElimina={onElimina} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Elimina «Paprika» dal dispositivo' }))
+    expect(onElimina).not.toHaveBeenCalled()
+    conferma.mockRestore()
+  })
+
+  it('un film o un episodio solo si toglie da sé, senza toccare la serie', async () => {
+    const onElimina = vi.fn()
+    const conferma = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<ElencoSulDispositivo film={[film('loc-p', 'Paprika'), ...serie]} spazioUsato={null} onApri={vi.fn()} onElimina={onElimina} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Elimina «Paprika» dal dispositivo' }))
+    expect(onElimina).toHaveBeenLastCalledWith([expect.objectContaining({ id: 'loc-p' })], false)
+    await userEvent.click(screen.getByText('South Park'))
+    await userEvent.click(screen.getByRole('button', { name: 'Elimina «South Park · S3E2» dal dispositivo' }))
+    expect(onElimina).toHaveBeenLastCalledWith([serie[1]], false)
+    conferma.mockRestore()
+  })
+})

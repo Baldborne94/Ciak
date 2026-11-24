@@ -4,6 +4,8 @@ import { taglia, type FilmOffline } from '../lib/filmOffline'
 // anche senza il disco e senza rete. Uno ancora in copia o non riuscito si
 // vede, ma non si apre. Gli episodi di una serie salvata stanno in una riga
 // sola, che si apre: venti episodi uno sotto l'altro coprirebbero la videoteca.
+// Ogni riga ha il suo 🗑: una serie intera si toglie con un tocco, non
+// episodio per episodio dal lettore.
 
 type Voce = { tipo: 'film'; film: FilmOffline } | { tipo: 'serie'; nome: string; episodi: FilmOffline[] }
 
@@ -27,26 +29,55 @@ function raggruppa(film: FilmOffline[]): Voce[] {
   return voci
 }
 
-function RigaFilm({ f, onApri }: { f: FilmOffline; onApri: (f: FilmOffline) => void }) {
+type Elimina = (copie: FilmOffline[], serieIntera: boolean) => void
+
+// Il cestino di una riga: chiede conferma e dice che va via solo la copia.
+function Cestino({ nome, copie, serieIntera, onElimina }: { nome: string; copie: FilmOffline[]; serieIntera: boolean; onElimina: Elimina }) {
+  const peso = copie.reduce((t, f) => t + (f.dimensione ?? 0), 0)
+  // Dentro <summary> un pulsante non apre la serie: il browser lascia ai
+  // comandi interattivi il loro tocco (lo controlla il test).
+  function chiedi() {
+    const cosa = copie.length === 1 ? 'la copia salvata in Ciak' : `le copie dei ${copie.length} episodi salvati in Ciak`
+    const resta = copie.length === 1 ? 'Il video sul NAS o nella cartella resta.' : 'I video sul NAS o nella cartella restano.'
+    if (!window.confirm(`Togli «${nome}» dal dispositivo?\nVa via ${cosa}${peso ? ` (${taglia(peso)})` : ''}. ${resta}`)) return
+    onElimina(copie, serieIntera)
+  }
   return (
     <button
-      onClick={() => onApri(f)}
-      disabled={f.stato !== 'completo'}
-      className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-theatre-800/60 disabled:opacity-60"
+      type="button"
+      onClick={chiedi}
+      aria-label={`Elimina «${nome}» dal dispositivo`}
+      title="Elimina dal dispositivo"
+      className="mr-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-zinc-500 transition hover:bg-theatre-800 hover:text-red-400 tocco:h-10 tocco:w-10"
     >
-      <span className="text-xl">{f.stato === 'completo' ? '📱' : f.stato === 'in-corso' ? '⬇️' : '⚠️'}</span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium text-zinc-100">{f.titolo}</span>
-        <span className="block truncate text-xs text-zinc-500">
-          {f.stato === 'completo'
-            ? `Disponibile offline${f.dimensione ? ` · ${taglia(f.dimensione)}` : ''}`
-            : f.stato === 'in-corso'
-              ? 'Download in corso…'
-              : `Download non riuscito${f.errore ? ` · ${f.errore}` : ''}`}
-        </span>
-      </span>
-      {f.stato === 'completo' && <span className="shrink-0 text-projector">▶ Guarda</span>}
+      🗑
     </button>
+  )
+}
+
+function RigaFilm({ f, onApri, onElimina }: { f: FilmOffline; onApri: (f: FilmOffline) => void; onElimina?: Elimina }) {
+  return (
+    <div className="flex items-center">
+      <button
+        onClick={() => onApri(f)}
+        disabled={f.stato !== 'completo'}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-theatre-800/60 disabled:opacity-60"
+      >
+        <span className="text-xl">{f.stato === 'completo' ? '📱' : f.stato === 'in-corso' ? '⬇️' : '⚠️'}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-zinc-100">{f.titolo}</span>
+          <span className="block truncate text-xs text-zinc-500">
+            {f.stato === 'completo'
+              ? `Disponibile offline${f.dimensione ? ` · ${taglia(f.dimensione)}` : ''}`
+              : f.stato === 'in-corso'
+                ? 'Download in corso…'
+                : `Download non riuscito${f.errore ? ` · ${f.errore}` : ''}`}
+          </span>
+        </span>
+        {f.stato === 'completo' && <span className="shrink-0 text-projector">▶ Guarda</span>}
+      </button>
+      {onElimina && <Cestino nome={f.titolo} copie={[f]} serieIntera={false} onElimina={onElimina} />}
+    </div>
   )
 }
 
@@ -54,10 +85,12 @@ export default function ElencoSulDispositivo({
   film,
   spazioUsato,
   onApri,
+  onElimina,
 }: {
   film: FilmOffline[]
   spazioUsato: number | null
   onApri: (f: FilmOffline) => void
+  onElimina?: Elimina
 }) {
   return (
     <section className="mb-6">
@@ -71,7 +104,7 @@ export default function ElencoSulDispositivo({
         {raggruppa(film).map((v) =>
           v.tipo === 'film' ? (
             <li key={v.film.id}>
-              <RigaFilm f={v.film} onApri={onApri} />
+              <RigaFilm f={v.film} onApri={onApri} onElimina={onElimina} />
             </li>
           ) : (
             <li key={`serie-${v.nome}`}>
@@ -85,11 +118,12 @@ export default function ElencoSulDispositivo({
                       {v.episodi.some((e) => e.dimensione) && ` · ${taglia(v.episodi.reduce((t, e) => t + (e.dimensione ?? 0), 0))}`}
                     </span>
                   </span>
+                  {onElimina && <Cestino nome={v.nome} copie={v.episodi} serieIntera onElimina={onElimina} />}
                 </summary>
                 <ul aria-label={`Episodi di ${v.nome} sul dispositivo`} className="border-t border-theatre-800 pl-6">
                   {v.episodi.map((f) => (
                     <li key={f.id}>
-                      <RigaFilm f={f} onApri={onApri} />
+                      <RigaFilm f={f} onApri={onApri} onElimina={onElimina} />
                     </li>
                   ))}
                 </ul>
