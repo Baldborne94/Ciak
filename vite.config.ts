@@ -38,13 +38,14 @@ function tmdbDev(env: Record<string, string>): Plugin {
   }
 }
 
-// L'identità di questa build: il commit su Vercel, altrimenti l'ora del build.
+// L'identità di questa build: il commit (su Vercel, o passato all'immagine del
+// NAS come VERSIONE_APP), altrimenti l'ora del build.
 // Finisce nel codice (VITE_VERSIONE_APP) e in /versione.json: l'app aperta
 // rilegge il file e, se non è più la sua, propone di aggiornare. Senza, una
 // scheda aperta da ieri continuava a usare il codice vecchio, e le correzioni
 // appena pubblicate «non funzionavano».
 function versioneApp(): Plugin {
-  const versione = (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 12) || new Date().toISOString()
+  const versione = (process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERSIONE_APP || '').slice(0, 12) || new Date().toISOString()
   return {
     name: 'ciak-versione',
     config(_, { command }) {

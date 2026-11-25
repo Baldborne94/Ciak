@@ -92,7 +92,7 @@ async function aggiornaDate(db: SupabaseClient, chiave: string, oggi: string): P
         try {
           const risposta = await fetch(urlTmdb(`/${tipo}/${r.tmdb_id}`, {}, chiave))
           if (!risposta.ok) throw new Error(`TMDB ${risposta.status}`)
-          const nuova = dataDaSalvare(r.release_date, dataDaTmdb(await risposta.json(), tipo))
+          const nuova = dataDaSalvare(r.release_date, dataDaTmdb((await risposta.json()) as { release_date?: string | null; first_air_date?: string | null }, tipo))
           if (!nuova) return
           const { error: e } = await db.from('user_alerts').update({ release_date: nuova }).eq('id', r.id)
           if (e) throw new Error(e.message)

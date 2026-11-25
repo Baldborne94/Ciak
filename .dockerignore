@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-server
+test-results
+playwright-report
+.git
+nas/dati
+nas/.env
+.env
+.env.*

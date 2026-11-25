@@ -19,6 +19,8 @@ export default defineConfig({
       // Anche le funzioni serverless: la loro logica di autorizzazione è codice
       // come il resto, e finora non la copriva nessuno.
       'api/**/*.test.ts',
+      // Il server che sul NAS prende il posto di Vercel (server/).
+      'server/**/*.test.ts',
     ],
   },
 })

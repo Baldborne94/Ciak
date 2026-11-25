@@ -165,6 +165,31 @@ Due guardie automatiche, oltre ai test veri e propri:
   una settimana in `localStorage`; negli E2E `mockTmdb` intercetta anche
   Wikidata (opzioni `wikidata` e `wikidataVoci`).
 
+## Ciak sul NAS
+
+Ciak gira anche sul NAS di casa, senza Vercel né Supabase nel cloud
+(`nas/LEGGIMI.md` per l'utente). Un container solo, `ciak` (`Dockerfile`,
+`server/`), serve l'app, esegue le funzioni di `api/` con la forma di
+richiesta e risposta di Vercel, e inoltra `/auth/v1` e `/rest/v1` al login e
+alle tabelle di un Supabase ridotto (`nas/docker-compose.yaml`: database,
+login, tabelle, pannello, backup notturno, migrazione una tantum). GitHub
+costruisce l'immagine a ogni merge (`.github/workflows/immagine.yml`) e il NAS
+la scarica da solo.
+
+- Una funzione nuova in `api/` va aggiunta anche a `server/funzioni.ts`, o sul
+  NAS risponde 404: `server/funzioni.test.ts` lo controlla.
+- I valori pubblici che il browser legge (Supabase, VAPID, tetto AI) passano da
+  `src/lib/configurazione.ts`, mai da `import.meta.env` direttamente: sul NAS
+  li scrive il server in index.html (`window.__CIAK__`), e l'immagine è la
+  stessa per ogni NAS.
+- Sul NAS Supabase sta sulla stessa origine dell'app: il service worker non
+  deve mai servire `/rest/v1` e `/auth/v1` dalla cache.
+- Una variabile nuova in `nas/docker-compose.yaml` senza valore predefinito va
+  prodotta anche da `nas/chiavi.html` (il generatore del `.env`, che lavora sul
+  PC dell'utente): lo controlla `src/lib/chiaviNas.test.ts`.
+- I file `supabase/schema_vN_*.sql` sul NAS si lanciano dal pannello
+  (`https://…:8444`, SQL Editor), come prima nel SQL Editor del cloud.
+
 ## Struttura
 
 ```
@@ -173,6 +198,8 @@ src/components/  componenti condivisi
 src/lib/         accesso ai dati, logica pura (+ test unitari)
 src/lib/tmdb/    il catalogo, diviso per responsabilità
 api/             funzioni serverless Vercel (AI, proxy TMDB, cron avvisi)
+server/          il server del NAS: app, funzioni di api/, porta verso Supabase
+nas/             Ciak sul NAS: docker-compose, generatore del .env, migrazione, backup
 e2e/             test end-to-end + mock
 supabase/        schema SQL e policy
 strumenti/       script per il PC dell'utente (preparare i video per la cartella)

@@ -1,0 +1,240 @@
+# Ciak sul NAS: l'app, i tuoi dati e i loro backup, tutto in casa.
+# Istruzioni passo passo in LEGGIMI.md. Le impostazioni stanno in .env
+# (fatto con chiavi.html, accanto a questo file).
+#
+# Di Supabase c'è solo ciò che Ciak usa: il database, il login e le tabelle,
+# più il pannello per lanciare i file SQL. Niente archivio di file, tempo
+# reale, funzioni edge, statistiche: sarebbero container accesi per niente.
+
+name: ciak
+
+services:
+  # L'app, le funzioni che prima stavano su Vercel e la porta verso Supabase.
+  # Si aggiorna da sola (vedi «aggiorna» in fondo) a ogni nuova versione.
+  ciak:
+    image: ghcr.io/baldborne94/ciak:latest
+    container_name: ciak
+    restart: unless-stopped
+    depends_on:
+      auth:
+        condition: service_healthy
+      rest:
+        condition: service_started
+    ports:
+      # Tailscale (https://…ts.net:8443) porta qui. Dalla rete di casa si apre
+      # anche con http://IP-DEL-NAS:8900, ma senza https il browser spegne
+      # notifiche e uso offline.
+      - "8900:3000"
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_AUTH_URL: http://auth:9999
+      SUPABASE_REST_URL: http://rest:3000
+      TMDB_API_KEY: ${TMDB_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_DAILY_LIMIT: ${AI_DAILY_LIMIT:-3}
+      OPENSUBTITLES_API_KEY: ${OPENSUBTITLES_API_KEY:-}
+      OPENSUBTITLES_USERNAME: ${OPENSUBTITLES_USERNAME:-}
+      OPENSUBTITLES_PASSWORD: ${OPENSUBTITLES_PASSWORD:-}
+      THEINTRODB_API_KEY: ${THEINTRODB_API_KEY:-}
+      VITE_VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:ciak@localhost}
+      CRON_SECRET: ${CRON_SECRET}
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  db:
+    image: supabase/postgres:17.6.1.136
+    container_name: ciak-db
+    restart: unless-stopped
+    volumes:
+      - ./dati/db:/var/lib/postgresql/data
+      - ./db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
+      - ./db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
+      - db-config:/etc/postgresql-custom
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: 5432
+      POSTGRES_PORT: 5432
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: postgres
+      POSTGRES_DB: postgres
+      JWT_EXP: 3600
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "log_min_messages=fatal"]
+
+  # Il login (email e password, come prima). Le password restano le stesse:
+  # la migrazione copia gli utenti così come sono.
+  auth:
+    image: supabase/gotrue:v2.198.0
+    container_name: ciak-auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${INDIRIZZO_PUBBLICO}/auth/v1
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${INDIRIZZO_PUBBLICO}
+      GOTRUE_URI_ALLOW_LIST: ${INDIRIZZO_PUBBLICO}/**
+      # Nessuno si iscrive da fuori: l'account è quello copiato dalla migrazione.
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-true}
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_ISSUER: ${INDIRIZZO_PUBBLICO}/auth/v1
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: "false"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      # Senza un server di posta le email non partono: niente conferma.
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_MAILER_URLPATHS_INVITE: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_CONFIRMATION: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_RECOVERY: /auth/v1/verify
+      GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: /auth/v1/verify
+      # Facoltativo: per «Password dimenticata?» serve una casella da cui
+      # mandare l'email (vedi LEGGIMI.md). Vuoto: il resto funziona lo stesso.
+      GOTRUE_SMTP_ADMIN_EMAIL: ${SMTP_EMAIL:-}
+      GOTRUE_SMTP_HOST: ${SMTP_HOST:-}
+      GOTRUE_SMTP_PORT: ${SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${SMTP_UTENTE:-}
+      GOTRUE_SMTP_PASS: ${SMTP_PASSWORD:-}
+      GOTRUE_SMTP_SENDER_NAME: Ciak
+
+  # Le tabelle (PostgREST), con le stesse regole di accesso di prima.
+  rest:
+    image: postgrest/postgrest:v14.18
+    container_name: ciak-rest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_MAX_ROWS: 1000
+      PGRST_DB_EXTRA_SEARCH_PATH: public,extensions
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_EXP: 3600
+    command: ["postgrest"]
+
+  # Il pannello di Supabase (con l'editor SQL, per i file supabase/schema_v*):
+  # https://…ts.net:8444 attraverso Tailscale. Non si apre dalla rete di casa.
+  studio:
+    image: supabase/studio:2026.11.23-sha-4a73166
+    container_name: ciak-studio
+    restart: unless-stopped
+    depends_on:
+      meta:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8901:3000"
+    environment:
+      HOSTNAME: 0.0.0.0
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: postgres
+      PG_META_CRYPTO_KEY: ${PG_META_CRYPTO_KEY}
+      PGRST_DB_SCHEMAS: public
+      DEFAULT_ORGANIZATION_NAME: Ciak
+      DEFAULT_PROJECT_NAME: Ciak
+      SUPABASE_URL: http://ciak:3000
+      SUPABASE_PUBLIC_URL: ${INDIRIZZO_PUBBLICO}
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+
+  meta:
+    image: supabase/postgres-meta:v0.100.1
+    container_name: ciak-meta
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: postgres
+      PG_META_DB_USER: postgres
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      CRYPTO_KEY: ${PG_META_CRYPTO_KEY}
+
+  # Una volta sola: copia utenti e dati dal Supabase di prima. Parte a ogni
+  # avvio, ma lavora solo se SUPABASE_CLOUD_DB_URL è scritto in .env e il
+  # database qui è ancora vuoto; poi esce. Il resoconto sta nel suo registro.
+  migra:
+    image: supabase/postgres:17.6.1.136
+    container_name: ciak-migra
+    # L'immagine porta il controllo di salute del database, che qui non gira.
+    healthcheck:
+      disable: true
+    restart: "no"
+    depends_on:
+      auth:
+        condition: service_healthy
+    entrypoint: ["bash", "/script/migra.sh"]
+    volumes:
+      - ./script:/script:ro
+      - ./dati/migrazione:/lavoro
+    environment:
+      CLOUD: ${SUPABASE_CLOUD_DB_URL:-}
+      LOCALE: postgres://supabase_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+
+  # Ogni notte alle 4 una copia del database in dati/backup, tenute 30 giorni.
+  backup:
+    image: supabase/postgres:17.6.1.136
+    container_name: ciak-backup
+    # L'immagine porta il controllo di salute del database, che qui non gira.
+    healthcheck:
+      disable: true
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["bash", "/script/backup.sh"]
+    volumes:
+      - ./script:/script:ro
+      - ./dati/backup:/backup
+    environment:
+      LOCALE: postgres://supabase_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GIORNI: ${BACKUP_GIORNI:-30}
+      TZ: Europe/Rome
+
+  # Scarica la versione nuova di Ciak quando c'è e riavvia solo «ciak»: come
+  # Vercel, che pubblicava da solo a ogni modifica. È il seguito mantenuto di
+  # containrrr/watchtower, che con Docker 29 non parte più.
+  aggiorna:
+    image: nickfedor/watchtower:1.24.2
+    container_name: ciak-aggiorna
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_POLL_INTERVAL: 3600
+      WATCHTOWER_CLEANUP: "true"
+
+volumes:
+  db-config:

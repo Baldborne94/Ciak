@@ -1,8 +1,10 @@
 import { AuthClient } from '@supabase/auth-js'
 import { PostgrestClient } from '@supabase/postgrest-js'
+import { configurazione } from './configurazione'
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// Dalla build (Vercel) o dalla pagina scritta dal server del NAS.
+const url = configurazione.supabaseUrl
+const anonKey = configurazione.supabaseAnonKey
 
 // We don't throw at import time so the app still boots without credentials —
 // the relevant screens surface a themed error instead.
@@ -47,4 +49,4 @@ export function creaClient(supabaseUrl: string, chiave: string) {
   }
 }
 
-export const supabase = isSupabaseConfigured ? creaClient(url, anonKey) : null
+export const supabase = url && anonKey ? creaClient(url, anonKey) : null

@@ -1,6 +1,7 @@
+import { configurazione } from './configurazione'
 import { supabase } from './supabase'
 
-const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
+const VAPID_PUBLIC_KEY = configurazione.vapidPublicKey
 
 export const pushSupported =
   typeof window !== 'undefined' &&
