@@ -18,7 +18,7 @@ export default function NoteLettore({ casa, diretto }: { casa: boolean; diretto:
             <p className="mb-1 font-medium text-zinc-200">💬 Da dove arrivano i sottotitoli</p>
             <p>
               Quelli che Jellyfin conosce: i file <code>.srt</code> accanto al video e quelli dentro il
-              file. Il plugin OpenSubtitles di Jellyfin li scarica da sé per quelli che mancano.
+              file. Se non ne ha, Ciak li cerca su OpenSubtitles e tiene quelli trovati.
             </p>
           </div>
         </>

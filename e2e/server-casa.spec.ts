@@ -19,6 +19,8 @@ interface Richieste {
   accessi: unknown[]
 }
 
+const JACK = '3f2504e04f8911d39a0c0305e82c3301'
+
 async function mockJellyfin(page: Page): Promise<Richieste> {
   const richieste: Richieste = { hls: [], mp4: [], fermate: [], accessi: [], scansioni: 0, elenchi: 0 }
   const sorgente = (id: string, contenitore: string, nome: string) => ({
@@ -63,6 +65,23 @@ async function mockJellyfin(page: Page): Promise<Richieste> {
       })
     }
     if (p === `/Users/utente1/Items/${FILM}`) return json({ Id: FILM, MediaSources: [sorgente(FILM, 'mov,mp4,m4a', 'Song.of.the.Sea.2014.1080p.mp4')] })
+    if (p === `/Users/utente1/Items/${JACK}`) {
+      return json({
+        Id: JACK,
+        MediaSources: [
+          {
+            Id: JACK,
+            Path: 'E:\\Ciak\\Cartoni\\Samurai Jack\\Season 1\\Samurai.Jack.S01E01.I.The.Beginning.avi',
+            Container: 'avi',
+            Size: 183500800,
+            MediaStreams: [
+              { Index: 0, Type: 'Video', Codec: 'mpeg4', BitDepth: 8, BitRate: 878000 },
+              { Index: 1, Type: 'Audio', Codec: 'mp3', Language: 'eng' },
+            ],
+          },
+        ],
+      })
+    }
     if (p === `/Users/utente1/Items/${MKV}`) return json({ Id: MKV, MediaSources: [sorgente(MKV, 'mkv', 'The.Secret.of.Kells.2009.mkv')] })
     if (/\/Subtitles\/0\/0\/Stream\.vtt$/.test(p)) return route.fulfill({ body: VTT, contentType: 'text/vtt', headers: { 'Access-Control-Allow-Origin': '*' } })
     if (p.endsWith('/master.m3u8')) {
@@ -77,6 +96,10 @@ async function mockJellyfin(page: Page): Promise<Richieste> {
     if (p.endsWith('/stream.mp4')) {
       richieste.mp4.push(url)
       return route.fulfill({ body: Buffer.alloc(4096), contentType: 'video/mp4', headers: { 'Access-Control-Allow-Origin': '*' } })
+    }
+    // I pezzi del file per l'impronta di OpenSubtitles (64 KB all'inizio e alla fine).
+    if (p.endsWith('/stream') && req.headers()['range']) {
+      return route.fulfill({ status: 206, body: Buffer.alloc(65536, 7), headers: { 'Access-Control-Allow-Origin': '*', 'Content-Range': 'bytes 0-65535/183500800' } })
     }
     // Il file vero e proprio: resta «in caricamento» per tutto il test.
     if (p.endsWith('/stream')) return
@@ -237,4 +260,36 @@ test('«Aggiorna» fa cercare a Jellyfin i file nuovi, poi rilegge l’elenco', 
   await expect.poll(() => richieste.scansioni).toBe(1)
   await expect.poll(() => richieste.elenchi).toBeGreaterThan(elenchiPrima)
   await expect(page.getByRole('button', { name: /Song of the Sea \(2014\)/ })).toBeVisible()
+})
+
+test('un video del server di casa senza sottotitoli li cerca online, e li tiene in Ciak', async ({ page }) => {
+  // Samurai Jack (un AVI senza .srt accanto): Jellyfin non ne conosce, e
+  // prima il lettore diceva solo «nessun sottotitolo sul server di casa».
+  await mockSupabase(page)
+  await mockJellyfin(page)
+  const SRT = '1\n00:00:01,000 --> 00:00:04,000\nTanto tempo fa\n'
+  const richieste: Record<string, unknown>[] = []
+  await page.route('**/api/sottotitoli', (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>
+    richieste.push(body)
+    if (body.azione === 'cerca') return route.fulfill({ json: { candidati: [{ fileId: 9, lingua: 'it', nome: 'jack.it.srt', download: 1, hash: false }] } })
+    return route.fulfill({ json: { testo: SRT, rimasti: 9 } })
+  })
+  await collega(page)
+  await page.goto(`/streaming/jf-${JACK}`)
+
+  await expect(page.getByText(/Italiano · da OpenSubtitles/)).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
+  // Cercato per nome della serie, stagione ed episodio, presi dal percorso sul NAS.
+  const cerca = richieste.find((r) => r.azione === 'cerca')!
+  expect(JSON.stringify(cerca)).toMatch(/Samurai Jack/)
+  // E con l'impronta del file, letta dal server a pezzi: trova i sottotitoli
+  // sincronizzati proprio su quel file.
+  expect(cerca.hash).toMatch(/^[0-9a-f]{16}$/)
+
+  // Trovato una volta, la volta dopo è già in Ciak: non si riscarica (ogni
+  // download consuma il tetto giornaliero di OpenSubtitles).
+  await page.reload()
+  await expect(page.getByText(/Italiano · da OpenSubtitles, salvato in Ciak/)).toBeVisible()
+  expect(richieste.filter((r) => r.azione === 'scarica')).toHaveLength(1)
 })

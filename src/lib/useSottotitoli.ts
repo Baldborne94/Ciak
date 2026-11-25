@@ -191,7 +191,7 @@ export function useSottotitoli(film: FilmAperto | undefined, noto?: TitoloNoto |
     l.onlineCercati = true
     if (!l.film) return
     const cercato = filmDaCercare(l.film.file.name, l.film.cartella, l.film.serie)
-    const [hash, noto] = await Promise.all([hashDelVideo(l.film.file), titoloNotoOra()])
+    const [hash, noto] = await Promise.all([l.film.hash ? l.film.hash() : hashDelVideo(l.film.file), titoloNotoOra()])
     const { candidati } = await apiSottotitoli<{ candidati: CandidatoOnline[] }>({ azione: 'cerca', ...ricercaSottotitoli(cercato, noto), hash })
     for (const sub of candidati) corsia(corsiaDi(sub.lingua)).fonti.push({ tipo: 'online', sub })
   }, [titoloNotoOra])

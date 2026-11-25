@@ -81,7 +81,7 @@ export function useSottotitoliCasa(fileId: string, info: InfoJellyfin | null) {
         trovate.length === 0
           ? esiti.length > 0
             ? 'I sottotitoli del server di casa non si leggono.'
-            : 'Nessun sottotitolo sul server di casa: aggiungi un .srt accanto al video, o il plugin OpenSubtitles di Jellyfin.'
+            : 'Nessun sottotitolo sul server di casa: li cerco su OpenSubtitles.'
           : null,
       )
       setStato(trovate.length > 0 ? 'pronti' : falliti > 0 ? 'errore' : 'nessuno')
