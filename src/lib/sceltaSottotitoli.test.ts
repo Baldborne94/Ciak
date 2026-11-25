@@ -106,6 +106,11 @@ describe('la riga dei sottotitoli sotto il lettore', () => {
     expect(testoSottotitoli({ ...base, stato: 'cerco', salvati: true })).toBe('Nessun sottotitolo salvato con il film.')
   })
 
+  it('una ricerca lunga dice perché, invece di un «cerco» muto', () => {
+    const lento = 'Jellyfin sta estraendo i sottotitoli dal file: la prima volta ci mette un po’, poi sono pronti subito.'
+    expect(testoSottotitoli({ ...base, stato: 'cerco', messaggio: lento })).toBe(lento)
+  })
+
   it('senza sottotitoli dice perché', () => {
     expect(testoSottotitoli({ ...base, stato: 'errore', messaggio: 'quota finita' })).toBe('Sottotitoli non disponibili: quota finita')
     expect(testoSottotitoli({ ...base, stato: 'nessuno' })).toBe('Nessun sottotitolo, né accanto al video né su OpenSubtitles.')

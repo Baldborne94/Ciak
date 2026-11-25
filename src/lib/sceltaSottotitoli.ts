@@ -101,7 +101,8 @@ export function testoSottotitoli(p: {
   messaggio: string | null
 }): string {
   if (p.salvati && p.etichette.length === 0) return 'Nessun sottotitolo salvato con il film.'
-  if (p.stato === 'cerco' && !p.salvati) return 'Cerco i sottotitoli…'
+  // Una ricerca lunga dice perché (Jellyfin che estrae dal file), invece di un «cerco» muto.
+  if (p.stato === 'cerco' && !p.salvati) return p.messaggio ?? 'Cerco i sottotitoli…'
   // Le tracce trovate e, se una lingua manca, anche questo: altrimenti chi
   // cerca l'inglese non capisce perché non c'è.
   if (p.etichette.length > 0) return [p.etichette.join(' · '), !p.salvati && p.messaggio].filter(Boolean).join(' · ')
