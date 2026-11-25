@@ -1,7 +1,7 @@
-// Quale sottotitolo mostrare. Si parte spenti: il video si guarda pulito, e le
-// battute compaiono solo se le si sceglie dal CC. La scelta (una lingua, o
-// «nessuno») resta da un episodio all'altro e fra un film e l'altro: chi
-// guarda in inglese coi sottotitoli italiani non deve risceglierli ogni volta.
+// Quale sottotitolo mostrare. Si parte con l'inglese, la lingua in cui si
+// guarda di solito (scelto da chi usa Ciak); l'italiano resta a un tocco dal
+// CC. La scelta (una lingua, o «nessuno») resta da un episodio all'altro e fra
+// un film e l'altro: chi la cambia non deve risceglierla ogni volta.
 //
 // Si ricorda la lingua, non la posizione nell'elenco: in un episodio
 // l'italiano è la prima traccia, nel successivo (italiano mancante) la prima
@@ -9,7 +9,10 @@
 
 import { nomeLingua } from './sottotitoli'
 
-const CHIAVE = 'ciak:sottotitoli'
+// Una chiave nuova, non 'ciak:sottotitoli': lì restava la scelta di quando
+// si partiva spenti, e avrebbe tenuto spento chi non aveva mai toccato il CC.
+const CHIAVE = 'ciak:sottotitoli-lingua'
+const PREDEFINITA = 'en'
 const SENZA_LINGUA = 'und'
 
 export interface TracciaConLingua {
@@ -20,12 +23,14 @@ export function linguaTraccia(t: TracciaConLingua): string {
   return t.lingua ?? SENZA_LINGUA
 }
 
-// null: nessun sottotitolo.
+// null: nessun sottotitolo. Mai scelto: l'inglese; «nessuno» si salva come
+// stringa vuota, così resta una scelta e non torna l'inglese.
 export function leggiLinguaSottotitoli(): string | null {
   try {
-    return localStorage.getItem(CHIAVE) || null
+    const salvata = localStorage.getItem(CHIAVE)
+    return salvata === null ? PREDEFINITA : salvata || null
   } catch {
-    return null
+    return PREDEFINITA
   }
 }
 
@@ -33,7 +38,7 @@ export function salvaLinguaSottotitoli(lingua: string | null): void {
   try {
     localStorage.setItem(CHIAVE, lingua ?? '')
   } catch {
-    /* storage negato: alla prossima apertura si riparte spenti */
+    /* storage negato: alla prossima apertura si riparte dall'inglese */
   }
 }
 

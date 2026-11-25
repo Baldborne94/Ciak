@@ -572,7 +572,7 @@ test('un indirizzo di film non valido non finisce nel lettore', async ({ page })
   await expect(page.locator('iframe')).toHaveCount(0)
 })
 
-test('i sottotitoli partono spenti e si scelgono dal menu CC, dalla tendina e col tasto C', async ({ page }) => {
+test('senza l’inglese i sottotitoli partono spenti, e si scelgono dal menu CC, dalla tendina e col tasto C', async ({ page }) => {
   // Il menu del browser sta attaccato alla barra in basso: sul tablet,
   // toccando «Inglese», si chiudeva invece di sceglierlo, e sul telefono
   // finiva sotto i pulsanti di Ciak. Il <video> resta senza tracce, così quel
@@ -588,7 +588,8 @@ test('i sottotitoli partono spenti e si scelgono dal menu CC, dalla tendina e co
   const barra = page.getByTestId('barra-lettore')
   await expect(barra.getByRole('slider', { name: 'Avanzamento' })).toBeVisible()
 
-  // Il video si guarda pulito: le battute compaiono solo se le si sceglie.
+  // Si parte dall'inglese, che qui manca: niente battute in un'altra lingua
+  // finché non la si sceglie.
   const cc = page.getByRole('button', { name: /^Sottotitoli: / })
   await expect(cc).toHaveAccessibleName('Sottotitoli: nessuno. Cambia')
   await expect(cc).toHaveText('CC off')
@@ -720,6 +721,8 @@ test('senza sottotitoli nella cartella li cerca online, in italiano e in inglese
   await expect(page.getByText(/Italiano · da OpenSubtitles, salvato nella cartella/)).toBeVisible()
   await expect(page.getByText(/Inglese · da OpenSubtitles, salvato nella cartella/)).toBeVisible()
   await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano', 'Inglese'])
+  // Senza una scelta si vede l'inglese.
+  await expect(page.getByRole('button', { name: /^Sottotitoli: / })).toHaveText('CC EN')
   // Il film si cerca per titolo e anno, e con l'hash del file per trovare
   // sottotitoli già sincronizzati (qui i pezzi sono zeri: resta la dimensione).
   expect(richieste.filter((r) => r.azione === 'cerca')).toHaveLength(1)
