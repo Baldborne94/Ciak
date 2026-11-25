@@ -4,6 +4,8 @@ import {
   elencaVideoJellyfin,
   flussoDiretto,
   flussoHls,
+  flussoMp4,
+  bitrateConversione,
   idJellyfin,
   infoDaSorgente,
   jellyfinCollegato,
@@ -160,6 +162,43 @@ describe('il video per il lettore', () => {
     expect(new URL(flussoHls(`jf-${ID}`, info, null, 's', config)).searchParams.has('AudioStreamIndex')).toBe(false)
     expect(sottotitoloJellyfin(`jf-${ID}`, info, 0, config)).toBe(`https://casa.ts.net/Videos/${ID}/${ID}/Subtitles/0/0/Stream.vtt?api_key=tok%20en`)
     expect(flussoDiretto('1AbCdEfGhIjKlMn', config)).toBe('')
+  })
+
+  it('la conversione chiede una qualità alta, non quella che Jellyfin sceglie da sé', () => {
+    // Samurai Jack, un AVI XviD a 878 kbps: senza un bitrate chiesto,
+    // ricompresso in H.264 si vedeva peggio che in VLC (linee nere sporche).
+    const config = { url: 'https://casa.ts.net', token: 't', userId: 'u', utente: 'ale' }
+    const xvid = infoDaSorgente({
+      ...sorgente,
+      Container: 'avi',
+      MediaStreams: [
+        { Index: 0, Type: 'Video', Codec: 'mpeg4', BitDepth: 8, BitRate: 878_000 },
+        { Index: 1, Type: 'Audio', Codec: 'mp3', Language: 'eng' },
+      ],
+    })
+    for (const url of [flussoHls(`jf-${ID}`, xvid, null, 's', config), flussoMp4(`jf-${ID}`, xvid, null, 's', config)]) {
+      expect(Number(new URL(url).searchParams.get('VideoBitrate'))).toBeGreaterThanOrEqual(4_000_000)
+    }
+  })
+})
+
+describe('bitrateConversione', () => {
+  const conBitrate = (b?: number) => infoDaSorgente({ ...sorgente, MediaStreams: [{ Index: 0, Type: 'Video', Codec: 'hevc', BitDepth: 10, BitRate: b }] })
+
+  it('almeno 4 Mbps, anche per un file piccolo: ricomprimere costa sempre qualcosa', () => {
+    expect(bitrateConversione(conBitrate(878_000))).toBe(4_000_000)
+  })
+
+  it('un file ricco tiene il suo bitrate, con un margine: l’H.264 vuole più bit dell’HEVC', () => {
+    expect(bitrateConversione(conBitrate(6_000_000))).toBe(9_000_000)
+  })
+
+  it('con un tetto, per non soffocare la rete fuori casa', () => {
+    expect(bitrateConversione(conBitrate(60_000_000))).toBe(20_000_000)
+  })
+
+  it('senza bitrate noto, una qualità alta di partenza', () => {
+    expect(bitrateConversione(conBitrate(undefined))).toBe(8_000_000)
   })
 })
 

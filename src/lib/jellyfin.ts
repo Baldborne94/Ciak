@@ -325,13 +325,15 @@ export interface InfoJellyfin {
   dimensione: number | null
   sorgente: string // l'id della MediaSource
   contenitore: string
-  video: { codec: string; profondita: number | null } | null
+  // `bitrate` in bit al secondo, quando Jellyfin lo sa.
+  video: { codec: string; profondita: number | null; bitrate: number | null } | null
   audio: TracciaAudioJellyfin[]
   sottotitoli: SottotitoloJellyfin[]
 }
 
 interface StreamGrezzo {
   Index: number
+  BitRate?: number
   Type: string
   Codec?: string
   Language?: string
@@ -371,7 +373,7 @@ export function infoDaSorgente(s: SorgenteGrezza): InfoJellyfin {
     dimensione: s.Size ?? null,
     sorgente: s.Id,
     contenitore: (s.Container ?? '').toLowerCase(),
-    video: v ? { codec: (v.Codec ?? '').toLowerCase(), profondita: v.BitDepth ?? null } : null,
+    video: v ? { codec: (v.Codec ?? '').toLowerCase(), profondita: v.BitDepth ?? null, bitrate: v.BitRate ?? null } : null,
     audio,
     // Solo quelli di testo: quelli a immagini (PGS dei Blu-ray) il browser
     // non li disegna, e Ciak nemmeno.
@@ -420,6 +422,18 @@ export function flussoDiretto(fileId: string, config = leggiJellyfin()): string 
 
 // Il video convertito da Jellyfin in HLS (pezzi da 6 secondi), con la lingua
 // scelta: il video si copia quando è già H.264, l'audio diventa AAC stereo.
+// La qualità della conversione. Senza un bitrate chiesto Jellyfin sceglie da
+// sé, e un AVI XviD di Samurai Jack ricompresso in H.264 si vedeva peggio che
+// in VLC, con le linee nere sporche. Il lettore di Jellyfin lo chiede sempre:
+// almeno 4 Mbps (ricomprimere costa sempre qualcosa), una volta e mezza quello
+// del file (l'H.264 vuole più bit dell'HEVC per la stessa immagine), al più
+// 20 Mbps, per non soffocare la rete fuori casa.
+export function bitrateConversione(info: InfoJellyfin): number {
+  const origine = info.video?.bitrate
+  if (!origine) return 8_000_000
+  return Math.min(20_000_000, Math.max(4_000_000, Math.round(origine * 1.5)))
+}
+
 export function flussoHls(fileId: string, info: InfoJellyfin, audio: number | null, sessione: string, config = leggiJellyfin()): string {
   const id = idJellyfin(fileId)
   if (!config || !id) return ''
@@ -430,6 +444,7 @@ export function flussoHls(fileId: string, info: InfoJellyfin, audio: number | nu
     VideoCodec: 'h264',
     AudioCodec: 'aac',
     TranscodingMaxAudioChannels: '2',
+    VideoBitrate: String(bitrateConversione(info)),
     SegmentContainer: 'mp4',
     MinSegments: '1',
     BreakOnNonKeyFrames: 'true',
@@ -453,6 +468,7 @@ export function flussoMp4(fileId: string, info: InfoJellyfin, audio: number | nu
     DeviceId: idDispositivo(),
     Container: 'mp4',
     VideoCodec: 'h264',
+    VideoBitrate: String(bitrateConversione(info)),
     AudioCodec: 'aac',
     TranscodingMaxAudioChannels: '2',
     allowVideoStreamCopy: 'true',
