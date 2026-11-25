@@ -297,7 +297,7 @@ export default function StreamingPage() {
               />
             )}
             <ApriFilmLocale />
-            <button onClick={carica} disabled={caricando} className="btn-ghost">
+            <button onClick={() => void elenco.aggiorna()} disabled={caricando || elenco.scansione !== null} className="btn-ghost">
               🔄 Aggiorna
             </button>
             {cartella ? (
@@ -385,6 +385,12 @@ export default function StreamingPage() {
             <p className="mb-3 text-sm text-zinc-500">
               {nascosti === 1 ? '1 video in un altro formato (MKV, AVI…) è nascosto' : `${nascosti} video in altri formati (MKV, AVI…) sono nascosti`}
               : Ciak riproduce gli MP4. Convertili con prepara-ciak e premi «Aggiorna».
+            </p>
+          )}
+          {elenco.scansione && (
+            <p role="status" className="mb-3 text-sm text-zinc-400">
+              🔎 Il server di casa cerca i file nuovi
+              {elenco.scansione.percentuale !== null ? ` (${Math.round(elenco.scansione.percentuale)}%)` : ''}…
             </p>
           )}
           {copiaDel !== null && (

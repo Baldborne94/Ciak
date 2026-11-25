@@ -112,6 +112,8 @@ export function normalizzaIndirizzo(testo: string, paginaHttps: boolean): string
 export class ErroreJellyfin extends Error {
   // Il token non vale più (password cambiata, dispositivo tolto dal server).
   sessione = false
+  // Il codice HTTP di una risposta d'errore, quando il server ha risposto.
+  stato: number | null = null
 }
 
 async function richiesta<T>(percorso: string, init: RequestInit = {}, config = leggiJellyfin()): Promise<T> {
@@ -132,7 +134,11 @@ async function richiesta<T>(percorso: string, init: RequestInit = {}, config = l
     e.sessione = true
     throw e
   }
-  if (!res.ok) throw new ErroreJellyfin(`Il server di casa ha risposto con un errore (HTTP ${res.status}).`)
+  if (!res.ok) {
+    const e = new ErroreJellyfin(`Il server di casa ha risposto con un errore (HTTP ${res.status}).`)
+    e.stato = res.status
+    throw e
+  }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
 }
@@ -243,6 +249,56 @@ export async function elencaVideoJellyfin(): Promise<VideoFile[]> {
   return videoDaJellyfin(Items ?? [], librerie)
 }
 
+// ── La scansione ────────────────────────────────────────────────────────────
+
+interface CompitoGrezzo {
+  Key: string
+  State: string
+  CurrentProgressPercentage?: number
+  LastExecutionResult?: { EndTimeUtc?: string }
+}
+
+export type EsitoScansione = 'fatta' | 'non-permessa' | 'ancora-in-corso'
+
+// «Aggiorna» col server di casa: Jellyfin cerca i file nuovi nelle librerie, e
+// solo dopo Ciak rilegge l'elenco. Senza, una serie appena scaricata sul NAS
+// non compariva finché Jellyfin non se ne accorgeva da solo, e si doveva
+// aprire Jellyfin per scansionare a mano.
+//
+// La scansione è un compito di Jellyfin che gira per conto suo: si guarda
+// ogni `intervallo` finché non torna fermo. Una libreria piccola finisce prima
+// del primo sguardo (lo dice l'ora di fine); un compito che non si vede
+// partire dopo qualche sguardo si dà per fatto. Chiederla vuole un
+// amministratore: per un altro utente si rilegge l'elenco e basta.
+export async function scansionaCasa(
+  onAvanzamento: (percentuale: number | null) => void,
+  { attendi = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)), intervallo = 2000, volte = 90 } = {},
+): Promise<EsitoScansione> {
+  const inizio = Date.now()
+  try {
+    await richiesta('/Library/Refresh', { method: 'POST' })
+  } catch (e) {
+    if (e instanceof ErroreJellyfin && e.stato === 403) return 'non-permessa'
+    throw e
+  }
+  let vistaPartire = false
+  for (let i = 0; i < volte; i++) {
+    const compito = (await richiesta<CompitoGrezzo[]>('/ScheduledTasks')).find((c) => c.Key === 'RefreshLibrary')
+    if (!compito) return 'fatta'
+    if (compito.State === 'Running') {
+      vistaPartire = true
+      onAvanzamento(compito.CurrentProgressPercentage ?? null)
+    } else {
+      const fine = Date.parse(compito.LastExecutionResult?.EndTimeUtc ?? '')
+      // Cinque secondi di margine: l'orologio del NAS e quello del tablet
+      // non sono mai identici.
+      if (vistaPartire || fine >= inizio - 5000 || i >= 2) return 'fatta'
+    }
+    await attendi(intervallo)
+  }
+  return 'ancora-in-corso'
+}
+
 // ── Il lettore ──────────────────────────────────────────────────────────────
 
 export interface TracciaAudioJellyfin {
@@ -269,13 +325,15 @@ export interface InfoJellyfin {
   dimensione: number | null
   sorgente: string // l'id della MediaSource
   contenitore: string
-  video: { codec: string; profondita: number | null } | null
+  // `bitrate` in bit al secondo, quando Jellyfin lo sa.
+  video: { codec: string; profondita: number | null; bitrate: number | null } | null
   audio: TracciaAudioJellyfin[]
   sottotitoli: SottotitoloJellyfin[]
 }
 
 interface StreamGrezzo {
   Index: number
+  BitRate?: number
   Type: string
   Codec?: string
   Language?: string
@@ -315,7 +373,7 @@ export function infoDaSorgente(s: SorgenteGrezza): InfoJellyfin {
     dimensione: s.Size ?? null,
     sorgente: s.Id,
     contenitore: (s.Container ?? '').toLowerCase(),
-    video: v ? { codec: (v.Codec ?? '').toLowerCase(), profondita: v.BitDepth ?? null } : null,
+    video: v ? { codec: (v.Codec ?? '').toLowerCase(), profondita: v.BitDepth ?? null, bitrate: v.BitRate ?? null } : null,
     audio,
     // Solo quelli di testo: quelli a immagini (PGS dei Blu-ray) il browser
     // non li disegna, e Ciak nemmeno.
@@ -364,6 +422,18 @@ export function flussoDiretto(fileId: string, config = leggiJellyfin()): string 
 
 // Il video convertito da Jellyfin in HLS (pezzi da 6 secondi), con la lingua
 // scelta: il video si copia quando è già H.264, l'audio diventa AAC stereo.
+// La qualità della conversione. Senza un bitrate chiesto Jellyfin sceglie da
+// sé, e un AVI XviD di Samurai Jack ricompresso in H.264 si vedeva peggio che
+// in VLC, con le linee nere sporche. Il lettore di Jellyfin lo chiede sempre:
+// almeno 4 Mbps (ricomprimere costa sempre qualcosa), una volta e mezza quello
+// del file (l'H.264 vuole più bit dell'HEVC per la stessa immagine), al più
+// 20 Mbps, per non soffocare la rete fuori casa.
+export function bitrateConversione(info: InfoJellyfin): number {
+  const origine = info.video?.bitrate
+  if (!origine) return 8_000_000
+  return Math.min(20_000_000, Math.max(4_000_000, Math.round(origine * 1.5)))
+}
+
 export function flussoHls(fileId: string, info: InfoJellyfin, audio: number | null, sessione: string, config = leggiJellyfin()): string {
   const id = idJellyfin(fileId)
   if (!config || !id) return ''
@@ -374,6 +444,7 @@ export function flussoHls(fileId: string, info: InfoJellyfin, audio: number | nu
     VideoCodec: 'h264',
     AudioCodec: 'aac',
     TranscodingMaxAudioChannels: '2',
+    VideoBitrate: String(bitrateConversione(info)),
     SegmentContainer: 'mp4',
     MinSegments: '1',
     BreakOnNonKeyFrames: 'true',
@@ -397,6 +468,7 @@ export function flussoMp4(fileId: string, info: InfoJellyfin, audio: number | nu
     DeviceId: idDispositivo(),
     Container: 'mp4',
     VideoCodec: 'h264',
+    VideoBitrate: String(bitrateConversione(info)),
     AudioCodec: 'aac',
     TranscodingMaxAudioChannels: '2',
     allowVideoStreamCopy: 'true',
