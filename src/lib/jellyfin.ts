@@ -112,6 +112,8 @@ export function normalizzaIndirizzo(testo: string, paginaHttps: boolean): string
 export class ErroreJellyfin extends Error {
   // Il token non vale più (password cambiata, dispositivo tolto dal server).
   sessione = false
+  // Il codice HTTP di una risposta d'errore, quando il server ha risposto.
+  stato: number | null = null
 }
 
 async function richiesta<T>(percorso: string, init: RequestInit = {}, config = leggiJellyfin()): Promise<T> {
@@ -132,7 +134,11 @@ async function richiesta<T>(percorso: string, init: RequestInit = {}, config = l
     e.sessione = true
     throw e
   }
-  if (!res.ok) throw new ErroreJellyfin(`Il server di casa ha risposto con un errore (HTTP ${res.status}).`)
+  if (!res.ok) {
+    const e = new ErroreJellyfin(`Il server di casa ha risposto con un errore (HTTP ${res.status}).`)
+    e.stato = res.status
+    throw e
+  }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
 }
@@ -241,6 +247,56 @@ export async function elencaVideoJellyfin(): Promise<VideoFile[]> {
     config,
   )
   return videoDaJellyfin(Items ?? [], librerie)
+}
+
+// ── La scansione ────────────────────────────────────────────────────────────
+
+interface CompitoGrezzo {
+  Key: string
+  State: string
+  CurrentProgressPercentage?: number
+  LastExecutionResult?: { EndTimeUtc?: string }
+}
+
+export type EsitoScansione = 'fatta' | 'non-permessa' | 'ancora-in-corso'
+
+// «Aggiorna» col server di casa: Jellyfin cerca i file nuovi nelle librerie, e
+// solo dopo Ciak rilegge l'elenco. Senza, una serie appena scaricata sul NAS
+// non compariva finché Jellyfin non se ne accorgeva da solo, e si doveva
+// aprire Jellyfin per scansionare a mano.
+//
+// La scansione è un compito di Jellyfin che gira per conto suo: si guarda
+// ogni `intervallo` finché non torna fermo. Una libreria piccola finisce prima
+// del primo sguardo (lo dice l'ora di fine); un compito che non si vede
+// partire dopo qualche sguardo si dà per fatto. Chiederla vuole un
+// amministratore: per un altro utente si rilegge l'elenco e basta.
+export async function scansionaCasa(
+  onAvanzamento: (percentuale: number | null) => void,
+  { attendi = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)), intervallo = 2000, volte = 90 } = {},
+): Promise<EsitoScansione> {
+  const inizio = Date.now()
+  try {
+    await richiesta('/Library/Refresh', { method: 'POST' })
+  } catch (e) {
+    if (e instanceof ErroreJellyfin && e.stato === 403) return 'non-permessa'
+    throw e
+  }
+  let vistaPartire = false
+  for (let i = 0; i < volte; i++) {
+    const compito = (await richiesta<CompitoGrezzo[]>('/ScheduledTasks')).find((c) => c.Key === 'RefreshLibrary')
+    if (!compito) return 'fatta'
+    if (compito.State === 'Running') {
+      vistaPartire = true
+      onAvanzamento(compito.CurrentProgressPercentage ?? null)
+    } else {
+      const fine = Date.parse(compito.LastExecutionResult?.EndTimeUtc ?? '')
+      // Cinque secondi di margine: l'orologio del NAS e quello del tablet
+      // non sono mai identici.
+      if (vistaPartire || fine >= inizio - 5000 || i >= 2) return 'fatta'
+    }
+    await attendi(intervallo)
+  }
+  return 'ancora-in-corso'
 }
 
 // ── Il lettore ──────────────────────────────────────────────────────────────

@@ -13,12 +13,14 @@ const VTT = 'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nC’era una volta\n'
 interface Richieste {
   hls: URL[]
   mp4: URL[]
+  scansioni: number
+  elenchi: number
   fermate: URL[]
   accessi: unknown[]
 }
 
 async function mockJellyfin(page: Page): Promise<Richieste> {
-  const richieste: Richieste = { hls: [], mp4: [], fermate: [], accessi: [] }
+  const richieste: Richieste = { hls: [], mp4: [], fermate: [], accessi: [], scansioni: 0, elenchi: 0 }
   const sorgente = (id: string, contenitore: string, nome: string) => ({
     Id: id,
     Path: `E:\\Ciak\\FILM\\${nome.replace(/\.\w+$/, '')}\\${nome}`,
@@ -42,7 +44,16 @@ async function mockJellyfin(page: Page): Promise<Richieste> {
       return json({ AccessToken: 'TOKEN-CASA', User: { Id: 'utente1', Name: 'ale' } })
     }
     if (p === '/Library/VirtualFolders') return json([{ Name: 'Film', CollectionType: 'movies', Locations: ['E:\\Ciak\\FILM'] }])
+    if (p === '/Library/Refresh' && req.method() === 'POST') {
+      richieste.scansioni++
+      return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*' } })
+    }
+    if (p === '/ScheduledTasks') {
+      // La scansione di una libreria piccola è già finita al primo sguardo.
+      return json([{ Key: 'RefreshLibrary', State: 'Idle', LastExecutionResult: { EndTimeUtc: new Date(Date.now() + 1000).toISOString() } }])
+    }
     if (p === '/Items') {
+      richieste.elenchi++
       return json({
         Items: [
           { Id: FILM, Type: 'Movie', Name: 'Song of the Sea', Path: 'E:\\Ciak\\FILM\\Song of the Sea (2014)\\Song.of.the.Sea.2014.1080p.mp4', DateCreated: '2026-10-01T10:00:00Z' },
@@ -209,4 +220,21 @@ test('salvato in Ciak, un MKV del server di casa si guarda anche col PC spento',
   await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
   await expect(page.getByText(/Il server di casa non risponde/)).toHaveCount(0)
   expect(chiamate.filter((u) => u.includes(MKV))).toEqual([])
+})
+
+test('«Aggiorna» fa cercare a Jellyfin i file nuovi, poi rilegge l’elenco', async ({ page }) => {
+  // Una serie appena scaricata sul NAS non compariva finché non si apriva
+  // Jellyfin per scansionare le librerie a mano.
+  await mockSupabase(page)
+  const richieste = await mockJellyfin(page)
+  await collega(page)
+  await expect(page.getByRole('button', { name: /Song of the Sea \(2014\)/ })).toBeVisible()
+  // Aprendo la pagina si legge e basta: niente scansione a ogni visita.
+  expect(richieste.scansioni).toBe(0)
+  const elenchiPrima = richieste.elenchi
+
+  await page.getByRole('button', { name: '🔄 Aggiorna' }).click()
+  await expect.poll(() => richieste.scansioni).toBe(1)
+  await expect.poll(() => richieste.elenchi).toBeGreaterThan(elenchiPrima)
+  await expect(page.getByRole('button', { name: /Song of the Sea \(2014\)/ })).toBeVisible()
 })

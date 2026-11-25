@@ -3,7 +3,7 @@ import type { User } from '@supabase/auth-js'
 import { logFailure } from './logFailure'
 import { senzaExtra, soloRiproducibili, type VideoFile } from './fileVideo'
 import { chiaveVideotecaArchivio, chiaveVideoteca, leggiCopia, salvaCopia } from './offlineCache'
-import { eJellyfin, elencaVideoJellyfin, ErroreJellyfin, EVENTO_JELLYFIN, jellyfinCollegato, scollegaJellyfin, unisciFonti } from './jellyfin'
+import { eJellyfin, elencaVideoJellyfin, ErroreJellyfin, EVENTO_JELLYFIN, jellyfinCollegato, scansionaCasa, scollegaJellyfin, unisciFonti } from './jellyfin'
 import { cartellaCollegata, elencaVideoCartella, ErroreCartella, EVENTO_CARTELLA, scollegaCartella } from './cartellaLocale'
 import { eLocale } from './filmLocali'
 import { riconosciNuovi } from './riconoscimento'
@@ -36,6 +36,8 @@ export function useElencoVideoteca(user: User | null) {
   )
   // Il server di casa (Jellyfin), accanto o al posto della cartella.
   const [casaCollegata, setCasaCollegata] = useState(jellyfinCollegato())
+  // Il server di casa sta cercando i file nuovi («Aggiorna»): la percentuale, se la dice.
+  const [scansione, setScansione] = useState<{ percentuale: number | null } | null>(null)
   // La cartella del PC collegata (E:\Ciak). Riaprendo il browser ne va ridato
   // il permesso con un clic (`cartellaDaRiaprire`).
   const [cartella, setCartella] = useState(cartellaCollegata())
@@ -233,6 +235,25 @@ export function useElencoVideoteca(user: User | null) {
       .catch(logFailure('Stato della serie dopo un episodio segnato dalla videoteca'))
   }
 
+  // Il pulsante «Aggiorna»: col server di casa prima Jellyfin cerca i file
+  // nuovi, poi si rilegge l'elenco. All'apertura della pagina no: si legge e
+  // basta, una scansione a ogni visita farebbe lavorare il NAS per niente.
+  async function aggiorna() {
+    if (jellyfinCollegato()) {
+      setScansione({ percentuale: null })
+      try {
+        await scansionaCasa((percentuale) => setScansione({ percentuale }))
+      } catch (e) {
+        // Una scansione che non parte non deve impedire di rileggere l'elenco:
+        // se il server non risponde lo dirà la lettura.
+        logFailure('Scansione delle librerie del server di casa')(e)
+      } finally {
+        setScansione(null)
+      }
+    }
+    await carica()
+  }
+
   async function casaPronta() {
     setCasaCollegata(true)
     await carica()
@@ -259,6 +280,8 @@ export function useElencoVideoteca(user: User | null) {
     errore,
     setErrore,
     carica,
+    aggiorna,
+    scansione,
     cartella,
     cartellaDaRiaprire,
     cartellaPronta,
