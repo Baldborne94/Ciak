@@ -64,7 +64,8 @@ function segnaControllato(fileId: string): void {
 // 1992, sotto la serie del 1994): si riprovano con le regole di oggi.
 // v13: gli episodi presi per film perché la loro cartella non si leggeva
 // («Webisodes»): si cercano di nuovo come episodi.
-const VERSIONE_RICONOSCIMENTO = 13
+// v14: le miniserie con «Part 6» invece degli episodi («Band of Brothers»).
+const VERSIONE_RICONOSCIMENTO = 14
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {

@@ -342,6 +342,8 @@ export function filmDaCercare(nomeFile: string, cartella: string | null, serie: 
   if (cartellaRaccolta(cartella) && daFile.stagione === undefined) {
     return { ...daFile, titolo: daFile.titolo.replace(/^\d{1,2}\s+(?=\D)/, '') }
   }
+  const parte = parteDiMiniserie(daFile, cartella)
+  if (parte) return parte
   if (!cartella || daFile.anno !== undefined) return daFile
   if (daFile.stagione !== undefined) {
     // «S03E01.mp4» nella cartella della serie: il titolo è quello della cartella.
@@ -349,6 +351,21 @@ export function filmDaCercare(nomeFile: string, cartella: string | null, serie: 
   }
   const daCartella = analizzaNomeFilm(cartella)
   return daCartella.anno !== undefined ? daCartella : daFile
+}
+
+// «Band of Brothers/Band Of Brothers Part 6 Bastogne.mkv»: una miniserie che
+// numera le parti invece degli episodi. Solo nella cartella col suo stesso
+// titolo, senza anno e col nome dell'episodio dopo il numero: «Harry Potter
+// and the Deathly Hallows Part 2 The Final Battle 2011» e «Dune Part 2» sono
+// film, e in una raccolta la cartella non ha il titolo del file.
+function parteDiMiniserie(daFile: NomeFilm, cartella: string | null): NomeFilm | null {
+  if (!cartella || daFile.stagione !== undefined || daFile.anno !== undefined) return null
+  const m = /^(.+?)\s+(?:part|parte)\s*(\d{1,2})\s+\S/i.exec(daFile.titolo)
+  if (!m) return null
+  const serie = analizzaNomeFilm(cartella)
+  const uguali = (a: string) => a.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+  if (uguali(m[1]) !== uguali(serie.titolo)) return null
+  return { titolo: serie.titolo, ...(serie.anno !== undefined && { anno: serie.anno }), stagione: 1, episodio: Number(m[2]) }
 }
 
 // La posizione di una battuta in stile ASS, come la scrive ffmpeg estraendo i

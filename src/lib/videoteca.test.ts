@@ -268,6 +268,23 @@ describe('raggruppaSerie', () => {
     ])
   })
 
+  it('le «Part N» di una miniserie sono i suoi episodi, e il documentario sta con loro', () => {
+    const cartella = 'Band of Brothers (1080p x265 HQ Joy)'
+    const { serie, sciolti } = raggruppaSerie([
+      { id: 'p6', name: 'Band Of Brothers Part 6 Bastogne (1080p x265 Joy).mkv', cartella, serie: null },
+      { id: 'p4', name: 'Band Of Brothers Part 4 Replacements (1080p x265 Joy).mkv', cartella, serie: null },
+      { id: 'doc', name: 'Band Of Brothers Documentry 2001 (1080p x265 Joy).mkv', cartella, serie: null },
+    ])
+    expect(sciolti).toEqual([])
+    expect(serie).toHaveLength(1)
+    expect(serie[0].titolo).toBe('Band of Brothers')
+    expect(serie[0].episodi.map((e) => [e.id, e.stagione, e.episodio])).toEqual([
+      ['p6', 1, 6],
+      ['p4', 1, 4],
+      ['doc', null, null],
+    ])
+  })
+
   it('un file riconosciuto come film resta un film anche nella cartella della serie', () => {
     // «Cowboy Bebop Knockin' on Heaven's Door» accanto agli episodi è il film:
     // finiva fra gli «Altri episodi» e la serie risultava da sistemare.
