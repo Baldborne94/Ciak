@@ -198,6 +198,27 @@ describe('filmDaCercare: serie in cartelle scritte a modo loro', () => {
     expect(filmDaCercare('Elements.of Chernobyl Episode 1 1.23.45.mp4', 'Elements of Chernobyl')).toMatchObject({ stagione: 1, episodio: 1 })
   })
 
+  it('«Part 6» nella cartella della miniserie è l’episodio 6', () => {
+    // Band of Brothers dal NAS: dieci «Part N» finivano fra i «Da sistemare».
+    const cartella = 'Band of Brothers (1080p x265 HQ Joy)'
+    expect(filmDaCercare('Band Of Brothers Part 6 Bastogne (1080p x265 Joy).mkv', cartella)).toEqual({
+      titolo: 'Band of Brothers',
+      stagione: 1,
+      episodio: 6,
+    })
+    expect(filmDaCercare('Band Of Brothers Part 10 Points (1080p x265 Joy).mkv', cartella)).toMatchObject({ stagione: 1, episodio: 10 })
+    expect(filmDaCercare('Band.of.Brothers.Parte.2.Day.of.Days.mkv', 'Band of Brothers')).toMatchObject({ stagione: 1, episodio: 2 })
+  })
+
+  it('«Part 1» resta un film fuori dalla cartella della miniserie, con l’anno, o senza il nome dell’episodio', () => {
+    // La seconda metà di un film non è un episodio.
+    expect(filmDaCercare('Harry.Potter.and.the.Deathly.Hallows.Part.1.2010.1080p.mkv', 'Harry Potter and the Deathly Hallows')).not.toHaveProperty('stagione')
+    expect(filmDaCercare('Dune Part 2.mkv', 'Dune')).not.toHaveProperty('stagione')
+    expect(filmDaCercare('Harry.Potter.and.the.Deathly.Hallows.Part.2.The.Final.Battle.2011.mkv', 'Harry Potter and the Deathly Hallows')).not.toHaveProperty('stagione')
+    expect(filmDaCercare('Harry Potter and the Deathly Hallows Part 2 Final.mkv', 'Harry Potter Collection')).not.toHaveProperty('stagione')
+    expect(filmDaCercare('Band Of Brothers Part 6 Bastogne.mkv', 'Film')).not.toHaveProperty('stagione')
+  })
+
   it('«Dual Audio» non fa parte del titolo', () => {
     // Si cercava «Cowboy Bebop Knockin' on Heaven's Door (Dual Audio», e TMDB
     // non trovava niente.

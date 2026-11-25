@@ -11,9 +11,9 @@ import {
   type TracciaConLingua,
 } from './sceltaSottotitoli'
 
-// Quale sottotitolo si vede (-1: nessuno) e quanto grande: spenti finché non
-// se ne sceglie uno dal CC, poi la stessa lingua anche negli episodi e nei
-// film dopo (vedi lib/sceltaSottotitoli).
+// Quale sottotitolo si vede (-1: nessuno) e quanto grande: l'inglese finché
+// non se ne sceglie un altro dal CC, poi la stessa lingua anche negli episodi
+// e nei film dopo (vedi lib/sceltaSottotitoli).
 export function useSceltaSottotitoli(tracce: TracciaConLingua[]) {
   const [lingua, setLingua] = useState(leggiLinguaSottotitoli)
   const [toccato, setToccato] = useState<number | null>(null)

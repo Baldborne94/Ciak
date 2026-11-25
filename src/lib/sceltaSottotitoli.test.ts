@@ -52,13 +52,19 @@ describe('indiceSottotitolo', () => {
 })
 
 describe('la scelta salvata', () => {
-  it('la prima volta non c è: spenti', () => {
-    expect(leggiLinguaSottotitoli()).toBeNull()
+  it('la prima volta è l’inglese', () => {
+    expect(leggiLinguaSottotitoli()).toBe('en')
+    expect(indiceSottotitolo(IT_EN, leggiLinguaSottotitoli())).toBe(1)
   })
 
-  it('resta, anche «nessuno»', () => {
-    salvaLinguaSottotitoli('en')
+  it('la scelta di prima, quando si partiva spenti, non tiene spento nessuno', () => {
+    localStorage.setItem('ciak:sottotitoli', '')
     expect(leggiLinguaSottotitoli()).toBe('en')
+  })
+
+  it('resta, anche «nessuno», che non torna all’inglese', () => {
+    salvaLinguaSottotitoli('it')
+    expect(leggiLinguaSottotitoli()).toBe('it')
     salvaLinguaSottotitoli(null)
     expect(leggiLinguaSottotitoli()).toBeNull()
   })
