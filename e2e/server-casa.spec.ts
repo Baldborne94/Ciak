@@ -16,13 +16,14 @@ interface Richieste {
   scansioni: number
   elenchi: number
   fermate: URL[]
+  sottotitoli: string[]
   accessi: unknown[]
 }
 
 const JACK = '3f2504e04f8911d39a0c0305e82c3301'
 
 async function mockJellyfin(page: Page): Promise<Richieste> {
-  const richieste: Richieste = { hls: [], mp4: [], fermate: [], accessi: [], scansioni: 0, elenchi: 0 }
+  const richieste: Richieste = { hls: [], mp4: [], fermate: [], accessi: [], scansioni: 0, elenchi: 0, sottotitoli: [] }
   const sorgente = (id: string, contenitore: string, nome: string) => ({
     Id: id,
     Path: `E:\\Ciak\\FILM\\${nome.replace(/\.\w+$/, '')}\\${nome}`,
@@ -33,6 +34,11 @@ async function mockJellyfin(page: Page): Promise<Richieste> {
       { Index: 1, Type: 'Video', Codec: 'h264', BitDepth: 8 },
       { Index: 2, Type: 'Audio', Codec: 'aac', Language: 'eng', IsDefault: true },
       { Index: 3, Type: 'Audio', Codec: 'ac3', Language: 'ita' },
+      // Dentro il file: Jellyfin li estrae leggendolo tutto, e l'inglese qui
+      // non arriva mai (un MKV enorme). Le altre lingue non si chiedono.
+      { Index: 4, Type: 'Subtitle', Codec: 'subrip', Language: 'eng', IsTextSubtitleStream: true, DisplayTitle: 'English' },
+      { Index: 5, Type: 'Subtitle', Codec: 'subrip', Language: 'fre', IsTextSubtitleStream: true, DisplayTitle: 'Français' },
+      { Index: 6, Type: 'Subtitle', Codec: 'subrip', Language: 'spa', IsTextSubtitleStream: true, DisplayTitle: 'Español' },
     ],
   })
   await page.route(`${SERVER}/**`, async (route) => {
@@ -83,6 +89,9 @@ async function mockJellyfin(page: Page): Promise<Richieste> {
       })
     }
     if (p === `/Users/utente1/Items/${MKV}`) return json({ Id: MKV, MediaSources: [sorgente(MKV, 'mkv', 'The.Secret.of.Kells.2009.mkv')] })
+    const sottotitolo = /\/Subtitles\/(\d+)\/0\/Stream\.vtt$/.exec(p)
+    if (sottotitolo) richieste.sottotitoli.push(sottotitolo[1])
+    if (sottotitolo && sottotitolo[1] !== '0') return
     if (/\/Subtitles\/0\/0\/Stream\.vtt$/.test(p)) return route.fulfill({ body: VTT, contentType: 'text/vtt', headers: { 'Access-Control-Allow-Origin': '*' } })
     if (p.endsWith('/master.m3u8')) {
       richieste.hls.push(url)
@@ -292,4 +301,20 @@ test('un video del server di casa senza sottotitoli li cerca online, e li tiene 
   await page.reload()
   await expect(page.getByText(/Italiano · da OpenSubtitles, salvato in Ciak/)).toBeVisible()
   expect(richieste.filter((r) => r.azione === 'scarica')).toHaveLength(1)
+})
+
+test('i sottotitoli del server si chiedono uno per lingua, e ognuno si vede appena arriva', async ({ page }) => {
+  // Interstellar IMAX: una dozzina di tracce dentro l'MKV, ognuna estratta
+  // leggendo il file intero. Chiederle tutte e aspettarle insieme teneva il
+  // lettore su «Cerco i sottotitoli…» per mezz'ora.
+  await mockSupabase(page)
+  const richieste = await mockJellyfin(page)
+  await collega(page)
+  await page.getByRole('button', { name: /The Secret of Kells \(2009\)/ }).click()
+
+  // L'italiano (accanto al file) c'è subito, anche se l'inglese non arriva.
+  await expect(page.getByText(/Italiano · dalla cartella/)).toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Mostra' }).locator('option')).toHaveText(['Nessun sottotitolo', 'Italiano'])
+  // Solo italiano e inglese: francese e spagnolo non si fanno estrarre.
+  expect([...new Set(richieste.sottotitoli)].sort()).toEqual(['0', '4'])
 })

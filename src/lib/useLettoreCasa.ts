@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { logFailure } from './logFailure'
-import { infoVideoJellyfin, sottotitoloJellyfin, type InfoJellyfin } from './jellyfin'
+import { infoVideoJellyfin, sottotitoliDaChiedere, sottotitoloJellyfin, type InfoJellyfin } from './jellyfin'
 import { nomeLingua } from './sottotitoli'
 import type { StatoSottotitoli, Traccia } from './useSottotitoli'
 import type { InfoFile } from './fileVideo'
@@ -39,6 +39,7 @@ function linguaCiak(lingua: string | null): 'it' | 'en' | null {
 }
 
 const ORDINE = ['it', 'en', null]
+const AVVISO_LENTO_MS = 8000
 
 // I sottotitoli che Jellyfin conosce (i .srt accanto al file e quelli di
 // testo dentro il file), già in WebVTT. Con la stessa forma di
@@ -53,41 +54,61 @@ export function useSottotitoliCasa(fileId: string, info: InfoJellyfin | null) {
     if (!info) return
     let vivo = true
     setStato('cerco')
-    const scelti = [...info.sottotitoli].sort((a, b) => ORDINE.indexOf(linguaCiak(a.lingua)) - ORDINE.indexOf(linguaCiak(b.lingua)))
-    Promise.allSettled(
-      scelti.map(async (s, i) => {
-        const res = await fetch(sottotitoloJellyfin(fileId, info, s.indice))
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        const vtt = (await res.text()).replace(/^\uFEFF/, '')
-        const lingua = linguaCiak(s.lingua)
-        const blob = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }))
-        url.current.push(blob)
-        const traccia: Traccia = {
-          chiave: `casa-${s.indice}`,
-          url: blob,
-          lingua,
-          etichetta: `${lingua ? nomeLingua(lingua) : s.titolo || `Sottotitoli ${i + 1}`} · ${s.esterno ? 'dalla cartella' : 'dal file'}`,
-          vtt,
-        }
-        return traccia
-      }),
-    ).then((esiti) => {
-      if (!vivo) return
-      const trovate = esiti.flatMap((e) => (e.status === 'fulfilled' ? [e.value] : []))
-      const falliti = esiti.length - trovate.length
-      if (falliti > 0) logFailure('Sottotitoli del server di casa')(new Error(`${falliti} sottotitoli su ${esiti.length} non letti`))
-      setTracce(trovate)
-      setMessaggio(
-        trovate.length === 0
-          ? esiti.length > 0
-            ? 'I sottotitoli del server di casa non si leggono.'
-            : 'Nessun sottotitolo sul server di casa: li cerco su OpenSubtitles.'
-          : null,
-      )
-      setStato(trovate.length > 0 ? 'pronti' : falliti > 0 ? 'errore' : 'nessuno')
+    // Uno per lingua, e ognuno si mostra appena arriva: aspettarli tutti
+    // insieme voleva dire aspettare il più lento.
+    const scelti = sottotitoliDaChiedere(info.sottotitoli)
+    if (scelti.length === 0) {
+      setTracce([])
+      setMessaggio('Nessun sottotitolo sul server di casa: li cerco su OpenSubtitles.')
+      setStato('nessuno')
+      return
+    }
+    setTracce([])
+    setMessaggio(null)
+    // Uno dentro il file la prima volta può metterci minuti: lo si dice.
+    const lento = setTimeout(() => {
+      if (vivo) setMessaggio('Jellyfin sta estraendo i sottotitoli dal file: la prima volta ci mette un po’, poi sono pronti subito.')
+    }, AVVISO_LENTO_MS)
+    let arrivati = 0
+    let falliti = 0
+    let ultimo: unknown = null
+    const fatto = () => {
+      if (!vivo || arrivati + falliti < scelti.length) return
+      clearTimeout(lento)
+      if (falliti > 0) logFailure('Sottotitoli del server di casa')(new Error(`${falliti} sottotitoli su ${scelti.length} non letti: ${String(ultimo)}`))
+      setMessaggio(arrivati === 0 ? 'I sottotitoli del server di casa non si leggono: li cerco su OpenSubtitles.' : null)
+      setStato(arrivati > 0 ? 'pronti' : 'errore')
+    }
+    scelti.forEach((s, i) => {
+      fetch(sottotitoloJellyfin(fileId, info, s.indice))
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          const vtt = (await res.text()).replace(/^\uFEFF/, '')
+          if (!vivo) return
+          const lingua = linguaCiak(s.lingua)
+          const blob = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }))
+          url.current.push(blob)
+          const traccia: Traccia = {
+            chiave: `casa-${s.indice}`,
+            url: blob,
+            lingua,
+            etichetta: `${lingua ? nomeLingua(lingua) : s.titolo || `Sottotitoli ${i + 1}`} · ${s.esterno ? 'dalla cartella' : 'dal file'}`,
+            vtt,
+          }
+          arrivati++
+          setTracce((attuali) => [...attuali, traccia].sort((a, b) => ORDINE.indexOf(a.lingua as 'it' | 'en' | null) - ORDINE.indexOf(b.lingua as 'it' | 'en' | null)))
+          // Il primo che arriva basta per sceglierlo dal CC.
+          setStato('pronti')
+        })
+        .catch((e: unknown) => {
+          falliti++
+          ultimo = e
+        })
+        .finally(fatto)
     })
     return () => {
       vivo = false
+      clearTimeout(lento)
     }
   }, [fileId, info])
 

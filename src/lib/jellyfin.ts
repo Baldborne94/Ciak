@@ -316,6 +316,23 @@ export interface SottotitoloJellyfin {
   esterno: boolean
 }
 
+// I sottotitoli da chiedere a Jellyfin: uno per l'italiano e uno per
+// l'inglese (uno in un'altra lingua solo se mancano tutti e due), non tutti.
+// Un sottotitolo dentro un MKV Jellyfin lo estrae leggendo il file intero:
+// Interstellar IMAX, con una dozzina di tracce, teneva il lettore su «Cerco i
+// sottotitoli…» per mezz'ora. Prima il file accanto al video, che si legge
+// subito; i forzati (solo le scritte in lingua straniera) per ultimi.
+export function sottotitoliDaChiedere(tutti: SottotitoloJellyfin[]): SottotitoloJellyfin[] {
+  const codice = (l: string | null) => (l === 'ita' || l === 'it' ? 'it' : l === 'eng' || l === 'en' ? 'en' : null)
+  const forzato = (x: SottotitoloJellyfin) => /forced|forzat/i.test(x.titolo)
+  const migliore = (candidati: SottotitoloJellyfin[]) =>
+    [...candidati].sort((a, b) => Number(forzato(a)) - Number(forzato(b)) || Number(b.esterno) - Number(a.esterno))[0]
+  const scelti = (['it', 'en'] as const).map((l) => migliore(tutti.filter((x) => codice(x.lingua) === l))).filter((x): x is SottotitoloJellyfin => !!x)
+  if (scelti.length > 0) return scelti
+  const altro = migliore(tutti)
+  return altro ? [altro] : []
+}
+
 export interface InfoJellyfin {
   nome: string
   // Le cartelle del file, come quelle della cartella: per cercare i sottotitoli
