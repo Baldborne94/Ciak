@@ -35,7 +35,8 @@ import { useElementoVideo } from '../lib/useElementoVideo'
 import { collegaAudio } from '../lib/sincroniaAudio'
 import { nomiTracceAudio, siglaTracciaAudio } from '../lib/tracceAudio'
 import { eJellyfin } from '../lib/jellyfin'
-import { useInfoCasa, useSottotitoliCasa } from '../lib/useLettoreCasa'
+import { useInfoCasa } from '../lib/useLettoreCasa'
+import { useSottotitoliServer } from '../lib/useSottotitoliServer'
 import { useFlussoCasa } from '../lib/useFlussoCasa'
 import { formatoLeggibile } from '../lib/filmLocali'
 import { useFileDelDisco } from '../lib/useFileDelDisco'
@@ -153,7 +154,7 @@ function LettoreStreaming() {
   // file a portata (la copia salvata in Ciak) quelli salvati insieme a lui.
   // Una copia salvata senza sottotitoli li cerca come il file del disco.
   const subDisco = useSottotitoli(aperto ?? disco.copiaDaSottotitolare, archivioCaricato ? titoloNoto(archivio.voce) : undefined)
-  const subCasa = useSottotitoliCasa(fileId, infoCasa)
+  const subCasa = useSottotitoliServer(fileId, infoCasa, archivioCaricato ? titoloNoto(archivio.voce) : undefined)
   const sub = casa ? subCasa : subDisco
   const usaSalvati = (loc || copiaDiCasa) && !aperto && !disco.copiaSenzaSottotitoli
   const tracceSalvate = useSottotitoliCopia(fileId, locale, usaSalvati, sub.tracce)

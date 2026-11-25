@@ -44,6 +44,9 @@ export interface FilmAperto {
   // Scrive o toglie un file accanto al video (un sottotitolo trovato online).
   // null dove il browser non lascia scrivere: allora resta in Ciak.
   scrivi: { salva: (nome: string, testo: string) => Promise<void>; togli: (nome: string) => Promise<void> } | null
+  // L'impronta di OpenSubtitles quando il file non è qui da leggere (un video
+  // del server di casa): la calcola chi sa dove prendere i byte.
+  hash?: () => Promise<string | undefined>
 }
 
 // I file aperti in questa visita: il browser li legge solo finché la pagina
