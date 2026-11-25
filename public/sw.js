@@ -74,6 +74,9 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (url.origin !== self.location.origin) return // don't touch APIs / Supabase
+  // Sul NAS Supabase sta sulla stessa origine dell'app (il server di Ciak lo
+  // inoltra): le sue risposte sono dati dell'utente, mai roba da cache.
+  if (url.pathname.startsWith('/rest/v1/') || url.pathname.startsWith('/auth/v1/')) return
 
   // La versione pubblicata va chiesta sempre alla rete: servita dalla cache
   // direbbe per sempre che non c'è niente di nuovo.

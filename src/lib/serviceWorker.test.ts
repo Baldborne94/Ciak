@@ -96,3 +96,15 @@ describe('service worker: l’icona nuova', () => {
     expect(await caches.keys()).not.toContain('ciak-v4')
   })
 })
+
+describe('service worker: Supabase sul NAS', () => {
+  it('tabelle e login sulla stessa origine passano sempre dalla rete', () => {
+    // Sul NAS il server di Ciak inoltra Supabase: servite cache-first, le
+    // risposte sarebbero rimaste quelle della prima lettura per sempre.
+    const { gestori } = avviaWorker()
+    const respondWith = vi.fn()
+    gestori.fetch({ request: new Request('https://ciak.test/rest/v1/user_ratings?select=*'), respondWith })
+    gestori.fetch({ request: new Request('https://ciak.test/auth/v1/user'), respondWith })
+    expect(respondWith).not.toHaveBeenCalled()
+  })
+})

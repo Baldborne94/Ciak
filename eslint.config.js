@@ -5,7 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  { ignores: ['dist', 'node_modules'] },
+  { ignores: ['dist', 'dist-server', 'node_modules'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],
@@ -27,7 +27,7 @@ export default tseslint.config(
   },
   {
     // Serverless functions run on Node, not the browser.
-    files: ['api/**/*.ts'],
+    files: ['api/**/*.ts', 'server/**/*.ts'],
     languageOptions: {
       globals: globals.node,
     },

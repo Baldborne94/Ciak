@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ciak sul NAS · impostazioni</title>
+    <!--
+      Prepara il file .env di Ciak sul NAS (vedi LEGGIMI.md). Si apre con un
+      doppio clic dal PC: lavora tutto qui, senza internet, e nessun dato
+      lascia il computer. Crea le password e le chiavi del database (nuove,
+      casuali) e ci mette accanto le chiavi dei servizi che incolli tu.
+    -->
+    <style>
+      :root { color-scheme: dark; --fondo: #0a0a0f; --carta: #15151d; --bordo: #2a2a36; --testo: #e4e4e7; --tenue: #a1a1aa; --rosso: #ef4444; }
+      body { margin: 0; background: var(--fondo); color: var(--testo); font: 15px/1.5 system-ui, sans-serif; }
+      main { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+      h1 { font-size: 24px; margin: 0 0 4px; }
+      h2 { font-size: 16px; margin: 28px 0 8px; }
+      p { color: var(--tenue); margin: 6px 0; }
+      label { display: block; margin: 12px 0 4px; font-weight: 600; }
+      label small { font-weight: 400; color: var(--tenue); }
+      input, textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--bordo); background: var(--carta); color: var(--testo); font: inherit; }
+      textarea { font-family: ui-monospace, monospace; font-size: 12px; height: 320px; }
+      button { margin-top: 16px; padding: 10px 16px; border: 0; border-radius: 8px; background: var(--rosso); color: white; font: inherit; font-weight: 600; cursor: pointer; }
+      button.secondo { background: var(--carta); border: 1px solid var(--bordo); }
+      .avviso { border-left: 3px solid var(--rosso); padding: 8px 12px; background: var(--carta); border-radius: 4px; }
+      #risultato[hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Ciak sul NAS · impostazioni</h1>
+      <p>Compila i campi e premi «Crea il file». Le password del database e le chiavi interne le inventa questa pagina, qui sul PC.</p>
+
+      <form id="modulo">
+        <h2>Il NAS</h2>
+        <label>Indirizzo di Ciak <small>(l'indirizzo Tailscale del NAS, con :8443 in fondo)</small></label>
+        <input name="INDIRIZZO_PUBBLICO" required placeholder="https://nome-del-nas.tua-rete.ts.net:8443" />
+
+        <h2>Le chiavi che hai su Vercel</h2>
+        <p>Su vercel.com → progetto Ciak → Settings → Environment Variables. Copiale da lì: le notifiche continuano a funzionare solo con le stesse chiavi VAPID.</p>
+        <label>TMDB_API_KEY</label><input name="TMDB_API_KEY" required />
+        <label>ANTHROPIC_API_KEY <small>(facoltativa: le funzioni AI)</small></label><input name="ANTHROPIC_API_KEY" />
+        <label>AI_DAILY_LIMIT <small>(usi AI al giorno)</small></label><input name="AI_DAILY_LIMIT" value="3" />
+        <label>OPENSUBTITLES_API_KEY <small>(facoltativa: sottotitoli online)</small></label><input name="OPENSUBTITLES_API_KEY" />
+        <label>OPENSUBTITLES_USERNAME</label><input name="OPENSUBTITLES_USERNAME" />
+        <label>OPENSUBTITLES_PASSWORD</label><input name="OPENSUBTITLES_PASSWORD" />
+        <label>THEINTRODB_API_KEY <small>(facoltativa: salta sigla)</small></label><input name="THEINTRODB_API_KEY" />
+        <label>VAPID_PUBLIC_KEY <small>(su Vercel si chiama VITE_VAPID_PUBLIC_KEY)</small></label><input name="VAPID_PUBLIC_KEY" />
+        <label>VAPID_PRIVATE_KEY</label><input name="VAPID_PRIVATE_KEY" />
+        <label>VAPID_SUBJECT <small>(se c'è)</small></label><input name="VAPID_SUBJECT" />
+
+        <h2>La copia dei tuoi dati</h2>
+        <p>Su supabase.com → progetto → pulsante «Connect» in alto → «Session pooler» → l'indirizzo che comincia con <code>postgresql://</code>. Al posto di <code>[YOUR-PASSWORD]</code> va la password del database (se non la ricordi: Project Settings → Database → Reset database password).</p>
+        <label>SUPABASE_CLOUD_DB_URL</label><input name="SUPABASE_CLOUD_DB_URL" placeholder="postgresql://postgres.xxxx:PASSWORD@aws-0-eu-central-1.pooler.supabase.com:5432/postgres" />
+
+        <button type="submit">Crea il file</button>
+      </form>
+
+      <section id="risultato" hidden>
+        <h2>Il tuo file .env</h2>
+        <p class="avviso">Dentro ci sono le password del tuo database: non mandarlo a nessuno e non metterlo su GitHub. Salvalo nella cartella di Ciak sul NAS, accanto a docker-compose.yaml, col nome <b>.env</b> (punto compreso, nessuna estensione).</p>
+        <textarea id="testo" readonly></textarea>
+        <button type="button" id="scarica">Scarica (env.txt, da rinominare .env)</button>
+        <button type="button" class="secondo" id="copia">Copia</button>
+      </section>
+    </main>
+
+    <script>
+      // Le funzioni stanno in un oggetto solo: i test (src/lib/chiaviNas.test.ts)
+      // le leggono da questo file e le provano su Node.
+      const Chiavi = {
+        esadecimale(crypto, byte) {
+          const a = new Uint8Array(byte)
+          crypto.getRandomValues(a)
+          return [...a].map((b) => b.toString(16).padStart(2, '0')).join('')
+        },
+        base64url(byte) {
+          let s = ''
+          for (const b of byte) s += String.fromCharCode(b)
+          return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+        },
+        // Le chiavi di Supabase (anon, service_role) sono JWT firmati col
+        // segreto del login: chi ha il segreto può farne di nuove, chi ha solo
+        // le chiavi no. Durano dieci anni, come quelle del Supabase in Docker.
+        async firma(crypto, segreto, ruolo, adesso) {
+          const testo = new TextEncoder()
+          const testa = Chiavi.base64url(testo.encode(JSON.stringify({ alg: 'HS256', typ: 'JWT' })))
+          const iat = Math.floor(adesso / 1000)
+          const corpo = Chiavi.base64url(testo.encode(JSON.stringify({ role: ruolo, iss: 'supabase', iat, exp: iat + 10 * 365 * 24 * 3600 })))
+          const chiave = await crypto.subtle.importKey('raw', testo.encode(segreto), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+          const firma = await crypto.subtle.sign('HMAC', chiave, testo.encode(`${testa}.${corpo}`))
+          return `${testa}.${corpo}.${Chiavi.base64url(new Uint8Array(firma))}`
+        },
+        // Solo lettere e cifre: le password finiscono dentro indirizzi
+        // postgres://utente:password@…, dove «@» o «/» li romperebbero.
+        async segreti(crypto, adesso) {
+          const jwt = Chiavi.esadecimale(crypto, 32)
+          return {
+            POSTGRES_PASSWORD: Chiavi.esadecimale(crypto, 24),
+            JWT_SECRET: jwt,
+            ANON_KEY: await Chiavi.firma(crypto, jwt, 'anon', adesso),
+            SERVICE_ROLE_KEY: await Chiavi.firma(crypto, jwt, 'service_role', adesso),
+            PG_META_CRYPTO_KEY: Chiavi.esadecimale(crypto, 24),
+            CRON_SECRET: Chiavi.esadecimale(crypto, 24),
+          }
+        },
+        // Il testo del .env: prima ciò che hai scritto tu, poi i segreti.
+        componi(campi, segreti) {
+          // Fra apici singoli un valore con «$», «#» o spazi resta com'è: senza,
+          // Docker leggerebbe «$abc» come una variabile e «#» come un commento.
+          const riga = (k, v) => {
+            const t = String(v ?? '').trim()
+            return /[\s$#"\\]/.test(t) && !t.includes("'") ? `${k}='${t}'` : `${k}=${t}`
+          }
+          const indirizzo = String(campi.INDIRIZZO_PUBBLICO ?? '').trim().replace(/\/+$/, '')
+          return [
+            '# Ciak sul NAS — fatto con chiavi.html. Contiene password: non condividerlo.',
+            '',
+            '# Il NAS',
+            riga('INDIRIZZO_PUBBLICO', indirizzo),
+            '',
+            '# Le chiavi dei servizi (da Vercel)',
+            ...['TMDB_API_KEY', 'ANTHROPIC_API_KEY', 'AI_DAILY_LIMIT', 'OPENSUBTITLES_API_KEY', 'OPENSUBTITLES_USERNAME', 'OPENSUBTITLES_PASSWORD', 'THEINTRODB_API_KEY', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'].map((k) => riga(k, campi[k])),
+            '',
+            '# La copia dal Supabase di prima: a copia fatta si può svuotare.',
+            riga('SUPABASE_CLOUD_DB_URL', campi.SUPABASE_CLOUD_DB_URL),
+            '',
+            '# Database e login: inventati da chiavi.html. Non cambiarli dopo il primo',
+            '# avvio (il database ricorda la sua password).',
+            ...Object.entries(segreti).map(([k, v]) => riga(k, v)),
+            '',
+          ].join('\n')
+        },
+      }
+
+      if (typeof document !== 'undefined') {
+        const modulo = document.getElementById('modulo')
+        modulo.addEventListener('submit', async (e) => {
+          e.preventDefault()
+          const campi = Object.fromEntries(new FormData(modulo))
+          const testo = Chiavi.componi(campi, await Chiavi.segreti(crypto, Date.now()))
+          document.getElementById('testo').value = testo
+          document.getElementById('risultato').hidden = false
+          document.getElementById('risultato').scrollIntoView({ behavior: 'smooth' })
+        })
+        document.getElementById('scarica').addEventListener('click', () => {
+          const a = document.createElement('a')
+          a.href = URL.createObjectURL(new Blob([document.getElementById('testo').value], { type: 'text/plain' }))
+          a.download = 'env.txt'
+          a.click()
+        })
+        document.getElementById('copia').addEventListener('click', () => navigator.clipboard.writeText(document.getElementById('testo').value))
+      }
+    </script>
+  </body>
+</html>

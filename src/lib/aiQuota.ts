@@ -1,10 +1,12 @@
+import { configurazione } from './configurazione'
+
 // Client-side mirror of the server's daily AI counter, used only for display
 // ("usi rimasti oggi"). The real limit is enforced server-side (api/_lib/
 // aiGuard.ts + tabella ai_usage): ogni risposta AI riporta `aiCreditsLeft`,
 // che salviamo qui. Finché il contatore server non è configurato, mostriamo
 // il valore pieno (la protezione vera resta l'auth obbligatoria sugli endpoint).
 
-export const AI_DAILY_LIMIT = Number(import.meta.env.VITE_AI_DAILY_LIMIT ?? '3')
+export const AI_DAILY_LIMIT = configurazione.aiDailyLimit
 
 const PREFIX = 'cv_ai_left_'
 
