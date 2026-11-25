@@ -41,9 +41,9 @@ Apri `chiavi.html` con un doppio clic (si apre nel browser, lavora senza
 internet: niente lascia il PC) e compila i campi:
 
 - **Indirizzo di Ciak**: quello Tailscale del NAS, con `:8443` in fondo.
-- **Le chiavi di Vercel**: su vercel.com → progetto → Settings → Environment
-  Variables. Copia TMDB, Anthropic, OpenSubtitles, e le due VAPID (le
-  notifiche continuano solo con le stesse).
+- **Le chiavi dei servizi**: su Vercel non si rileggono, quindi si prendono
+  dai servizi stessi (la pagina dice dove). Quella di Anthropic va creata
+  nuova. Le chiavi delle notifiche lasciale vuote: le crea la pagina.
 - **La copia dei tuoi dati**: su supabase.com → progetto → «Connect» →
   «Session pooler» → l'indirizzo `postgresql://…`, con la password del
   database al posto di `[YOUR-PASSWORD]`.
@@ -110,6 +110,7 @@ Su ogni dispositivo:
   Vercel);
 - **ricollega il server di casa** (Videoteca → «Collega il server di casa»), e
   sul PC la cartella;
+- **riattiva le notifiche** (Impostazioni), se le usavi;
 - **i film salvati in Ciak vanno salvati di nuovo**: le copie stanno nel
   browser, legate all'indirizzo da cui le hai salvate.
 

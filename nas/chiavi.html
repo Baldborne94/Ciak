@@ -37,18 +37,20 @@
         <label>Indirizzo di Ciak <small>(l'indirizzo Tailscale del NAS, con :8443 in fondo)</small></label>
         <input name="INDIRIZZO_PUBBLICO" required placeholder="https://nome-del-nas.tua-rete.ts.net:8443" />
 
-        <h2>Le chiavi che hai su Vercel</h2>
-        <p>Su vercel.com → progetto Ciak → Settings → Environment Variables. Copiale da lì: le notifiche continuano a funzionare solo con le stesse chiavi VAPID.</p>
-        <label>TMDB_API_KEY</label><input name="TMDB_API_KEY" required />
-        <label>ANTHROPIC_API_KEY <small>(facoltativa: le funzioni AI)</small></label><input name="ANTHROPIC_API_KEY" />
+        <h2>Le chiavi dei servizi</h2>
+        <p>Su Vercel non si possono rileggere (sono «Secret»): si prendono dai servizi che le hanno date.</p>
+        <label>TMDB_API_KEY <small>(themoviedb.org → foto del profilo → Impostazioni → API → «Chiave API»)</small></label><input name="TMDB_API_KEY" required />
+        <label>ANTHROPIC_API_KEY <small>(facoltativa, le funzioni AI: console.anthropic.com → API Keys → «Create Key»; quella vecchia non si rilegge)</small></label><input name="ANTHROPIC_API_KEY" />
         <label>AI_DAILY_LIMIT <small>(usi AI al giorno)</small></label><input name="AI_DAILY_LIMIT" value="3" />
-        <label>OPENSUBTITLES_API_KEY <small>(facoltativa: sottotitoli online)</small></label><input name="OPENSUBTITLES_API_KEY" />
-        <label>OPENSUBTITLES_USERNAME</label><input name="OPENSUBTITLES_USERNAME" />
-        <label>OPENSUBTITLES_PASSWORD</label><input name="OPENSUBTITLES_PASSWORD" />
-        <label>THEINTRODB_API_KEY <small>(facoltativa: salta sigla)</small></label><input name="THEINTRODB_API_KEY" />
-        <label>VAPID_PUBLIC_KEY <small>(su Vercel si chiama VITE_VAPID_PUBLIC_KEY)</small></label><input name="VAPID_PUBLIC_KEY" />
+        <label>OPENSUBTITLES_API_KEY <small>(facoltativa, sottotitoli online: opensubtitles.com → profilo → «API consumers»)</small></label><input name="OPENSUBTITLES_API_KEY" />
+        <label>OPENSUBTITLES_USERNAME <small>(il tuo nome utente su OpenSubtitles)</small></label><input name="OPENSUBTITLES_USERNAME" />
+        <label>OPENSUBTITLES_PASSWORD <small>(la tua password di OpenSubtitles)</small></label><input name="OPENSUBTITLES_PASSWORD" />
+        <label>THEINTRODB_API_KEY <small>(facoltativa: salta sigla; vuota, Ciak usa i tempi di Jellyfin e dei file)</small></label><input name="THEINTRODB_API_KEY" />
+        <h2>Le notifiche</h2>
+        <p>Lasciale vuote e la pagina ne crea di nuove. Sul NAS le notifiche si riattivano comunque da ogni dispositivo (l'indirizzo è nuovo), quindi le chiavi di Vercel non servono.</p>
+        <label>VAPID_PUBLIC_KEY</label><input name="VAPID_PUBLIC_KEY" />
         <label>VAPID_PRIVATE_KEY</label><input name="VAPID_PRIVATE_KEY" />
-        <label>VAPID_SUBJECT <small>(se c'è)</small></label><input name="VAPID_SUBJECT" />
+        <label>VAPID_SUBJECT <small>(facoltativo: mailto: e una tua email)</small></label><input name="VAPID_SUBJECT" />
 
         <h2>La copia dei tuoi dati</h2>
         <p>Su supabase.com → progetto → pulsante «Connect» in alto → «Session pooler» → l'indirizzo che comincia con <code>postgresql://</code>. Al posto di <code>[YOUR-PASSWORD]</code> va la password del database (se non la ricordi: Project Settings → Database → Reset database password).</p>
@@ -105,6 +107,17 @@
             CRON_SECRET: Chiavi.esadecimale(crypto, 24),
           }
         },
+        // Le chiavi delle notifiche (VAPID): una coppia ECDSA P-256, la pubblica
+        // in forma «raw» (65 byte) e la privata come il suo numero «d» (32
+        // byte), in base64url: il formato che web-push e il browser vogliono.
+        // Si creano solo se mancano tutte e due: una metà sola non serve.
+        async conVapid(crypto, campi) {
+          if (String(campi.VAPID_PUBLIC_KEY ?? '').trim() || String(campi.VAPID_PRIVATE_KEY ?? '').trim()) return campi
+          const coppia = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign'])
+          const pubblica = new Uint8Array(await crypto.subtle.exportKey('raw', coppia.publicKey))
+          const privata = await crypto.subtle.exportKey('jwk', coppia.privateKey)
+          return { ...campi, VAPID_PUBLIC_KEY: Chiavi.base64url(pubblica), VAPID_PRIVATE_KEY: privata.d }
+        },
         // Il testo del .env: prima ciò che hai scritto tu, poi i segreti.
         componi(campi, segreti) {
           // Fra apici singoli un valore con «$», «#» o spazi resta com'è: senza,
@@ -120,7 +133,7 @@
             '# Il NAS',
             riga('INDIRIZZO_PUBBLICO', indirizzo),
             '',
-            '# Le chiavi dei servizi (da Vercel)',
+            '# Le chiavi dei servizi',
             ...['TMDB_API_KEY', 'ANTHROPIC_API_KEY', 'AI_DAILY_LIMIT', 'OPENSUBTITLES_API_KEY', 'OPENSUBTITLES_USERNAME', 'OPENSUBTITLES_PASSWORD', 'THEINTRODB_API_KEY', 'VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT'].map((k) => riga(k, campi[k])),
             '',
             '# La copia dal Supabase di prima: a copia fatta si può svuotare.',
@@ -138,7 +151,7 @@
         const modulo = document.getElementById('modulo')
         modulo.addEventListener('submit', async (e) => {
           e.preventDefault()
-          const campi = Object.fromEntries(new FormData(modulo))
+          const campi = await Chiavi.conVapid(crypto, Object.fromEntries(new FormData(modulo)))
           const testo = Chiavi.componi(campi, await Chiavi.segreti(crypto, Date.now()))
           document.getElementById('testo').value = testo
           document.getElementById('risultato').hidden = false

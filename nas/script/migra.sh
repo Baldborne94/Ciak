@@ -83,6 +83,9 @@ if [ "$diverse" -gt 0 ]; then
   grep -i "error" ripristino.log | head -20
   exit 1
 fi
+# Le iscrizioni alle notifiche sono del vecchio indirizzo (e delle sue chiavi
+# VAPID): da qui non arriverebbero mai. Si rifanno dal NAS, una per dispositivo.
+psql "$LOCALE" -qc "delete from public.push_subscriptions" && dici "Iscrizioni alle notifiche tolte: si riattivano da ogni dispositivo, dal nuovo indirizzo."
 # I file letti contengono i tuoi dati e le password cifrate: servivano solo ora.
 rm -f utenti.csv identita.csv tabelle.sql
 dici "Fatto: tutto copiato. Ora togli SUPABASE_CLOUD_DB_URL da .env."
