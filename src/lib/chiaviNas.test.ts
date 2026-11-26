@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createHmac, webcrypto } from 'node:crypto'
+import { createHmac, createPrivateKey, createPublicKey, sign, verify, webcrypto } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -11,6 +11,7 @@ const html = readFileSync(resolve(__dirname, '../../nas/chiavi.html'), 'utf8')
 const script = /<script>([\s\S]*?)<\/script>/.exec(html)![1]
 
 interface Chiavi {
+  conVapid: (crypto: Crypto, campi: Record<string, string>) => Promise<Record<string, string>>
   segreti: (crypto: Crypto, adesso: number) => Promise<Record<string, string>>
   componi: (campi: Record<string, string>, segreti: Record<string, string>) => string
 }
@@ -58,5 +59,22 @@ describe('chiavi.html', () => {
   it('una password con «$» o «#» resta com’è, fra apici', () => {
     const testo = Chiavi.componi({ OPENSUBTITLES_PASSWORD: 'ab$c#1' }, {})
     expect(testo).toContain("OPENSUBTITLES_PASSWORD='ab$c#1'\n")
+  })
+
+  it('senza chiavi delle notifiche ne crea una coppia nel formato di web-push', async () => {
+    const campi = await Chiavi.conVapid(webcrypto as unknown as Crypto, { VAPID_PUBLIC_KEY: '', VAPID_PRIVATE_KEY: '' })
+    expect(Buffer.from(campi.VAPID_PUBLIC_KEY, 'base64url')).toHaveLength(65)
+    expect(Buffer.from(campi.VAPID_PRIVATE_KEY, 'base64url')).toHaveLength(32)
+    // Le due metà sono della stessa coppia: una firma della privata si
+    // verifica con la pubblica (le lunghezze sono quelle che web-push chiede).
+    const pub = Buffer.from(campi.VAPID_PUBLIC_KEY, 'base64url')
+    const jwk = { kty: 'EC', crv: 'P-256', x: pub.subarray(1, 33).toString('base64url'), y: pub.subarray(33).toString('base64url') }
+    const firma = sign('sha256', Buffer.from('ciak'), createPrivateKey({ key: { ...jwk, d: campi.VAPID_PRIVATE_KEY }, format: 'jwk' }))
+    expect(verify('sha256', Buffer.from('ciak'), createPublicKey({ key: jwk, format: 'jwk' }), firma)).toBe(true)
+  })
+
+  it('chiavi delle notifiche scritte a mano restano quelle', async () => {
+    const campi = await Chiavi.conVapid(webcrypto as unknown as Crypto, { VAPID_PUBLIC_KEY: 'pub', VAPID_PRIVATE_KEY: 'priv' })
+    expect([campi.VAPID_PUBLIC_KEY, campi.VAPID_PRIVATE_KEY]).toEqual(['pub', 'priv'])
   })
 })
