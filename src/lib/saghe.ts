@@ -1,5 +1,7 @@
 import type { Collection } from './types'
 import type { Raccolta } from './raccolte'
+import { normalizzaRicerca } from './ricercaLista'
+import { analizzaNomeFilm, cartellaRaccolta } from './sottotitoli'
 
 // Le saghe della videoteca: i film di una stessa collezione di TMDB (Alien,
 // Harry Potter, Il Signore degli Anelli…) in una cartella con la locandina
@@ -20,6 +22,9 @@ export interface SagaVideoteca {
   // Solo per le saghe fatte a mano: la lista che le tiene.
   listaId?: string
   copertina?: string | null
+  // Una saga fatta dalla cartella dei file (vedi raggruppaPerCartella): non
+  // c'è una saga di TMDB da modificare.
+  daCartella?: true
 }
 
 export function daCollezione(c: Collection): SagaVideoteca {
@@ -74,6 +79,35 @@ export function raggruppaSaghe(
     const ordinati = [...suoi].sort((a, b) => (a.anno ?? '9999').localeCompare(b.anno ?? '9999'))
     for (const f of ordinati) raccolti.add(f.id)
     gruppi.push({ chiave: saga.chiave, saga, ids: ordinati.map((f) => f.id) })
+  }
+  return { saghe: gruppi, sciolti: film.filter((f) => !raccolti.has(f.id)).map((f) => f.id) }
+}
+
+// Le saghe che nessuno ha dichiarato: i film insieme in una cartella che è
+// chiaramente una raccolta («Attack On Titan Movies», «Alien Quadrilogy»).
+// Servono quando TMDB non li riconosce, o non li mette in una sua
+// collezione: i quattro film di Attack on Titan, coi nomi giapponesi, stavano
+// sciolti nell'elenco, uno per riga. Si applica ai film rimasti fuori dalle
+// saghe di TMDB e da quelle fatte a mano, che vincono. Almeno due film, come
+// le saghe di TMDB; in ordine di nome del file, che nei pacchetti è numerato.
+export function raggruppaPerCartella(
+  film: { id: string; cartella: string | null | undefined; file: string }[],
+): { saghe: GruppoSaga[]; sciolti: string[] } {
+  const perCartella = new Map<string, typeof film>()
+  for (const f of film) {
+    if (!f.cartella || !cartellaRaccolta(f.cartella)) continue
+    const chiave = `cartella-${normalizzaRicerca(f.cartella)}`
+    perCartella.set(chiave, [...(perCartella.get(chiave) ?? []), f])
+  }
+  const gruppi: GruppoSaga[] = []
+  const raccolti = new Set<string>()
+  for (const [chiave, suoi] of perCartella) {
+    if (suoi.length < 2) continue
+    const ordinati = [...suoi].sort((a, b) => a.file.localeCompare(b.file, 'it', { numeric: true }))
+    const cartella = suoi[0].cartella as string
+    const name = nomeSaga(analizzaNomeFilm(cartella).titolo || cartella)
+    for (const f of ordinati) raccolti.add(f.id)
+    gruppi.push({ chiave, saga: { chiave, name, posterPath: null, daCartella: true }, ids: ordinati.map((f) => f.id) })
   }
   return { saghe: gruppi, sciolti: film.filter((f) => !raccolti.has(f.id)).map((f) => f.id) }
 }

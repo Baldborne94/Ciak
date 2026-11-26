@@ -87,13 +87,17 @@ const GENERE_PRIMA_DELL_ANNO =
 const NUMERO_NEL_PACCHETTO = /\bM\d{2} E\d{2}\b/i
 
 // Una cartella che raccoglie più film: «Transformers Complete Movie
-// Collection», «Alien Quadrilogy», «Star Wars M01-M03 (1977-1983)». Il suo
-// nome non è il titolo di nessuno dei film che contiene.
+// Collection», «Alien Quadrilogy», «Star Wars M01-M03 (1977-1983)», «Attack
+// On Titan Movies». Il suo nome non è il titolo di nessuno dei film che
+// contiene, ed è il nome della saga che la videoteca ne fa (saghe.ts).
 export function cartellaRaccolta(nome: string | null | undefined): boolean {
   if (!nome) return false
   return (
     /\b(?:collection|collezione|trilogy|trilogia|quadrilogy|quadrilogia|saga|anthology|antologia|box ?set|\d+ ?(?:movies?|films?))\b/i.test(nome) ||
     /\bM\d{2}\s*-\s*M\d{2}\b/i.test(nome) ||
+    // «Attack On Titan Movies», «Evangelion Films»: i film di una serie. Con
+    // almeno una parola davanti: «Movies» da sola è la cartella della categoria.
+    /\S\s+(?:movies|films)\b/i.test(nome) ||
     /\b(?:19|20)\d{2}\s*-\s*(?:19|20)\d{2}\b/.test(nome)
   )
 }

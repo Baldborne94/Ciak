@@ -1,6 +1,6 @@
 import { titoloVideo, type VideoFile } from './fileVideo'
 import type { Raccolta } from './raccolte'
-import { raggruppaSaghe, unisciSaghe, type GruppoSaga } from './saghe'
+import { raggruppaPerCartella, raggruppaSaghe, unisciSaghe, type GruppoSaga } from './saghe'
 import { titoloDaMostrare, type VoceStreaming } from './streaming'
 import { posterUrl } from './tmdb'
 import type { InfoTitoli } from './useInfoTitoli'
@@ -70,9 +70,17 @@ export function componiVideoteca(
     // Le saghe di TMDB e quelle fatte a mano (le liste segnate come saga).
     unisciSaghe(info.saghe, raccolte),
   )
-  const voci = perSaghe.sciolti.map((id) => filmPerId.get(id) as FilmDellElenco)
-  const saghe = new Map<string, GruppoSaga>(perSaghe.saghe.map((g) => [g.chiave, g]))
-  for (const g of perSaghe.saghe) {
+  // I film rimasti fuori, se stanno insieme in una cartella-raccolta.
+  const perCartella = raggruppaPerCartella(
+    perSaghe.sciolti.map((id) => {
+      const f = filmPerId.get(id) as FilmDellElenco
+      return { id, cartella: f.video.cartella, file: f.video.name }
+    }),
+  )
+  const gruppiSaga = [...perSaghe.saghe, ...perCartella.saghe]
+  const voci = perCartella.sciolti.map((id) => filmPerId.get(id) as FilmDellElenco)
+  const saghe = new Map<string, GruppoSaga>(gruppiSaga.map((g) => [g.chiave, g]))
+  for (const g of gruppiSaga) {
     const suoi = g.ids.map((id) => (filmPerId.get(id) as FilmDellElenco).riga)
     const anni = suoi.map((r) => r.anno).filter((a): a is string => !!a)
     voci.push({
@@ -123,7 +131,7 @@ export function componiVideoteca(
     ).values(),
   ].sort((a, b) => a.titolo.localeCompare(b.titolo, 'it'))
   // I film che TMDB mette già in una sua saga.
-  const inSagaTmdb = new Set(perSaghe.saghe.filter((g) => !g.saga.listaId).flatMap((g) => g.ids.map(chiaveTitolo)))
+  const inSagaTmdb = new Set(perSaghe.saghe.filter((g) => !g.saga.listaId && !g.saga.daCartella).flatMap((g) => g.ids.map(chiaveTitolo)))
   // La locandina da salvare con ogni titolo scelto (percorso TMDB).
   const posterDi = new Map<string, string | null>([
     ...film.flatMap((f) => {
