@@ -52,11 +52,16 @@ services:
     volumes:
       - ./dati/db:/var/lib/postgresql/data
       - db-config:/etc/postgresql-custom
+    # La prima accensione prepara tutto il database di Supabase: sul DXP2800
+    # (N100) ci mette più dei 100 secondi di 5s × 20, e il progetto si
+    # arrendeva («ciak-db is unhealthy») prima di avviare il resto. I primi 10
+    # minuti non contano come fallimenti (si controlla sempre ogni 5 secondi).
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
       interval: 5s
       timeout: 5s
       retries: 20
+      start_period: 600s
     environment:
       POSTGRES_HOST: /var/run/postgresql
       PGPORT: 5432
