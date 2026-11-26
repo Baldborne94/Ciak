@@ -18,7 +18,8 @@ Tailscale: lo stesso indirizzo di Jellyfin, con `:8443` in fondo.
 | `ciak-rest` | Le tabelle, con le stesse regole di accesso di prima |
 | `ciak-studio`, `ciak-meta` | Il pannello di Supabase, per i file SQL (`:8444`) |
 | `ciak-backup` | Una copia del database ogni notte alle 4, in `dati/backup` |
-| `ciak-migra` | La copia dei dati dal Supabase di prima, una volta sola |
+| `ciak-prepara` | A ogni avvio, le password interne del database; poi si ferma |
+| `ciak-migra` | La copia dei dati dal Supabase di prima, una volta sola; poi si ferma |
 | `ciak-aggiorna` | Scarica le versioni nuove di Ciak da sola, ogni ora |
 
 Su un DXP2800 con 8 GB tutto insieme usa circa 700 MB di memoria (il pannello da solo la metà).
@@ -29,7 +30,7 @@ Su un DXP2800 con 8 GB tutto insieme usa circa 700 MB di memoria (il pannello da
 
 Sul NAS, nella cartella condivisa `docker` (quella dove c'è già `tailscale`),
 crea una cartella `ciak` e copiaci dentro il contenuto della cartella `nas/` di
-questo progetto: `docker-compose.yaml`, `chiavi.html`, le cartelle `db` e
+questo progetto: `docker-compose.yaml`, `chiavi.html` e la cartella
 `script`.
 
 Il modo più semplice: su GitHub, pagina del progetto → «Code» → «Download ZIP»,
@@ -57,8 +58,12 @@ metterlo su GitHub.
 
 ### 3. Tailscale
 
-Nella cartella `docker/tailscale` apri `serve.json` col Blocco note e mettici
-questo (Jellyfin resta com'era, sulla 443):
+Nella cartella `docker/tailscale` apri `serve.json` (di solito in `config`)
+col Blocco note e mettici questo (Jellyfin resta com'era, sulla 443).
+
+Prima guarda cosa c'è già: se una porta è usata da un altro servizio (per
+esempio la 8443 da Navidrome), lascia quella com'è e scegline un'altra per
+Ciak, e usa la stessa nell'indirizzo del `.env` (`INDIRIZZO_PUBBLICO`).
 
 ```json
 {
@@ -157,8 +162,12 @@ email, una «password per le app»). Senza, tutto il resto funziona lo stesso.
 
 - **La pagina non si apre**: il progetto `ciak` è avviato? E `tailscale`, con
   la 8443 in `serve.json`?
-- **«Il database di Ciak non risponde»**: guarda il registro di `ciak-db` e
-  `ciak-auth`.
+- **«Il database di Ciak non risponde»**, o `ciak-auth` e `ciak-rest` che si
+  riavviano in continuazione: guarda il registro di `ciak-prepara`, poi di
+  `ciak-db` e `ciak-auth`.
+- **La copia dice «password authentication failed for user postgres»**: è la
+  password del Supabase di prima, in `SUPABASE_CLOUD_DB_URL`. Rimettila (sole
+  lettere e numeri: i simboli rompono l'indirizzo) e riavvia `ciak-migra`.
 - **Le funzioni AI, i sottotitoli o il catalogo non vanno**: manca la chiave
   nel `.env`. Dopo averla aggiunta, riavvia il progetto.
 - Dalla rete di casa Ciak si apre anche da `http://<IP del NAS>:8900`, ma senza

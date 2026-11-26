@@ -21,6 +21,17 @@ fi
 # tabella di un altro fallirebbe. Gli utenti invece li scrive l'amministratore.
 POSTGRES_URL="${LOCALE/supabase_admin:/postgres:}"
 
+# Il database del NAS può essere ancora in avvio: si aspetta che risponda,
+# invece di scambiarlo per un database vuoto.
+for _ in $(seq 1 60); do
+  psql "$LOCALE" -tAc "select 1" > /dev/null 2>&1 && break
+  sleep 2
+done
+if ! psql "$LOCALE" -tAc "select 1" > /dev/null; then
+  dici "ERRORE: il database del NAS non risponde. Guarda il registro di ciak-db e di ciak-prepara."
+  exit 1
+fi
+
 if [ "$(psql "$LOCALE" -tAc "select to_regclass('public.schema_version') is not null")" = "t" ]; then
   dici "Le tabelle di Ciak qui ci sono già: la copia è stata fatta. Puoi togliere SUPABASE_CLOUD_DB_URL da .env."
   exit 0
