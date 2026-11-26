@@ -24,8 +24,20 @@ describe('docker-compose del NAS', () => {
 
   it('login e tabelle partono dopo che «prepara» ha messo le password', () => {
     for (const nome of ['auth', 'rest']) {
-      expect(servizio(nome)).toMatch(/prepara:\s*\n\s*condition: service_completed_successfully/)
+      expect(servizio(nome)).toMatch(/prepara:\s*\n\s*condition: service_healthy/)
     }
     expect(servizio('prepara')).toContain('/script/prepara.sh')
+    // «Pronto» solo quando le password ci sono: il segno sta in un tmpfs, che
+    // riparte vuoto a ogni avvio (un segno rimasto dal giro prima mentirebbe).
+    expect(servizio('prepara')).toMatch(/test: \["CMD", "test", "-f", "\/run\/ciak\/pronta"\]/)
+    expect(servizio('prepara')).toMatch(/tmpfs:\s*\n\s*- \/run\/ciak/)
+  })
+
+  it('i container che finiscono il lavoro restano accesi, o l’app del NAS segna «Errore»', () => {
+    // Nell'app Docker di UGREEN un progetto con un container fermo è «Errore»,
+    // anche se si è fermato perché aveva finito: un «Errore» fisso nasconde
+    // quelli veri.
+    for (const nome of ['prepara', 'migra']) expect(servizio(nome)).toContain('restart: unless-stopped')
+    expect(compose).not.toMatch(/restart: "no"/)
   })
 })
