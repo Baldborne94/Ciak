@@ -18,8 +18,8 @@ Tailscale: lo stesso indirizzo di Jellyfin, con `:8443` in fondo.
 | `ciak-rest` | Le tabelle, con le stesse regole di accesso di prima |
 | `ciak-studio`, `ciak-meta` | Il pannello di Supabase, per i file SQL (`:8444`) |
 | `ciak-backup` | Una copia del database ogni notte alle 4, in `dati/backup` |
-| `ciak-prepara` | A ogni avvio, le password interne del database; poi si ferma |
-| `ciak-migra` | La copia dei dati dal Supabase di prima, una volta sola; poi si ferma |
+| `ciak-prepara` | A ogni avvio, le password interne del database; poi resta in attesa |
+| `ciak-migra` | La copia dei dati dal Supabase di prima, una volta sola; poi resta in attesa |
 | `ciak-aggiorna` | Scarica le versioni nuove di Ciak da sola, ogni ora |
 
 Su un DXP2800 con 8 GB tutto insieme usa circa 700 MB di memoria (il pannello da solo la metà).

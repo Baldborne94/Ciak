@@ -74,16 +74,24 @@ services:
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "log_min_messages=fatal"]
 
   # A ogni avvio, prima di login e tabelle: le password con cui entrano nel
-  # database (vedi script/prepara.sh). Fa il suo lavoro ed esce.
+  # database (vedi script/prepara.sh).
   prepara:
     image: supabase/postgres:17.6.1.136
     container_name: ciak-prepara
-    restart: "no"
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
+    # «Pronto» quando le password sono messe; poi resta acceso senza far niente
+    # (vedi script/prepara.sh), così il progetto non risulta in «Errore».
     healthcheck:
-      disable: true
+      test: ["CMD", "test", "-f", "/run/ciak/pronta"]
+      interval: 3s
+      timeout: 2s
+      retries: 3
+      start_period: 600s
+    tmpfs:
+      - /run/ciak
     entrypoint: ["bash", "/script/prepara.sh"]
     volumes:
       - ./script:/script:ro
@@ -98,7 +106,7 @@ services:
     restart: unless-stopped
     depends_on:
       prepara:
-        condition: service_completed_successfully
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
       interval: 5s
@@ -145,7 +153,7 @@ services:
     restart: unless-stopped
     depends_on:
       prepara:
-        condition: service_completed_successfully
+        condition: service_healthy
     environment:
       PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
       PGRST_DB_SCHEMAS: public
@@ -203,14 +211,15 @@ services:
 
   # Una volta sola: copia utenti e dati dal Supabase di prima. Parte a ogni
   # avvio, ma lavora solo se SUPABASE_CLOUD_DB_URL è scritto in .env e il
-  # database qui è ancora vuoto; poi esce. Il resoconto sta nel suo registro.
+  # database qui è ancora vuoto. Il resoconto sta nel suo registro.
   migra:
     image: supabase/postgres:17.6.1.136
     container_name: ciak-migra
     # L'immagine porta il controllo di salute del database, che qui non gira.
     healthcheck:
       disable: true
-    restart: "no"
+    # Finito, resta acceso in attesa (vedi script/migra.sh).
+    restart: unless-stopped
     depends_on:
       auth:
         condition: service_healthy

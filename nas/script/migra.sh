@@ -7,13 +7,47 @@
 # Gira nel container «migra» (vedi docker-compose.yaml) a ogni avvio, ma
 # lavora solo se SUPABASE_CLOUD_DB_URL è impostato e qui le tabelle di Ciak
 # non ci sono ancora: rilanciarlo non copia due volte.
+#
+# Quando non c'è (più) niente da fare resta acceso in attesa, invece di
+# uscire: l'app Docker del NAS chiama «Errore» un progetto con un container
+# fermo. Una copia non riuscita invece esce con un errore, e lo ridice a ogni
+# avvio (dati/migrazione/.fallita) finché non la si rifà da capo: senza,
+# al secondo avvio le tabelle a metà sembravano una copia fatta.
 set -uo pipefail
 
 dici() { echo "[migrazione] $*"; }
+resta() {
+  trap 'exit 0' TERM INT
+  while true; do sleep 3600 & wait $!; done
+}
+fallita() {
+  dici "$*"
+  echo "$*" > /lavoro/.fallita
+  exit 1
+}
+# Un intoppo prima di scrivere qualcosa (password sbagliata, rete): niente da
+# rimettere a posto, si riprova. Ogni 5 minuti e non subito, perché Docker lo
+# riavvierebbe di continuo, e tanti accessi sbagliati di fila al Supabase di
+# prima possono far bloccare l'indirizzo del NAS.
+riprova() {
+  dici "$*"
+  dici "Riprovo fra 5 minuti."
+  sleep 300
+  exit 1
+}
 
+if [ -f /lavoro/.copiata ]; then
+  dici "La copia dal Supabase di prima è già stata fatta. Niente da fare."
+  resta
+fi
+if [ -f /lavoro/.fallita ]; then
+  dici "La copia precedente non è riuscita: $(cat /lavoro/.fallita)"
+  dici "Per rifarla: ferma il progetto, cancella dati/db e dati/migrazione, poi riavvialo."
+  exit 1
+fi
 if [ -z "${CLOUD:-}" ]; then
   dici "SUPABASE_CLOUD_DB_URL è vuoto: niente da copiare."
-  exit 0
+  resta
 fi
 
 # Il proprietario delle tabelle dev'essere «postgres», come su Supabase: è
@@ -28,18 +62,16 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 if ! psql "$LOCALE" -tAc "select 1" > /dev/null; then
-  dici "ERRORE: il database del NAS non risponde. Guarda il registro di ciak-db e di ciak-prepara."
-  exit 1
+  riprova "ERRORE: il database del NAS non risponde. Guarda il registro di ciak-db e di ciak-prepara."
 fi
 
 if [ "$(psql "$LOCALE" -tAc "select to_regclass('public.schema_version') is not null")" = "t" ]; then
-  dici "Le tabelle di Ciak qui ci sono già: la copia è stata fatta. Puoi togliere SUPABASE_CLOUD_DB_URL da .env."
-  exit 0
+  dici "Le tabelle di Ciak qui ci sono già: non copio di nuovo. Puoi togliere SUPABASE_CLOUD_DB_URL da .env."
+  resta
 fi
 
 if ! psql "$CLOUD" -tAc "select 1" > /dev/null; then
-  dici "ERRORE: non riesco a collegarmi al Supabase di prima. Controlla SUPABASE_CLOUD_DB_URL (password compresa) in .env."
-  exit 1
+  riprova "ERRORE: non riesco a collegarmi al Supabase di prima. Controlla SUPABASE_CLOUD_DB_URL (password compresa) in .env, poi riavvia il progetto."
 fi
 
 # Gli utenti di Supabase devono essere pronti (li crea il login al primo avvio).
@@ -48,7 +80,7 @@ for _ in $(seq 1 60); do
   sleep 2
 done
 
-cd /lavoro || exit 1
+cd /lavoro || riprova "ERRORE: la cartella dati/migrazione non si apre."
 rm -f utenti.csv identita.csv tabelle.sql ripristino.log
 
 UTENTI="instance_id, id, aud, role, email, encrypted_password, email_confirmed_at, last_sign_in_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at"
@@ -59,14 +91,14 @@ TESTI_LETTI=$(echo "$TESTI" | sed -E "s/([a-z_]+)/coalesce(\1, '')/g")
 IDENTITA="id, provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at"
 
 dici "1/4 Leggo gli utenti…"
-psql "$CLOUD" -v ON_ERROR_STOP=1 -c "\\copy (select $UTENTI, $TESTI_LETTI from auth.users) to 'utenti.csv' csv" || { dici "ERRORE nel leggere gli utenti."; exit 1; }
-psql "$CLOUD" -v ON_ERROR_STOP=1 -c "\\copy (select $IDENTITA from auth.identities) to 'identita.csv' csv" || { dici "ERRORE nel leggere le identità."; exit 1; }
+psql "$CLOUD" -v ON_ERROR_STOP=1 -c "\\copy (select $UTENTI, $TESTI_LETTI from auth.users) to 'utenti.csv' csv" || riprova "ERRORE nel leggere gli utenti."
+psql "$CLOUD" -v ON_ERROR_STOP=1 -c "\\copy (select $IDENTITA from auth.identities) to 'identita.csv' csv" || riprova "ERRORE nel leggere le identità."
 
 dici "2/4 Leggo tabelle, regole e dati…"
-pg_dump "$CLOUD" --schema=public --no-owner --no-publications --no-subscriptions -f tabelle.sql || { dici "ERRORE nel leggere le tabelle."; exit 1; }
+pg_dump "$CLOUD" --schema=public --no-owner --no-publications --no-subscriptions -f tabelle.sql || riprova "ERRORE nel leggere le tabelle."
 
 dici "3/4 Scrivo gli utenti nel NAS…"
-psql "$LOCALE" -v ON_ERROR_STOP=1 <<SQL || { dici "ERRORE nello scrivere gli utenti: niente è stato copiato."; exit 1; }
+psql "$LOCALE" -v ON_ERROR_STOP=1 <<SQL || riprova "ERRORE nello scrivere gli utenti: niente è stato copiato."
 begin;
 \\copy auth.users ($UTENTI, $TESTI) from 'utenti.csv' csv
 \\copy auth.identities ($IDENTITA) from 'identita.csv' csv
@@ -90,13 +122,14 @@ done
 printf '  %-28s %8s → %-8s\n' "(utenti)" "$(psql "$CLOUD" -tAc 'select count(*) from auth.users')" "$(psql "$LOCALE" -tAc 'select count(*) from auth.users')"
 
 if [ "$diverse" -gt 0 ]; then
-  dici "ATTENZIONE: $diverse tabelle non tornano. Gli errori del ripristino sono in dati/migrazione/ripristino.log."
   grep -i "error" ripristino.log | head -20
-  exit 1
+  fallita "ATTENZIONE: $diverse tabelle non tornano. Gli errori del ripristino sono in dati/migrazione/ripristino.log."
 fi
 # Le iscrizioni alle notifiche sono del vecchio indirizzo (e delle sue chiavi
 # VAPID): da qui non arriverebbero mai. Si rifanno dal NAS, una per dispositivo.
 psql "$LOCALE" -qc "delete from public.push_subscriptions" && dici "Iscrizioni alle notifiche tolte: si riattivano da ogni dispositivo, dal nuovo indirizzo."
 # I file letti contengono i tuoi dati e le password cifrate: servivano solo ora.
 rm -f utenti.csv identita.csv tabelle.sql
+touch /lavoro/.copiata
 dici "Fatto: tutto copiato. Ora togli SUPABASE_CLOUD_DB_URL da .env."
+resta
