@@ -86,12 +86,21 @@ const GENERE_PRIMA_DELL_ANNO =
 // «Star Wars M02 E05 The Empire Strikes Back»: il numero del film nel pacchetto.
 const NUMERO_NEL_PACCHETTO = /\bM\d{2} E\d{2}\b/i
 
+// Come IMDb scrive una serie: «Death Note (TV Series 2006–2007)», «Chernobyl
+// (TV Mini Series 2019)», «Severance (TV Series 2022– )». Vale l'anno
+// d'inizio, quello che TMDB dà alla serie; il resto non è il titolo: si
+// cercava «Death Note (TV Series 2006–» del 2007, e TMDB non trovava niente.
+const SERIE_IMDB =
+  /\s*\(\s*(?:tv\s+(?:mini[\s-]?)?series|mini[\s-]?series|serie\s+tv)\s+((?:19|20)\d{2})(?:\s*[–—-]\s*(?:(?:19|20)\d{2})?)?\s*\)/i
+
 // Una cartella che raccoglie più film: «Transformers Complete Movie
 // Collection», «Alien Quadrilogy», «Star Wars M01-M03 (1977-1983)», «Attack
 // On Titan Movies». Il suo nome non è il titolo di nessuno dei film che
 // contiene, ed è il nome della saga che la videoteca ne fa (saghe.ts).
 export function cartellaRaccolta(nome: string | null | undefined): boolean {
   if (!nome) return false
+  // «Death Note (TV Series 2006-2007)»: gli anni di una serie, non di più film.
+  if (SERIE_IMDB.test(nome)) return false
   return (
     /\b(?:collection|collezione|trilogy|trilogia|quadrilogy|quadrilogia|saga|anthology|antologia|box ?set|\d+ ?(?:movies?|films?))\b/i.test(nome) ||
     /\bM\d{2}\s*-\s*M\d{2}\b/i.test(nome) ||
@@ -143,7 +152,7 @@ export function analizzaNomeFilm(nome: string): NomeFilm {
 // Come `analizzaNomeFilm`, e in più se la stagione è solo quella supposta
 // per gli anime (che il nome non dice).
 function leggiNome(nome: string): NomeFilm & { anime?: true } {
-  const senzaEstensione = nome.replace(ESTENSIONE_VIDEO, '').replace(/_/g, ' ')
+  const senzaEstensione = nome.replace(ESTENSIONE_VIDEO, '').replace(/_/g, ' ').replace(SERIE_IMDB, ' ($1)')
   const conGruppo = GRUPPO.test(senzaEstensione)
   const senzaGruppo = senzaEstensione.replace(GRUPPO, '')
   if (!/\bS\d{1,2} ?E\d{1,3}\b/i.test(senzaGruppo)) {
@@ -350,8 +359,11 @@ export function filmDaCercare(nomeFile: string, cartella: string | null, serie: 
   if (parte) return parte
   if (!cartella || daFile.anno !== undefined) return daFile
   if (daFile.stagione !== undefined) {
-    // «S03E01.mp4» nella cartella della serie: il titolo è quello della cartella.
-    return soloEpisodio(daFile.titolo) ? { ...daFile, titolo: analizzaNomeFilm(cartella).titolo } : daFile
+    // «S03E01.mp4» nella cartella della serie: il titolo è quello della
+    // cartella, e anche l'anno se il file non lo dice (distingue i remake).
+    if (!soloEpisodio(daFile.titolo)) return daFile
+    const daCartella = analizzaNomeFilm(cartella)
+    return { ...daFile, titolo: daCartella.titolo, ...(daFile.anno === undefined && daCartella.anno !== undefined && { anno: daCartella.anno }) }
   }
   const daCartella = analizzaNomeFilm(cartella)
   return daCartella.anno !== undefined ? daCartella : daFile

@@ -65,7 +65,8 @@ function segnaControllato(fileId: string): void {
 // v13: gli episodi presi per film perché la loro cartella non si leggeva
 // («Webisodes»): si cercano di nuovo come episodi.
 // v14: le miniserie con «Part 6» invece degli episodi («Band of Brothers»).
-const VERSIONE_RICONOSCIMENTO = 14
+// v15: le cartelle alla IMDb («Death Note (TV Series 2006–2007)»).
+const VERSIONE_RICONOSCIMENTO = 15
 const CHIAVE_RIPROVATO = `ciak:riconoscimento-v${VERSIONE_RICONOSCIMENTO}:`
 function giaRiprovato(fileId: string): boolean {
   try {

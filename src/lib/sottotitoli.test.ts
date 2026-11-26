@@ -257,8 +257,33 @@ describe('cartellaRaccolta', () => {
       expect(cartellaRaccolta(c), c).toBe(false)
   })
 
+  it('gli anni di una serie alla IMDb non fanno della cartella un pacchetto', () => {
+    expect(cartellaRaccolta('Death Note (TV Series 2006-2007)')).toBe(false)
+    expect(cartellaRaccolta('Death Note (TV Series 2006–2007)')).toBe(false)
+  })
+
   it('una cartella che si chiama solo «Movies» o «Film» è la categoria, non una saga', () => {
     for (const c of ['Movies', 'Films', 'FILM']) expect(cartellaRaccolta(c), c).toBe(false)
+  })
+})
+
+describe('nomi alla IMDb', () => {
+  // Dal NAS: «Death Note (TV Series 2006–2007)/Episode 1 Rebirth.mkv». Si
+  // cercava «Death Note (TV Series 2006–» del 2007, e TMDB non trovava niente.
+  it('«(TV Series 2006–2007)» è l’anno d’inizio, non un pezzo del titolo', () => {
+    expect(analizzaNomeFilm('Death Note (TV Series 2006–2007)')).toEqual({ titolo: 'Death Note', anno: 2006 })
+    expect(analizzaNomeFilm('Chernobyl (TV Mini Series 2019)')).toEqual({ titolo: 'Chernobyl', anno: 2019 })
+    expect(analizzaNomeFilm('Severance (TV Series 2022– )')).toEqual({ titolo: 'Severance', anno: 2022 })
+    expect(analizzaNomeFilm('Twin Peaks (TV Series 1990-1991)')).toEqual({ titolo: 'Twin Peaks', anno: 1990 })
+  })
+
+  it('gli episodi nella cartella prendono serie e anno da lì', () => {
+    expect(filmDaCercare('Episode 1 Rebirth.mkv', 'Death Note (TV Series 2006–2007)')).toEqual({
+      titolo: 'Death Note',
+      anno: 2006,
+      stagione: 1,
+      episodio: 1,
+    })
   })
 })
 
