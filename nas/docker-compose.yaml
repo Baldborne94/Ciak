@@ -51,8 +51,6 @@ services:
     restart: unless-stopped
     volumes:
       - ./dati/db:/var/lib/postgresql/data
-      - ./db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:ro
-      - ./db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:ro
       - db-config:/etc/postgresql-custom
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
@@ -70,6 +68,23 @@ services:
       JWT_EXP: 3600
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "log_min_messages=fatal"]
 
+  # A ogni avvio, prima di login e tabelle: le password con cui entrano nel
+  # database (vedi script/prepara.sh). Fa il suo lavoro ed esce.
+  prepara:
+    image: supabase/postgres:17.6.1.136
+    container_name: ciak-prepara
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    entrypoint: ["bash", "/script/prepara.sh"]
+    volumes:
+      - ./script:/script:ro
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+
   # Il login (email e password, come prima). Le password restano le stesse:
   # la migrazione copia gli utenti così come sono.
   auth:
@@ -77,8 +92,8 @@ services:
     container_name: ciak-auth
     restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
+      prepara:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
       interval: 5s
@@ -124,8 +139,8 @@ services:
     container_name: ciak-rest
     restart: unless-stopped
     depends_on:
-      db:
-        condition: service_healthy
+      prepara:
+        condition: service_completed_successfully
     environment:
       PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
       PGRST_DB_SCHEMAS: public
