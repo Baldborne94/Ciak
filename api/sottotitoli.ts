@@ -162,22 +162,50 @@ async function cercaFinoATrovare(r: Ricerca): Promise<RisultatoGrezzo[]> {
 }
 
 // Il login dell'account alza il tetto di download rispetto alla sola chiave.
-// Il token vale un giorno: lo si tiene finché la funzione resta calda.
+// Il token vale un giorno: lo si tiene finché la funzione resta calda (sul
+// NAS il server resta acceso, quindi per tutta la giornata).
+//
+// Un login solo per volta: il lettore chiede italiano e inglese insieme, e
+// OpenSubtitles accetta un login al secondo (il secondo tornava 429). E un
+// login che non riesce non ferma niente: si scarica con la sola chiave, e lo
+// si ritenta solo dopo una pausa, invece di farsi rifiutare a ogni richiesta.
 let sessione: { token: string; base: string; scade: number } | null = null
-async function accedi(): Promise<{ token: string; base: string } | null> {
+let inCorso: Promise<{ token: string; base: string } | null> | null = null
+let pausaFinoA = 0
+const PAUSA_DOPO_ERRORE = 10 * 60_000
+
+export function dimenticaSessione(): void {
+  sessione = null
+  inCorso = null
+  pausaFinoA = 0
+}
+
+export async function accedi(): Promise<{ token: string; base: string } | null> {
   if (!USERNAME || !PASSWORD) return null
   if (sessione && Date.now() < sessione.scade) return sessione
-  const res = await fetch(`${BASE}/login`, {
-    method: 'POST',
-    headers: intestazioni({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ username: USERNAME, password: PASSWORD }),
-  })
-  if (!res.ok) throw new Error(`Accesso a OpenSubtitles non riuscito (${res.status}).`)
-  const data = (await res.json()) as { token?: string; base_url?: string }
-  if (!data.token) throw new Error('OpenSubtitles non ha restituito un token.')
-  const base = data.base_url ? `https://${data.base_url.replace(/^https?:\/\//, '')}/api/v1` : BASE
-  sessione = { token: data.token, base, scade: Date.now() + 12 * 3600_000 }
-  return sessione
+  if (Date.now() < pausaFinoA) return null
+  inCorso ??= (async () => {
+    try {
+      const res = await fetch(`${BASE}/login`, {
+        method: 'POST',
+        headers: intestazioni({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ username: USERNAME, password: PASSWORD }),
+      })
+      if (!res.ok) throw new Error(`Accesso a OpenSubtitles non riuscito (${res.status}).`)
+      const data = (await res.json()) as { token?: string; base_url?: string }
+      if (!data.token) throw new Error('OpenSubtitles non ha restituito un token.')
+      const base = data.base_url ? `https://${data.base_url.replace(/^https?:\/\//, '')}/api/v1` : BASE
+      sessione = { token: data.token, base, scade: Date.now() + 12 * 3600_000 }
+      return sessione
+    } catch (e) {
+      console.error(`${e instanceof Error ? e.message : String(e)} Scarico con la sola chiave.`)
+      pausaFinoA = Date.now() + PAUSA_DOPO_ERRORE
+      return null
+    } finally {
+      inCorso = null
+    }
+  })()
+  return inCorso
 }
 
 function decodifica(byte: ArrayBuffer): string {

@@ -200,15 +200,21 @@ export async function voceStreaming(userId: string, fileId: string): Promise<Voc
 // Gli episodi della stessa serie, per sapere qual è il prossimo: il lettore
 // non ha bisogno dell'intera videoteca (centinaia di righe a ogni episodio,
 // che sul telefono arrivavano dopo che il film era già partito).
+// A pagine anche qui: una serie lunga, con le copie dello stesso episodio
+// dal Drive di una volta, dalla cartella e da Jellyfin, supera le mille
+// righe. Tagliate in silenzio, mancavano proprio le ultime arrivate (quelle
+// di Jellyfin), e da South Park S23E4 il «precedente» era S11E5.
 export async function episodiDellaSerie(userId: string, tmdbId: number): Promise<VoceStreaming[]> {
-  const { data, error } = await client()
-    .from(TABELLA)
-    .select('*')
-    .eq('user_id', userId)
-    .eq('media_type', 'tv')
-    .eq('tmdb_id', tmdbId)
-  if (error) throw new Error(error.message)
-  return (data ?? []) as VoceStreaming[]
+  return fetchAllRows<VoceStreaming>((from, to) =>
+    client()
+      .from(TABELLA)
+      .select('*')
+      .eq('user_id', userId)
+      .eq('media_type', 'tv')
+      .eq('tmdb_id', tmdbId)
+      .order('drive_file_id', { ascending: true })
+      .range(from, to),
+  )
 }
 
 // Aggiorna solo i campi passati: l'upsert di PostgREST tocca le colonne che
