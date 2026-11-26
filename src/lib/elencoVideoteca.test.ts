@@ -76,3 +76,52 @@ describe('componiVideoteca', () => {
     expect(composta.posterDi.get('movie-679')).toBe('/a2.jpg')
   })
 })
+
+describe('saghe dalla cartella', () => {
+  // Dal NAS: i quattro film di Attack on Titan, che TMDB non riconosce dal
+  // nome («[Anime Time] … Movie 03 - Kakusei no Houkou»), stavano sciolti
+  // nell'elenco, uno per riga, invece che in una cartella.
+  const aot = (n: number, sottotitolo: string) =>
+    video(`jf-aot${n}`, `[Anime Time] Attack on Titan Movie 0${n} - ${sottotitolo}.mkv`, { categoria: 'ANIME', cartella: 'Attack On Titan Movies' })
+  const mostrati = [
+    aot(3, 'Kakusei no Houkou'),
+    aot(1, 'Guren no Yumiya'),
+    aot(4, 'Chronicle'),
+    aot(2, 'Jiyuu no Tsubasa'),
+    video('jf-p', 'Paprika.2006.mp4', { categoria: 'ANIME', cartella: 'Paprika (2006)' }),
+    // File messi direttamente nella cartella della categoria: non sono una saga.
+    video('jf-x', 'Akira.1988.mkv', { categoria: 'Movies', cartella: 'Movies' }),
+    video('jf-y', 'Perfect.Blue.1997.mkv', { categoria: 'Movies', cartella: 'Movies' }),
+  ]
+
+  it('i film in una cartella-raccolta diventano una saga col suo nome, in ordine di numero', () => {
+    const composta = componiVideoteca(mostrati, new Map(), VUOTE, [])
+    const saga = [...composta.saghe.values()].find((g) => g.saga.name === 'Attack On Titan Movies')
+    expect(saga?.ids).toEqual(['jf-aot1', 'jf-aot2', 'jf-aot3', 'jf-aot4'])
+    // Una riga per la saga, e gli altri tre film sciolti: i due nella cartella
+    // della categoria («Movies») non sono una saga.
+    expect(composta.voci.map((v) => v.riga.id).sort()).toEqual(['cartella-attack on titan movies', 'jf-p', 'jf-x', 'jf-y'])
+    // Una saga dalla cartella non ha una saga di TMDB da modificare.
+    expect(saga?.saga.daCartella).toBe(true)
+    expect(composta.inSagaTmdb.size).toBe(0)
+  })
+
+  it('un film solo nella cartella resta sciolto', () => {
+    const composta = componiVideoteca([aot(1, 'Guren no Yumiya')], new Map(), VUOTE, [])
+    expect(composta.saghe.size).toBe(0)
+  })
+
+  it('una saga di TMDB vince su quella della cartella', () => {
+    const archivio = new Map([
+      ['jf-aot1', voce('jf-aot1', { tmdb_id: 1, media_type: 'movie', titolo: 'Crimson Bow and Arrow', poster_path: '/1.jpg' })],
+      ['jf-aot2', voce('jf-aot2', { tmdb_id: 2, media_type: 'movie', titolo: 'Wings of Freedom', poster_path: '/2.jpg' })],
+    ])
+    const collezione = { id: 99, name: 'Attack on Titan Collection', posterPath: '/c.jpg' }
+    const info: InfoTitoli = { ...VUOTE, saghe: new Map([['movie-1', collezione], ['movie-2', collezione]]) }
+    const composta = componiVideoteca(mostrati.slice(0, 4), archivio, info, [])
+    expect(composta.saghe.get('saga-99')?.ids.sort()).toEqual(['jf-aot1', 'jf-aot2'])
+    // Gli altri due, rimasti nella cartella, sono ancora una saga dalla cartella.
+    const daCartella = [...composta.saghe.values()].find((g) => g.saga.daCartella)
+    expect(daCartella?.ids).toEqual(['jf-aot3', 'jf-aot4'])
+  })
+})

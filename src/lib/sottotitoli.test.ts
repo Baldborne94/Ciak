@@ -245,13 +245,20 @@ describe('cartellaRaccolta', () => {
       'Alien Quadrilogy',
       'The Lord of the Rings Trilogy',
       'Harry Potter Complete 8-Film Collection',
+      // Dal NAS: i film di una serie anime, insieme in una cartella.
+      'Attack On Titan Movies',
+      'Evangelion Films',
     ])
       expect(cartellaRaccolta(c), c).toBe(true)
   })
 
   it('la cartella di un film solo non è un pacchetto', () => {
-    for (const c of ['Song of the Sea (2014) [1080p]', 'The Seventh Seal (1957) Criterion', 'Blade Runner 2049 (2017)'])
+    for (const c of ['Song of the Sea (2014) [1080p]', 'The Seventh Seal (1957) Criterion', 'Blade Runner 2049 (2017)', 'Scary Movie (2000)'])
       expect(cartellaRaccolta(c), c).toBe(false)
+  })
+
+  it('una cartella che si chiama solo «Movies» o «Film» è la categoria, non una saga', () => {
+    for (const c of ['Movies', 'Films', 'FILM']) expect(cartellaRaccolta(c), c).toBe(false)
   })
 })
 

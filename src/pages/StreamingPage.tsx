@@ -230,12 +230,16 @@ export default function StreamingPage() {
         nome={saga.saga.name}
         poster={
           // Fatta a mano: la copertina scelta, se no la locandina del primo film.
+          // Dalla cartella: la locandina del primo film riconosciuto.
           listaId
             ? (copertinaUrl(saga.saga.copertina ?? null, 'w780') ?? posterUrl(primaLocandina, 'w185'))
-            : posterUrl(saga.saga.posterPath, 'w185')
+            : saga.saga.daCartella
+              ? posterUrl(primaLocandina, 'w185')
+              : posterUrl(saga.saga.posterPath, 'w185')
         }
         azioni={
-          !listaId ? (
+          // Una saga fatta dalla cartella non ha una saga di TMDB da modificare.
+          saga.saga.daCartella ? null : !listaId ? (
             // Una saga di TMDB: modificandola diventa tua, al suo posto.
             <button
               type="button"
