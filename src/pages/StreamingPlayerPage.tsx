@@ -15,6 +15,7 @@ import ToccoVideo from '../components/ToccoVideo'
 import FileDaRiaprire from '../components/FileDaRiaprire'
 import FileSulDisco from '../components/FileSulDisco'
 import CopiaDaCasa from '../components/CopiaDaCasa'
+import QualitaCasa from '../components/QualitaCasa'
 import RigaSottotitoli from '../components/RigaSottotitoli'
 import NoteLettore from '../components/NoteLettore'
 import { DIMENSIONI_SOTTOTITOLI, testoSottotitoli } from '../lib/sceltaSottotitoli'
@@ -226,7 +227,7 @@ function LettoreStreaming() {
   // Dal server di casa: il file diretto o convertito da Jellyfin (vedi
   // useFlussoCasa). Un file diretto che non parte passa da solo alla
   // conversione (vedi suErrore e segnala).
-  const flusso = useFlussoCasa({ videoRef, fileId, casa, info: infoCasa, sceltaAudio: audio.scelta, onErrore: setErrore })
+  const flusso = useFlussoCasa({ videoRef, fileId, casa, info: infoCasa, sceltaAudio: audio.scelta, onErrore: setErrore, primaDiCambiare: ricordaPosizione })
   const hlsCasa = flusso.hls
   const direttoCasaRef = flusso.direttoRef
   const srcVideo = casa ? flusso.src : (disco.src ?? undefined)
@@ -561,6 +562,7 @@ function LettoreStreaming() {
           onErrore={setErrore}
         />
       )}
+      <QualitaCasa videoRef={videoRef} attivo={casa} ridotta={flusso.ridotta} onCambia={(r) => (r ? flusso.riduciQualita() : flusso.qualitaPiena())} />
       {suCasa && (
         <CopiaDaCasa
           fileId={fileId}

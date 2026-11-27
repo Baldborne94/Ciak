@@ -336,3 +336,37 @@ test('i sottotitoli del server si chiedono uno per lingua, ognuno si vede appena
   await mostra.selectOption({ label: 'Italiano' })
   await expect(cc).toHaveText('CC IT')
 })
+
+test('con la rete che non tiene il passo passa da solo alla qualità ridotta, e si torna alla piena', async ({ page }) => {
+  // Il tablet lontano dal router: l'episodio diretto si fermava a caricare
+  // ogni tanto. Dopo tre attese in poco tempo il lettore chiede a Jellyfin
+  // una versione più leggera, e lo dice.
+  await mockSupabase(page)
+  const richieste = await mockJellyfin(page)
+  await collega(page)
+  await page.getByRole('button', { name: /Song of the Sea \(2014\)/ }).click()
+  const video = page.locator('video')
+  await expect(video).toHaveAttribute('src', /stream\?static=true/)
+
+  // Il finto Jellyfin non manda il file: le attese si simulano sul <video>.
+  await video.evaluate((v: HTMLVideoElement) => {
+    Object.defineProperty(v, 'paused', { configurable: true, get: () => false })
+    v.dispatchEvent(new Event('playing'))
+    for (let i = 0; i < 3; i++) {
+      v.dispatchEvent(new Event('waiting'))
+      v.dispatchEvent(new Event('playing'))
+    }
+  })
+
+  await expect.poll(() => richieste.hls.length).toBeGreaterThan(0)
+  const ridotta = richieste.hls[0]
+  expect(ridotta.searchParams.get('MaxWidth')).toBe('1280')
+  expect(Number(ridotta.searchParams.get('VideoBitrate'))).toBeLessThanOrEqual(3_000_000)
+  await expect(page.getByRole('status').filter({ hasText: /qualità ridotta/ })).toBeVisible()
+
+  // A richiesta si torna al file così com'è, e la conversione si ferma.
+  await page.getByRole('button', { name: 'Torna alla qualità piena' }).click()
+  await expect(video).toHaveAttribute('src', /stream\?static=true/)
+  await expect.poll(() => richieste.fermate.length).toBeGreaterThan(0)
+  await expect(page.getByRole('status').filter({ hasText: /qualità ridotta/ })).toHaveCount(0)
+})
