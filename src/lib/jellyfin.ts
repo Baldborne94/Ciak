@@ -472,6 +472,22 @@ export function flussoHls(fileId: string, info: InfoJellyfin, audio: number | nu
   return `${config.url}/Videos/${id}/master.m3u8?${p.toString()}`
 }
 
+// La qualità ridotta, per quando la rete non tiene il passo (vedi
+// useConnessioneLenta): al più 720p e 3 Mbps. Il video si ricomprime sempre,
+// anche quando è già H.264 (copiarlo vorrebbe dire lo stesso peso di prima).
+export const BITRATE_RIDOTTO = 3_000_000
+
+export function flussoHlsRidotto(fileId: string, info: InfoJellyfin, audio: number | null, sessione: string, config = leggiJellyfin()): string {
+  const pieno = flussoHls(fileId, info, audio, sessione, config)
+  if (!pieno) return ''
+  const url = new URL(pieno)
+  url.searchParams.set('VideoBitrate', String(Math.min(bitrateConversione(info), BITRATE_RIDOTTO)))
+  url.searchParams.set('MaxWidth', '1280')
+  url.searchParams.set('MaxHeight', '720')
+  url.searchParams.set('allowVideoStreamCopy', 'false')
+  return url.toString()
+}
+
 // Il video convertito da Jellyfin in un MP4 solo, da scaricare (vedi
 // copiaDaCasa): come l'HLS, ma tutto di fila invece che a pezzi da 6 secondi,
 // perché la copia in Ciak è un file che il <video> legge senza hls.js.

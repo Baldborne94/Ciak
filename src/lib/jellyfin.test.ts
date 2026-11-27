@@ -17,6 +17,8 @@ import {
   tracciaPredefinita,
   unisciFonti,
   videoDaJellyfin,
+  flussoHlsRidotto,
+  BITRATE_RIDOTTO,
 } from './jellyfin'
 
 beforeEach(() => {
@@ -179,6 +181,32 @@ describe('il video per il lettore', () => {
     for (const url of [flussoHls(`jf-${ID}`, xvid, null, 's', config), flussoMp4(`jf-${ID}`, xvid, null, 's', config)]) {
       expect(Number(new URL(url).searchParams.get('VideoBitrate'))).toBeGreaterThanOrEqual(4_000_000)
     }
+  })
+})
+
+describe('flussoHlsRidotto', () => {
+  // Il tablet lontano dal router si fermava a caricare: la qualità ridotta
+  // pesa meno della metà di un episodio da 8 Mbit al secondo.
+  it('chiede al più 720p e 3 Mbps, ricomprimendo il video, con la stessa lingua', () => {
+    const config = { url: 'https://casa.ts.net', token: 't', userId: 'u', utente: 'ale' }
+    const pesante = infoDaSorgente({
+      ...sorgente,
+      MediaStreams: [
+        { Index: 1, Type: 'Video', Codec: 'h264', BitDepth: 8, BitRate: 8_000_000 },
+        { Index: 2, Type: 'Audio', Codec: 'aac', Language: 'eng' },
+        { Index: 3, Type: 'Audio', Codec: 'ac3', Language: 'ita' },
+      ],
+    })
+    const url = new URL(flussoHlsRidotto(`jf-${ID}`, pesante, 3, 'sess-r', config))
+    expect(url.pathname).toBe(`/Videos/${ID}/master.m3u8`)
+    expect(Number(url.searchParams.get('VideoBitrate'))).toBe(BITRATE_RIDOTTO)
+    expect(url.searchParams.get('MaxWidth')).toBe('1280')
+    expect(url.searchParams.get('MaxHeight')).toBe('720')
+    // Copiare il video così com'è vorrebbe dire lo stesso peso di prima.
+    expect(url.searchParams.get('allowVideoStreamCopy')).toBe('false')
+    expect(url.searchParams.get('AudioStreamIndex')).toBe('3')
+    expect(url.searchParams.get('PlaySessionId')).toBe('sess-r')
+    expect(flussoHlsRidotto('1AbCdEfGhIjKlMn', pesante, null, 's', config)).toBe('')
   })
 })
 
